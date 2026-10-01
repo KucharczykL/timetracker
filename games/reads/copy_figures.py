@@ -36,19 +36,15 @@ from games.models import (
     PlayerGameStatus,
     UserLibrary,
 )
-from games.reads.days import YearScope
+from games.reads.days import YearScope, year_range
 from games.reads.playthrough_completions import completed_in_scope
 from games.reads.purchases import library_purchases
-
-
-def _year_range(year: int) -> tuple[str, str]:
-    return (f"{year}-01-01", f"{year}-12-31")
 
 
 def _copies(year: YearScope = None, **lookups) -> LibraryEntryFilter:
     """Full-Edition copies, acquired in scope."""
     if year is not None:
-        lookups["acquired__within"] = _year_range(year)
+        lookups["acquired__within"] = year_range(year)
     return LibraryEntryFilter.where(edition_kind=[EditionKind.FULL], **lookups)
 
 
@@ -162,10 +158,10 @@ def bought_and_finished_copies(year: YearScope) -> LibraryEntryFilter:
 def played_copies(year: YearScope) -> LibraryEntryFilter:
     """A session or record in scope."""
     sessions = PlayerSessionFilter.where(
-        **({} if year is None else {"day__between": _year_range(year)})
+        **({} if year is None else {"day__between": year_range(year)})
     )
     records = HistoricalPlaytimeFilter.where(
-        **({} if year is None else {"when__within": _year_range(year)})
+        **({} if year is None else {"when__within": year_range(year)})
     )
     played = GameFilter(
         OR=[

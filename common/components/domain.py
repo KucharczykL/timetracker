@@ -330,6 +330,11 @@ def PurchaseAmount(purchase: Purchase) -> Node:
     if purchase.amount == 0:
         return Span()["Free"]
     stated = f"{purchase.amount} {purchase.currency}"
+    if not hasattr(purchase, "valuation_amount"):
+        raise ValueError(
+            f"purchase {purchase.pk} carries no valuation; "
+            "read it through annotated_for_filtering(library)"
+        )
     valuation = cast("ValuedPurchase", purchase)
     if (
         valuation.valuation_amount is None

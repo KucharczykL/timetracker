@@ -1409,6 +1409,28 @@ class AggregateSpec:
             )
 
 
+def correlated_path_problem(
+    parent: type[models.Model] | None, spec: AggregateSpec
+) -> str | None:
+    """Why a correlated path misses its parent, or None."""
+    if spec.correlated is None:
+        return None
+    model = spec.scope_filter._comparison_model()
+    if model is None or parent is None:
+        return "has no model to walk"
+    for hop in spec.correlated.split("__"):
+        try:
+            field = model._meta.get_field(hop)
+        except FieldDoesNotExist:
+            return f"names no field {hop!r} on {model.__name__}"
+        if not (field.many_to_one or field.one_to_one) or field.related_model is None:
+            return f"crosses {hop!r}, which is not to-one"
+        model = field.related_model
+    if model is not parent:
+        return f"ends at {model.__name__}, not {parent.__name__}"
+    return None
+
+
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
 
 

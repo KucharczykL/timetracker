@@ -15,7 +15,13 @@ from django.db import models
 from django.utils import timezone
 
 from common.components.icons_generated import ICON_NODES
-from common.criteria import FilterError, declared_through_paths, resolve_through_path
+from common.criteria import (
+    FilterError,
+    OperatorFilter,
+    correlated_path_problem,
+    declared_through_paths,
+    resolve_through_path,
+)
 from common.platform_icons import PLATFORM_ICONS, PlatformIcon
 from games.endpoint_fields import (
     EndpointColumnsBase,
@@ -433,6 +439,37 @@ def _endpoint_error(
         obj=model,
         id="games.E014",
     )
+
+
+@register(Tags.models)
+def check_correlated_aggregates(**kwargs: Any) -> list[CheckMessage]:
+    """Every correlated path ends at its parent."""
+    from games import filters
+
+    errors: list[CheckMessage] = []
+    for filter_class in vars(filters).values():
+        if not (
+            isinstance(filter_class, type) and issubclass(filter_class, OperatorFilter)
+        ):
+            continue
+        parent = filter_class._comparison_model()
+        for name, spec in filter_class.aggregates.items():
+            problem = correlated_path_problem(parent, spec)
+            if problem is not None:
+                errors.append(
+                    Error(
+                        f"{filter_class.__name__}.{name}: correlated path "
+                        f"{spec.correlated!r} {problem}.",
+                        hint=(
+                            "The reducer groups the scoped rows on this path "
+                            "and matches it to the parent's key; a wrong hop "
+                            "correlates on another table's key."
+                        ),
+                        obj=filter_class,
+                        id="games.E016",
+                    )
+                )
+    return errors
 
 
 @register(Tags.models)

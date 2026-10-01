@@ -21,14 +21,12 @@ from games.models import (
     PurchaseConversionState,
     UserLibrary,
 )
-from games.reads.days import YearScope
+from games.reads.days import DayRangeText, YearScope, year_range
 from games.valuations import CurrencyCode
 
 
-def _bounds(year: YearScope) -> dict[str, tuple[str, str]]:
-    if year is None:
-        return {}
-    return {"purchased__within": (f"{year}-01-01", f"{year}-12-31")}
+def _bounds(year: YearScope) -> dict[str, DayRangeText]:
+    return {} if year is None else {"purchased__within": year_range(year)}
 
 
 def purchases_in_scope(year: YearScope) -> PurchaseFilter:

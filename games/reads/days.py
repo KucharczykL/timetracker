@@ -6,6 +6,12 @@ from datetime import date, timedelta
 from typing import Self
 
 type YearScope = int | None  # a year, or None for all-time
+type DayRangeText = tuple[str, str]  # ISO first and last day
+
+
+def year_range(year: int) -> DayRangeText:
+    """A year's first and last day, as filters spell them."""
+    return (f"{year}-01-01", f"{year}-12-31")
 
 
 @dataclass(frozen=True, slots=True)

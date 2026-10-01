@@ -1,3 +1,4 @@
+from datetime import date
 from functools import partial
 from typing import Protocol, cast
 from uuid import UUID
@@ -78,7 +79,7 @@ from games.reads.playthrough_completions import (
     reported_completion,
     reported_completion_day,
 )
-from games.reads.purchases import library_purchases
+from games.reads.purchases import ValuedPurchase, library_purchases
 from games.removal import remove, restore
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
@@ -127,17 +128,23 @@ def purchase_list_rows(library: UserLibrary) -> PurchaseQuerySet:
     )
 
 
-class ListedPurchase(Protocol):
-    """The Finished cell's two annotations."""
+class ListedPurchase(ValuedPurchase, Protocol):
+    """A row `purchase_list_rows` annotated."""
 
     has_completion: bool
     completed_value: TemporalValue | None
+    completed_day: date | None
 
 
 def _purchase_cells(
     purchase: Purchase, presentation: DateTimePresentation
 ) -> list[Cell]:
     """One row's cells, one for each column."""
+    if not hasattr(purchase, "has_completion"):
+        raise ValueError(
+            f"purchase {purchase.pk} carries no list annotations; "
+            "read the rows through purchase_list_rows()"
+        )
     listed = cast(ListedPurchase, purchase)
     #: Read the act, not the value.
     #: A null value is a completion nobody dated, which

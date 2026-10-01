@@ -7,8 +7,9 @@ the parity tests assert each builder's queryset count equals the stat it links
 from.
 
 Scope: `year` is an int for a calendar year, or the "Alltime" sentinel (or any
-non-int) for all-time — matching `StatsData["year"]`. For all-time the date
-bounds are omitted, so the links cover every record.
+non-int) for all-time — matching `StatsData["year"]`; the purchase and copy
+builders refuse any other value. For all-time the date bounds are omitted, so
+the links cover every record.
 
 These objects carry row criteria, not authorization. List views must execute them
 against a base queryset already scoped to ``request.user.library``; a stats link
@@ -16,6 +17,7 @@ must never restore a global model-manager fallback.
 """
 
 from calendar import monthrange
+from typing import Literal
 from uuid import UUID
 
 from common.criteria import (
@@ -30,29 +32,25 @@ from games.filters import (
     PurchaseFilter,
 )
 from games.reads import copy_figures, purchase_figures
-from games.reads.days import YearScope
+from games.reads.days import YearScope, year_range
 
 
 def _is_year(year) -> bool:
     return isinstance(year, int)
 
 
-def _year_range(year: int) -> tuple[str, str]:
-    return (f"{year}-01-01", f"{year}-12-31")
-
-
 def _session_bounds(year) -> dict:
     """`where()` kwargs scoping sessions to the year (empty for all-time)."""
     if not _is_year(year):
         return {}
-    return {"day__between": _year_range(year)}
+    return {"day__between": year_range(year)}
 
 
 def _record_bounds(year) -> dict:
     """`where()` kwargs scoping records by containment."""
     if not _is_year(year):
         return {}
-    return {"when__within": _year_range(year)}
+    return {"when__within": year_range(year)}
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────────
@@ -141,48 +139,55 @@ def games_played(year) -> GameFilter:
 # ── Purchases ────────────────────────────────────────────────────────────────
 
 
-def _scope(year) -> YearScope:
-    return year if _is_year(year) else None
+type StatsYear = int | Literal["Alltime"] | None  # StatsData's year
 
 
-def purchases_total(year) -> PurchaseFilter:
+def _scope(year: StatsYear) -> YearScope:
+    if year is None or year == "Alltime":
+        return None
+    if isinstance(year, int):
+        return year
+    raise ValueError(f"{year!r} is no statistics year")
+
+
+def purchases_total(year: StatsYear) -> PurchaseFilter:
     return purchase_figures.purchases_in_scope(_scope(year))
 
 
-def purchases_refunded(year) -> PurchaseFilter:
+def purchases_refunded(year: StatsYear) -> PurchaseFilter:
     return purchase_figures.refunded_in_scope(_scope(year))
 
 
-def purchases_unpriced(year) -> PurchaseFilter:
+def purchases_unpriced(year: StatsYear) -> PurchaseFilter:
     return purchase_figures.unpriced_in_scope(_scope(year))
 
 
-def purchases_unvalued(year) -> PurchaseFilter:
+def purchases_unvalued(year: StatsYear) -> PurchaseFilter:
     return purchase_figures.unvalued_in_scope(_scope(year))
 
 
 # ── Copies ───────────────────────────────────────────────────────────────────
 
 
-def copies_unfinished(year) -> LibraryEntryFilter:
+def copies_unfinished(year: StatsYear) -> LibraryEntryFilter:
     return copy_figures.unfinished_copies(_scope(year))
 
 
-def copies_dropped(year) -> LibraryEntryFilter:
+def copies_dropped(year: StatsYear) -> LibraryEntryFilter:
     return copy_figures.dropped_copies(_scope(year))
 
 
-def copies_backlog_decrease(year) -> LibraryEntryFilter:
+def copies_backlog_decrease(year: StatsYear) -> LibraryEntryFilter:
     return copy_figures.backlog_decrease_copies(_scope(year))
 
 
-def copies_finished(year) -> LibraryEntryFilter:
+def copies_finished(year: StatsYear) -> LibraryEntryFilter:
     return copy_figures.finished_copies(_scope(year))
 
 
-def copies_finished_released(year) -> LibraryEntryFilter:
+def copies_finished_released(year: StatsYear) -> LibraryEntryFilter:
     return copy_figures.finished_released_copies(_scope(year))
 
 
-def copies_bought_and_finished(year) -> LibraryEntryFilter:
+def copies_bought_and_finished(year: StatsYear) -> LibraryEntryFilter:
     return copy_figures.bought_and_finished_copies(_scope(year))

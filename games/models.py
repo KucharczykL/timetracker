@@ -2403,23 +2403,29 @@ class PurchaseQuerySet(RemovableMixin, models.QuerySet["Purchase"]):
     def annotated_for_filtering(
         self, library: UserLibrary | None = None
     ) -> PurchaseQuerySet:
-        """Register the valuation alias.
+        """Register the price and valuation aliases.
 
         As the run's condition aliases: a second call naming the
         same library is a no-op, one naming another is refused,
         and without a library the names resolve and refuse to
-        compile.
+        compile. A library named after an unscoped call is
+        refused too: filters may already hold the unscoped alias.
         """
         from games.reads.purchases import valuation_annotations
 
         if "valuation_amount" in self.query.annotations:
-            if library is not None and library != self._valuation_library:
+            if library is None or library == self._valuation_library:
+                return self
+            if self._valuation_library is None:
                 raise ValueError(
-                    "this queryset already carries a valuation alias from "
-                    f"{self._valuation_library}; annotate once, at the read "
-                    "that states the scope"
+                    "this queryset carries the unscoped valuation alias; "
+                    "name the library at the first call"
                 )
-            return self
+            raise ValueError(
+                "this queryset already carries a valuation alias from "
+                f"{self._valuation_library}; annotate once, at the read "
+                "that states the scope"
+            )
         rate_year, valuation = valuation_annotations(library)
         if library is None:
             return self.alias(price_state=price_state_expression(), **rate_year).alias(

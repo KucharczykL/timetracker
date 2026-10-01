@@ -76,6 +76,22 @@ def test_a_foreign_valuation_stands_beside(entry, owned_library):
     assert "(5.00 EUR)" in cell
 
 
+def test_an_amount_without_its_valuation_is_refused(entry):
+    purchase = record_purchase(entry, amount=Decimal(5), currency="EUR")
+
+    with pytest.raises(ValueError, match="annotated_for_filtering"):
+        PurchaseAmount(Purchase.objects.get(pk=purchase.pk))
+
+
+def test_a_row_without_its_list_annotations_is_refused(entry):
+    from games.views.purchase import _purchase_cells
+
+    purchase = record_purchase(entry)
+
+    with pytest.raises(ValueError, match="purchase_list_rows"):
+        _purchase_cells(purchase, presentation=None)
+
+
 # ── The list ────────────────────────────────────────────────────────────────
 
 

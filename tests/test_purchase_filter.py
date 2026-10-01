@@ -63,6 +63,13 @@ def test_a_call_naming_another_library_is_refused(owned_library, django_user_mod
         rows.annotated_for_filtering(stranger)
 
 
+def test_a_library_after_an_unscoped_call_is_refused(owned_library):
+    rows = Purchase.objects.annotated_for_filtering()
+
+    with pytest.raises(ValueError, match="name the library at the first call"):
+        rows.annotated_for_filtering(owned_library)
+
+
 def test_an_unscoped_alias_resolves_and_refuses_to_execute():
     rows = Purchase.objects.none().annotated_for_filtering()
     narrowed = Purchase.objects.annotated_for_filtering().filter(valuation_amount__gt=1)
@@ -533,3 +540,26 @@ def test_price_total_sums_one_library_at_a_shared_game(
         tunic.game
     }
     assert _games(second, GameFilter.where(purchase_price_total=7)) == {tunic.game}
+
+
+def test_every_correlated_path_ends_at_its_parent():
+    from games.checks import check_correlated_aggregates
+
+    assert check_correlated_aggregates() == []
+
+
+@pytest.mark.parametrize(
+    ("path", "problem"),
+    [
+        ("entry__player_game", "ends at PlayerGame, not Game"),
+        ("entry__nothing", "names no field 'nothing'"),
+    ],
+)
+def test_a_wrong_correlated_path_is_named(path, problem):
+    from common.criteria import AggregateSpec, correlated_path_problem
+
+    spec = AggregateSpec(
+        "sum", "x", PurchaseFilter, source="valuation_amount", correlated=path
+    )
+
+    assert problem in correlated_path_problem(Game, spec)
