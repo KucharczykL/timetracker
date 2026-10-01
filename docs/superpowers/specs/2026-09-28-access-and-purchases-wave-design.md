@@ -230,20 +230,35 @@ the purchase key.
 Conventional, per the charter. One row per `(purchase, target_currency)`,
 holding the purchase's **key**, never a foreign key: nothing outside the
 projections may point at a projection row, and a foreign key would block
-or empty the swap. Columns: `amount` decimal, the rate's identity and
-version, `calculated_at`. The currency task is its sole writer. No row
-exists for an unknown amount; a free purchase values at 0.
-`ExchangeRate.rate` becomes a decimal.
+or empty the swap. Columns: `library` (CASCADE, for the purge),
+`purchase_id` a bare UUID, `target_currency`, `amount` Decimal(18,2)
+rounded half up to cents, `rate` Decimal(24,12) null where none was read
+(same currency, or 0), `version`, `calculated_at`. The currency task is
+its sole writer: it values the whole live set per version, and
+publication replaces the library's valuations whole in the transaction
+that sets `published_version`, so one target per library is ever read.
+No row exists for an unknown amount; a free purchase values at 0. The
+rate's year is `purchased_lower`'s; an unknown purchased day takes the
+year of `purchase_recorded_at`, since the price is known, and the rate
+row the valuation names says which year was read. `ExchangeRate.rate`
+becomes Decimal(24,12), migrated through `repr(float)`, the fetch parsing
+with `parse_float=Decimal`; the legacy converter keeps its whole-unit
+output until P5. `PurchaseOut` answers `valuation`, null or `{amount,
+currency}` at the published target.
 
-The per-library run state that #630 built (requested and published
-version, status, retry) stays and points at valuations. Its trigger moves:
-`Purchase.save()` bumps the requested version today, and a projector never
-calls `save()`, so the write path in `games/writes/purchase.py` requests a
-valuation after any dispatch that states an amount (`created`,
-`amount_changed`, `restored`). The task finds every live purchase with an
-amount and no valuation at the published version and target, so
-`needs_price_update` has no successor. The float cache and its writer go
-at the cutover.
+The per-library run state that #630 built (`PurchaseConversionState`:
+requested and published version, status, retry) stays under its name and
+points at valuations. Its trigger moves: `Purchase.save()` bumps the
+requested version today, and a projector never calls `save()`, so the
+write path in `games/writes/purchase.py` bumps `requested` after any
+dispatch that states an amount or moves the day (`created`,
+`amount_changed`, `purchase_corrected`, `restored`), after the dispatch
+returns, lossy by design. The task's trigger is `requested > published`
+**or** a live purchase with an amount and no valuation at the published
+version and target: a lost bump costs one day, and a row no write path
+saw (P4's pass, any direct appender) is valued by the same check, so
+`needs_price_update` has no successor and `dispatch` gains no hook. The
+float cache and its writer go at the cutover.
 
 The legacy converter rounds `converted_price` to a whole unit. The seeded
 valuations carry that rounding; the first refresh after the cutover moves
