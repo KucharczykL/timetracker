@@ -74,7 +74,6 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
-    CorrectPurchase,
     DescribePurchase,
     RecordPurchase,
     RemovePurchase,
@@ -699,8 +698,8 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "describe-purchase",
     )
     run(
-        CorrectPurchase(
-            purchase_id=kept_purchase, statement=ActStatement(None, "no receipt")
+        DescribePurchase(
+            purchase_id=kept_purchase, purchased=ActStatement(None, "no receipt")
         ),
         "correct-purchase-day",
     )

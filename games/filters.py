@@ -312,11 +312,7 @@ class GameFilter(OperatorFilter):
     #: A person reads "copy", never "entry".
     labels: ClassVar[dict[str, str]] = {"entry_count": "Copies"}
 
-    # Two overrides below (LegacyPurchaseFilter, DeviceFilter) spell this return
-    # type ``builtins.type[...]``: those filters declare a field named ``type``
-    # that shadows the builtin in annotation scope, so a bare ``type[LegacyPurchase]`` fails
-    # mypy ("Variable ... .type is not valid as a type"). The unshadowed filters
-    # use the plain builtin.
+    # Overrides with a ``type`` field write ``builtins.type``.
     @classmethod
     def _comparison_model(cls) -> type[Game]:
         from games.models import Game

@@ -30,7 +30,6 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
-    CorrectPurchase,
     DescribePurchase,
     RecordPurchase,
     RemovePurchase,
@@ -110,9 +109,6 @@ COMMANDS: dict[str, Command] = {
     "describe_purchase": DescribePurchase(
         purchase_id=PURCHASE, price=StatedPrice(None, ""), entry_id=ENTRY
     ),
-    "correct_purchase": CorrectPurchase(
-        purchase_id=PURCHASE, statement=ActStatement(MAY, "")
-    ),
     "remove_purchase": RemovePurchase(purchase_id=PURCHASE),
     "restore_purchase": RestorePurchase(purchase_id=PURCHASE),
 }
@@ -151,9 +147,6 @@ RECORDED: dict[str, str] = {
         "31b02261fdd35cb1d88a85afb111029cf12964fb940dcfff270776cc1fb02c66"
     ),
     "void_start": "b83184f38a8c6e7cc9ca5d0fa308f3ad48b2176e1815b388f168fe809e9c2a23",
-    "correct_purchase": (
-        "0d5e1310fbaf8b68476247edb8b1d759e2c64756089406a0ad7508a39cd75806"
-    ),
     "describe_purchase": (
         "408a6cbd44e31b9de62845fbfe9c99281b65a6779d05a4b2cda7305674b81d20"
     ),

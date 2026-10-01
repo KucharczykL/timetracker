@@ -167,6 +167,23 @@ def test_another_librarys_purchase_is_never_listed(
     assert not library_purchases(second).exists()
 
 
+@pytest.mark.parametrize("drift", ("entry", "player_game"))
+def test_a_drifted_purchase_is_never_listed(
+    owned_library, django_user_model, stated_graph, entry, drift
+):
+    purchase = record_purchase(entry)
+    second = django_user_model.objects.create_user(username="drift").library
+    theirs = record_entry(
+        second, stated_graph(Game(name="Hades", library=second), second).release
+    )
+    if drift == "entry":
+        Purchase.objects.filter(pk=purchase.pk).update(entry=theirs)
+    else:
+        LibraryEntry.objects.filter(pk=entry.pk).update(player_game=theirs.player_game)
+
+    assert not library_purchases(owned_library).exists()
+
+
 # --- the writes -----------------------------------------------------------
 
 

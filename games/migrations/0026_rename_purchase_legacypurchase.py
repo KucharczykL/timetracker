@@ -1,35 +1,51 @@
 from django.db import migrations
 
-#: Renaming a table keeps its index names.
-_RENAME_INDEXES = """
+#: A table rename keeps index and constraint names.
+_RENAME_NAMES = """
 DO $$
 DECLARE
-    index_name text;
+    found record;
+    new_name text;
 BEGIN
-    FOR index_name IN
-        SELECT index_class.relname
+    FOR found IN
+        SELECT index_class.relname AS name
         FROM pg_index
         JOIN pg_class index_class ON index_class.oid = pg_index.indexrelid
         JOIN pg_class table_class ON table_class.oid = pg_index.indrelid
         WHERE table_class.relname IN ('{table}', '{table}_games')
           AND index_class.relname LIKE '{old}\\_%'
     LOOP
+        new_name := '{new}' || substr(found.name, length('{old}') + 1);
+        IF length(new_name) > 63 THEN
+            RAISE EXCEPTION 'Index % would be truncated as %.', found.name, new_name;
+        END IF;
+        EXECUTE format('ALTER INDEX %I RENAME TO %I', found.name, new_name);
+    END LOOP;
+    FOR found IN
+        SELECT pg_constraint.conname AS name, table_class.relname AS owner
+        FROM pg_constraint
+        JOIN pg_class table_class ON table_class.oid = pg_constraint.conrelid
+        WHERE table_class.relname IN ('{table}', '{table}_games')
+          AND pg_constraint.conname LIKE '{old}\\_%'
+    LOOP
+        -- Cut to 63, as PostgreSQL would; refuse a clash.
+        new_name := left('{new}' || substr(found.name, length('{old}') + 1), 63);
+        IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            JOIN pg_class owner_class ON owner_class.oid = pg_constraint.conrelid
+            WHERE owner_class.relname = found.owner
+              AND pg_constraint.conname = new_name
+        ) THEN
+            RAISE EXCEPTION 'Constraint % would become %, which exists.',
+                found.name, new_name;
+        END IF;
         EXECUTE format(
-            'ALTER INDEX %I RENAME TO %I',
-            index_name,
-            '{new}' || substr(index_name, length('{old}') + 1)
+            'ALTER TABLE %I RENAME CONSTRAINT %I TO %I',
+            found.owner,
+            found.name,
+            new_name
         );
     END LOOP;
-    IF EXISTS (
-        SELECT 1
-        FROM pg_index
-        JOIN pg_class index_class ON index_class.oid = pg_index.indexrelid
-        JOIN pg_class table_class ON table_class.oid = pg_index.indrelid
-        WHERE table_class.relname IN ('{table}', '{table}_games')
-          AND index_class.relname LIKE '{old}\\_%'
-    ) THEN
-        RAISE EXCEPTION 'An index of {table} kept the prefix {old}.';
-    END IF;
 END
 $$;
 """
@@ -47,12 +63,12 @@ class Migration(migrations.Migration):
             options={"verbose_name": "purchase", "verbose_name_plural": "purchases"},
         ),
         migrations.RunSQL(
-            _RENAME_INDEXES.format(
+            _RENAME_NAMES.format(
                 table="games_legacypurchase",
                 old="games_purchase",
                 new="games_legacypurchase",
             ),
-            reverse_sql=_RENAME_INDEXES.format(
+            reverse_sql=_RENAME_NAMES.format(
                 table="games_legacypurchase",
                 old="games_legacypurchase",
                 new="games_purchase",

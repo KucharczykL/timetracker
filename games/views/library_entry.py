@@ -41,8 +41,6 @@ from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS
 from games.events.vocabulary import EventSpec
 from games.models import (
-    EntryAccess,
-    EntryFormat,
     Game,
     LibraryEntry,
     LibraryEvent,
@@ -448,8 +446,8 @@ def add_library_entry_now(request: HttpRequest, game_id: UUID) -> HttpResponse:
             user,
             EntryStatement(
                 release_id=release.pk,
-                access=EntryAccess.OWNED,
-                format=EntryFormat.DIGITAL,
+                access="owned",
+                format="digital",
                 note="",
                 acquired=ActStatement(today, ""),
             ),

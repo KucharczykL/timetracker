@@ -47,6 +47,8 @@ class RecordedPurchase(NamedTuple):
     created_the_entry: bool
     #: The dispatch tracked an untracked game.
     tracked_the_game: bool
+    #: A repeated key answered the first dispatch.
+    replayed: bool
 
 
 def _dispatch(
@@ -78,7 +80,14 @@ def record_purchase(
     """State a purchase; answer its ids."""
     with answered(SUBJECT):
         result = _dispatch(
-            RecordPurchase(**draft._asdict()),
+            RecordPurchase(
+                copy=draft.copy,
+                kind=draft.kind,
+                name=draft.name,
+                price=draft.price,
+                note=draft.note,
+                purchased=draft.purchased,
+            ),
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
@@ -95,6 +104,7 @@ def record_purchase(
         entry_id=uuid.UUID(created.payload["entry"]["id"]),
         created_the_entry=LIBRARYENTRY_CREATED.event_type in event_by_type,
         tracked_the_game=PLAYERGAME_CREATED.event_type in event_by_type,
+        replayed=result.outcome is CommandOutcome.REPLAYED,
     )
 
 

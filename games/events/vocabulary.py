@@ -43,6 +43,9 @@ type AliasedFields = Mapping[AliasName, tuple[KeyPath, ...]]
 AGGREGATE_ID_ALIAS: AliasName = "ReferenceId"
 INSTANT_ALIAS: AliasName = "InstantText"
 DAY_ALIAS: AliasName = "DayText"
+#: Free text a person typed.
+TEXT_ALIASES: tuple[AliasName, ...] = ("NoteText", "NameText")
+AMOUNT_ALIAS: AliasName = "AmountText"
 
 
 class DatedKeys(NamedTuple):
@@ -310,6 +313,15 @@ class EventTypeRegistry:
         return DatedKeys(
             instants=aliased.get(INSTANT_ALIAS, ()), days=aliased.get(DAY_ALIAS, ())
         )
+
+    def text_keys(self, event_type: EventType) -> tuple[KeyPath, ...]:
+        """Paths holding typed free text."""
+        aliased = self._registration_for(event_type).aliased
+        return tuple(path for name in TEXT_ALIASES for path in aliased.get(name, ()))
+
+    def amount_keys(self, event_type: EventType) -> tuple[KeyPath, ...]:
+        """Paths holding a money amount."""
+        return self._registration_for(event_type).aliased.get(AMOUNT_ALIAS, ())
 
     @property
     def reference_kinds(self) -> ReferenceKindRegistry:

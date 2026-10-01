@@ -1,6 +1,7 @@
 import gzip
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from django.core.management.base import CommandError
 from django.db import transaction
 from django.test import TransactionTestCase
 
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     CorrectedTiming,
@@ -48,6 +50,7 @@ from games.models import (
     Platform,
     PlayerSession,
     Playthrough,
+    Release,
 )
 from games.removal import remove
 from games.retention import purging_library
@@ -355,6 +358,56 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertEqual(session.note, "played after dinner")
         self.assertEqual(created.payload["note"], "played after dinner")
         self.assertEqual(session.started_at, FIRST_SESSION_START)
+
+    def test_a_purchase_event_keeps_no_typed_text_or_real_amount(self):
+        from entries import record_entry
+        from purchases import record_purchase
+
+        _build_dataset()
+        owner = get_user_model().objects.get(username="sample-source")
+        game = Game.objects.create(library=owner.library, name="Tunic")
+        state_catalog_graph(
+            game=game,
+            library=owner.library,
+            editions=[
+                EditionState(
+                    key="edition-0",
+                    is_default=True,
+                    releases=(
+                        ReleaseState(key="edition-0-release-0", is_default=True),
+                    ),
+                )
+            ],
+        )
+        entry = record_entry(
+            owner.library,
+            Release.objects.get(edition__game=game),
+            note="from a friend",
+            acquisition_note="birthday",
+        )
+        record_purchase(
+            entry,
+            name="Deluxe",
+            note="gift",
+            purchase_note="receipt 4421",
+            amount=Decimal("123.45"),
+        )
+
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=3, output=output
+            )
+            by_model = _by_model(_load_output(output))
+
+        (entry_created,) = _events_of(by_model, "library.libraryentry.created")
+        (purchase_created,) = _events_of(by_model, "library.purchase.created")
+        self.assertEqual(entry_created["fields"]["payload"]["acquisition_note"], "")
+        payload = purchase_created["fields"]["payload"]
+        self.assertEqual(
+            (payload["name"], payload["note"], payload["purchase_note"]), ("", "", "")
+        )
+        self.assertLessEqual(Decimal(payload["price"]["amount"]), 100)
 
     def test_an_end_of_access_moves_by_its_device_offset(self):
         _build_dataset()

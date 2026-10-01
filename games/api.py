@@ -24,7 +24,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
@@ -60,7 +60,11 @@ from games.events.dispatch import (
     RowUnreadable,
 )
 from games.events.idempotency import IdempotencyKey
-from games.events.libraryentry import EntryWayValue
+from games.events.libraryentry import (
+    EntryAccessValue,
+    EntryFormatValue,
+    EntryWayValue,
+)
 from games.events.purchase import PurchaseKindValue
 from games.filters import (
     MODE_PARSERS,
@@ -88,6 +92,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
     PlaythroughKind,
+    Purchase,
     PurchaseConversionState,
     UserLibrary,
 )
@@ -113,7 +118,7 @@ from games.sorting import (
     parse_per_page_override,
 )
 from games.toast_middleware import RELOAD_HEADER
-from games.writes.answers import CommandFailed, answered
+from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.libraryentry import (
     KEEP,
@@ -1291,9 +1296,9 @@ class EntryIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     release_id: UUIDv7
-    #: The enum, so Ninja refuses unknown words.
-    access: EntryAccess
-    format: EntryFormat
+    #: The words, so Ninja refuses others.
+    access: EntryAccessValue
+    format: EntryFormatValue
     note: str = ""
     acquired: StatedTemporal = None
     acquisition_note: str = ""
@@ -1409,8 +1414,8 @@ def create_entry(
             actor,
             EntryStatement(
                 release_id=payload.release_id,
-                access=payload.access.value,
-                format=payload.format.value,
+                access=payload.access,
+                format=payload.format,
                 note=payload.note,
                 acquired=ActStatement(payload.acquired, payload.acquisition_note),
             ),
@@ -1506,6 +1511,24 @@ purchase_router = Router()
 AMOUNT_TOGETHER = "State the amount and its currency together."
 PURCHASE_DAY_TOGETHER = "State the purchase day and its note together."
 ONE_COPY_KEY = "State entry_id or entry, exactly one."
+RECORDED_UNSHOWN = (
+    "This purchase was recorded, but it could not be shown. The problem has "
+    "been reported."
+)
+
+
+def _written_purchase(library: UserLibrary, purchase_id: uuid.UUID) -> Purchase:
+    """The row a write landed; missing is a defect."""
+    #: Commands refuse every mark this read reads.
+    try:
+        return owned_or_404(readable_purchases(library), library, pk=purchase_id)
+    except Http404:
+        logger.error(
+            "Purchase %s of library %s was written but no read shows it.",
+            purchase_id,
+            library.pk,
+        )
+        raise HttpError(DEFECT_STATUS, RECORDED_UNSHOWN) from None
 
 
 class PurchaseIn(Schema):
@@ -1518,7 +1541,7 @@ class PurchaseIn(Schema):
     entry: EntryIn | None = None
     kind: PurchaseKindValue
     name: str = ""
-    #: No constraint: the command states the rule.
+    #: Finite by the schema; the command states the rest.
     amount: Decimal | None = None
     currency: str = ""
     note: str = ""
@@ -1538,8 +1561,8 @@ class PurchaseIn(Schema):
             case None, EntryIn() as entry:
                 return EntryStatement(
                     release_id=entry.release_id,
-                    access=entry.access.value,
-                    format=entry.format.value,
+                    access=entry.access,
+                    format=entry.format,
                     note=entry.note,
                     acquired=ActStatement(entry.acquired, entry.acquisition_note),
                 )
@@ -1649,14 +1672,14 @@ def create_purchase(
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read first; a mark can hide it.
-    row = owned_or_404(readable_purchases(library), library, pk=recorded.purchase_id)
-    messages.success(
-        request,
-        "Purchase recorded and game added to your library."
-        if recorded.tracked_the_game
-        else "Purchase recorded.",
-    )
+    row = _written_purchase(library, recorded.purchase_id)
+    if not recorded.replayed:
+        messages.success(
+            request,
+            "Purchase recorded and game added to your library."
+            if recorded.tracked_the_game
+            else "Purchase recorded.",
+        )
     return Status(201, row)
 
 
@@ -1679,8 +1702,7 @@ def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdat
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read first; a mark can hide it.
-    updated = owned_or_404(readable_purchases(library), library, pk=purchase.pk)
+    updated = _written_purchase(library, purchase.pk)
     if changed:
         messages.success(request, "Purchase updated.")
     return updated

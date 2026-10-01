@@ -1134,8 +1134,7 @@ class LegacyPurchase(models.Model):
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
-    # Entry forms preselect a resolved default, but every persisted row
-    # carries its original currency explicitly.
+    # Stored explicitly; a form's default only prefills.
     price_currency = models.CharField(max_length=3, blank=True, default="")
     converted_price = models.FloatField(null=True)
     converted_currency = models.CharField(max_length=3, blank=True, default="")
@@ -2484,6 +2483,7 @@ class Purchase(ProjectionModel):
             ),
         )
         indexes = (
+            #: Not unique: one copy, many purchases.
             models.Index(
                 fields=("library", "entry"),
                 condition=Q(removed_at__isnull=True),

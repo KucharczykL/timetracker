@@ -22,6 +22,4 @@ def library_purchases(library: UserLibrary) -> PurchaseQuerySet:
 
 def readable_purchases(library: UserLibrary) -> PurchaseQuerySet:
     """The row path the API serves."""
-    return library_purchases(library).select_related(
-        "entry__player_game__game", "entry__release__platform"
-    )
+    return library_purchases(library).select_related("entry__player_game__game")

@@ -9,6 +9,7 @@ from django.test import Client
 from entries import record_entry
 from purchases import record_purchase, remove_purchase
 
+from games.commands.playersession import UNSTORABLE_NOTE
 from games.commands.purchase import (
     ENTRY_OF_ANOTHER_GAME,
     TOO_LARGE_AMOUNT,
@@ -117,6 +118,13 @@ def test_post_with_a_new_copy_tracks_the_game(auth_client, graph):
         {"amount": "NaN"},
         {"entry": {"release_id": "x"}},
         {"entry_id": None},
+        {
+            "entry": {
+                "release_id": "01890000-0000-7000-8000-000000000003",
+                "access": "owned",
+                "format": "digital",
+            }
+        },
     ),
 )
 def test_post_refuses_a_malformed_body(auth_client, entry, changes):
@@ -285,3 +293,18 @@ def test_patch_refuses_a_half_or_null_statement(auth_client, entry, body):
     purchase = record_purchase(entry)
 
     assert _patch(auth_client, purchase.pk, body).status_code == 422
+
+
+def test_a_replayed_post_shows_no_second_message(auth_client, entry):
+    _post(auth_client, _body(entry), HTTP_IDEMPOTENCY_KEY="k2")
+    again = _post(auth_client, _body(entry), HTTP_IDEMPOTENCY_KEY="k2")
+
+    assert again.status_code == 201
+    assert "Purchase recorded" not in again.headers.get("X-Events", "")
+
+
+def test_text_no_record_can_store_is_409(auth_client, entry):
+    response = _post(auth_client, _body(entry, note="a\u0000b"))
+
+    assert response.status_code == 409
+    assert UNSTORABLE_NOTE in response.content.decode()

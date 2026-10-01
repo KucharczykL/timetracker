@@ -20,6 +20,7 @@ from games.commands.endpoint import (
     void_endpoint,
 )
 from games.commands.playergame import tracking_events
+from games.commands.playersession import check_note
 from games.commands.scope import Refusal, library_entry_row, visible_row
 from games.end_ways import EndWay
 from games.endpoints import ENTRY_ACCESS_END, ENTRY_ACQUISITION
@@ -190,7 +191,7 @@ def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
     )
 
 
-def refuse_a_removed_release(release: Release) -> None:
+def _refuse_a_removed_release(release: Release) -> None:
     """Refuse a Release a mark hides."""
     if not Release.objects.alive().filter(pk=release.pk).exists():
         raise CommandRejected(
@@ -260,11 +261,15 @@ def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
 
 
 class EntryStatement(NamedTuple):
-    """One copy to record; a tuple fingerprints."""
+    """One copy to record; fingerprints by position.
+
+    A new field moves the digest of every command
+    holding one: RecordPurchase's new-copy keys.
+    """
 
     release_id: uuid.UUID
-    access: str
-    format: str
+    access: EntryAccessValue
+    format: EntryFormatValue
     note: str = ""
     acquired: ActStatement = UNDATED_ACQUISITION
 
@@ -286,8 +291,10 @@ def entry_creation_events(
     """A copy's creation; tracks an untracked game."""
     access = check_access(statement.access)
     format = check_format(statement.format)
+    check_note(statement.note)
+    check_note(statement.acquired.note)
     release = _visible_release(context, statement.release_id)
-    refuse_a_removed_release(release)
+    _refuse_a_removed_release(release)
     game = release.edition.game
     tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
     tracking: list[NewEvent] = []
@@ -338,8 +345,8 @@ class RecordEntry(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         statement = EntryStatement(
             release_id=self.release_id,
-            access=self.access,
-            format=self.format,
+            access=check_access(self.access),
+            format=check_format(self.format),
             note=self.note,
             acquired=self.acquired,
         )
@@ -364,6 +371,8 @@ class DescribeEntry(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         access = None if self.access is None else check_access(self.access)
         format = None if self.format is None else check_format(self.format)
+        if self.note is not None:
+            check_note(self.note)
         entry = library_entry_row(context, self.entry_id)
         release = (
             None
@@ -378,7 +387,7 @@ class DescribeEntry(Command):
         if self.note is not None and self.note != entry.note:
             events.append(libraryentry_note_changed(entry.pk, self.note))
         if release is not None and release.pk != entry.release_id:
-            refuse_a_removed_release(release)
+            _refuse_a_removed_release(release)
             if release.edition.game_id != entry.player_game.game_id:
                 raise CommandRejected(
                     f"Release {release.pk} belongs to game "
@@ -405,6 +414,7 @@ class CorrectEntryAcquisition(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         return correct_opening_endpoint(
             entry,
@@ -453,7 +463,7 @@ class RestoreEntry(Command):
         if entry.removed_at is None:
             return Unchanged(f"Entry {entry.pk} is already in this library.")
         _refuse_under_a_removed_game(entry)
-        refuse_a_removed_release(entry.release)
+        _refuse_a_removed_release(entry.release)
         return [libraryentry_restored(entry.pk)]
 
 
@@ -469,6 +479,7 @@ class EndEntryAccess(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         way = check_way(self.statement.way)
         return state_endpoint(
@@ -492,6 +503,7 @@ class CorrectEntryAccessEnd(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         way = check_way(self.statement.way)
         return correct_endpoint(
@@ -532,6 +544,7 @@ class ResumeEntryAccess(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         return resume_endpoint(
             entry,

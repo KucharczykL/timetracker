@@ -605,12 +605,15 @@ docs/           — Additional documentation
   never a float. Commands `RecordPurchase` (`copy`: a held entry's key, or
   an `EntryStatement` that `entry_creation_events` turns into the copy,
   tracking an untracked game in the same dispatch), `DescribePurchase`
-  (`StatedPrice`, and `purchased`, so a PATCH is one dispatch),
-  `CorrectPurchase`, `RemovePurchase`, `RestorePurchase` in
+  (`StatedPrice`, and `purchased`, the one day correction, so a PATCH is
+  one dispatch), `RemovePurchase`, `RestorePurchase` in
   `games/commands/purchase.py`; `check_price` refuses a non-number, a
   sign, an amount above `LARGEST_AMOUNT` (derived from the column), a third
-  place, and a currency where no amount is; `check_name` the column's
-  length. A copy a removed Release hides is refused as well. Every command
+  place, and requires a currency exactly where an amount is; `check_name`
+  the column's length and text JSONB cannot store (`check_note` takes the
+  notes, the copy's too). A copy a removed Release hides is refused as
+  well. Migration 0026 renames the legacy tables' indexes and constraints
+  off the `games_purchase_` prefix. Every command
   but the record resolves through `library_purchase_row`. Writes
   `games/writes/purchase.py`, reads `games/reads/purchases.py` (six marks).
   No screen reads it until P5. Contract is
@@ -1264,7 +1267,8 @@ anonymized production snapshot** — gzip-compressed (~147 KB vs 1.6 MB raw), do
 hand-edit. Regenerate with `make anonymize-sample` against dedicated restored
 production PostgreSQL database (then `make migrate`). It randomizes prices,
 game↔purchase links, and dates (per-game offset), clears free-text notes/names, and
-sanitizes audit timestamps — all inside rolled-back transaction, so source DB
+sanitizes audit timestamps; in event payloads it clears every `NoteText`/
+`NameText` path and redraws every `AmountText` — all inside rolled-back transaction, so source DB
 untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 

@@ -8,9 +8,11 @@ import pytest
 from entries import record_entry, remove_entry
 from purchases import record_purchase, remove_purchase, restore_purchase
 
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
-from games.commands.libraryentry import RELEASE_REMOVED, EntryStatement, RemoveEntry
+from games.commands.libraryentry import EntryStatement, RemoveEntry
 from games.commands.playergame import RemovePlayerGame, RestorePlayerGame
+from games.commands.playersession import UNSTORABLE_NOTE
 from games.commands.purchase import (
     AMOUNT_WITHOUT_CURRENCY,
     CURRENCY_WITHOUT_AMOUNT,
@@ -20,11 +22,12 @@ from games.commands.purchase import (
     NOT_AN_AMOUNT,
     PLAYER_GAME_REMOVED,
     PURCHASE_REMOVED,
+    RELEASE_REMOVED,
     SIGNED_AMOUNT,
     TOO_LARGE_AMOUNT,
     TOO_PRECISE_AMOUNT,
     UNKNOWN_KIND,
-    CorrectPurchase,
+    UNSTORABLE_NAME,
     DescribePurchase,
     RecordPurchase,
     RemovePurchase,
@@ -263,6 +266,40 @@ def test_a_long_name_is_refused_on_record_and_describe(owned_library, entry):
     assert recorded.sentence == described.sentence == LONG_NAME
 
 
+@pytest.mark.parametrize(
+    ("facts", "sentence"),
+    (
+        ({"name": "a\x00b"}, UNSTORABLE_NAME),
+        ({"name": "a\ud800b"}, UNSTORABLE_NAME),
+        ({"note": "a\x00b"}, UNSTORABLE_NOTE),
+        ({"purchased": ActStatement(None, "a\x00b")}, UNSTORABLE_NOTE),
+    ),
+)
+def test_text_no_record_can_store_is_refused(owned_library, entry, facts, sentence):
+    purchase = record_purchase(entry)
+
+    recorded = _refused(owned_library, _record(entry, **facts))
+    described = _refused(
+        owned_library, DescribePurchase(purchase_id=purchase.pk, **facts)
+    )
+
+    assert recorded.sentence == described.sentence == sentence
+
+
+def test_a_new_copys_note_is_checked_too(owned_library, graph):
+    command = RecordPurchase(
+        copy=EntryStatement(
+            release_id=graph.release.pk,
+            access="owned",
+            format="digital",
+            note="a\x00b",
+        ),
+        kind="game",
+    )
+
+    assert _refused(owned_library, command).sentence == UNSTORABLE_NOTE
+
+
 def test_a_copy_under_a_removed_release_is_refused(owned_library, graph, entry):
     remove(graph.release)
 
@@ -458,20 +495,22 @@ def test_a_purchase_naming_another_librarys_copy_is_unreadable(
 # --- the day --------------------------------------------------------------
 
 
-def test_a_correction_moves_the_day(owned_library, entry):
+def test_a_day_correction_moves_the_day_not_the_marker(owned_library, entry):
     purchase = record_purchase(entry, purchased=MAY)
 
     _dispatch(
         owned_library,
-        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "n")),
+        DescribePurchase(purchase_id=purchase.pk, purchased=ActStatement(JUNE, "n")),
     )
     same = _dispatch(
         owned_library,
-        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "n")),
+        DescribePurchase(purchase_id=purchase.pk, purchased=ActStatement(JUNE, "n")),
     )
 
+    recorded_at = purchase.purchase_recorded_at
     purchase.refresh_from_db()
     assert (purchase.purchased, purchase.purchase_note) == (JUNE, "n")
+    assert purchase.purchase_recorded_at == recorded_at
     assert _event_types(purchase)[-1] == "library.purchase.purchase_corrected"
     assert same.outcome is CommandOutcome.UNCHANGED
 
@@ -481,7 +520,7 @@ def test_a_correction_of_a_removed_purchase_is_refused(owned_library, entry):
 
     refused = _refused(
         owned_library,
-        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "")),
+        DescribePurchase(purchase_id=purchase.pk, purchased=ActStatement(JUNE, "")),
     )
 
     assert refused.sentence == PURCHASE_REMOVED
@@ -519,6 +558,57 @@ def test_a_restore_under_a_removed_release_is_refused(owned_library, graph, entr
     assert refused.sentence == RELEASE_REMOVED
 
 
+def test_a_purchase_leaves_under_a_removed_release(owned_library, graph, entry):
+    purchase = record_purchase(entry)
+    remove(graph.release)
+
+    result = _dispatch(owned_library, RemovePurchase(purchase_id=purchase.pk))
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+def test_a_restore_under_a_removed_game_is_refused(owned_library, entry):
+    purchase = remove_purchase(record_purchase(entry))
+    _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))
+
+    refused = _refused(owned_library, RestorePurchase(purchase_id=purchase.pk))
+
+    assert refused.sentence == PLAYER_GAME_REMOVED
+
+
+def test_a_hidden_current_copy_refuses_before_the_target(owned_library, graph, entry):
+    purchase = record_purchase(entry)
+    written = state_catalog_graph(
+        game=graph.game,
+        library=owned_library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                edition=graph.edition,
+                is_default=True,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0",
+                        release=graph.release,
+                        is_default=True,
+                    ),
+                    ReleaseState(key="edition-0-release-1"),
+                ),
+            )
+        ],
+    )
+    sibling = record_entry(owned_library, written.editions[0].releases[1].release)
+    remove(graph.release)
+
+    refused = _refused(
+        owned_library, DescribePurchase(purchase_id=purchase.pk, entry_id=sibling.pk)
+    )
+
+    assert refused.sentence == RELEASE_REMOVED
+    purchase.refresh_from_db()
+    assert purchase.entry == entry
+
+
 def test_a_removed_game_holds_its_purchases_still(owned_library, entry):
     purchase = record_purchase(entry)
     game_id = entry.player_game.game_id
@@ -527,7 +617,7 @@ def test_a_removed_game_holds_its_purchases_still(owned_library, entry):
     removal = _refused(owned_library, RemovePurchase(purchase_id=purchase.pk))
     correction = _refused(
         owned_library,
-        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "")),
+        DescribePurchase(purchase_id=purchase.pk, purchased=ActStatement(JUNE, "")),
     )
     _dispatch(owned_library, RestorePlayerGame(game_id=game_id))
     again = _dispatch(owned_library, RemovePurchase(purchase_id=purchase.pk))

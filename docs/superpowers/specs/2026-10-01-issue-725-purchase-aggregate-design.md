@@ -24,11 +24,15 @@ the index names, and the old names collide with the new table's names.
 
 | Column | Rule |
 |---|---|
-| `entry` | `LibraryEntry`, `RESTRICT`, required |
+| `entry` | `LibraryEntry`, `RESTRICT`, required; one copy may have many purchases |
 | `kind` | `game`, `season_pass`, `battle_pass` or `upgrade` |
+| `name` | the product name, at most 255 characters, blank by default |
 | `amount` | `Decimal(12, 2)`; null is unknown; zero is free |
 | `currency` | three upper-case letters; blank exactly where `amount` is null |
 | `purchased` and its bounds, marker and note | the opening endpoint `PURCHASE_DAY` |
+| `note` | free text |
+| `created_at` | the creation event's `recorded_at` |
+| `removed_at` | the projector's mark; null is live |
 
 CHECK constraints hold the kind, the sign and the currency rule.
 `alive()` reads the marks of the purchase, the entry and the tracked game.
@@ -51,15 +55,19 @@ another library is `RowUnreadable`.
 - `RecordPurchase` names one `copy`: a held entry's key, or an
   `EntryStatement`. A new entry is created in the same dispatch, after the tracking events if
   the game is not tracked.
-- `DescribePurchase` writes one event for each changed fact, the day
-  included. A new entry must belong to the same game.
-- `CorrectPurchase` corrects the opening endpoint.
-- `RemovePurchase` and `RestorePurchase` move the mark.
+- `DescribePurchase` writes one event for each changed fact. Its
+  `purchased` corrects the opening endpoint. A new entry must belong to
+  the same game. No other command corrects the day.
+- `RemovePurchase` and `RestorePurchase` move the mark. Both answer
+  `Unchanged` for the state that the row holds. Removal refuses under a
+  removed copy or tracked game. Restore refuses under a copy that a read
+  hides, a removed Release included.
 
 `check_price` refuses a non-number, a signed amount, an amount above
 `LARGEST_AMOUNT` and a third decimal place. It requires a currency
 exactly where an amount is stated. `LARGEST_AMOUNT` comes from the
-column. A command does not round an amount.
+column. A command does not round an amount. A name, a note or a day
+note that holds a NUL byte or a lone surrogate is refused.
 
 A command refuses a copy that a removed Release hides, because no read
 shows a purchase on it. A live purchase prevents the removal of its

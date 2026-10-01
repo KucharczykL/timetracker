@@ -28,7 +28,9 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    HistoricalPlaytime,
     LegacyPurchase,
+    LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
@@ -36,6 +38,7 @@ from games.models import (
     PlayerGame,
     PlayerSession,
     Playthrough,
+    Purchase,
     UserLibraryPreferences,
 )
 from timetracker.temporal import TemporalPrecision, TemporalValue
@@ -430,6 +433,11 @@ class Command(BaseCommand):
                     "pk", "playthrough__player_game__game_id"
                 )
             ),
+            **dict(
+                HistoricalPlaytime.objects.values_list("pk", "player_game__game_id")
+            ),
+            **dict(LibraryEntry.objects.values_list("pk", "player_game__game_id")),
+            **dict(Purchase.objects.values_list("pk", "entry__player_game__game_id")),
         }
 
         #: Drawn only for dated devices.
@@ -545,6 +553,12 @@ class Command(BaseCommand):
             )
             if "note" in payload:
                 payload["note"] = ""
+            for path in event_types.text_keys(event.event_type):
+                if _read_path(payload, path) is not None:
+                    _write_path(payload, path, "")
+            for path in event_types.amount_keys(event.event_type):
+                if _read_path(payload, path) is not None:
+                    _write_path(payload, path, f"{random.uniform(0, 100):.2f}")
             if "name" in payload:
                 payload["name"] = (
                     device_names[

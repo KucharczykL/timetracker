@@ -403,19 +403,25 @@ def timing_payload(timing: TimingStatement) -> TimingPayload:
             assert_never(timing)
 
 
+UNSTORABLE_NOTE = "That note contains a character we cannot store."
+
+
+def storable(text: str) -> bool:
+    """Whether JSONB can store the text."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return "\x00" not in text
+
+
 def check_note(note: str) -> None:
     """Refuse text JSONB cannot store."""
-    try:
-        note.encode("utf-8")
-    except UnicodeEncodeError:
-        stored = False
-    else:
-        stored = "\x00" not in note
-    if not stored:
+    if not storable(note):
         raise CommandRejected(
             "This note holds a NUL byte or a lone surrogate, which JSONB "
             "cannot store, so the event would be refused as it was written.",
-            sentence="That note contains a character we cannot store.",
+            sentence=UNSTORABLE_NOTE,
         )
 
 

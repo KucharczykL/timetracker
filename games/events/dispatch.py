@@ -129,7 +129,6 @@ class CommandName(CommandVocabulary):
     LIBRARYENTRY_RESUME_ACCESS = "library.libraryentry.resume_access"
     PURCHASE_RECORD = "library.purchase.record"
     PURCHASE_DESCRIBE = "library.purchase.describe"
-    PURCHASE_CORRECT_PURCHASE = "library.purchase.correct_purchase"
     PURCHASE_REMOVE = "library.purchase.remove"
     PURCHASE_RESTORE = "library.purchase.restore"
 

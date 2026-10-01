@@ -19,9 +19,8 @@ from django.db import connection
 from django.db.models import Field, ForeignObject, Model
 
 type TableName = str  # e.g. "games_legacypurchase_games"
-type TableColumn = tuple[
-    TableName, str
-]  # e.g. ("games_legacypurchase_games", "game_id")
+#: e.g. ("games_legacypurchase_games", "game_id")
+type TableColumn = tuple[TableName, str]
 type OwnerLabel = str  # e.g. "ID-11 (#646)"
 type ColumnType = str  # e.g. "uuid_v7", "bigint"
 
