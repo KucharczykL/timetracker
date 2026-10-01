@@ -1,6 +1,7 @@
 """The purchase conversion pass over legacy rows."""
 
-from datetime import UTC, date, datetime
+import json
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -15,6 +16,12 @@ from games.backfill.purchase import (
     legacy_rows,
 )
 from games.backfill.purchase_plan import Category
+from games.backfill.purchase_reconciliation import (
+    legacy_statistics,
+    reconcile,
+    review_lists,
+    snapshot_value,
+)
 from games.commands.purchase import VoidPurchaseRefund
 from games.models import (
     EditionKind,
@@ -32,6 +39,7 @@ from games.models import (
     Release,
 )
 from games.reads.purchases import refund_owns_the_end, stale_purchases
+from games.reads.sums import PlaytimeBreakdown
 from games.removal import remove
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
@@ -552,3 +560,89 @@ def test_the_pass_nests_in_a_caller_transaction(owned_library, game_on):
     with transaction.atomic():
         convert()
     assert Purchase.objects.filter(pk=row.pk).exists()
+
+
+def test_the_reconciliation_explains_quantization_and_refunds(owned_library, game_on):
+    legacy(owned_library, game_on("Tunic"), price=2.9925)
+    legacy(
+        owned_library,
+        game_on("Hades"),
+        game_on("Celeste"),
+        price=10.0,
+        date_refunded=date(2021, 5, 4),
+    )
+    legacy(
+        owned_library,
+        game_on("Inside"),
+        ownership_type=LegacyPurchase.RENTED,
+        price=3.0,
+        date_refunded=date(2021, 5, 4),
+    )
+    rows = legacy_rows(LegacyPurchase)
+
+    [done] = convert_purchases(rows, recorded_at=INSTANT).libraries
+    checked = reconcile(rows, done)
+
+    [eur] = checked.totals
+    assert (eur.legacy, eur.converted, eur.quantization) == (
+        Decimal("15.9925"),
+        Decimal("15.99"),
+        Decimal("-0.0025"),
+    )
+    assert (checked.refunded_purchases, checked.refund_ended_copies) == (3, 3)
+    assert checked.copies_by_access == {
+        ("owned", "digital"): 3,
+        ("rented", "digital"): 1,
+    }
+    assert checked.failures() == []
+    lists = review_lists(owned_library, done)
+    assert len(lists[Category.BUNDLE_SPLIT]) == 1
+    assert len(lists[Category.QUANTIZED]) == 1
+
+
+def test_a_missing_refund_is_a_failure(owned_library, game_on):
+    legacy(owned_library, game_on("Tunic"), date_refunded=date(2021, 5, 4))
+    rows = legacy_rows(LegacyPurchase)
+    [done] = convert_purchases(rows, recorded_at=INSTANT).libraries
+    Purchase.objects.update(refund_recorded_at=None)
+
+    assert reconcile(rows, done).failures() == ["0 refunded purchases, expected 1"]
+
+
+def test_a_snapshot_spells_every_value(owned_library, game_on, steam):
+    game = game_on("Tunic")
+    breakdown = PlaytimeBreakdown(timedelta(hours=1), timedelta(0))
+
+    encoded = snapshot_value(
+        {
+            "games": Game.objects.filter(pk=game.pk),
+            "game": game,
+            "spent": Decimal("1.50"),
+            "day": date(2024, 1, 2),
+            "hours": breakdown,
+            "pair": ("a", 1),
+            "none": None,
+        }
+    )
+
+    assert encoded == {
+        "games": [str(game.pk)],
+        "game": str(game.pk),
+        "spent": "1.50",
+        "day": "2024-01-02",
+        "hours": {"tracked": 3600, "historical": 0},
+        "pair": ["a", 1],
+        "none": None,
+    }
+
+
+def test_the_legacy_statistics_cover_every_purchase_year(owned_library, game_on):
+    legacy(owned_library, game_on("Tunic"), date_purchased=date(2019, 3, 1))
+    rows = legacy_rows(LegacyPurchase)
+
+    snapshot = legacy_statistics(owned_library, rows)
+
+    assert snapshot["format"] == 1
+    assert snapshot["library"] == str(owned_library.pk)
+    assert set(snapshot["scopes"]) == {"all-time", "2019"}
+    json.dumps(snapshot)

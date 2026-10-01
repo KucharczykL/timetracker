@@ -133,8 +133,17 @@ class ConvertedCopy(NamedTuple):
 
 
 class SkippedCopy(NamedTuple):
-    legacy_id: uuid.UUID
-    game_id: uuid.UUID
+    """A copy whose game the library removed."""
+
+    planned: PlannedCopy
+
+    @property
+    def legacy_id(self) -> uuid.UUID:
+        return self.planned.row.id
+
+    @property
+    def game_id(self) -> uuid.UUID:
+        return self.planned.game_id
 
 
 @dataclass
@@ -448,7 +457,7 @@ class _LibraryPass:
     def _copy(self, copy: PlannedCopy) -> None:
         row = copy.row
         if copy.game_id in self.removed:
-            self.result.skipped.append(SkippedCopy(row.id, copy.game_id))
+            self.result.skipped.append(SkippedCopy(copy))
             return
         categories = list(copy.categories)
         if copy.game_id in self.mixed:
