@@ -7,7 +7,7 @@ import pytest
 from django.db import connection, models
 from django.test.utils import isolate_apps
 from django.utils import timezone
-from entries import record_entry, remove_entry, restore_entry
+from entries import record_entry, remove_entry, restore_entry, second_release
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
@@ -42,7 +42,6 @@ from games.models import (
     Playthrough,
     ProjectionModel,
     Purchase,
-    Release,
     RemovableLibraryQuerySet,
 )
 from games.reads import referrers
@@ -102,30 +101,6 @@ def _event_types(entry: LibraryEntry) -> list[str]:
         .order_by("sequence")
         .values_list("event_type", flat=True)
     )
-
-
-def _second_release(library, graph, *, is_default: bool = True) -> Release:
-    """A second live Release on the graph's game."""
-    written = state_catalog_graph(
-        game=graph.game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition-0",
-                edition=graph.edition,
-                is_default=True,
-                releases=(
-                    ReleaseState(
-                        key="edition-0-release-0",
-                        release=graph.release,
-                        is_default=True,
-                    ),
-                    ReleaseState(key="edition-0-release-1"),
-                ),
-            )
-        ],
-    )
-    return written.editions[0].releases[1].release
 
 
 # --- recording ------------------------------------------------------------
@@ -277,7 +252,7 @@ def test_recording_under_a_removed_player_game_is_refused(owned_library, graph):
 
 def test_a_description_states_one_event_per_differing_fact(owned_library, graph):
     entry = record_entry(owned_library, graph.release)
-    other = _second_release(owned_library, graph)
+    other = second_release(owned_library, graph.release)
 
     _dispatch(
         owned_library,
@@ -339,7 +314,7 @@ def test_a_description_refuses_a_release_of_another_game(
 
 def test_a_description_refuses_a_removed_release(owned_library, graph):
     entry = record_entry(owned_library, graph.release)
-    other = _second_release(owned_library, graph)
+    other = second_release(owned_library, graph.release)
     remove(other)
 
     refused = _refused(

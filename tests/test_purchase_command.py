@@ -5,10 +5,9 @@ from decimal import Decimal
 from typing import Any, cast
 
 import pytest
-from entries import record_entry, remove_entry
+from entries import record_entry, remove_entry, second_release
 from purchases import record_purchase, remove_purchase, restore_purchase
 
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement, RemoveEntry
 from games.commands.playergame import RemovePlayerGame, RestorePlayerGame
@@ -578,26 +577,7 @@ def test_a_restore_under_a_removed_game_is_refused(owned_library, entry):
 
 def test_a_hidden_current_copy_refuses_before_the_target(owned_library, graph, entry):
     purchase = record_purchase(entry)
-    written = state_catalog_graph(
-        game=graph.game,
-        library=owned_library,
-        editions=[
-            EditionState(
-                key="edition-0",
-                edition=graph.edition,
-                is_default=True,
-                releases=(
-                    ReleaseState(
-                        key="edition-0-release-0",
-                        release=graph.release,
-                        is_default=True,
-                    ),
-                    ReleaseState(key="edition-0-release-1"),
-                ),
-            )
-        ],
-    )
-    sibling = record_entry(owned_library, written.editions[0].releases[1].release)
+    sibling = record_entry(owned_library, second_release(owned_library, graph.release))
     remove(graph.release)
 
     refused = _refused(

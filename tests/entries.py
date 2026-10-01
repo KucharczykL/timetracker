@@ -4,6 +4,7 @@ import uuid
 
 from django.db import transaction
 
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import (
     EndEntryAccess,
@@ -26,6 +27,29 @@ def _state(library: UserLibrary, command: Command) -> CommandResult:
             idempotency_key=str(uuid.uuid7()),
             correlation_id=uuid.uuid7(),
         )
+
+
+def second_release(library: UserLibrary, release: Release) -> Release:
+    """A second live Release beside the default one."""
+    edition = release.edition
+    written = state_catalog_graph(
+        game=edition.game,
+        library=library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                edition=edition,
+                is_default=True,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0", release=release, is_default=True
+                    ),
+                    ReleaseState(key="edition-0-release-1"),
+                ),
+            )
+        ],
+    )
+    return written.editions[0].releases[1].release
 
 
 def record_entry(

@@ -30,12 +30,11 @@ def _names(table: str) -> set[str]:
 
 
 def _migrate(target: tuple[str, str]) -> None:
-    executor = MigrationExecutor(connection)
-    executor.migrate([target])
+    MigrationExecutor(connection).migrate([target])
 
 
 def test_the_rename_moves_every_name_and_reverses():
-    latest = MigrationExecutor(connection).loader.graph.leaf_nodes("games")
+    (latest,) = MigrationExecutor(connection).loader.graph.leaf_nodes("games")
     try:
         _migrate(BEFORE)
         legacy = _names("games_purchase") | _names("games_purchase_games")
@@ -48,4 +47,4 @@ def test_the_rename_moves_every_name_and_reverses():
         assert "live_purchase_per_entry_idx" in _names("games_purchase")
         assert all(len(name) <= 63 for name in renamed)
     finally:
-        _migrate(latest[0])
+        _migrate(latest)
