@@ -77,8 +77,8 @@ entry.
 
 `/api/purchases/` has `GET /`, `GET /{id}`, `POST /` and `PATCH /{id}`.
 A body refuses an unknown key. `PATCH` states `amount` with `currency`,
-and `purchased` with `purchase_note`; else it answers 422. A `PATCH`
-dispatches `DescribePurchase`, and the refund act where it states one.
+and `purchased` with `purchase_note`; else it answers 422. A `PATCH` is
+one dispatch of `DescribePurchase`, which states the refund too.
 A price that
 `check_price` refuses answers 409.
 

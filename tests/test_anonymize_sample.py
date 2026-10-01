@@ -464,7 +464,12 @@ class AnonymizeSampleTest(TransactionTestCase):
         #: TrackGame appends both creations per dispatch.
         tracked = keys_by_type["library.playergame.created"]
         self.assertEqual(tracked, keys_by_type["library.playthrough.created"])
-        self.assertGreater(len(tracked), 1)
+        created = [
+            event
+            for event in by_model["games.libraryevent"]
+            if event["fields"]["event_type"] == "library.playergame.created"
+        ]
+        self.assertEqual(len(tracked), len(created))
         self.assertTrue(all(key.startswith("sample:") for key in tracked))
 
     def test_output_is_deterministic_for_a_fixed_seed(self):

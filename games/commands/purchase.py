@@ -5,7 +5,6 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from functools import partial
 from typing import ClassVar, NamedTuple, cast, get_args
 
 from django.db import models
@@ -54,7 +53,7 @@ from games.models import (
     Release,
 )
 from games.reads.endpoints import stated
-from games.reads.purchases import coupled_end
+from games.reads.purchases import refund_owns_the_end
 from timetracker.temporal import TemporalValue
 
 UNKNOWN_KIND = "Choose one of the listed purchase kinds."
@@ -89,6 +88,9 @@ REFUND_BEFORE_ACQUISITION = (
 PURCHASE_AFTER_REFUND = (
     "This purchase was refunded before that day. Correct the refund first, "
     "or check the day it was bought."
+)
+REFUNDED_BEFORE_BOUGHT = (
+    "This purchase was refunded before it was bought. Check the days."
 )
 MOVE_A_REFUNDED_PURCHASE = (
     "This purchase was refunded. Take the refund back before moving it to another copy."
@@ -225,25 +227,82 @@ def _held_copy(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
     return entry
 
 
-def _refuse_a_purchase_day_after_the_refund(
-    purchase: Purchase, *, purchased: TemporalValue | None
-) -> None:
+class RefundTakenBack(NamedTuple):
+    """A refund statement that voids it."""
+
+
+TAKE_REFUND_BACK = RefundTakenBack()
+#: An empty tuple fingerprints apart from ActStatement.
+type RefundStatement = ActStatement | RefundTakenBack
+
+
+class StandingRefund(NamedTuple):
+    """The refund a statement leaves standing."""
+
+    when: TemporalValue | None
+    #: The statement states it, not the row.
+    is_new: bool
+
+
+def _standing_refund(
+    purchase: Purchase, refund: RefundStatement | None
+) -> StandingRefund | None:
+    match refund:
+        case RefundTakenBack():
+            return None
+        case ActStatement():
+            return StandingRefund(refund.when, is_new=True)
     if stated(purchase, PURCHASE_REFUND) is None:
+        return None
+    return StandingRefund(purchase.refunded, is_new=False)
+
+
+def _refuse_a_reversed_refund(
+    purchase: Purchase,
+    *,
+    purchased: TemporalValue | None,
+    purchase_day_is_new: bool,
+    refund: StandingRefund | None,
+) -> None:
+    """Refuse a refund before the purchase day."""
+    if refund is None or not (purchase_day_is_new or refund.is_new):
         return
-    if certainly_reversed(earlier=purchased, later=purchase.refunded):
+    if not certainly_reversed(earlier=purchased, later=refund.when):
+        return
+    if purchase_day_is_new and refund.is_new:
+        sentence = REFUNDED_BEFORE_BOUGHT
+    elif refund.is_new:
+        sentence = REFUND_BEFORE_PURCHASE
+    else:
+        sentence = PURCHASE_AFTER_REFUND
+    raise CommandRejected(
+        f"The statement about purchase {purchase.pk} refunds it before it was bought.",
+        sentence=sentence,
+    )
+
+
+def _refuse_an_end_before_the_acquisition(
+    purchase: Purchase, copy: LibraryEntry, *, refunded: TemporalValue | None
+) -> None:
+    if certainly_reversed(earlier=copy.acquired, later=refunded):
         raise CommandRejected(
-            f"Purchase {purchase.pk} was refunded before the day being stated, "
-            "and nothing is refunded before it is bought.",
-            sentence=PURCHASE_AFTER_REFUND,
+            f"Entry {copy.pk} was acquired after the refund of purchase "
+            f"{purchase.pk}, which would end its access before it begins.",
+            sentence=REFUND_BEFORE_ACQUISITION,
         )
 
 
 def _day_correction(
-    purchase: Purchase, statement: ActStatement
+    purchase: Purchase, statement: ActStatement, *, refund: StandingRefund | None
 ) -> Sequence[NewEvent] | Unchanged:
     def before_event() -> None:
         _refuse_a_live_act(purchase)
-        _refuse_a_purchase_day_after_the_refund(purchase, purchased=statement.when)
+        _refuse_a_reversed_refund(
+            purchase,
+            purchased=statement.when,
+            purchase_day_is_new=True,
+            refund=refund,
+        )
 
     return correct_opening_endpoint(
         purchase,
@@ -273,7 +332,7 @@ def _refund_sentences(purchase_id: uuid.UUID) -> EndpointSentences:
     )
 
 
-def refund_ends_the_copy(kind: str, entry: LibraryEntry) -> bool:
+def refund_ends_the_copy(kind: PurchaseKindValue, entry: LibraryEntry) -> bool:
     """A game's refund ends an owned, held copy."""
     return (
         kind == PurchaseKind.GAME
@@ -282,37 +341,144 @@ def refund_ends_the_copy(kind: str, entry: LibraryEntry) -> bool:
     )
 
 
-def _refuse_a_live_refund(
-    purchase: Purchase, *, refunded: TemporalValue | None, ends_the_copy: bool
-) -> None:
-    _refuse_a_live_act(purchase)
-    if certainly_reversed(earlier=purchase.purchased, later=refunded):
-        raise CommandRejected(
-            f"Purchase {purchase.pk} was bought after the refund being stated, "
-            "and nothing is refunded before it is bought.",
-            sentence=REFUND_BEFORE_PURCHASE,
-        )
-    if ends_the_copy and certainly_reversed(
-        earlier=purchase.entry.acquired, later=refunded
-    ):
-        raise CommandRejected(
-            f"Entry {purchase.entry_id} was acquired after the refund being "
-            "stated, which would end its access before it begins.",
-            sentence=REFUND_BEFORE_ACQUISITION,
-        )
-
-
 def _copy_end(
     spec: EventSpec[LibraryEntryAccessEndPayload],
-    purchase: Purchase,
+    copy_id: uuid.UUID,
     when: TemporalValue | None,
 ) -> NewEvent:
-    """The copy's end, in the refund's words."""
+    """The copy's end: way refunded, refund's day."""
     return spec.new(
-        aggregate_id=purchase.entry_id,
+        aggregate_id=copy_id,
         effective_time=when,
         payload={"way": EndWay.REFUNDED.value, "note": ""},
     )
+
+
+def _refund_statement(
+    purchase: Purchase,
+    statement: ActStatement,
+    *,
+    kind: PurchaseKindValue,
+    copy: LibraryEntry,
+    purchased: TemporalValue | None,
+) -> Sequence[NewEvent] | Unchanged:
+    """The first refund; a game's copy ends."""
+    ends_the_copy = refund_ends_the_copy(kind, copy)
+
+    def before_event() -> None:
+        _refuse_a_live_act(purchase)
+        _refuse_a_reversed_refund(
+            purchase,
+            purchased=purchased,
+            purchase_day_is_new=False,
+            refund=StandingRefund(statement.when, is_new=True),
+        )
+        if ends_the_copy:
+            _refuse_an_end_before_the_acquisition(
+                purchase, copy, refunded=statement.when
+            )
+
+    events = state_endpoint(
+        purchase,
+        PURCHASE_REFUND,
+        statement,
+        sentences=_refund_sentences(purchase.pk),
+        before_event=before_event,
+    )
+    if isinstance(events, Unchanged) or not ends_the_copy:
+        return events
+    return [
+        *events,
+        _copy_end(ENTRY_ACCESS_END_EVENTS.stated, copy.pk, statement.when),
+    ]
+
+
+def _refund_correction(
+    context: CommandContext,
+    purchase: Purchase,
+    statement: ActStatement,
+    *,
+    purchased: TemporalValue | None,
+) -> Sequence[NewEvent] | Unchanged:
+    """A better refund; a new day moves its end."""
+    moves_the_end = statement.when != purchase.refunded and refund_owns_the_end(
+        context.library, purchase
+    )
+
+    def before_event() -> None:
+        _refuse_a_live_act(purchase)
+        _refuse_a_reversed_refund(
+            purchase,
+            purchased=purchased,
+            purchase_day_is_new=False,
+            refund=StandingRefund(statement.when, is_new=True),
+        )
+        if moves_the_end:
+            _refuse_an_end_before_the_acquisition(
+                purchase, purchase.entry, refunded=statement.when
+            )
+
+    events = correct_endpoint(
+        purchase,
+        PURCHASE_REFUND,
+        statement,
+        sentences=_refund_sentences(purchase.pk),
+        before_event=before_event,
+    )
+    if isinstance(events, Unchanged) or not moves_the_end:
+        return events
+    return [
+        *events,
+        _copy_end(ENTRY_ACCESS_END_EVENTS.corrected, purchase.entry_id, statement.when),
+    ]
+
+
+def _refund_void(
+    context: CommandContext, purchase: Purchase
+) -> Sequence[NewEvent] | Unchanged:
+    """The refund taken back, and its end."""
+    takes_the_end = refund_owns_the_end(context.library, purchase)
+
+    def before_event() -> None:
+        #: A removed Release never blocks it.
+        _refuse_a_removed_purchase(purchase)
+        _refuse_under_a_removed_copy(purchase.entry)
+
+    events = void_endpoint(
+        purchase,
+        PURCHASE_REFUND,
+        sentences=_refund_sentences(purchase.pk),
+        before_event=before_event,
+    )
+    if isinstance(events, Unchanged) or not takes_the_end:
+        return events
+    return [
+        *events,
+        ENTRY_ACCESS_END_EVENTS.voided.new(aggregate_id=purchase.entry_id, payload={}),
+    ]
+
+
+def _restated_refund(
+    context: CommandContext,
+    purchase: Purchase,
+    refund: RefundStatement,
+    *,
+    kind: PurchaseKindValue,
+    copy: LibraryEntry,
+    purchased: TemporalValue | None,
+) -> Sequence[NewEvent] | Unchanged:
+    """The act, chosen under the lock by presence."""
+    match refund:
+        case RefundTakenBack():
+            return _refund_void(context, purchase)
+        case ActStatement() if stated(purchase, PURCHASE_REFUND) is None:
+            return _refund_statement(
+                purchase, refund, kind=kind, copy=copy, purchased=purchased
+            )
+        case ActStatement():
+            return _refund_correction(context, purchase, refund, purchased=purchased)
+        case unknown:
+            raise TypeError(f"{unknown!r} states no refund.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,7 +534,7 @@ class RecordPurchase(Command):
 
 @dataclass(frozen=True, slots=True)
 class DescribePurchase(Command):
-    """State kind, name, price, note, copy, day."""
+    """State kind, name, price, note, copy, day, refund."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_DESCRIBE
     purchase_id: uuid.UUID
@@ -378,6 +544,7 @@ class DescribePurchase(Command):
     note: str | None = None
     entry_id: uuid.UUID | None = None
     purchased: ActStatement | None = None
+    refund: RefundStatement | None = None
 
     def __post_init__(self) -> None:
         if self.name is not None:
@@ -388,6 +555,8 @@ class DescribePurchase(Command):
             object.__setattr__(self, "price", self.price.normalized())
         if self.purchased is not None:
             object.__setattr__(self, "purchased", normalized(self.purchased))
+        if isinstance(self.refund, ActStatement):
+            object.__setattr__(self, "refund", normalized(self.refund))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         kind = None if self.kind is None else check_kind(self.kind)
@@ -397,6 +566,8 @@ class DescribePurchase(Command):
             check_note(self.note)
         if self.purchased is not None:
             check_note(self.purchased.note)
+        if isinstance(self.refund, ActStatement):
+            check_note(self.refund.note)
         purchase = library_purchase_row(context, self.purchase_id)
         events: list[NewEvent] = []
         if kind is not None and kind != purchase.kind:
@@ -413,31 +584,54 @@ class DescribePurchase(Command):
             )
         if self.note is not None and self.note != purchase.note:
             events.append(purchase_note_changed(purchase.pk, self.note))
+        copy = purchase.entry
         if self.entry_id is not None and self.entry_id != purchase.entry_id:
             #: The purchase's own sentence names the remedy.
             _refuse_a_live_act(purchase)
-            if stated(purchase, PURCHASE_REFUND) is not None:
+            if stated(purchase, PURCHASE_REFUND) is not None and not isinstance(
+                self.refund, RefundTakenBack
+            ):
                 raise CommandRejected(
                     f"Purchase {purchase.pk} states a refund, whose end stays "
                     f"on entry {purchase.entry_id}.",
                     sentence=MOVE_A_REFUNDED_PURCHASE,
                 )
-            entry = _held_copy(context, self.entry_id)
-            if entry.player_game_id != purchase.entry.player_game_id:
+            copy = _held_copy(context, self.entry_id)
+            if copy.player_game_id != purchase.entry.player_game_id:
                 raise CommandRejected(
-                    f"Entry {entry.pk} records player game {entry.player_game_id}, "
+                    f"Entry {copy.pk} records player game {copy.player_game_id}, "
                     f"and purchase {purchase.pk} records player game "
                     f"{purchase.entry.player_game_id}.",
                     sentence=ENTRY_OF_ANOTHER_GAME,
                 )
-            events.append(purchase_entry_changed(purchase.pk, capture_reference(entry)))
+            events.append(purchase_entry_changed(purchase.pk, capture_reference(copy)))
         if self.purchased is not None:
-            correction = _day_correction(purchase, self.purchased)
+            correction = _day_correction(
+                purchase,
+                self.purchased,
+                refund=_standing_refund(purchase, self.refund),
+            )
             if not isinstance(correction, Unchanged):
                 events.extend(correction)
+        if events:
+            _refuse_a_live_act(purchase)
+        if self.refund is not None:
+            refund = _restated_refund(
+                context,
+                purchase,
+                self.refund,
+                kind=cast(PurchaseKindValue, purchase.kind) if kind is None else kind,
+                copy=copy,
+                purchased=(
+                    purchase.purchased
+                    if self.purchased is None
+                    else self.purchased.when
+                ),
+            )
+            if not isinstance(refund, Unchanged):
+                events.extend(refund)
         if not events:
             return Unchanged("This purchase already states that.")
-        _refuse_a_live_act(purchase)
         return events
 
 
@@ -474,7 +668,7 @@ class RestorePurchase(Command):
 
 @dataclass(frozen=True, slots=True)
 class RefundPurchase(Command):
-    """Refunded; a game's copy ends too."""
+    """Refunded; a game's owned, held copy ends."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_REFUND
     purchase_id: uuid.UUID
@@ -486,30 +680,18 @@ class RefundPurchase(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         check_note(self.statement.note)
         purchase = library_purchase_row(context, self.purchase_id)
-        ends_the_copy = refund_ends_the_copy(purchase.kind, purchase.entry)
-        events = state_endpoint(
+        return _refund_statement(
             purchase,
-            PURCHASE_REFUND,
             self.statement,
-            sentences=_refund_sentences(purchase.pk),
-            before_event=partial(
-                _refuse_a_live_refund,
-                purchase,
-                refunded=self.statement.when,
-                ends_the_copy=ends_the_copy,
-            ),
+            kind=cast(PurchaseKindValue, purchase.kind),
+            copy=purchase.entry,
+            purchased=purchase.purchased,
         )
-        if isinstance(events, Unchanged) or not ends_the_copy:
-            return events
-        return [
-            *events,
-            _copy_end(ENTRY_ACCESS_END_EVENTS.stated, purchase, self.statement.when),
-        ]
 
 
 @dataclass(frozen=True, slots=True)
 class CorrectPurchaseRefund(Command):
-    """Restate a refund; its own end moves."""
+    """Restate a refund; a new day moves its end."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_CORRECT_REFUND
     purchase_id: uuid.UUID
@@ -521,28 +703,9 @@ class CorrectPurchaseRefund(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         check_note(self.statement.note)
         purchase = library_purchase_row(context, self.purchase_id)
-        moves_the_end = (
-            self.statement.when != purchase.refunded
-            and coupled_end(context.library, purchase) is not None
+        return _refund_correction(
+            context, purchase, self.statement, purchased=purchase.purchased
         )
-        events = correct_endpoint(
-            purchase,
-            PURCHASE_REFUND,
-            self.statement,
-            sentences=_refund_sentences(purchase.pk),
-            before_event=partial(
-                _refuse_a_live_refund,
-                purchase,
-                refunded=self.statement.when,
-                ends_the_copy=moves_the_end,
-            ),
-        )
-        if isinstance(events, Unchanged) or not moves_the_end:
-            return events
-        return [
-            *events,
-            _copy_end(ENTRY_ACCESS_END_EVENTS.corrected, purchase, self.statement.when),
-        ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -553,25 +716,4 @@ class VoidPurchaseRefund(Command):
     purchase_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        purchase = library_purchase_row(context, self.purchase_id)
-        takes_the_end = coupled_end(context.library, purchase) is not None
-
-        def before_event() -> None:
-            #: A later removed Release never blocks it.
-            _refuse_a_removed_purchase(purchase)
-            _refuse_under_a_removed_copy(purchase.entry)
-
-        events = void_endpoint(
-            purchase,
-            PURCHASE_REFUND,
-            sentences=_refund_sentences(purchase.pk),
-            before_event=before_event,
-        )
-        if isinstance(events, Unchanged) or not takes_the_end:
-            return events
-        return [
-            *events,
-            ENTRY_ACCESS_END_EVENTS.voided.new(
-                aggregate_id=purchase.entry_id, payload={}
-            ),
-        ]
+        return _refund_void(context, library_purchase_row(context, self.purchase_id))

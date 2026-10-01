@@ -52,7 +52,7 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
-from games.commands.purchase import StatedPrice
+from games.commands.purchase import TAKE_REFUND_BACK, RefundStatement, StatedPrice
 from games.end_ways import EndWay
 from games.events.dispatch import (
     IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -1573,7 +1573,8 @@ class PurchaseRefundIn(Schema):
 
     model_config = ConfigDict(extra="forbid")
 
-    refunded: StatedTemporal = None
+    #: Required; null is an unknown day.
+    refunded: StatedTemporal
     note: str = ""
 
     def statement(self) -> ActStatement:
@@ -1620,12 +1621,12 @@ class PurchaseUpdate(Schema):
             return None
         return ActStatement(self.purchased, cast(str, self.purchase_note))
 
-    def refund_statement(self) -> ActStatement | None | Keep:
-        """The refund stated, a void, or nothing."""
+    def refund_statement(self) -> RefundStatement | None:
+        """The refund stated, taken back, or nothing."""
         if "refund" not in self.model_fields_set:
-            return KEEP
-        if self.refund is None:
             return None
+        if self.refund is None:
+            return TAKE_REFUND_BACK
         return self.refund.statement()
 
 

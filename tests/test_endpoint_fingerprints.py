@@ -30,6 +30,7 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
+    TAKE_REFUND_BACK,
     CorrectPurchaseRefund,
     DescribePurchase,
     RecordPurchase,
@@ -109,8 +110,12 @@ COMMANDS: dict[str, Command] = {
             acquired=ActStatement(None, ""),
         ),
     ),
+    #: Moved when DescribePurchase gained refund.
     "describe_purchase": DescribePurchase(
         purchase_id=PURCHASE, price=StatedPrice(None, ""), entry_id=ENTRY
+    ),
+    "describe_purchase_refund_taken_back": DescribePurchase(
+        purchase_id=PURCHASE, refund=TAKE_REFUND_BACK
     ),
     "remove_purchase": RemovePurchase(purchase_id=PURCHASE),
     "restore_purchase": RestorePurchase(purchase_id=PURCHASE),
@@ -158,7 +163,7 @@ RECORDED: dict[str, str] = {
     ),
     "void_start": "b83184f38a8c6e7cc9ca5d0fa308f3ad48b2176e1815b388f168fe809e9c2a23",
     "describe_purchase": (
-        "408a6cbd44e31b9de62845fbfe9c99281b65a6779d05a4b2cda7305674b81d20"
+        "b55b50bf6a7c20590b1849facceabdf67cae89cb679c26a692df4a3bcd2a82cd"
     ),
     "record_purchase": (
         "910548f3eadfece06170bf42e6826c97e067ce71effc901b935704862325a2f2"
@@ -171,6 +176,9 @@ RECORDED: dict[str, str] = {
     ),
     "restore_purchase": (
         "2e588e71418455ed1f6e11c04e3e1629638aa20e85049a5e78918a6729021b81"
+    ),
+    "describe_purchase_refund_taken_back": (
+        "d5833adea211d5e8bc2246b640275ecb566dcb992bcca968f68b2e7c0a5239df"
     ),
     "refund_purchase": (
         "740990859d1a40131f80ddb70465846ccc7441337b27c6da1af86b6f4833ea48"

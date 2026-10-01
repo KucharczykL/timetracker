@@ -32,8 +32,8 @@ def readable_purchases(library: UserLibrary) -> PurchaseQuerySet:
     return library_purchases(library).select_related("entry__player_game__game")
 
 
-def coupled_end(library: UserLibrary, purchase: Purchase) -> LibraryEvent | None:
-    """The copy's end this refund wrote.
+def refund_owns_the_end(library: UserLibrary, purchase: Purchase) -> bool:
+    """Whether this refund wrote the copy's end.
 
     Its dispatch appended a refund statement or correction of
     this purchase; it holds while every dispatch stamps one
@@ -41,11 +41,10 @@ def coupled_end(library: UserLibrary, purchase: Purchase) -> LibraryEvent | None
     """
     end = latest_end_act(library, purchase.entry_id)
     if end is None or end.event_type not in END_STATEMENTS:
-        return None
-    refund_beside_it = LibraryEvent.objects.filter(
+        return False
+    return LibraryEvent.objects.filter(
         library=require_library(library),
         aggregate_id=purchase.pk,
         event_type__in=_REFUND_STATEMENTS,
         idempotency_key=end.idempotency_key,
     ).exists()
-    return end if refund_beside_it else None

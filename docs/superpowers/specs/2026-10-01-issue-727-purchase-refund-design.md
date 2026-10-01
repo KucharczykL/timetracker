@@ -15,7 +15,10 @@ Its events are `library.purchase.refunded`, `.refund_corrected` and
 ## Commands
 
 `RefundPurchase`, `CorrectPurchaseRefund` and `VoidPurchaseRefund`
-refuse a removed purchase. The statement and the correction also refuse
+refuse a removed purchase. `DescribePurchase` takes `refund` too: an
+`ActStatement`, or `TAKE_REFUND_BACK`. Under the lock it states, corrects
+or voids by presence, in the same dispatch as the other facts, so a
+refusal records nothing. The statement and the correction also refuse
 a copy that a read hides. The void refuses only a removed copy or game.
 
 `RefundPurchase` also ends the copy, way `refunded`, blank note, on the
@@ -24,7 +27,7 @@ states no end. A pass or an upgrade leaves the copy held.
 
 The refund **owns** the copy's end while the latest end-family event of
 the copy is a statement or a correction, and its dispatch also appended
-a refund statement or correction of this purchase. `coupled_end` in
+a refund statement or correction of this purchase. `refund_owns_the_end` in
 `games/reads/purchases.py` matches the two on `idempotency_key`. Each
 dispatch has one key. `make anonymize-sample` keeps one key for each
 dispatch.
@@ -36,6 +39,8 @@ dispatch.
 
 Day order:
 
+Each rule reads the final days, kind and copy of the statement:
+
 - A refund before the purchase day is refused.
 - A refund before the acquired day is refused where an end is appended.
 - A purchase day after a standing refund is refused.
@@ -45,17 +50,9 @@ Day order:
 
 ## Writes and API
 
-`restate_purchase` takes `refund`: `KEEP` states nothing, `None` voids.
-It refuses a reversed final day order before any dispatch. Then it
-dispatches in this order:
-
-- A first refund goes after the description, because it reads the
-  stated kind and copy.
-- A correction goes first, unless its day is before the held purchase
-  day.
-- A void goes first.
-
+`restate_purchase` is one dispatch of `DescribePurchase`.
 `PATCH /api/purchases/{id}` takes `refund`: `{refunded, note}` or null.
+`refunded` is required; null is an unknown day.
 `PurchaseOut` answers the five refund columns.
 
 ## Limits

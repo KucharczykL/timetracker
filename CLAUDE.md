@@ -605,8 +605,8 @@ docs/           — Additional documentation
   never a float. Commands `RecordPurchase` (`copy`: a held entry's key, or
   an `EntryStatement` that `entry_creation_events` turns into the copy,
   tracking an untracked game in the same dispatch), `DescribePurchase`
-  (`StatedPrice`, and `purchased`, the one day correction),
-  `RemovePurchase`, `RestorePurchase` in
+  (`StatedPrice`, and `purchased`, the one day correction, and `refund`,
+  so a PATCH is one dispatch), `RemovePurchase`, `RestorePurchase` in
   `games/commands/purchase.py`; `check_price` refuses a non-number, a
   sign, an amount above `LARGEST_AMOUNT` (derived from the column), a third
   place, and requires a currency exactly where an amount is; `check_name`
@@ -619,15 +619,15 @@ docs/           — Additional documentation
   No screen reads it until P5. Contract is
   [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md).
   #727 states a refund on the stated endpoint `PURCHASE_REFUND`
-  (`refunded`, `.refund_corrected`, `.refund_voided`; migration 0028):
-  `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund`. A
-  `game` refund ends its Owned, unended copy, way `refunded`, in the same
-  dispatch; correction and void move that end only while `coupled_end`
-  finds it, matched on the dispatch's one `idempotency_key`, so every
-  appender, the anonymizer included, keeps one key per dispatch. A
-  refunded purchase does not move. `restate_purchase` takes `refund`
-  (`KEEP` from `games/writes/endpoint.py`, `None` voids) and orders the
-  two dispatches. Contract is
+  (`.refunded`, `.refund_corrected`, `.refund_voided`; migration 0028):
+  `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund`, and
+  `DescribePurchase`'s `refund` (`ActStatement` or `TAKE_REFUND_BACK`),
+  chosen by presence under the lock. A `game` refund ends its Owned,
+  unended copy, way `refunded`, in the same dispatch; a correction of the
+  day and a void move that end only while `refund_owns_the_end` says so,
+  matched on the dispatch's one `idempotency_key`, so every appender, the
+  anonymizer included, keeps one key per dispatch. A refunded purchase
+  does not move. Contract is
   [A purchase is refunded](docs/superpowers/specs/2026-10-01-issue-727-purchase-refund-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
@@ -1126,7 +1126,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   `readable_purchases`; `POST /` takes `entry_id` or `entry` (an entry
   body), 201 and the row, `Idempotency-Key`; `PATCH /{id}` states each
   named key, `amount` with `currency` and `purchased` with `purchase_note`
-  or 422, and `refund`, `{refunded, note}` or null voiding it. `amount` is a JSON number or string in and a string out;
+  or 422, and `refund`, `{refunded, note}` or null voiding it, all in one
+  dispatch. `amount` is a JSON number or string in and a string out;
   `check_price` answers a bad one at 409. No removal route
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)

@@ -355,3 +355,51 @@ def test_a_refund_body_refuses_an_unknown_key(auth_client, entry):
     response = _patch(auth_client, purchase.pk, {"refund": {"way": "refunded"}})
 
     assert response.status_code == 422
+
+
+def test_a_void_with_no_refund_answers_the_row(auth_client, entry):
+    purchase = record_purchase(entry)
+
+    response = _patch(auth_client, purchase.pk, {"refund": None})
+
+    assert response.status_code == 200
+    assert response.json()["refund_recorded_at"] is None
+
+
+def test_a_repeated_refund_answers_the_row(auth_client, entry):
+    purchase = record_purchase(entry)
+    body = {"refund": {"refunded": "2021-06", "note": ""}}
+    _patch(auth_client, purchase.pk, body)
+
+    assert _patch(auth_client, purchase.pk, body).status_code == 200
+
+
+def test_a_refund_on_an_unknown_day_ends_the_copy(auth_client, entry):
+    purchase = record_purchase(entry)
+
+    response = _patch(auth_client, purchase.pk, {"refund": {"refunded": None}})
+
+    assert response.status_code == 200, response.content
+    assert response.json()["refund_recorded_at"] is not None
+    entry.refresh_from_db()
+    assert (entry.access_end_way, entry.access_ended) == ("refunded", None)
+
+
+def test_a_refund_states_its_day_or_null(auth_client, entry):
+    purchase = record_purchase(entry)
+
+    assert _patch(auth_client, purchase.pk, {"refund": {}}).status_code == 422
+
+
+def test_a_refund_onto_another_librarys_copy_is_404(auth_client, entry, their_entry):
+    purchase = record_purchase(entry)
+
+    response = _patch(
+        auth_client,
+        purchase.pk,
+        {"entry_id": str(their_entry.pk), "refund": {"refunded": "2021-06"}},
+    )
+
+    assert response.status_code == 404
+    purchase.refresh_from_db()
+    assert purchase.refund_recorded_at is None
