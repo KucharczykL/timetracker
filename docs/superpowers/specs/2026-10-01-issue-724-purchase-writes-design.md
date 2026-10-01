@@ -22,9 +22,10 @@ CSS, every row shows and the rules still hold.
   `EntryStatement`, kind `game`, on the acquired day. Both paths share the
   page key.
 - Add purchase (`games/purchase_forms.py`) states one purchase of a held
-  copy. Edit purchase restates each changed fact in one dispatch. Not
-  refunded voids a standing refund. A refund block that differs from the
-  page's is refused when the refund moved since the page opened.
+  copy. Edit purchase restates each changed fact in one dispatch, with
+  no submission key. Not refunded voids a standing refund. A refund
+  block left as the page showed it states nothing. A changed block is
+  refused when the refund moved since the page opened.
 
 ## Acts
 
@@ -33,7 +34,9 @@ CSS, every row shows and the rules still hold.
   `purchase.refunded`, because a `game` refund appends the copy's end
   after it.
 - Its Undo voids the refund only while that event is the purchase's
-  latest refund act (`latest_refund_act`).
+  latest refund act. `UndoPurchaseRefund` checks this
+  under the stream lock.
+- A refund toast says what the act did to the copy.
 - Remove confirms and offers Undo. The fallback is Game detail.
 
 ## A copy's removal takes its purchases
@@ -44,8 +47,8 @@ CSS, every row shows and the rules still hold.
   `purchase.restored` for each purchase whose latest removal has the
   idempotency key of the copy's latest removal (`cascaded_purchase_ids`).
   A purchase removed alone stays removed.
-- `BlockingReferrer.on(cascades=True)` marks the purchase referrer.
-  `blocking_referrer` skips it; `foreign_referrer` still reads it.
+- `CASCADING_REFERRERS` holds `Purchase.entry`. `blocking_referrer`
+  does not read it; `foreign_referrer` does.
 - A copy restore requests a revaluation.
 
 ## Screens
@@ -55,7 +58,8 @@ CSS, every row shows and the rules still hold.
 - The copy's menu has "Add purchase…" and one submenu for each such
   purchase: "Edit purchase…", "Refund", "Remove purchase…". The Purchases
   list rows have the same items.
-- Add Game's second submit opens Add to library.
+- Add Game's second submit opens Add to library. The "Submit & Create
+  Session" button is gone.
 - The legacy add, edit, view, refund and split routes, `PurchaseForm`,
   `ts/add_purchase.ts` and `SelectionFields` are gone.
 

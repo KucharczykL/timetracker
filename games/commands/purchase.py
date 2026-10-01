@@ -764,13 +764,23 @@ class VoidPurchaseRefund(Command):
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_VOID_REFUND
     purchase_id: uuid.UUID
-    #: Only while this refund is latest.
-    refunded_at: EventSequence | None = None
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        return _refund_void(context, library_purchase_row(context, self.purchase_id))
+
+
+@dataclass(frozen=True, slots=True)
+class UndoPurchaseRefund(Command):
+    """Void a refund still standing as latest."""
+
+    command_name: ClassVar[CommandName] = CommandName.PURCHASE_UNDO_REFUND
+    purchase_id: uuid.UUID
+    #: The refund event this Undo takes back.
+    refunded_at: EventSequence
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         purchase = library_purchase_row(context, self.purchase_id)
-        if self.refunded_at is not None:
-            _refuse_an_overtaken_refund(context, purchase, self.refunded_at)
+        _refuse_an_overtaken_refund(context, purchase, self.refunded_at)
         return _refund_void(context, purchase)
 
 

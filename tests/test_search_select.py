@@ -246,13 +246,13 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
             self.assertNotIn("data-search-select-status", html)
 
     def test_widget_adapter_single_selects_carry_the_cue(self):
-        from games.forms import SearchSelectMultiple, SearchSelectWidget
+        from games.forms import SearchSelectWidget
 
         single = SearchSelectWidget(
             search_url="/api/games/search", options_resolver=lambda values: []
         ).render("device", None)
         self.assertIn("data-search-select-status", single)
-        multi = SearchSelectMultiple(
+        multi = SearchSelectWidget(
             search_url="/api/games/search",
             options_resolver=lambda values: [],
             multi_select=True,
@@ -696,13 +696,11 @@ class SearchLabelTest(django.test.TestCase):
         self.assertIsNone(game.platform)
         self.assertEqual(game.search_label, "Tetris (Unspecified)")
 
-    def test_choice_fields_use_search_label(self):
-        from games.forms import MultipleGameChoiceField, SingleGameChoiceField
+    def test_the_choice_field_uses_search_label(self):
+        from games.forms import SingleGameChoiceField
 
         queryset = Game.objects.for_library(self.library)
-        multi = MultipleGameChoiceField(queryset=queryset)
         single = SingleGameChoiceField(queryset=queryset)
-        self.assertEqual(multi.label_from_instance(self.game), self.game.search_label)
         self.assertEqual(single.label_from_instance(self.game), self.game.search_label)
 
     def test_api_uses_search_label(self):

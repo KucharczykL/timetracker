@@ -17,7 +17,7 @@ from games.commands.purchase import (
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
-    VoidPurchaseRefund,
+    UndoPurchaseRefund,
 )
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
@@ -260,7 +260,7 @@ def undo_refund(
     """Void a refund still standing as latest."""
     with answered(SUBJECT):
         result = _dispatch(
-            VoidPurchaseRefund(purchase_id=purchase.pk, refunded_at=refunded_at),
+            UndoPurchaseRefund(purchase_id=purchase.pk, refunded_at=refunded_at),
             actor=actor,
             correlation_id=correlation_id,
         )

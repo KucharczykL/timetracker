@@ -179,8 +179,8 @@ export function attachMenu(
   };
 
   // The panel is `fixed` (see open()), so it does not auto-follow the toggle the
-  // way an `absolute top-full` panel would. A multi-select toggle (e.g. the
-  // add-purchase `games` field) grows/shrinks as pills are added/removed while
+  // way an `absolute top-full` panel would. A multi-select toggle
+  // grows/shrinks as pills are added/removed while
   // the panel is open, with no scroll/resize to fire — so observe the toggle's
   // box and reposition on any size change. Only connected while open (below) to
   // avoid churn; also covers future inline-trigger consumers.

@@ -195,8 +195,8 @@ reuse/extend/new per piece with justification; `make check` green.
   plumbing** that Stage 8 reuses.
 - Easy prefs wired end-to-end (control → `/api/settings` → resolution → consumption), covering **all**
   initial paths:
-  - **default currency** — `add_purchase`/`edit_purchase` `initial` ([games/views/purchase.py:294](games/views/purchase.py), :348)
-    and the `_create_separate_purchases` currency source.
+  - **default currency** — the price fields' `initial` (`PriceFields` in
+    [games/price_fields.py](games/price_fields.py)).
   - **default device** — both `SessionForm(initial=…)` constructions in `add_session` (including the
     `game_id` branch, [games/views/session.py:193](games/views/session.py), :202-208) and `edit_session`.
   - **default landing page** — `index()` redirect ([games/views/general.py:209](games/views/general.py));

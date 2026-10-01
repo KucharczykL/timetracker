@@ -38,6 +38,7 @@ from games.commands.purchase import (
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    UndoPurchaseRefund,
     VoidPurchaseRefund,
 )
 from games.end_ways import EndWay
@@ -125,6 +126,7 @@ COMMANDS: dict[str, Command] = {
         purchase_id=PURCHASE, statement=ActStatement(None, "")
     ),
     "void_purchase_refund": VoidPurchaseRefund(purchase_id=PURCHASE),
+    "undo_purchase_refund": UndoPurchaseRefund(purchase_id=PURCHASE, refunded_at=42),
 }
 
 RECORDED: dict[str, str] = {
@@ -187,6 +189,9 @@ RECORDED: dict[str, str] = {
     ),
     "void_purchase_refund": (
         "bcf8735d0164b1f736dc71770189e5693f6a7731ecac5c9c87d51a2c53c57a14"
+    ),
+    "undo_purchase_refund": (
+        "fab7c21574cb2636fed67dd339cf6a80b1cfe39bc64ccc76e56e776cf25cbbca"
     ),
 }
 

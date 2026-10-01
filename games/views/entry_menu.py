@@ -28,7 +28,7 @@ def entry_row_menu(
     purchases: Sequence[Purchase],
     size: ButtonSize = "control",
 ) -> Node:
-    """A copy's acts, then its purchases'."""
+    """A copy's acts, its purchases' before Remove."""
     game = entry.player_game.game
     ended = stated(entry, ENTRY_ACCESS_END) is not None
 

@@ -134,6 +134,7 @@ class CommandName(CommandVocabulary):
     PURCHASE_REFUND = "library.purchase.refund"
     PURCHASE_CORRECT_REFUND = "library.purchase.correct_refund"
     PURCHASE_VOID_REFUND = "library.purchase.void_refund"
+    PURCHASE_UNDO_REFUND = "library.purchase.undo_refund"
 
 
 @dataclass(frozen=True, slots=True)

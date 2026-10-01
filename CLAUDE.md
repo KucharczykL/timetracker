@@ -191,8 +191,9 @@ docs/           — Additional documentation
 - **LegacyPurchase** — the old purchase row, on `games_legacypurchase`
   until P5 deletes it; `verbose_name` "purchase", so screens still say so.
   No list, filter or statistic reads it, and the builder refuses
-  `legacypurchase`; no route writes it. The currency task, the
-  signals, the sample tools and the two verify commands still read it. Ownership type, prices,
+  `legacypurchase`; no purchase route writes it. Game removal
+  recounts it; the currency task, the signals, the sample tools, the
+  ownership audit and the two verify commands still touch it. Ownership type, prices,
   currency conversion (`converted_price`, `price_per_game` is a
   `GeneratedField`), M2M to Game. `num_purchases` counts linked games.
   DLC/SeasonPass/BattlePass must have `related_game`. Its relations
@@ -574,7 +575,8 @@ docs/           — Additional documentation
   dispatch through `tracking_events`), `DescribeEntry`,
   `CorrectEntryAcquisition`, `RemoveEntry` (asks `blocking_referrer` and
   `foreign_referrer`; it removes the copy's purchases in the same
-  dispatch, since `Purchase.entry` is a `cascades=True` referrer),
+  dispatch, and `Purchase.entry` sits in `CASCADING_REFERRERS`, which
+  `blocking_referrer` never reads and `foreign_referrer` does),
   `RestoreEntry` (refuses under a removed Release; restores the
   purchases whose latest removal shares the copy's key,
   `cascaded_purchase_ids`) in `games/commands/libraryentry.py`;
@@ -676,9 +678,11 @@ docs/           — Additional documentation
   [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
   #724 (P5b) moves every purchase write onto the projection. Add to
   library states the game's purchase with the copy (`PriceFields`,
-  `games/price_fields.py`: Paid, Free, Unknown, No purchase); Add and
-  Edit purchase live in `games/purchase_forms.py`; Refund is one click
-  through `refund_purchase`, its Undo checked by `latest_refund_act`.
+  `games/price_fields.py`: Paid, Free or No purchase; Add and Edit
+  purchase, in `games/purchase_forms.py`, offer Paid, Free, Unknown);
+  an Edit page's untouched refund block states nothing. Refund is one
+  click through `refund_purchase`; its Undo is `UndoPurchaseRefund`,
+  refused under the lock once a later refund act overtook it.
   Game detail lists each held copy's live, unrefunded purchases
   (`held_purchases`), and the copy's menu carries their acts
   (`games/views/purchase_menu.py`). Contract is
@@ -722,7 +726,7 @@ anything.
 **Removing offers Undo** (#695). Every remove view hands an `UndoOffer`, the
 sentence and the restore route with the row's key, to `confirm_and_remove` or
 `confirm_and_apply`, which queues one notice through `common/notices.py` after
-the act succeeds; the toast's Undo form posts to that route. Nine POST-only restore routes, `restore_<entity>` and the reclassification's undo, share
+the act succeeds; the toast's Undo form posts to that route. The POST-only restore routes, `restore_<entity>` and the undos, share
 `restore_and_return()`; a refusal is an error message on the page the person
 stands on; the game route's error carries a "Try again" action, because its
 stamp clears before its command. `<toast-stack>` appends the page as `?origin=`

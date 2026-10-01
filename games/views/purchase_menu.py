@@ -22,7 +22,7 @@ from games.views.submission import submission_input
 
 
 def purchase_label(purchase: Purchase) -> str:
-    """Bought, or the kind and name."""
+    """A game's name or Bought; else kind, name."""
     kind = PurchaseKind(purchase.kind)
     if kind is PurchaseKind.GAME:
         return purchase.name or "Bought"
@@ -64,7 +64,7 @@ def purchase_line(purchase: Purchase, presentation: DateTimePresentation) -> Nod
 def purchase_items(
     purchase: Purchase, origin: OriginUrl | None, csrf_token: str
 ) -> list[Node]:
-    """Edit, Refund today, Remove."""
+    """Edit, Refund unless refunded, Remove."""
 
     def page(route: str) -> str:
         return action_url(route, purchase.pk, origin=origin)

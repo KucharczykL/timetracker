@@ -273,23 +273,13 @@ class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
         self.initial["default_device"] = default_device
 
 
-class MultipleGameChoiceField(forms.ModelMultipleChoiceField):
-    def label_from_instance(self, obj) -> str:
-        return obj.search_label
-
-
 class SingleGameChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, obj) -> str:
         return obj.search_label
 
 
 def game_option_data(game: Game) -> dict[str, str]:
-    """The data-* payload of a game option, shared by the games search API and
-    this module's resolver — one producer, so the two sites cannot drift.
-
-    Reads the platform's own pk rather than the foreign key attname, which is
-    the identity the platform combobox's options carry. Callers must
-    select_related("platform")."""
+    """A game option's platform; select_related("platform")."""
     return {
         "platform": str(game.platform.id) if game.platform else "",
         "platform_name": game.platform.name if game.platform else "",
@@ -685,13 +675,6 @@ def host_choices(field: forms.ChoiceField, widget: ChoiceSearchSelectWidget) -> 
     widget.is_required = field.required
 
 
-class SearchSelectMultiple(SearchSelectWidget):
-    def value_from_datadict(self, data, files, name):
-        if hasattr(data, "getlist"):
-            return data.getlist(name)
-        return data.get(name)
-
-
 class Keep(Enum):
     """An empty ⊘ field: leave it."""
 
@@ -737,7 +720,7 @@ class UnsetWidget(forms.Widget):
 
     def __init__(self, widget: forms.Widget, *, none_label: NoneLabel, attrs=None):
         super().__init__(attrs)
-        if isinstance(widget, (SearchSelectMultiple, forms.SelectMultiple)) or getattr(
+        if isinstance(widget, forms.SelectMultiple) or getattr(
             widget, "multi_select", False
         ):
             raise TypeError("⊘ joins a single value, not a multi-select")

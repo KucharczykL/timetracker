@@ -700,7 +700,7 @@ def test_alive_reads_the_copy_and_the_game(owned_library, entry, mark):
     assert list(Purchase.objects.alive()) == [purchase]
 
     if mark == "copy":
-        #: The copy's mark alone.
+        #: Stamped: RemoveEntry would take the purchase.
         LibraryEntry.objects.filter(pk=entry.pk).update(removed_at=purchase.created_at)
     else:
         _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))
