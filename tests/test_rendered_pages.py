@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from calendar_days import library_noon
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from entries import record_entry
@@ -270,10 +270,9 @@ class RenderedPagesTest(TestCase):
     def test_add_game_form(self):
         html = self.get("games:add_game").content.decode()
         self.assertIn("dist/add_game.js", html)
-        self.assertIn("submit_and_redirect", html)
-        self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
-        self.assertIn("submit_and_create_session", html)
-        self.assertIn("Submit &amp; Create Session", html)  # & correctly escaped
+        self.assertIn("submit_and_add_to_library", html)
+        self.assertIn("Submit &amp; Add to library", html)  # & correctly escaped
+        self.assertNotIn("Create Purchase", html)
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
         self.assertIn("mb-2.5 text-type-label text-heading", html)  # _LABEL_CLASS
@@ -293,20 +292,6 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn('class="errorlist"', html)
         self.assertNoEscapedTags(html)
 
-    def test_add_purchase_form(self):
-        html = self.get("games:add_purchase").content.decode()
-        self.assertIn("dist/add_purchase.js", html)
-        self.assertIn("Submit &amp; Create Session", html)
-        self.assertIn('name="submit_and_redirect"', html)
-        self.assertNoEscapedTags(html)
-
-    @override_settings(DEBUG=True, INTERNAL_IPS=[])
-    def test_add_purchase_form_has_unique_ids_in_debug(self):
-        response = self.get("games:add_purchase")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content.decode().count('id="add-form"'), 1)
-
     def _element_with_id(self, html, element_id):
         """Return the single tag (e.g. an <input>) carrying ``id="<element_id>"``."""
         match = re.search(rf'<[^>]*\bid="{re.escape(element_id)}"[^>]*>', html)
@@ -314,24 +299,14 @@ class RenderedPagesTest(TestCase):
             self.fail(f"no element with id {element_id!r} in output")
         return match.group(0)
 
-    def test_add_purchase_for_game_autofocuses_price_not_games(self):
-        html = self.get("games:add_purchase_for_game", self.game.id).content.decode()
-        # Games/platform are pre-filled from the chain, so price gets focus.
-        self.assertIn("autofocus", self._element_with_id(html, "id_price"))
-        self.assertNotIn("autofocus", self._element_with_id(html, "id_games"))
-
     def test_add_session_for_game_autofocuses_device_not_game(self):
         html = self.get("games:add_session_for_game", self.game.id).content.decode()
         self.assertIn("autofocus", self._element_with_id(html, "id_device"))
         self.assertNotIn("autofocus", self._element_with_id(html, "id_game"))
 
     def test_cold_add_forms_keep_game_autofocus(self):
-        """Opened from the main menu (no game_id), the Game(s) field keeps focus
-        and the chained targets do not steal it."""
-        purchase_html = self.get("games:add_purchase").content.decode()
-        self.assertIn("autofocus", self._element_with_id(purchase_html, "id_games"))
-        self.assertNotIn("autofocus", self._element_with_id(purchase_html, "id_price"))
-
+        """Opened from the main menu (no game_id), the Game field keeps focus
+        and the chained target does not steal it."""
         session_html = self.get("games:add_session").content.decode()
         self.assertIn("autofocus", self._element_with_id(session_html, "id_game"))
         self.assertNotIn("autofocus", self._element_with_id(session_html, "id_device"))
@@ -496,19 +471,6 @@ class RenderedPagesTest(TestCase):
         self.assertIn('method="post"', html)
         self.assertNoEscapedTags(html)
 
-    def test_refund_confirmation_page(self):
-        html = self.get("games:refund_purchase", self.purchase.id).content.decode()
-        self.assertIn("Refund purchase", html)
-        self.assertIn("marked as abandoned", html)
-        self.assertIn('method="post"', html)
-        self.assertNoEscapedTags(html)
-
-    def test_split_confirmation_page(self):
-        html = self.get("games:split_purchase", self.purchase.id).content.decode()
-        self.assertIn("Split purchase", html)
-        self.assertIn('method="post"', html)
-        self.assertNoEscapedTags(html)
-
     def test_session_list_actions_do_not_reach_the_api(self):
         # Finish and reset are ordinary POST routes that reload the page. The
         # device selector still PATCHes /api/session/<id>/device — that is a
@@ -592,62 +554,6 @@ class RenderedPagesTest(TestCase):
         # cells: text-type-micro on <thead>, text-type-body on <table>.
         self.assertRegex(html, r"<thead[^>]*\btext-type-micro\b")
         self.assertRegex(html, r"<table[^>]*\btext-type-body\b")
-
-    def test_view_purchase(self):
-        html = self.get("games:view_purchase", self.purchase.id).content.decode()
-        for marker in [
-            # ContentContainer bakes the width classes; caller class appends.
-            "w-full max-w-7xl self-center dark:text-white",
-            "text-type-title font-serif",
-            "Owned on",
-            "Price per game:",
-            "decoration-dotted underline",
-            "Games included in this purchase:",
-            "<ul>",
-            "<li>",
-        ]:
-            self.assertIn(marker, html)
-        self.assertNoEscapedTags(html)
-        # The Python builder emits well-formed, balanced markup.
-        self.assertEqual(html.count("<div"), html.count("</div>"))
-
-    def test_view_purchase_lists_games_in_display_order(self):
-        switch = Platform.objects.create(
-            library=self.user.library, name="Switch", icon="nintendo-switch"
-        )
-        created = {}
-        for key, name, sort_name, platform in [
-            ("aardvark", "Aardvark", "zz", self.platform),
-            ("doom_first", "Doom", "doom", switch),
-            ("doom_second", "Doom", "doom", self.platform),
-            ("alpha", "alpha", "alpha", self.platform),
-            ("zeta", "Zeta Prime", "Beta", self.platform),
-        ]:
-            created[key] = Game.objects.create(
-                library=self.user.library,
-                name=name,
-                sort_name=sort_name,
-                platform=platform,
-            )
-            self.purchase.games.add(created[key])
-        html = self.get("games:view_purchase", self.purchase.id).content.decode()
-        included = html.split("Games included in this purchase:", 1)[1]
-        links = re.findall(
-            r'<a [^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
-            included.split("</ul>", 1)[0],
-        )
-        # "Test Game" states no sort_name, so it leads.
-        self.assertEqual(
-            [name for _, name in links],
-            ["Test Game", "Zeta Prime", "alpha", "Doom", "Doom", "Aardvark"],
-        )
-        self.assertEqual(
-            [href for href, name in links if name == "Doom"],
-            [
-                created["doom_first"].get_absolute_url(),
-                created["doom_second"].get_absolute_url(),
-            ],
-        )
 
 
 class PurchaseListDateFilterTest(TestCase):
@@ -901,7 +807,7 @@ class GameListSessionFilterBoundaryTest(TestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_add_game_submit_and_create_session_redirects(
+def test_add_game_submit_and_add_to_library_redirects(
     client, owned_user, catalog_graph_post
 ):
     #: Out of the TestCase, because the POST dispatches.
@@ -913,7 +819,7 @@ def test_add_game_submit_and_create_session_redirects(
         {
             "name": "New Session Game",
             "status": "unplayed",
-            "submit_and_create_session": "",
+            "submit_and_add_to_library": "",
             **catalog_graph_post(),
         },
     )
@@ -921,7 +827,7 @@ def test_add_game_submit_and_create_session_redirects(
     game = Game.objects.get(name="New Session Game")
     assertRedirects(
         response,
-        reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
+        reverse("games:add_library_entry", kwargs={"game_id": game.id}),
     )
 
 

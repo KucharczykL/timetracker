@@ -23,10 +23,10 @@ from common.returns import action_url
 from games.models import (
     Device,
     Game,
-    LegacyPurchase,
     Platform,
     PlayerSession,
     Playthrough,
+    Purchase,
 )
 from games.views.general import model_counts
 
@@ -94,14 +94,12 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     patch_url_template = default_device_url.removesuffix("default-device") + "__key__"
     assert f'patch-url-template="{patch_url_template}"' in body
     assert "Preselected when logging a game." in body
-    add_purchase_url = action_url("games:add_purchase", origin=reverse("games:library"))
-    add_purchase_links = re.findall(
-        rf'<a\b[^>]*href="{re.escape(add_purchase_url)}"[^>]*>', body
-    )
+    add_url = action_url("games:add_to_library", origin=reverse("games:library"))
+    add_links = re.findall(rf'<a\b[^>]*href="{re.escape(add_url)}"[^>]*>', body)
     # Summary actions render both the wide link and narrow overflow-menu item;
     # both must carry the Library return target.
-    assert len(add_purchase_links) == 2
-    assert all("bg-success" not in link for link in add_purchase_links)
+    assert len(add_links) == 2
+    assert all("bg-success" not in link for link in add_links)
     assert "Foreign game" not in body
     assert "Foreign device" not in body
 
@@ -172,38 +170,17 @@ def world(client, django_user_model):
     own_running = session_row(
         own_game, device=own_device, started_at=own_start - timedelta(hours=3)
     )
-    own_purchase = LegacyPurchase.objects.create(
-        library=owner_library,
-        name="Owner purchase",
-        platform=own_platform,
-        date_purchased=own_start.date(),
-        price=10,
-        price_currency="USD",
-        converted_price=10,
-        converted_currency="USD",
-    )
-    own_purchase.games.add(own_game)
-    foreign_purchase = LegacyPurchase.objects.create(
-        library=foreign_library,
-        name="Foreign purchase",
-        platform=foreign_platform,
-        date_purchased=foreign_start.date(),
-        price=20,
-        price_currency="USD",
-        converted_price=20,
-        converted_currency="USD",
-    )
-    foreign_purchase.games.add(foreign_game)
-    #: The list reads the projection.
-    for library, game, name in (
-        (owner_library, own_game, "Owner purchase"),
-        (foreign_library, foreign_game, "Foreign purchase"),
-    ):
+    own_purchase, foreign_purchase = (
         record_purchase(
             record_entry(library, default_graph(game, library).release),
             kind="season_pass",
             name=name,
         )
+        for library, game, name in (
+            (owner_library, own_game, "Owner purchase"),
+            (foreign_library, foreign_game, "Foreign purchase"),
+        )
+    )
     #: #1012 keyed the edit route on the run, and tracking
     #: states one, so each library names its own. None where
     #: the test tracks no game, which names no run either.
@@ -259,11 +236,8 @@ def _object_url(url_name, obj):
         ("games:edit_session", "foreign_row"),
         ("games:reset_session", "foreign_row"),
         ("games:remove_session", "foreign_row"),
-        ("games:view_purchase", "foreign_purchase"),
         ("games:edit_purchase", "foreign_purchase"),
         ("games:remove_purchase", "foreign_purchase"),
-        ("games:refund_purchase", "foreign_purchase"),
-        ("games:split_purchase", "foreign_purchase"),
         ("games:edit_device", "foreign_device"),
         ("games:remove_device", "foreign_device"),
         ("games:edit_platform", "foreign_platform"),
@@ -289,11 +263,8 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
         ("games:edit_session", "own_row"),
         ("games:reset_session", "own_running"),
         ("games:remove_session", "own_row"),
-        ("games:view_purchase", "own_purchase"),
         ("games:edit_purchase", "own_purchase"),
         ("games:remove_purchase", "own_purchase"),
-        ("games:refund_purchase", "own_purchase"),
-        ("games:split_purchase", "own_purchase"),
         ("games:edit_device", "own_device"),
         ("games:remove_device", "own_device"),
         ("games:edit_platform", "own_platform"),
@@ -313,7 +284,7 @@ def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
     [
         ("games:remove_game", "foreign_game", Game),
         ("games:remove_session", "foreign_row", PlayerSession),
-        ("games:remove_purchase", "foreign_purchase", LegacyPurchase),
+        ("games:remove_purchase", "foreign_purchase", Purchase),
         ("games:remove_device", "foreign_device", Device),
         ("games:remove_platform", "foreign_platform", Platform),
         ("games:remove_playthrough", "foreign_run", Playthrough),
@@ -334,7 +305,7 @@ def test_foreign_removal_posts_return_404_without_mutation(
     ("url_name", "object_name", "model"),
     [
         ("games:remove_session", "own_row", PlayerSession),
-        ("games:remove_purchase", "own_purchase", LegacyPurchase),
+        ("games:remove_purchase", "own_purchase", Purchase),
         ("games:remove_device", "own_device", Device),
         ("games:remove_platform", "own_platform", Platform),
         #: Removing a run stamps the projection,
@@ -369,7 +340,7 @@ def test_owned_game_removal_post_works(world):
     "url_name",
     [
         "games:add_session_for_game",
-        "games:add_purchase_for_game",
+        "games:add_library_entry",
         "games:add_playthrough_for_game",
     ],
 )
@@ -412,19 +383,15 @@ def test_foreign_session_action_posts_return_404_without_mutation(world):
 
 def test_foreign_purchase_action_posts_return_404_without_mutation(world):
     purchase = world.foreign_purchase
-    before = LegacyPurchase.objects.count()
 
-    refund_response = world.client.post(
-        reverse("games:refund_purchase", args=[purchase.pk])
-    )
-    split_response = world.client.post(
-        reverse("games:split_purchase", args=[purchase.pk])
+    response = world.client.post(
+        reverse("games:refund_purchase_now", args=[purchase.pk]),
+        {"submission": "01928e5e-4f6b-7c3a-8e9d-000000000001"},
     )
 
     purchase.refresh_from_db()
-    assert (refund_response.status_code, split_response.status_code) == (404, 404)
-    assert LegacyPurchase.objects.count() == before
-    assert purchase.date_refunded is None
+    assert response.status_code == 404
+    assert purchase.refund_recorded_at is None
 
 
 def test_navbar_recent_resumes_are_scoped_to_the_authenticated_library(world):
@@ -474,7 +441,7 @@ def test_library_add_actions_preserve_the_library_as_the_return_origin(world):
         "games:add_game",
         "games:add_platform",
         "games:add_device",
-        "games:add_purchase",
+        "games:add_to_library",
     ):
         assert action_url(viewname, origin=origin) in body
 

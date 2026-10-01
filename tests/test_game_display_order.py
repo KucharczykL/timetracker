@@ -1,12 +1,10 @@
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
-from django.urls import reverse
 from django.utils import timezone
 from entries import record_entry
 from game_display_order import tied_games
@@ -39,8 +37,6 @@ from games.sorting import (
     SESSION_SORTS,
     apply_sort,
 )
-from games.views.purchase import _refund
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
 
 
 class GameDisplayOrderTest(SimpleTestCase):
@@ -104,12 +100,6 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
         bundle.games.set(reversed(self.games))
         return bundle
 
-    def _games_of_new_purchases(self, excluding=None):
-        purchases = LegacyPurchase.objects.for_library(self.library).exclude(
-            pk=excluding
-        )
-        return [purchase.games.get().id for purchase in purchases.order_by("id")]
-
     def test_search_answers_in_display_order(self):
         request = SimpleNamespace(user=self.user)
         self.assertEqual(
@@ -124,50 +114,6 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
     def test_picker_resolves_selected_games_in_display_order(self):
         options = _game_options(list(reversed(self.expected)), library=self.library)
         self.assertEqual([option["value"] for option in options], self.expected)
-
-    def test_separate_prices_create_purchases_in_display_order(self):
-        response = self.client.post(
-            reverse("games:add_purchase"),
-            {
-                "games": list(reversed(self.expected)),
-                "date_purchased": "2025-01-01",
-                "price_currency": "USD",
-                "ownership_type": LegacyPurchase.DIGITAL,
-                "type": LegacyPurchase.GAME,
-                "name": "",
-                "pricing_mode": "per_game",
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(self._games_of_new_purchases(), self.expected)
-
-    def test_split_creates_purchases_in_display_order(self):
-        bundle = self._bundle()
-        self.client.post(reverse("games:split_purchase", args=[bundle.id]))
-        self.assertEqual(
-            self._games_of_new_purchases(excluding=bundle.pk), self.expected
-        )
-
-    def test_refund_abandons_games_in_display_order(self):
-        bundle = self._bundle()
-        with patch("games.views.purchase.record_facts") as record_facts:
-            _refund(self.user, bundle)
-        abandoned = [call.args[1].id for call in record_facts.call_args_list]
-        self.assertEqual(abandoned, self.expected)
-
-    def test_refund_failure_counts_games_in_display_order(self):
-        bundle = self._bundle()
-        refused = self.games[4]
-
-        def abandon(user, game, **facts):
-            if game == refused:
-                raise CommandFailed("Refused.", CONFLICT_STATUS)
-
-        with (
-            patch("games.views.purchase.record_facts", side_effect=abandon),
-            pytest.raises(CommandFailed, match="4 of 7 games were abandoned"),
-        ):
-            _refund(self.user, bundle)
 
     def test_first_game_leads_the_display_order(self):
         self.assertEqual(self._bundle().first_game, self.games[0])

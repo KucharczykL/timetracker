@@ -439,17 +439,12 @@ def add_game(request: HttpRequest) -> HttpResponse:
             if not recorded:
                 #: Re-rendering would invite a second game.
                 return redirect(return_url(request, fallback="games:list_games"))
-            origin = origin_from(request)
-            if "submit_and_redirect" in request.POST:
+            if "submit_and_add_to_library" in request.POST:
                 return redirect(
                     action_url(
-                        "games:add_purchase_for_game", game_id=game.id, origin=origin
-                    )
-                )
-            elif "submit_and_create_session" in request.POST:
-                return redirect(
-                    action_url(
-                        "games:add_session_for_game", game_id=game.id, origin=origin
+                        "games:add_library_entry",
+                        game_id=game.id,
+                        origin=origin_from(request),
                     )
                 )
             return redirect(return_url(request, fallback="games:list_games"))
@@ -466,18 +461,11 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 references_area(references),
             ),
             width_class="max-w-xl md:max-w-4xl",
-            additional_row=Fragment(
-                ControlButton(
-                    color="gray",
-                    type="submit",
-                    name="submit_and_redirect",
-                )["Submit & Create Purchase"],
-                ControlButton(
-                    color="gray",
-                    type="submit",
-                    name="submit_and_create_session",
-                )["Submit & Create Session"],
-            ),
+            additional_row=ControlButton(
+                color="gray",
+                type="submit",
+                name="submit_and_add_to_library",
+            )["Submit & Add to library"],
         ),
         title="Add New Game",
         #: Release rows render outside FormFields.

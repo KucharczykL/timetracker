@@ -113,11 +113,10 @@ urlpatterns = [
         preset.restore_preset,
         name="restore_preset",
     ),
-    path("purchase/add", purchase.add_purchase, name="add_purchase"),
     path(
-        "purchase/add/for-game/<uuidv7:game_id>",
+        "library/<uuidv7:entry_id>/purchase/add",
         purchase.add_purchase,
-        name="add_purchase_for_game",
+        name="add_purchase",
     ),
     path(
         "purchase/<uuidv7:purchase_id>/edit",
@@ -135,24 +134,19 @@ urlpatterns = [
         name="restore_purchase",
     ),
     path(
-        "purchase/<uuidv7:purchase_id>/view",
-        purchase.view_purchase,
-        name="view_purchase",
+        "purchase/<uuidv7:purchase_id>/refund/now",
+        purchase.refund_purchase_now,
+        name="refund_purchase_now",
+    ),
+    path(
+        "purchase/<uuidv7:purchase_id>/refund/undo/<int:sequence>",
+        purchase.undo_purchase_refund,
+        name="undo_purchase_refund",
     ),
     path(
         "purchase/list",
         purchase.list_purchases,
         name="list_purchases",
-    ),
-    path(
-        "purchase/<uuidv7:purchase_id>/refund",
-        purchase.refund_purchase,
-        name="refund_purchase",
-    ),
-    path(
-        "purchase/<uuidv7:purchase_id>/split",
-        purchase.split_purchase,
-        name="split_purchase",
     ),
     path(
         "lists/<str:mode>/columns/",

@@ -1,106 +1,103 @@
 from datetime import date
 from functools import partial
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import UUID
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.db.models import QuerySet
 from django.http import (
     HttpRequest,
     HttpResponse,
 )
-from django.shortcuts import redirect
-from django.template.defaultfilters import floatformat, pluralize
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.components import (
-    AddForm,
     Cell,
-    Checkbox,
     Column,
     ContentContainer,
-    ControlButton,
-    Div,
-    FormFields,
-    Fragment,
-    GameLink,
-    Input,
-    Link,
-    ModuleScript,
-    Node,
-    PriceConverted,
     PurchaseAmount,
     PurchaseName,
     QuickFilterBar,
-    SelectionFields,
     TableData,
     drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
 )
-from common.components.primitives import Li, P, Ul
+from common.components.primitives import P
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
 )
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
-from common.returns import action_url
 from common.temporal_presentation import TemporalText
-from common.utils import label_with_details, paginate
+from common.utils import paginate
+from games.commands.endpoint import ActStatement
 from games.endpoints import PURCHASE_REFUND
+from games.events.purchase import PURCHASE_REFUND_EVENTS
 from games.filters import (
     PurchaseFilter,
     filter_query_context_for_library,
     parse_purchase_filter,
 )
-from games.forms import PurchaseForm
 from games.list_columns import column_choice
 from games.models import (
     Game,
-    LegacyPurchase,
-    PlayerGameStatus,
+    LibraryEntry,
     Purchase,
     PurchaseKind,
     PurchaseQuerySet,
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.price_fields import price_presentations
+from games.purchase_forms import (
+    PurchaseAddForm,
+    PurchaseEditForm,
+    edit_groups,
+    edit_presentations,
+    purchase_groups,
+)
 from games.reads.endpoints import stated
+from games.reads.entries import EventSequence
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
     completion_exists,
     reported_completion,
     reported_completion_day,
 )
-from games.reads.purchases import ValuedPurchase, library_purchases
-from games.removal import remove, restore
+from games.reads.purchases import ValuedPurchase, latest_refund_act, library_purchases
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
     apply_sort,
     parse_find_filter,
 )
+from games.views.copy_pages import form_page, held_entry, one_click, press_key
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
     warn_unknown_sort,
 )
 from games.views.general import request_calendar_today
+from games.views.library_cards import release_words
+from games.views.purchase_menu import purchase_summary
 from games.views.removal import (
-    confirm_and_apply,
     confirm_and_remove,
     restore_and_return,
 )
-from games.views.returns import origin_from, return_url
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
-from games.writes.playergame import new_correlation_id, record_facts
+from games.writes.playergame import new_correlation_id
+from games.writes.purchase import (
+    record_purchase,
+    refund_purchase,
+    restate_purchase,
+)
+from games.writes.purchase import remove_purchase as remove_purchase_write
+from games.writes.purchase import restore_purchase as restore_purchase_write
 from timetracker.temporal import TemporalValue
 
 PURCHASE_COLUMNS: list[Column] = [
@@ -235,391 +232,193 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _purchase_additional_row() -> Node:
-    """The 'Submit & Create Session' button shown below the main Submit button."""
-    return ControlButton(
-        color="gray",
-        type="submit",
-        name="submit_and_redirect",
-    )["Submit & Create Session"]
+UNDO_OVERTAKEN = "This purchase changed since; nothing was undone."
+ALREADY_REFUNDED = "This purchase is already refunded."
 
 
-def _pricing_controls() -> Node:
-    """Pricing UI for the add-purchase form.
-
-    By default the form's own single Price field is the bundle price. When 2+
-    games are selected and "Separate price per game" is checked, the per-game
-    inputs (the general ``selection-fields`` element) take over and the bundle
-    Price is hidden. Toggle/visibility wiring lives in ts/add_purchase.ts; the
-    hidden ``pricing_mode`` tells the view which path to take.
-    """
-    return Div(id_="pricing-controls")[
-        Div(id_="separate-prices-row", class_="hidden")[
-            Checkbox(
-                name="separate_prices",
-                label="Separate price per game",
-                id_="id_separate_prices",
-            ),
-        ],
-        Input(
-            type="hidden",
-            name="pricing_mode",
-            id_="id_pricing_mode",
-            value="combined",
-        ),
-        SelectionFields(
-            source="games",
-            name_prefix="price_for_game_",
-            field_type="number",
-            min_items=2,
-            active=False,
-            input_attributes=[
-                ("step", "0.01"),
-                ("min", "0"),
-                ("inputmode", "decimal"),
-                ("placeholder", "Price"),
-            ],
-        ),
-    ]
+def _held_purchase(request: HttpRequest, purchase_id: UUID) -> Purchase:
+    library = cast(User, request.user).library
+    return owned_or_404(
+        library_purchases(library).select_related(*_PURCHASE_PATHS),
+        library,
+        id=purchase_id,
+    )
 
 
-#: No dispatch here: run_in_transaction refuses to nest.
-@transaction.atomic
-def _create_separate_purchases(form: PurchaseForm, post) -> None:
-    """Create one single-game Purchase per selected game from the shared form
-    fields, each priced from its own ``price_for_game_<id>`` input. The
-    ``m2m_changed`` signal sets ``num_purchases``/``price_per_game`` once each
-    game is attached."""
-    data = form.cleaned_data
-    shared = {
-        "library": form.library,
-        "platform": data.get("platform"),
-        "date_purchased": data["date_purchased"],
-        "date_refunded": data.get("date_refunded"),
-        "infinite": data.get("infinite", False),
-        "price_currency": data["price_currency"],
-        "ownership_type": data["ownership_type"],
-        "type": data["type"],
-        "related_game": data.get("related_game"),
-        "name": data.get("name") or "",
-    }
-    for game in data["games"]:
-        raw_price = post.get(f"price_for_game_{game.id}", "")
-        try:
-            price = float(raw_price) if raw_price not in (None, "") else 0.0
-        except ValueError:
-            price = 0.0
-        purchase = LegacyPurchase(price=price, **shared)
-        purchase.save()
-        purchase.games.set([game])
+def _any_purchase(request: HttpRequest, purchase_id: UUID) -> Purchase:
+    """Removed or not, for remove and restore."""
+    library = cast(User, request.user).library
+    return owned_or_404(
+        Purchase.objects.filter(library=library).select_related(*_PURCHASE_PATHS),
+        library,
+        id=purchase_id,
+    )
+
+
+_PURCHASE_PATHS = ("entry__player_game__game", "entry__release__platform")
+
+
+def _title(act: str, entry: LibraryEntry) -> str:
+    return f"{act} - {entry.player_game.game.name} ({release_words(entry)})"
+
+
+def _game_fallback(game: Game) -> dict[str, Any]:
+    return {"fallback": "games:view_game", "fallback_args": [game.pk, game.url_slug]}
 
 
 @login_required
-def add_purchase(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
-    library = cast(User, request.user).library
-    presentation = date_time_presentation_for_request(request)
-    initial = {"date_purchased": request_calendar_today(request, library)}
-
-    if request.method == "POST":
-        form = PurchaseForm(
-            request.POST or None,
-            initial=initial,
-            library=library,
-            user=cast(User, request.user),
-            presentation=presentation,
-        )
-        if form.is_valid():
-            if request.POST.get("pricing_mode") == "per_game":
-                _create_separate_purchases(form, request.POST)
-                return redirect(return_url(request, fallback="games:list_purchases"))
-            purchase = form.save()
-            if "submit_and_redirect" in request.POST:
-                return redirect(
-                    action_url(
-                        "games:add_session_for_game",
-                        game_id=purchase.first_game.id,
-                        origin=origin_from(request),
-                    )
-                )
-            return redirect(return_url(request, fallback="games:list_purchases"))
-    else:
-        if game_id:
-            game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-            form = PurchaseForm(
-                initial={
-                    **initial,
-                    "games": [game],
-                    "platform": game.platform,
-                },
-                library=library,
-                user=cast(User, request.user),
-                presentation=presentation,
-            )
-            # Chained from add_game: game and platform are pre-filled, so focus
-            # the first empty field the user still needs to fill instead.
-            form.fields["games"].widget.autofocus = False
-            form.fields["price"].widget.attrs["autofocus"] = "autofocus"
-        else:
-            form = PurchaseForm(
-                initial=initial,
-                library=library,
-                user=cast(User, request.user),
-                presentation=presentation,
-            )
-
-    return render_page(
+def add_purchase(request: HttpRequest, entry_id: UUID) -> HttpResponse:
+    user = cast(User, request.user)
+    entry = held_entry(request, entry_id)
+    form = PurchaseAddForm(
+        request.POST or None,
+        library=user.library,
+        presentation=date_time_presentation_for_request(request),
+        today=request_calendar_today(request, user.library),
+    )
+    return form_page(
         request,
-        AddForm(
-            form,
-            request=request,
-            fields=Fragment(FormFields(form), _pricing_controls()),
-            additional_row=_purchase_additional_row(),
+        form,
+        title=_title("Add purchase", entry),
+        write=lambda: record_purchase(
+            user,
+            form.draft(entry.pk),
+            correlation_id=new_correlation_id(),
+            idempotency_key=form.submission_key(),
         ),
-        title="Add New Purchase",
-        scripts=ModuleScript("dist/add_purchase.js"),
+        done="Purchase added.",
+        game=lambda: entry.player_game.game,
+        groups=purchase_groups(),
+        presentations=price_presentations(),
+        submit_label="Add purchase",
     )
 
 
 @login_required
 def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        LegacyPurchase.objects.for_library(library), library, id=purchase_id
-    )
-    form = PurchaseForm(
+    user = cast(User, request.user)
+    purchase = _held_purchase(request, purchase_id)
+    form = PurchaseEditForm(
         request.POST or None,
-        instance=purchase,
-        library=library,
-        user=cast(User, request.user),
+        purchase=purchase,
         presentation=date_time_presentation_for_request(request),
     )
-    if form.is_valid():
-        form.save()
-        return redirect(return_url(request, fallback="games:list_purchases"))
-    return render_page(
+
+    def restate() -> object:
+        cleaned = form.cleaned_data
+        return restate_purchase(
+            user,
+            purchase,
+            kind=cleaned["kind"],
+            name=cleaned["name"],
+            price=form.stated_price(),
+            note=cleaned["note"],
+            purchased=form.purchased(),
+            refund=form.refund_statement(),
+            correlation_id=new_correlation_id(),
+        )
+
+    return form_page(
         request,
-        AddForm(form, request=request, additional_row=_purchase_additional_row()),
-        title="Edit Purchase",
-        scripts=ModuleScript("dist/add_purchase.js"),
+        form,
+        title=_title("Edit purchase", purchase.entry),
+        write=restate,
+        done="Purchase saved.",
+        game=lambda: purchase.entry.player_game.game,
+        groups=edit_groups(),
+        presentations=edit_presentations(),
+    )
+
+
+@login_required
+def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
+    user = cast(User, request.user)
+    purchase = _any_purchase(request, purchase_id)
+    game = purchase.entry.player_game.game
+    return confirm_and_remove(
+        request,
+        purchase,
+        title="Remove purchase",
+        message=f"Remove this purchase of {game.name}?",
+        details=P()[
+            purchase_summary(purchase, date_time_presentation_for_request(request))
+        ],
+        **_game_fallback(game),
+        action=partial(
+            remove_purchase_write, user, purchase, correlation_id=new_correlation_id()
+        ),
+        removed="Purchase removed.",
+        undo="games:restore_purchase",
     )
 
 
 @login_required
 @require_POST
 def restore_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    """Undo; the plain manager, since the row is removed."""
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        LegacyPurchase.objects.filter(library=library), library, id=purchase_id
-    )
+    user = cast(User, request.user)
+    purchase = _any_purchase(request, purchase_id)
     return restore_and_return(
         request,
-        action=partial(restore, purchase),
-        restored="Purchase restored.",
-        fallback="games:list_purchases",
-    )
-
-
-@login_required
-def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        LegacyPurchase.objects.for_library(library), library, id=purchase_id
-    )
-    return confirm_and_remove(
-        request,
-        purchase,
-        title="Remove purchase",
-        message=f"Remove this purchase of {purchase.first_game}?",
-        fallback="games:list_purchases",
-        detail_url=reverse("games:view_purchase", args=[purchase_id]),
-        removed="Purchase removed.",
-        undo="games:restore_purchase",
-    )
-
-
-def _view_purchase_content(
-    purchase: LegacyPurchase, presentation: DateTimePresentation
-) -> Node:
-    first_game = purchase.first_game
-    owned = f"Owned on {presentation.format(purchase.date_purchased, 'date')}"
-    if purchase.date_refunded:
-        owned += f" (refunded {presentation.format(purchase.date_refunded, 'date')})"
-
-    row_class = "text-slate-500 text-type-body"
-    title_class = "text-type-title font-serif text-slate-500"
-    inner = Div(class_="flex flex-col gap-5 mb-3")[
-        Div(class_=title_class)[
-            Link(href=first_game.get_absolute_url())[first_game.name]
-        ],
-        Div(class_=row_class)[purchase.get_type_display()],
-        Div(class_=row_class)[owned],
-        Div(class_=row_class)[PriceConverted([purchase.standardized_price])],
-        Div(class_=row_class)[
-            P()[
-                "Price per game: ",
-                PriceConverted([floatformat(purchase.price_per_game, 0)]),
-                f" {purchase.converted_currency}",
-            ]
-        ],
-        Div(class_=row_class)["Games included in this purchase:"],
-        Ul()[
-            [
-                Li()[GameLink(game, game.name)]
-                for game in purchase.games.in_display_order()
-            ]
-        ],
-    ]
-    return ContentContainer(class_="dark:text-white")[inner]
-
-
-def _purchase_page_title(
-    purchase: LegacyPurchase, presentation: DateTimePresentation
-) -> str:
-    return label_with_details(
-        purchase.standardized_name,
-        f"{purchase.num_purchases} game{pluralize(purchase.num_purchases)}",
-        presentation.format(purchase.date_purchased, "date"),
-        purchase.standardized_price,
-    )
-
-
-@login_required
-def view_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        LegacyPurchase.objects.for_library(library), library, id=purchase_id
-    )
-    presentation = date_time_presentation_for_request(request)
-    return render_page(
-        request,
-        _view_purchase_content(purchase, presentation),
-        title=f"Purchase: {_purchase_page_title(purchase, presentation)}",
-    )
-
-
-def _refund(user: User, purchase: LegacyPurchase) -> None:
-    """Abandon every game of the purchase, then mark it refunded."""
-    if purchase.date_refunded is not None:
-        raise CommandFailed("This purchase is already refunded.", CONFLICT_STATUS)
-    correlation_id = new_correlation_id()
-    games = list(purchase.games.in_display_order())
-    for abandoned, game in enumerate(games):
-        try:
-            record_facts(
-                user,
-                game,
-                status=PlayerGameStatus.ABANDONED,
-                correlation_id=correlation_id,
-            )
-        except CommandFailed as failure:
-            if not abandoned:
-                raise
-            #: Earlier games stay abandoned; retry is safe.
-            retry = (
-                " Refunding again is safe."
-                if failure.status_code == CONFLICT_STATUS
-                else ""
-            )
-            raise CommandFailed(
-                f"{failure.message} {abandoned} of {len(games)} games were "
-                f"abandoned before this one.{retry}",
-                failure.status_code,
-            ) from failure
-    purchase.refund()
-
-
-@login_required
-def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        LegacyPurchase.objects.for_library(library), library, id=purchase_id
-    )
-
-    def refund() -> None:
-        _refund(cast(User, request.user), purchase)
-        messages.success(request, "Purchase refunded")
-
-    return confirm_and_apply(
-        request,
-        action=refund,
-        title="Refund purchase",
-        message=(
-            f"Mark this purchase of {purchase.first_game} as refunded? "
-            "Its games will be marked as abandoned."
+        action=partial(
+            restore_purchase_write, user, purchase, correlation_id=new_correlation_id()
         ),
-        confirm_label="Refund",
-        fallback="games:list_purchases",
+        restored="Purchase restored.",
+        **_game_fallback(purchase.entry.player_game.game),
     )
-
-
-def _split(purchase: LegacyPurchase) -> int:
-    """One purchase per game; answers how many."""
-    #: No dispatch here: run_in_transaction refuses to nest.
-    with transaction.atomic():
-        #: Locked: a second split waits, then refuses.
-        purchase = LegacyPurchase.objects.select_for_update().get(pk=purchase.pk)
-        if purchase.removed_at is not None:
-            raise CommandFailed("This purchase is already split.", CONFLICT_STATUS)
-        games = list(purchase.games.in_display_order())
-        count = len(games)
-        if count < 2:
-            raise CommandFailed(
-                "Only a purchase of two or more games can be split.", CONFLICT_STATUS
-            )
-        share = purchase.price / count
-        for game in games:
-            new_purchase = LegacyPurchase(
-                library=purchase.library,
-                price=share,
-                price_currency=purchase.price_currency,
-                date_purchased=purchase.date_purchased,
-                date_refunded=purchase.date_refunded,
-                infinite=purchase.infinite,
-                ownership_type=purchase.ownership_type,
-                type=purchase.type,
-                related_game=purchase.related_game,
-                name=purchase.name,
-                platform=purchase.platform,
-                needs_price_update=True,
-            )
-            try:
-                new_purchase.save()
-            except ValidationError as error:
-                raise CommandFailed(
-                    " ".join(error.messages), CONFLICT_STATUS
-                ) from error
-            new_purchase.games.set([game])
-        #: The parts carry the facts now.
-        remove(purchase)
-    return count
 
 
 @login_required
-def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        LegacyPurchase.objects.for_library(library), library, id=purchase_id
+@require_POST
+def refund_purchase_now(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
+    """Refunded today; Undo voids it."""
+    user = cast(User, request.user)
+    purchase = _held_purchase(request, purchase_id)
+    key = press_key(request, "purchase", "refund")
+    today = TemporalValue.from_day(request_calendar_today(request, user.library))
+
+    def refund() -> str:
+        refunded = refund_purchase(
+            user,
+            purchase,
+            ActStatement(today, ""),
+            correlation_id=new_correlation_id(),
+            idempotency_key=key,
+        )
+        if refunded.sequence is None:
+            raise CommandFailed(ALREADY_REFUNDED, CONFLICT_STATUS)
+        return reverse(
+            "games:undo_purchase_refund", args=[purchase.pk, refunded.sequence]
+        )
+
+    return one_click(
+        request, purchase.entry.player_game.game, write=refund, done="Refunded."
     )
-    #: What _split counts, removed games included.
-    count = purchase.games.count()
 
-    def split() -> None:
-        parts = _split(purchase)
-        messages.success(request, f"Split into {parts} purchases")
 
-    return confirm_and_apply(
+@login_required
+@require_POST
+def undo_purchase_refund(
+    request: HttpRequest, purchase_id: UUID, sequence: EventSequence
+) -> HttpResponse:
+    """Void this press's refund, if still latest."""
+    user = cast(User, request.user)
+    purchase = _held_purchase(request, purchase_id)
+
+    def void() -> None:
+        latest = latest_refund_act(user.library, purchase.pk)
+        if (
+            latest is None
+            or latest.sequence != sequence
+            or latest.event_type != PURCHASE_REFUND_EVENTS.stated.event_type
+        ):
+            raise CommandFailed(UNDO_OVERTAKEN, CONFLICT_STATUS)
+        restate_purchase(
+            user, purchase, refund=None, correlation_id=new_correlation_id()
+        )
+
+    return restore_and_return(
         request,
-        action=split,
-        title="Split purchase",
-        message=f"Split “{purchase.standardized_name}” into per-game purchases?",
-        details=P(class_="text-type-body")[
-            f"Creates {count} separate purchases, one per game, with the "
-            "price split evenly. Each can then be priced and refunded "
-            "independently."
-        ],
-        confirm_label="Split",
-        fallback="games:list_purchases",
-        #: The bundle's own page is gone once it splits.
-        reject=reverse("games:view_purchase", args=[purchase_id]),
+        action=void,
+        restored="Refund undone.",
+        **_game_fallback(purchase.entry.player_game.game),
     )

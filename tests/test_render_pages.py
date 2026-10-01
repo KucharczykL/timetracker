@@ -59,7 +59,6 @@ def test_every_read_only_route_is_rendered_once_or_per_row(furnished):
     assert set(plan.unmounted) <= {"games:settings_kit_preview"}
     assert set(names) | set(plan.unmounted) == set(READ_ONLY)
     assert names.count("games:view_game") == 2
-    assert names.count("games:view_purchase") == 1
     assert names.count("games:stats_by_year") == 2
     assert names.count("games:filter_builder") == len(FILTER_MODE_MODELS)
     assert names.count("games:list_games") == 1

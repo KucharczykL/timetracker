@@ -1,5 +1,4 @@
 import re
-from datetime import date
 
 import pytest
 from devices import create_device
@@ -7,9 +6,11 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from session_rows import session_row
 
-from games.models import Device, Game, LegacyPurchase, Platform, UserPreferences
+from games.models import Device, Game, Platform, UserPreferences
 from timetracker import settings_resolver
 
 
@@ -43,115 +44,21 @@ def _tag_with(html: str, **attributes: object) -> str:
     raise AssertionError(f"No tag contains {attributes!r}")
 
 
-@pytest.mark.parametrize(
-    "url_name", ["games:add_purchase", "games:add_purchase_for_game"]
-)
-def test_purchase_add_forms_use_user_currency(auth_client, user, game, url_name):
+@pytest.mark.parametrize("url_name", ["games:add_purchase", "games:add_library_entry"])
+def test_purchase_forms_use_user_currency(auth_client, user, game, url_name):
     _set_purchase_currency(user)
-    args = [game.pk] if url_name.endswith("for_game") else []
+    graph = default_graph(game, user.library)
+    target = (
+        record_entry(user.library, graph.release).pk
+        if url_name == "games:add_purchase"
+        else game.pk
+    )
 
-    html = auth_client.get(reverse(url_name, args=args)).content.decode()
+    html = auth_client.get(reverse(url_name, args=[target])).content.decode()
 
-    currency_input = _tag_with(html, id="id_price_currency")
+    currency_input = _tag_with(html, name="currency")
     assert 'value="EUR"' in currency_input
     assert 'placeholder="EUR"' in currency_input
-
-
-def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
-    auth_client, user, game
-):
-    _set_purchase_currency(user)
-    empty = LegacyPurchase.objects.create(
-        library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
-    )
-    empty.games.add(game)
-    LegacyPurchase.objects.filter(pk=empty.pk).update(price_currency="")
-    existing = LegacyPurchase.objects.create(
-        library=user.library,
-        date_purchased=date(2026, 1, 2),
-        price_currency="GBP",
-    )
-    existing.games.add(game)
-
-    empty_html = auth_client.get(
-        reverse("games:edit_purchase", args=[empty.pk])
-    ).content.decode()
-    existing_html = auth_client.get(
-        reverse("games:edit_purchase", args=[existing.pk])
-    ).content.decode()
-
-    assert 'value="EUR"' in _tag_with(empty_html, id="id_price_currency")
-    assert 'value="GBP"' in _tag_with(existing_html, id="id_price_currency")
-
-
-def test_purchase_edit_blank_currency_falls_back_to_user_currency(
-    auth_client, user, game
-):
-    _set_purchase_currency(user)
-    purchase = LegacyPurchase.objects.create(
-        library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
-    )
-    purchase.games.add(game)
-
-    response = auth_client.post(
-        reverse("games:edit_purchase", args=[purchase.pk]),
-        _purchase_post_data([game.pk], price_currency=""),
-    )
-
-    assert response.status_code == 302
-    purchase.refresh_from_db()
-    assert purchase.price_currency == "EUR"
-
-
-def _purchase_post_data(game_ids: list[int], **overrides: object) -> dict[str, object]:
-    data: dict[str, object] = {
-        "games": game_ids,
-        "platform": "",
-        "date_purchased": "2026-01-01",
-        "price": "10",
-        "price_currency": "",
-        "ownership_type": LegacyPurchase.DIGITAL,
-        "type": LegacyPurchase.GAME,
-        "name": "",
-    }
-    data.update(overrides)
-    return data
-
-
-def test_combined_purchase_save_falls_back_to_user_currency(auth_client, user, game):
-    _set_purchase_currency(user)
-
-    response = auth_client.post(
-        reverse("games:add_purchase"),
-        _purchase_post_data([game.pk], pricing_mode="combined"),
-    )
-
-    assert response.status_code == 302
-    assert LegacyPurchase.objects.get().price_currency == "EUR"
-
-
-def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, game):
-    second = Game.objects.create(
-        library=user.library, name="Celeste", platform=game.platform
-    )
-    _set_purchase_currency(user)
-
-    response = auth_client.post(
-        reverse("games:add_purchase"),
-        _purchase_post_data(
-            [game.pk, second.pk],
-            pricing_mode="per_game",
-            **{
-                f"price_for_game_{game.pk}": "10",
-                f"price_for_game_{second.pk}": "20",
-            },
-        ),
-    )
-
-    assert response.status_code == 302
-    assert set(LegacyPurchase.objects.values_list("price_currency", flat=True)) == {
-        "EUR"
-    }
 
 
 @pytest.mark.parametrize(

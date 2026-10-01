@@ -21,7 +21,6 @@ from games.models import (
     Device,
     Game,
     HistoricalPlaytime,
-    LegacyPurchase,
     Platform,
     PlayerSession,
     Playthrough,
@@ -31,25 +30,6 @@ from timetracker.settings_commands import change_user_setting
 from timetracker.temporal import TemporalValue
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-
-class _TitleParser(HTMLParser):
-    title = ""
-    _in_title = False
-    _document_title_seen = False
-
-    def handle_starttag(self, tag, attrs) -> None:
-        if tag == "title" and not self._document_title_seen:
-            self._in_title = True
-            self._document_title_seen = True
-
-    def handle_endtag(self, tag) -> None:
-        if tag == "title":
-            self._in_title = False
-
-    def handle_data(self, data) -> None:
-        if self._in_title:
-            self.title += data
 
 
 class _DatePartParser(HTMLParser):
@@ -105,15 +85,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
     game = Game.objects.create(
         library=user.library, name="Calendar Game", platform=platform
     )
-    purchase = LegacyPurchase.objects.create(
-        price_currency="CZK",
-        library=user.library,
-        date_purchased=date(2022, 9, 26),
-        date_refunded=date(2022, 9, 27),
-        platform=platform,
-        num_purchases=1,
-    )
-    purchase.games.add(game)
     listed = refund_purchase(
         record_purchase(
             record_entry(user.library, default_graph(game, user.library).release),
@@ -194,15 +165,6 @@ def test_non_default_presentation_reaches_every_server_display_path(
             assert date_part_parser.parts[:3] == ["year", "day", "month"]
         if url == reverse("games:stats_by_year", args=[2022]):
             assert "září 2022" not in html
-
-    purchase_html = client.get(
-        reverse("games:view_purchase", args=[purchase.pk])
-    ).content.decode()
-    assert "Owned on 2022.26.09" in purchase_html
-    title_parser = _TitleParser()
-    title_parser.feed(purchase_html)
-    assert "2022.26.09" in title_parser.title
-    assert "2022-09-26" not in title_parser.title
 
     game_html = client.get(game.get_absolute_url()).content.decode()
     #: The History datetime shares the session

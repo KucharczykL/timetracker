@@ -34,7 +34,6 @@ READ_ONLY: frozenset[UrlName] = frozenset(
         "games:stats_alltime",
         "games:stats_by_year",
         "games:view_game",
-        "games:view_purchase",
     }
 )
 
@@ -50,7 +49,6 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:add_playthrough",
         "games:add_playthrough_for_game",
         "games:add_purchase",
-        "games:add_purchase_for_game",
         "games:add_session",
         "games:add_session_for_game",
         "games:add_to_library",
@@ -80,7 +78,7 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:run_bulk_action",
         "games:undo_bulk_action",
         "games:reclassify_session",
-        "games:refund_purchase",
+        "games:refund_purchase_now",
         "games:reset_session",
         "games:restore_device",
         "games:restore_game",
@@ -88,12 +86,12 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:restore_library_entry",
         "games:undo_library_entry_end",
         "games:undo_library_entry_resume",
+        "games:undo_purchase_refund",
         "games:restore_platform",
         "games:restore_playthrough",
         "games:restore_preset",
         "games:restore_purchase",
         "games:restore_session",
-        "games:split_purchase",
         "games:state_list_columns",
         "games:undo_reclassify_session",
     }
