@@ -702,11 +702,11 @@ def _append(library, events, key: str) -> None:
         )
 
 
-def _hand_end(entry) -> NewEvent:
+def _end_event(entry, *, way: EndWay, ended: TemporalValue) -> NewEvent:
     return ENTRY_ACCESS_END_EVENTS.stated.new(
         aggregate_id=entry.pk,
-        effective_time=JULY,
-        payload={"way": EndWay.SOLD.value, "note": ""},
+        effective_time=ended,
+        payload={"way": way.value, "note": ""},
     )
 
 
@@ -719,7 +719,8 @@ def test_a_reused_key_lends_no_hand_end_to_the_refund(owned_library, graph):
     )
     _dispatch(owned_library, DescribePurchase(purchase.pk, name="Deluxe"))
 
-    _append(owned_library, [_hand_end(borrowed)], refunded.idempotency_key)
+    hand_end = _end_event(borrowed, way=EndWay.SOLD, ended=JULY)
+    _append(owned_library, [hand_end], refunded.idempotency_key)
 
     assert result.outcome is CommandOutcome.APPENDED
     assert not refund_owns_the_end(owned_library, _fresh(purchase))
@@ -732,20 +733,12 @@ def test_one_append_of_a_refund_and_its_end_owns_it(owned_library, entry, purcha
             PURCHASE_REFUND_EVENTS.stated.new(
                 aggregate_id=purchase.pk, effective_time=JUNE, payload={"note": ""}
             ),
-            _copy_end_event(entry),
+            _end_event(entry, way=EndWay.REFUNDED, ended=JUNE),
         ],
         "converted-refund",
     )
 
     assert refund_owns_the_end(owned_library, _fresh(purchase))
-
-
-def _copy_end_event(entry) -> NewEvent:
-    return ENTRY_ACCESS_END_EVENTS.stated.new(
-        aggregate_id=entry.pk,
-        effective_time=JUNE,
-        payload={"way": EndWay.REFUNDED.value, "note": ""},
-    )
 
 
 # --- the rest of the refusals ---------------------------------------------

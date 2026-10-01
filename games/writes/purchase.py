@@ -132,13 +132,6 @@ _COPY_END_BY_TYPE: dict[EventType, CopyEnd] = {
     ENTRY_ACCESS_END_EVENTS.corrected.event_type: CopyEnd.MOVED,
     ENTRY_ACCESS_END_EVENTS.voided.event_type: CopyEnd.TAKEN_BACK,
 }
-_REFUND_ACTS = frozenset(
-    (
-        PURCHASE_REFUND_EVENTS.stated.event_type,
-        PURCHASE_REFUND_EVENTS.corrected.event_type,
-        PURCHASE_REFUND_EVENTS.voided.event_type,
-    )
-)
 
 
 class RestatedPurchase(NamedTuple):
@@ -180,22 +173,26 @@ def restate_purchase(
         )
     if result.outcome is not CommandOutcome.APPENDED:
         return RestatedPurchase(appended=False, copy_end=None)
-    types = {event.event_type for event in dispatched_events(result)}
-    if not types & _REFUND_ACTS:
-        return RestatedPurchase(appended=True, copy_end=None)
-    copy_ends = [_COPY_END_BY_TYPE[name] for name in types & _COPY_END_BY_TYPE.keys()]
-    return RestatedPurchase(
-        appended=True, copy_end=copy_ends[0] if copy_ends else CopyEnd.LEFT
-    )
+    return RestatedPurchase(appended=True, copy_end=_copy_end_of(result))
+
+
+def _copy_end_of(result: CommandResult) -> CopyEnd | None:
+    """What the dispatch's refund act did; None without one."""
+    event_types = {event.event_type for event in dispatched_events(result)}
+    if event_types.isdisjoint(PURCHASE_REFUND_EVENTS.family):
+        return None
+    for event_type, copy_end in _COPY_END_BY_TYPE.items():
+        if event_type in event_types:
+            return copy_end
+    return CopyEnd.LEFT
 
 
 def _refund_statement(refund: ActStatement | None | Keep) -> RefundStatement | None:
     """The command's spelling of the write's."""
-    match refund:
-        case Keep():
-            return None
-        case None:
-            return TAKE_REFUND_BACK
+    if isinstance(refund, Keep):
+        return None
+    if refund is None:
+        return TAKE_REFUND_BACK
     return refund
 
 

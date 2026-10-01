@@ -231,7 +231,7 @@ def _held_copy(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
 class RefundTakenBack(StrEnum):
     """A refund statement that voids it."""
 
-    #: A string, so the fingerprint can encode it.
+    #: A string the fingerprint can encode.
     TAKEN_BACK = "taken_back"
 
 
@@ -250,17 +250,18 @@ class StandingRefund(NamedTuple):
 def _standing_refund(
     purchase: Purchase, refund: RefundStatement | None
 ) -> StandingRefund | None:
+    held = stated(purchase, PURCHASE_REFUND)
     match refund:
         case RefundTakenBack():
             return None
         case ActStatement():
-            held = stated(purchase, PURCHASE_REFUND)
             return StandingRefund(
                 refund.when, is_new=held is None or held.when != refund.when
             )
-    if stated(purchase, PURCHASE_REFUND) is None:
-        return None
-    return StandingRefund(purchase.refunded, is_new=False)
+        case None if held is None:
+            return None
+        case None:
+            return StandingRefund(held.when, is_new=False)
 
 
 def _refuse_a_reversed_refund(
