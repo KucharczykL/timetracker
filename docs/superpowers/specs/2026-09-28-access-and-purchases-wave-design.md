@@ -418,7 +418,7 @@ restates in two dispatches (`restate_entry`, `Keep`/`KEEP` in
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the fourth act of `ResumableEndpoint` over `ResumableEndpointEvents`, its own type beside the three-act `Endpoint`, in the end's family, projected as a void is, through `resume_endpoint`; a resume of a non-resumable endpoint and a void of an opening one fail in mypy |
-| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose removal shares the entry removal's idempotency key, so Undo restores both and a purchase removed on its own stays removed; restore refuses under a removed PlayerGame or Release. `Purchase.entry` stays registered for `foreign_referrer` and blocks nothing (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy) |
+| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose removal shares the entry removal's idempotency key, so Undo restores both and a purchase removed on its own stays removed; restore refuses under a removed PlayerGame or Release. `Purchase.entry` is registered with `BlockingReferrer.on(..., cascades=True)`, which `blocking_referrer` skips and `foreign_referrer` still reads (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy); `RestoreEntry` builds the `purchase.restored` events itself, since `RestorePurchase` refuses under a removed copy |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
 takes `target`, and `referrers_of(target)` reads the tuple at each call;
@@ -691,7 +691,9 @@ picker. A pass, an upgrade or a second purchase of a copy is added
 through "Add purchase…" in the copy's ⋯ menu, on Game detail and the
 Library tab, a page stating Kind, Name, Paid or Free amount, Purchased
 and Note; the Library page's "Add purchase" summary action goes. The
-"separate price per game" mode and the row Split go with the bundle.
+"separate price per game" mode, the row Split and the old page's "Submit
+& Create Session" go with the bundle; Add Game's second submit reads
+"Submit & Add to library".
 
 **Edit copy**: access, format, release, acquired, note. The end of
 access has its own pages: "I no longer have it" and "I have it again"
@@ -886,7 +888,7 @@ edition word.
 | P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, the legacy id kept on a bundle's first game and a UUIDv7 minted for the rest, `verify-purchase-conversion`, the reconciliation |
 | P5a | #734, #735, the read half of #1266 | every read, since the stats links point into the Purchases list and a member between the two would emit links its own list refuses: `PurchaseFilter` on the projection and the `purchases` mode on it, `purchase_filter`, `purchase_count` and `purchase_price_total` on the new paths, the saved presets rewritten once, the Purchases list reading the projection with the wave's columns and facets and no row act yet, every statistic through entries, purchases and valuations, `stats_links` with their parity tests, #1157's readers, and the parity command that judges the new readers against P4's snapshot (a command of its own, since P5c drops the table `verify_purchase_conversion` reads) |
 | P5b | #724 | every write: the purchase segment on Add to library, Add purchase on a copy, Edit purchase, one-click Refund with sequence-keyed Undo, Remove and Restore through commands, the Purchases list's row menu, Game detail's purchases, and the legacy add, edit, view, Split and Refund routes, `PurchaseForm` and `add_purchase.ts` retired; inside the stack P5a still writes through the legacy form, so a purchase added there shows nowhere until P5b, a state `main` never holds |
-| P5b2 | the rest of #1266 | the Purchases list selectable, tray Edit and Remove (`purchase.edit`, `purchase.remove`, `EventRows`), the Conversion review section with its Hide toggle |
+| P5b2 | the rest of #1266 | the Purchases list selectable, tray Edit and Remove (`purchase.edit`, `purchase.remove`, `EventRows`), the Conversion review section with its Hide toggle, and the Library tab's Purchases column |
 | P5c | #736 | `LegacyPurchase`, its tables, routes, signals and float cache dropped, P4's `verify_purchase_conversion` and reconciliation with them, the fixture regenerated |
 
 Each member passes the full gate on its own against a fresh database.
