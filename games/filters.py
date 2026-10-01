@@ -1386,12 +1386,14 @@ def filter_queryset_for_library(
         LibraryEntry,
         PlayerSession,
         Playthrough,
+        Purchase,
     )
     from games.reads.entries import library_entries
     from games.reads.games_list import games_list_base
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
+    from games.reads.purchases import library_purchases
 
     model = apps.get_model("games", model_name)
     if model is Game:
@@ -1404,6 +1406,8 @@ def filter_queryset_for_library(
         return library_records(library)
     if model is LibraryEntry:
         return library_entries(library)
+    if model is Purchase:
+        return library_purchases(library).annotated_for_filtering(library)
     return model.objects.for_library(library)
 
 
@@ -1421,12 +1425,14 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Platform,
         PlayerSession,
         Playthrough,
+        Purchase,
     )
     from games.reads.calendar import calendar_day_zone
     from games.reads.entries import library_entries
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
+    from games.reads.purchases import library_purchases
 
     scopes: dict[builtins.type[Model], ScopeThunk] = {
         #: tracked_by, not for_library: a nested game filter resolves
@@ -1436,6 +1442,9 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         PlayerSession: cache(lambda: library_sessions(library)),
         HistoricalPlaytime: cache(lambda: library_records(library)),
         LibraryEntry: cache(lambda: library_entries(library)),
+        Purchase: cache(
+            lambda: library_purchases(library).annotated_for_filtering(library)
+        ),
         LegacyPurchase: cache(lambda: LegacyPurchase.objects.for_library(library)),
         Playthrough: cache(lambda: runs_with_condition(library)),
         Device: cache(lambda: Device.objects.for_library(library)),

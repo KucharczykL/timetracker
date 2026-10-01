@@ -5,15 +5,19 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from django.db.models import (
+    CharField,
+    DecimalField,
     Exists,
     F,
     Func,
+    IntegerField,
     OuterRef,
     Q,
     QuerySet,
     Subquery,
     Value,
 )
+from django.db.models.expressions import Expression
 from django.db.models.functions import Coalesce, ExtractYear, NullIf
 
 from games.events.purchase import PURCHASE_REFUND_EVENTS
@@ -135,17 +139,53 @@ class ValuedPurchase(Protocol):
     valuation_currency: CurrencyCode | None
 
 
+class UnscopedValuationRead(RuntimeError):
+    """A valuation alias executed without a library."""
+
+
+class UnscopedValuationAlias(Expression):
+    """Resolves for validation; refuses to compile."""
+
+    def as_sql(self, compiler, connection):
+        raise UnscopedValuationRead(
+            "A valuation read was executed without a library; state one."
+        )
+
+
+type Annotations = dict[str, Expression | Func | Subquery]
+
+
+def valuation_annotations(
+    library: UserLibrary | None,
+) -> tuple[Annotations, Annotations]:
+    """The rate year, then what reads it."""
+    if library is None:
+        return (
+            {"rate_year": UnscopedValuationAlias(output_field=IntegerField())},
+            {
+                "valuation_amount": UnscopedValuationAlias(
+                    output_field=DecimalField(max_digits=26, decimal_places=2)
+                ),
+                "valuation_currency": UnscopedValuationAlias(
+                    output_field=CharField(null=True)
+                ),
+            },
+        )
+    current = current_valuation(library)
+    return (
+        {"rate_year": valuation_year(calendar_day_zone(library))},
+        {
+            "valuation_amount": Subquery(current.values("amount")[:1]),
+            "valuation_currency": NullIf(_published_target(library), Value("")),
+        },
+    )
+
+
 def with_valuation(
     purchases: PurchaseQuerySet, library: UserLibrary
 ) -> PurchaseQuerySet:
     """Annotate rows into ``ValuedPurchase``."""
-    current = current_valuation(library)
-    return purchases.annotate(
-        rate_year=valuation_year(calendar_day_zone(library))
-    ).annotate(
-        valuation_amount=Subquery(current.values("amount")[:1]),
-        valuation_currency=NullIf(_published_target(library), Value("")),
-    )
+    return purchases.annotated_for_filtering(require_library(library))
 
 
 def readable_purchases(library: UserLibrary) -> PurchaseQuerySet:

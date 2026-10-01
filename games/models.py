@@ -2400,6 +2400,42 @@ class PurchaseQuerySet(RemovableMixin, models.QuerySet["Purchase"]):
 
     ancestor_marks = ("entry", "entry__player_game")
 
+    #: The library the valuation alias reads.
+    _valuation_library: UserLibrary | None = None
+
+    def _clone(self) -> PurchaseQuerySet:
+        #: Django's hook; django-stubs declares no `_clone`.
+        clone: PurchaseQuerySet = super()._clone()  # type: ignore[misc]
+        clone._valuation_library = self._valuation_library
+        return clone
+
+    def annotated_for_filtering(
+        self, library: UserLibrary | None = None
+    ) -> PurchaseQuerySet:
+        """Register the valuation alias.
+
+        As the run's condition aliases: a second call naming the
+        same library is a no-op, one naming another is refused,
+        and without a library the names resolve and refuse to
+        compile.
+        """
+        from games.reads.purchases import valuation_annotations
+
+        if "valuation_amount" in self.query.annotations:
+            if library is not None and library != self._valuation_library:
+                raise ValueError(
+                    "this queryset already carries a valuation alias from "
+                    f"{self._valuation_library}; annotate once, at the read "
+                    "that states the scope"
+                )
+            return self
+        rate_year, valuation = valuation_annotations(library)
+        if library is None:
+            return self.alias(**rate_year).alias(**valuation)
+        queryset = self.annotate(**rate_year).annotate(**valuation)
+        queryset._valuation_library = library
+        return queryset
+
 
 class Purchase(ProjectionModel):
     """One transaction for one copy; Purchases writes."""
