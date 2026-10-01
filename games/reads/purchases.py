@@ -43,11 +43,7 @@ def library_purchases(library: UserLibrary) -> PurchaseQuerySet:
 
 
 def valuation_year(zone: ZoneInfo) -> Func:
-    """The year whose rate values a purchase.
-
-    The purchased day's first year, else the year it was
-    recorded in the calendar's zone.
-    """
+    """The rate's year: purchased, else recorded."""
     return Coalesce(
         ExtractYear("purchased_lower"),
         ExtractYear("purchased_upper"),
@@ -86,10 +82,9 @@ def _published_target(library: UserLibrary) -> Subquery:
 
 
 def current_valuation(library: UserLibrary) -> QuerySet[PurchaseValuation]:
-    """The outer purchase's valuation, while its inputs still hold.
+    """The outer purchase's valuation, while current.
 
-    The outer row carries ``rate_year``. A rate is null exactly
-    where the purchase needs none; otherwise it is the stored one.
+    The outer row must carry ``rate_year``.
     """
     needs_no_rate = Q(source_currency=F("target_currency")) | Q(source_amount=0)
     stored_rate = ExchangeRate.objects.filter(

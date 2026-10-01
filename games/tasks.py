@@ -216,7 +216,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
 
 
 def recover_library_price_conversions() -> None:
-    """Daily recovery: due failed runs, then stale valuations at rest."""
+    """Enqueue due runs; request stale libraries."""
     stale = PurchaseConversionState.objects.filter(
         requested_version__gt=F("published_version")
     ).filter(

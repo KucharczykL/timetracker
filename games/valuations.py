@@ -9,7 +9,7 @@ from uuid import UUID
 from games.models import PurchaseValuation, UserLibrary
 
 CENT = Decimal("0.01")
-#: Exact for every amount and rate the columns hold.
+#: Exact for every storable amount and rate.
 PRODUCT_PRECISION = 60
 
 

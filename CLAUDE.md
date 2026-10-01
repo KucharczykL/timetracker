@@ -219,7 +219,17 @@ docs/           — Additional documentation
   `access_end`. An ended device stays in session and record pickers,
   hinted, and is no default. Contract is
   [A device's access ends](docs/superpowers/specs/2026-09-28-issue-1275-device-access-end-design.md)
-- **ExchangeRate** — cached FX rates per currency pair per year
+- **ExchangeRate** — cached FX rates per currency pair per year;
+  `rate` is `Decimal(24, 12)`, read and fetched through `exchange_rate`
+  (`games/exchange_rates.py`), parsed without a float
+- **PurchaseValuation** — conventional, derived (#728, #729; P3): one
+  row per purchase key and target, `amount` `Decimal(26, 2)` rounded half
+  up once, beside its inputs (`source_amount`, `source_currency`,
+  `rate_year`, `rate`, null where none is needed). The currency task alone
+  writes it, through `publish_valuations` (`games/valuations.py`), whole
+  per library. `stale_purchases`/`with_valuation` in
+  `games/reads/purchases.py` read the current one. Contract is
+  [Purchase valuations](docs/superpowers/specs/2026-10-01-issue-728-purchase-valuation-design.md)
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read; beside them two Visibility flags, `excluded_from_unfinished` and `excluded_from_dropped` (#1334), each read by its own figure alone. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — second projection: one row per run at a tracked game, written
@@ -1057,7 +1067,10 @@ Filter presets have no classic views — they live on Ninja API; the UI is
 **Background tasks**: django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
 broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
 `cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and converting purchase prices to
-resolved site `DEFAULT_CURRENCY`.
+resolved site `DEFAULT_CURRENCY`. One run values legacy rows and
+`PurchaseValuation`s and publishes both. A purchase write that moves a
+value calls `request_revaluation`; the daily recovery requests a library at
+rest with `stale_purchases`.
 
 **Toast middleware** (`games/toast_middleware.py`): converts Django messages
 into one `X-Events` header carrying every queued message as a `show-toast`
@@ -1130,7 +1143,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   named key, `amount` with `currency` and `purchased` with `purchase_note`
   or 422, and `refund`, `{refunded, note}` or null voiding it, all in one
   dispatch. `amount` is a JSON number or string in and a string out;
-  `check_price` answers a bad one at 409. No removal route
+  `check_price` answers a bad one at 409. `valuation` is null or the
+  current `{amount, currency}`. No removal route
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update

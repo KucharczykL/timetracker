@@ -100,10 +100,7 @@ def _appended_types(result: CommandResult) -> frozenset[EventType]:
 
 
 def _revalue_after(actor: User, event_types: frozenset[EventType]) -> None:
-    """Request a run; a crash before it loses it.
-
-    The daily recovery finds what a lost request leaves stale.
-    """
+    """Request a run; recovery catches a loss."""
     if not VALUATION_EVENTS.isdisjoint(event_types):
         request_revaluation(actor.library)
 

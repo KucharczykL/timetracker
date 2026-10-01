@@ -1286,7 +1286,7 @@ class LegacyPurchase(models.Model):
         verbose_name_plural = "purchases"
 
 
-#: Twelve places hold every rate the API answers.
+#: Places of a stored rate.
 RATE_PLACES: Final = 12
 
 
