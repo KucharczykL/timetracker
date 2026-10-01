@@ -446,16 +446,25 @@ nothing. In order:
    purchase's platform; the entry of step 4 names that Release. A game
    holding a demo Release beside its full one is in the review surface.
 4. **Entries.** One per (purchase, game). Access and format by the table
-   below; acquired the purchase day, exact; an end with way `refunded` on
-   the refund day where one exists. The 81 non-owned rows at price 0
+   below; acquired the purchase day, exact. An Owned copy of a refunded
+   `game` purchase is created unended: its end comes with the refund in
+   step 5, or no converted refund would own its copy's end. A refunded
+   copy that is not Owned takes its end here, way `refunded` on the
+   refund day, as a hand-stated one. The 81 non-owned rows at price 0
    become an entry and no Purchase. A game bought twice gets two entries
    on one Release.
 5. **Purchases.** Kind (`du` → `upgrade`), name, amount quantized to two
    places (two rows change; the delta is reported), currency upper-cased
    (three rows), 0 → Free on Epic Games Store, else unknown; the two
-   endpoints; the entry link. Valuations are seeded from `converted_price`
-   at the current published version; sums per currency are compared before
-   and after.
+   endpoints; the entry link. A refund is appended in P2's shape:
+   `purchase.refunded` and the copy's `libraryentry.access_ended` (way
+   `refunded`) in one append under one idempotency key, the copy
+   unended until then, so the refund owns the end and a later void or
+   correction reaches it. The pass writes events directly, as #700 did,
+   since a migration's transaction cannot host a dispatch; the shape is
+   what `RefundPurchase` would write. Valuations are seeded from
+   `converted_price` at the current published version; sums per currency
+   are compared before and after.
 6. **Infinite (30 games).** Both exclusions stated through
    `RecordPlayerGameFacts`; the 6 mixed games are printed with the old and
    new backlog counts.
