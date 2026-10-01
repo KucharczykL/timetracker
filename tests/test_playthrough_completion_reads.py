@@ -12,11 +12,11 @@ from games.commands.playergame import RemovePlayerGame
 from games.commands.playthrough import RemovePlaythrough
 from games.events.dispatch import dispatch
 from games.models import (
+    LegacyPurchase,
     PlayerGame,
     PlayerGameStatus,
     Playthrough,
     PlaythroughKind,
-    Purchase,
 )
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
@@ -34,7 +34,7 @@ pytestmark = pytest.mark.untracked_games
 def read(library, purchase):
     """The value and day the purchase reports."""
     row = (
-        Purchase.objects.for_library(library)
+        LegacyPurchase.objects.for_library(library)
         .annotate(
             value=reported_completion(library, PURCHASE_RUNS),
             day=reported_completion_day(library, PURCHASE_RUNS),
@@ -289,7 +289,7 @@ def test_the_identity_settles_a_full_tie(owned_user, owned_library):
     _, second = add_game(owned_user, owned_library, purchase, "Two", same_day)
 
     row = (
-        Purchase.objects.for_library(owned_library)
+        LegacyPurchase.objects.for_library(owned_library)
         .annotate(
             run=Subquery(
                 ranked_completions(owned_library, PURCHASE_RUNS).values("pk")[:1]
@@ -325,7 +325,7 @@ def test_the_act_and_the_value_read_one_path(owned_user, owned_library):
 
     rows = {
         row.name: (row.act, row.value)
-        for row in Purchase.objects.for_library(owned_library).annotate(
+        for row in LegacyPurchase.objects.for_library(owned_library).annotate(
             act=completion_exists(owned_library, None),
             value=reported_completion(owned_library, PURCHASE_RUNS),
         )

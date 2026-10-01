@@ -14,7 +14,7 @@ from django.test import Client
 from django.utils import timezone
 
 from games.models import (
-    Purchase,
+    LegacyPurchase,
     PurchaseConversionState,
     UserLibrary,
     UserPreferences,
@@ -39,7 +39,7 @@ def _purchase(
     converted=111,
     converted_currency="EUR",
 ):
-    return Purchase.objects.create(
+    return LegacyPurchase.objects.create(
         library=owner.library,
         price=price,
         price_currency=currency,
@@ -252,13 +252,13 @@ def test_publication_rolls_back_every_row_when_bulk_update_fails(owner, monkeypa
     monkeypatch.setattr(tasks, "_get_exchange_rate", lambda *_args: 2)
 
     def partial_then_fail(objects, fields):
-        Purchase.objects.filter(pk=objects[0].pk).update(
+        LegacyPurchase.objects.filter(pk=objects[0].pk).update(
             converted_price=objects[0].converted_price,
             converted_currency=objects[0].converted_currency,
         )
         raise RuntimeError("database write interrupted")
 
-    monkeypatch.setattr(Purchase.objects, "bulk_update", partial_then_fail)
+    monkeypatch.setattr(LegacyPurchase.objects, "bulk_update", partial_then_fail)
 
     tasks.convert_library_prices(str(owner.library.pk), 1)
 
@@ -610,7 +610,7 @@ def test_losing_same_version_worker_cannot_republish_after_winner(owner, monkeyp
     )
 
     def publish_winner_while_loser_fetches(*_args):
-        Purchase.objects.filter(pk=purchase.pk).update(
+        LegacyPurchase.objects.filter(pk=purchase.pk).update(
             converted_price=25,
             converted_currency="CZK",
             needs_price_update=False,
@@ -652,7 +652,7 @@ def test_new_purchase_rolls_back_when_conversion_version_cannot_be_saved(
     with pytest.raises(RuntimeError, match="conversion state unavailable"):
         _purchase(owner)
 
-    assert not Purchase.objects.filter(library=owner.library).exists()
+    assert not LegacyPurchase.objects.filter(library=owner.library).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -723,7 +723,7 @@ def test_purchase_date_edit_requests_conversion_for_the_new_rate_year(
 
     monkeypatch.setattr(conversion, "async_task", Mock())
     purchase = _purchase(owner)
-    Purchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
+    LegacyPurchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
     _state(
         owner,
         requested_version=1,
@@ -754,7 +754,7 @@ def test_purchase_fallback_insert_requests_conversion(owner, monkeypatch):
 
     monkeypatch.setattr(conversion, "async_task", Mock())
     purchase = _purchase(owner)
-    Purchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
+    LegacyPurchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
     _state(
         owner,
         requested_version=1,
@@ -764,7 +764,7 @@ def test_purchase_fallback_insert_requests_conversion(owner, monkeypatch):
         status=PurchaseConversionState.Status.COMPLETE,
     )
     purchase.needs_price_update = False
-    Purchase.objects.filter(pk=purchase.pk).delete()
+    LegacyPurchase.objects.filter(pk=purchase.pk).delete()
 
     purchase.save()
 
@@ -799,7 +799,7 @@ def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeyp
     editor_at_state_lock = Event()
     release_worker = Event()
     errors: list[BaseException] = []
-    original_bulk_update = Purchase.objects.bulk_update
+    original_bulk_update = LegacyPurchase.objects.bulk_update
 
     def hold_publication(objects, fields):
         worker_at_publication.set()
@@ -807,7 +807,7 @@ def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeyp
             raise TimeoutError("editor never reached the conversion state")
         return original_bulk_update(objects, fields)
 
-    monkeypatch.setattr(Purchase.objects, "bulk_update", hold_publication)
+    monkeypatch.setattr(LegacyPurchase.objects, "bulk_update", hold_publication)
 
     def run_worker():
         close_old_connections()
@@ -828,7 +828,7 @@ def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeyp
 
         try:
             with connection.execute_wrapper(observe_state_lock), transaction.atomic():
-                edited = Purchase.objects.get(pk=purchase.pk)
+                edited = LegacyPurchase.objects.get(pk=purchase.pk)
                 edited.price = 20
                 edited.save(update_fields=["price", "updated_at"])
         except Exception as error:  # noqa: BLE001 - return thread failures
@@ -915,7 +915,7 @@ def test_statistics_never_pair_new_total_with_previous_currency(owner):
             state = PurchaseConversionState.objects.select_for_update().get(
                 library=owner.library
             )
-            Purchase.objects.filter(pk=purchase.pk).update(
+            LegacyPurchase.objects.filter(pk=purchase.pk).update(
                 converted_price=18,
                 converted_currency="CZK",
                 needs_price_update=False,

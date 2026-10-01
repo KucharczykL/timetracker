@@ -344,7 +344,7 @@ def test_within_sits_beside_between_in_the_vocabulary():
 
 
 def test_within_is_offered_on_an_interval_field_alone():
-    from games.filters import PurchaseFilter
+    from games.filters import LegacyPurchaseFilter
 
     when = next(
         entry
@@ -353,7 +353,7 @@ def test_within_is_offered_on_an_interval_field_alone():
     )
     purchased = next(
         entry
-        for entry in field_metadata(PurchaseFilter)
+        for entry in field_metadata(LegacyPurchaseFilter)
         if entry["name"] == "date_purchased"
     )
     assert Modifier.WITHIN.value in when["modifiers"]

@@ -30,7 +30,7 @@ from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import model_field_registry
-from games.models import Game, Platform, Purchase, UserLibrary
+from games.models import Game, LegacyPurchase, Platform, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.days import DayInterval
 from games.reads.player_sessions import library_sessions
@@ -88,7 +88,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
             else False
         ),
         "purchase_available": (
-            Purchase.objects.for_library(library).exists()
+            LegacyPurchase.objects.for_library(library).exists()
             if library is not None
             else False
         ),

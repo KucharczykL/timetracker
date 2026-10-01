@@ -21,11 +21,11 @@ from session_rows import session_row
 
 from games.models import (
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGame,
     Playthrough,
     PlaythroughKind,
-    Purchase,
 )
 
 ZONEINFO = ZoneInfo("Europe/Prague")
@@ -92,7 +92,7 @@ class DataTableGateTest(TestCase):
             game, device=device, started_at=BASE, ended_at=BASE + timedelta(hours=2)
         )
         record_row([run], device=device, when="2020")
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             platform=platform,
             date_purchased=BASE,
             price=10,

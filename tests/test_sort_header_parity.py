@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,
@@ -56,7 +56,7 @@ class SortHeaderParityTest(TestCase):
         self.game = Game.objects.create(
             library=library, name="Test Game", platform=self.platform
         )
-        self.purchase = Purchase.objects.create(
+        self.purchase = LegacyPurchase.objects.create(
             library=library,
             price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),

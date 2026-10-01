@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 from django.db.models import OuterRef, QuerySet
 
-from games.models import Game, Platform, Purchase, Release, UserLibrary
+from games.models import Game, LegacyPurchase, Platform, Release, UserLibrary
 from games.reads.game_departures import counted
 
 #: The annotations `with_platform_departures` adds.
@@ -34,7 +34,9 @@ def with_platform_departures(
                 Release.objects.for_library(library).filter(platform=OuterRef("pk"))
             ),
             PURCHASES: counted(
-                Purchase.objects.for_library(library).filter(platform=OuterRef("pk"))
+                LegacyPurchase.objects.for_library(library).filter(
+                    platform=OuterRef("pk")
+                )
             ),
         }
     )

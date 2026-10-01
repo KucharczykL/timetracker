@@ -7,14 +7,14 @@ import pytest
 from django.urls import reverse
 
 from common.criteria import Modifier, StringCriterion
-from games.filters import GameFilter, PurchaseFilter
-from games.models import Game, Purchase
+from games.filters import GameFilter, LegacyPurchaseFilter
+from games.models import Game, LegacyPurchase
 
 
 @pytest.fixture
 def bundle(owned_library):
     """One purchase naming two games."""
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         name="Bundle",
         date_purchased=datetime(2020, 1, 1, tzinfo=UTC),
@@ -33,7 +33,7 @@ def bundle(owned_library):
 def every_game_filter():
     """A `game_filter` matching both games."""
     return json.dumps(
-        PurchaseFilter(
+        LegacyPurchaseFilter(
             game_filter=GameFilter(
                 name=StringCriterion(modifier=Modifier.NOT_EQUALS, value="zzz")
             )

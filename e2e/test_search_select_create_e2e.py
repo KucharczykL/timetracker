@@ -224,7 +224,7 @@ def test_a_purchase_records_on_a_platform_created_from_the_picker(
 ):
     from tracked_games import create_tracked_game
 
-    from games.models import Platform, Purchase
+    from games.models import LegacyPurchase, Platform
 
     game = create_tracked_game(e2e_library, "Outer Wilds")
     page = authenticated_page
@@ -255,6 +255,6 @@ def test_a_purchase_records_on_a_platform_created_from_the_picker(
     with page.expect_navigation():
         page.get_by_role("button", name="Submit", exact=True).click()
 
-    purchase = Purchase.objects.get(library=e2e_library)
+    purchase = LegacyPurchase.objects.get(library=e2e_library)
     assert purchase.platform_id == platform.pk
     assert purchase.games.get() == game

@@ -28,7 +28,7 @@
       },
       "scopes": {}
     },
-    "purchase": {
+    "legacypurchase": {
       "fields": [
         "name"
       ],
@@ -407,7 +407,7 @@
     },
     {
       "description": "purchase: name INCLUDES related_game__name",
-      "model": "purchase",
+      "model": "legacypurchase",
       "filter": {
         "field_comparisons": [
           {
@@ -564,7 +564,7 @@
     },
     {
       "description": "multivalued comparison raw M2M: purchase name INCLUDES games__name (ALL)",
-      "model": "purchase",
+      "model": "legacypurchase",
       "filter": {
         "field_comparisons": [
           {

@@ -16,7 +16,7 @@ from common.duration_presentation import (
     duration_format_profile,
 )
 from games.formatting import session_time_range
-from games.models import Game, Purchase
+from games.models import Game, LegacyPurchase
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 
@@ -28,7 +28,7 @@ class FormatDurationTest(TestCase):
     def test_duration_format(self):
         g = Game(library=self.library, name="The Test Game")
         g.save()
-        p = Purchase(
+        p = LegacyPurchase(
             price_currency="CZK",
             library=self.library,
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),

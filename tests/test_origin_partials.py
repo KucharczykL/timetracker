@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 
 from common.returns import action_url
-from games.models import Game, Purchase
+from games.models import Game, LegacyPurchase
 
 ORIGIN = "/tracker/purchase/list?page=2"
 
@@ -20,11 +20,11 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def purchase(owned_library):
     game = Game.objects.create(library=owned_library, name="Bundled")
     other = Game.objects.create(library=owned_library, name="Also bundled")
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         price_currency="CZK",
         library=owned_library,
         date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
         price=10,
     )
     purchase.games.set([game, other])

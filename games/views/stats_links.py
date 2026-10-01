@@ -31,11 +31,11 @@ from common.criteria import (
 from games.filters import (
     GameFilter,
     HistoricalPlaytimeFilter,
+    LegacyPurchaseFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
-    PurchaseFilter,
 )
-from games.models import DONE_STATUSES, PlayerGameStatus, Purchase
+from games.models import DONE_STATUSES, LegacyPurchase, PlayerGameStatus
 from games.reads.playthrough_completions import completed_in_scope
 
 
@@ -153,12 +153,12 @@ def games_played(year) -> GameFilter:
 # ── Purchases ────────────────────────────────────────────────────────────────
 
 
-def purchases_total(year) -> PurchaseFilter:
-    return PurchaseFilter.where(**_purchase_bounds(year))
+def purchases_total(year) -> LegacyPurchaseFilter:
+    return LegacyPurchaseFilter.where(**_purchase_bounds(year))
 
 
-def purchases_refunded(year) -> PurchaseFilter:
-    return PurchaseFilter.where(is_refunded=True, **_purchase_bounds(year))
+def purchases_refunded(year) -> LegacyPurchaseFilter:
+    return LegacyPurchaseFilter.where(is_refunded=True, **_purchase_bounds(year))
 
 
 # ── Tier 2: finished / dropped / unfinished / backlog (uses #67) ─────────────
@@ -188,19 +188,19 @@ def _not_finished_game(year, excluded_statuses: list) -> GameFilter:
     return game_filter
 
 
-def purchases_finished(year) -> PurchaseFilter:
+def purchases_finished(year) -> LegacyPurchaseFilter:
     """Purchases whose game is finished (in scope)."""
     if _is_year(year):
-        return PurchaseFilter(
+        return LegacyPurchaseFilter(
             game_filter=GameFilter(playthrough_filter=_completed_in_scope(year))
         )
     # All-time `.finished()`: a done status *or* any completed run.
     game_filter = GameFilter(status=ChoiceCriterion(value=list(DONE_STATUSES)))
     game_filter.OR = [GameFilter(playthrough_filter=_completed_in_scope(year))]
-    return PurchaseFilter(game_filter=game_filter)
+    return LegacyPurchaseFilter(game_filter=game_filter)
 
 
-def purchases_finished_released(year) -> PurchaseFilter:
+def purchases_finished_released(year) -> LegacyPurchaseFilter:
     """Finished-in-scope purchases whose game was released that year."""
     if not _is_year(year):
         return purchases_finished(year)
@@ -208,41 +208,43 @@ def purchases_finished_released(year) -> PurchaseFilter:
         year_released=IntCriterion(value=year, modifier=Modifier.EQUALS),
         playthrough_filter=_completed_in_scope(year),
     )
-    return PurchaseFilter(game_filter=game_filter)
+    return LegacyPurchaseFilter(game_filter=game_filter)
 
 
-def purchases_bought_and_finished(year) -> PurchaseFilter:
+def purchases_bought_and_finished(year) -> LegacyPurchaseFilter:
     """Not-refunded purchases bought in scope whose game finished in scope."""
-    purchase_filter = PurchaseFilter.where(is_refunded=False, **_purchase_bounds(year))
+    purchase_filter = LegacyPurchaseFilter.where(
+        is_refunded=False, **_purchase_bounds(year)
+    )
     purchase_filter.game_filter = GameFilter(
         playthrough_filter=_completed_in_scope(year)
     )
     return purchase_filter
 
 
-def _abandoned_or_refunded() -> PurchaseFilter:
-    purchase_filter = PurchaseFilter(
+def _abandoned_or_refunded() -> LegacyPurchaseFilter:
+    purchase_filter = LegacyPurchaseFilter(
         game_filter=GameFilter(
             status=ChoiceCriterion(value=[PlayerGameStatus.ABANDONED])
         )
     )
-    purchase_filter.OR = [PurchaseFilter(is_refunded=BoolCriterion(value=True))]
+    purchase_filter.OR = [LegacyPurchaseFilter(is_refunded=BoolCriterion(value=True))]
     return purchase_filter
 
 
-def _holding_no_game(excluded: GameFilter) -> PurchaseFilter:
+def _holding_no_game(excluded: GameFilter) -> LegacyPurchaseFilter:
     """No game of the purchase matches `excluded`.
 
     NONE, not a leaf: a leaf asks ANY.
     TODO(#1337): the shared join lets bundles pass.
     """
-    return PurchaseFilter(game_filter=replace(excluded, match=RelationMatch.NONE))
+    return LegacyPurchaseFilter(game_filter=replace(excluded, match=RelationMatch.NONE))
 
 
-def purchases_dropped(year) -> PurchaseFilter:
-    purchase_filter = PurchaseFilter.where(
+def purchases_dropped(year) -> LegacyPurchaseFilter:
+    purchase_filter = LegacyPurchaseFilter.where(
         infinite=False,
-        type=[Purchase.GAME, Purchase.DLC],
+        type=[LegacyPurchase.GAME, LegacyPurchase.DLC],
         **_purchase_bounds(year),
     )
     purchase_filter.game_filter = _not_finished_game(year, list(DONE_STATUSES))
@@ -253,11 +255,11 @@ def purchases_dropped(year) -> PurchaseFilter:
     return purchase_filter
 
 
-def purchases_unfinished(year) -> PurchaseFilter:
-    purchase_filter = PurchaseFilter.where(
+def purchases_unfinished(year) -> LegacyPurchaseFilter:
+    purchase_filter = LegacyPurchaseFilter.where(
         is_refunded=False,
         infinite=False,
-        type=[Purchase.GAME, Purchase.DLC],
+        type=[LegacyPurchase.GAME, LegacyPurchase.DLC],
         **_purchase_bounds(year),
     )
     purchase_filter.game_filter = _not_finished_game(
@@ -269,12 +271,12 @@ def purchases_unfinished(year) -> PurchaseFilter:
     return purchase_filter
 
 
-def purchases_backlog_decrease(year) -> PurchaseFilter:
+def purchases_backlog_decrease(year) -> LegacyPurchaseFilter:
     """Per-year: bought before the year, game finished in the year. All-time:
     equals the all-time finished count (matches `stats_data.py`)."""
     if not _is_year(year):
         return purchases_finished(year)
-    purchase_filter = PurchaseFilter(
+    purchase_filter = LegacyPurchaseFilter(
         date_purchased=DateCriterion(value=f"{year}-01-01", modifier=Modifier.LESS_THAN)
     )
     purchase_filter.game_filter = GameFilter(

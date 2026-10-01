@@ -31,7 +31,7 @@ from common.date_time_presentation import (
     date_time_format_profile,
     date_time_presentation_for_request,
 )
-from games.filters import PurchaseFilter
+from games.filters import LegacyPurchaseFilter
 
 
 def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
@@ -42,14 +42,14 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
     # facets use the static-calendar panel variant.
     existing = parse_filter_dict(filter_json)
     purchased = field_widget(
-        PurchaseFilter,
+        LegacyPurchaseFilter,
         "date_purchased",
         value=existing.get("date_purchased"),
         name_prefix="filter-date-purchased",
         presentation=presentation,
     )
     refunded = field_widget(
-        PurchaseFilter,
+        LegacyPurchaseFilter,
         "date_refunded",
         value=existing.get("date_refunded"),
         name_prefix="filter-date-refunded",

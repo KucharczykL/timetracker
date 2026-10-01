@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 from games.commands.playergame import TrackGame
 from games.commands.playthrough import ActStatement, CompletePlaythrough
 from games.events.dispatch import dispatch
-from games.models import Game, Playthrough, Purchase
+from games.models import Game, LegacyPurchase, Playthrough
 from games.writes.playthrough import RunDraft, record_run
 
 
 def make_purchase(library, name="Bundle"):
-    return Purchase.objects.create(
+    return LegacyPurchase.objects.create(
         library=library,
         name=name,
         date_purchased=datetime(2020, 1, 1, tzinfo=UTC),

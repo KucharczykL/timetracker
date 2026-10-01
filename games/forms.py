@@ -82,12 +82,12 @@ from games.models import (
     GameKind,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
+    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
-    Purchase,
     UserLibrary,
 )
 from games.reads.companion_status import played_is_offered
@@ -2052,7 +2052,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
     class Meta:
         # date_purchased/date_refunded get DatePickerWidget in __init__
         # (needs the per-request presentation, unavailable to a class body).
-        model = Purchase
+        model = LegacyPurchase
         fields = (
             "games",
             "platform",
@@ -2077,7 +2077,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # This is safe because we're not saving the instance.
         self.instance.type = purchase_type
 
-        if purchase_type != Purchase.GAME:
+        if purchase_type != LegacyPurchase.GAME:
             type_display = self.instance.get_type_display()
             if not related_game:
                 self.add_error(

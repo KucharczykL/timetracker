@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from games.models import Game, Platform, Purchase, PurchaseConversionState
+from games.models import Game, LegacyPurchase, Platform, PurchaseConversionState
 from games.tasks import convert_library_prices
 
 
@@ -20,7 +20,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         convert_library_prices(str(self.user.library.pk), state.requested_version)
 
     def test_new_purchase_has_needs_price_update_true(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             price=50.0,
             price_currency="USD",
             library=self.user.library,
@@ -30,7 +30,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         self.assertTrue(purchase.needs_price_update)
 
     def test_convert_prices_sets_flag_to_false(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             price=50.0,
             price_currency="CZK",
             library=self.user.library,
@@ -45,7 +45,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         self.assertFalse(purchase.needs_price_update)
 
     def test_price_change_sets_needs_price_update(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             price=50.0,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
@@ -63,7 +63,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         self.assertTrue(purchase.needs_price_update)
 
     def test_currency_change_sets_needs_price_update(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             price=50.0,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
@@ -81,7 +81,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         self.assertTrue(purchase.needs_price_update)
 
     def test_name_change_does_not_set_needs_price_update(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             price=50.0,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
@@ -99,7 +99,7 @@ class PurchaseNeedsPriceUpdateTest(TestCase):
         self.assertFalse(purchase.needs_price_update)
 
     def test_convert_prices_skips_already_converted(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             price=50.0,
             price_currency="CZK",
             date_purchased=date(2025, 1, 1),

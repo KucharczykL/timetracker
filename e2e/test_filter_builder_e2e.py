@@ -36,10 +36,10 @@ from e2e.tracked_games import create_tracked_game
 from games.models import (
     FilterPreset,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     Playthrough,
-    Purchase,
 )
 from timetracker.temporal import TemporalValue
 
@@ -541,18 +541,18 @@ def test_nested_relation_prefill_renders_full_tree(
         completion_recorded_at=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
         completed=TemporalValue.from_day(date(2026, 3, 1)),
     )
-    matching_purchase = Purchase.objects.create(
+    matching_purchase = LegacyPurchase.objects.create(
         library=e2e_library,
         date_purchased=datetime(2026, 1, 5, 12, 0, tzinfo=UTC),
         price_currency="USD",
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     matching_purchase.games.set([done_game])
-    non_matching_purchase = Purchase.objects.create(
+    non_matching_purchase = LegacyPurchase.objects.create(
         library=e2e_library,
         date_purchased=datetime(2026, 2, 5, 12, 0, tzinfo=UTC),
         price_currency="USD",
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     non_matching_purchase.games.set([other_game])
 
@@ -568,7 +568,7 @@ def test_nested_relation_prefill_renders_full_tree(
         }
     }
     page.goto(
-        f"{live_server.url}{reverse('games:filter_builder', args=['purchase'])}"
+        f"{live_server.url}{reverse('games:filter_builder', args=['legacypurchase'])}"
         f"?filter={_encode_filter(filter_json)}"
     )
 

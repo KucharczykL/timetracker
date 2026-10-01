@@ -11,7 +11,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, PlayerGameStatus, Purchase
+from games.models import Device, Game, LegacyPurchase, Platform, PlayerGameStatus
 
 #: A stated day; nothing counts by day.
 PURCHASE_DAY = date(2026, 3, 5)
@@ -39,7 +39,7 @@ def test_purchase_without_platform_stays_null_with_explicit_currency(
     owned_library,
 ):
     game = Game.objects.create(library=owned_library, name="Homebrew")
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         date_purchased=PURCHASE_DAY,
         price_currency="CZK",
@@ -53,7 +53,7 @@ def test_purchase_without_platform_stays_null_with_explicit_currency(
 def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
     platform = Platform.objects.create(name="Steam")
     game = Game.objects.create(library=owned_library, name="Hades", platform=platform)
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         price_currency="CZK",
         library=owned_library,
         date_purchased=PURCHASE_DAY,
@@ -65,7 +65,7 @@ def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
 
     # The old CASCADE on Purchase.platform would have destroyed the purchase
     # (and its price history) here.
-    assert Purchase.objects.count() == 1
+    assert LegacyPurchase.objects.count() == 1
     game.refresh_from_db()
     purchase.refresh_from_db()
     assert game.platform is None

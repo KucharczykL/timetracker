@@ -19,9 +19,9 @@ from games.models import (
     Edition,
     FilterPreset,
     Game,
+    LegacyPurchase,
     Platform,
     Playthrough,
-    Purchase,
     Release,
 )
 
@@ -32,11 +32,11 @@ def world(owned_library):
     game = Game.objects.create(
         library=owned_library, name="Test Game", platform=platform
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
         date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.set([game])
     edition = Edition.objects.create(game=game, is_default=True)

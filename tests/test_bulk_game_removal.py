@@ -16,7 +16,7 @@ from session_rows import duration_only_row
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_games import GAME_GONE
 from games.bulk_parts import RowOutcome
-from games.models import Game, Platform, PlayerGame, Purchase
+from games.models import Game, LegacyPurchase, Platform, PlayerGame
 from games.reads.events import batch_aggregate_ids
 from games.reads.game_departures import game_departures
 from games.removal import remove
@@ -134,7 +134,7 @@ def test_a_key_the_library_does_not_track_comes_out_lost(
 def test_what_leaves_counts_live_rows_of_the_library(owned_library, owned):
     """As Game detail counts them: a removed purchase has left already."""
     kept, gone = (
-        Purchase.objects.create(
+        LegacyPurchase.objects.create(
             library=owned_library,
             name=name,
             date_purchased=date(2026, 1, 1),
@@ -503,7 +503,7 @@ def test_the_counts_do_not_multiply_one_source_by_another(
 ):
     """A join over sessions and purchases would report six of each."""
     for index in range(2):
-        Purchase.objects.create(
+        LegacyPurchase.objects.create(
             library=owned_library,
             name=f"Order {index}",
             date_purchased=date(2026, 1, index + 1),

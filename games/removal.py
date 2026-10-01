@@ -16,8 +16,8 @@ from games.models import (
     Edition,
     FilterPreset,
     Game,
+    LegacyPurchase,
     Platform,
-    Purchase,
     Release,
 )
 
@@ -28,7 +28,7 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Edition,
     Release,
     Platform,
-    Purchase,
+    LegacyPurchase,
     FilterPreset,
 )
 

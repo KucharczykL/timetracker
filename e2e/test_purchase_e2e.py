@@ -15,7 +15,7 @@ from django.urls import path, reverse
 from playwright.sync_api import Page, expect
 
 from common.components import SearchSelect, SelectionFields
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 
 def selection_fields_view(request):
@@ -245,14 +245,14 @@ def test_split_purchase_action(authenticated_page: Page, live_server, e2e_librar
     game_b = Game.objects.create(
         library=e2e_library, name="Beta Game", platform=platform
     )
-    bundle = Purchase.objects.create(
+    bundle = LegacyPurchase.objects.create(
         library=e2e_library,
         price=30.0,
         price_currency="USD",
         date_purchased=date(2025, 1, 1),
         platform=platform,
-        ownership_type=Purchase.DIGITAL,
-        type=Purchase.GAME,
+        ownership_type=LegacyPurchase.DIGITAL,
+        type=LegacyPurchase.GAME,
     )
     bundle.games.set([game_a, game_b])
 
@@ -285,14 +285,14 @@ def test_refund_confirms_on_a_page_and_returns_to_the_list(
     game = Game.objects.create(
         library=e2e_library, name="Alpha Game", platform=platform
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=e2e_library,
         price=30.0,
         price_currency="USD",
         date_purchased=date(2025, 1, 1),
         platform=platform,
-        ownership_type=Purchase.DIGITAL,
-        type=Purchase.GAME,
+        ownership_type=LegacyPurchase.DIGITAL,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.set([game])
     list_url = f"{live_server.url}{reverse('games:list_purchases')}?page=1"

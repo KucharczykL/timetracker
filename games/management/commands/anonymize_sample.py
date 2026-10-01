@@ -28,6 +28,7 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    LegacyPurchase,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
@@ -35,7 +36,6 @@ from games.models import (
     PlayerGame,
     PlayerSession,
     Playthrough,
-    Purchase,
     UserLibraryPreferences,
 )
 from timetracker.temporal import TemporalPrecision, TemporalValue
@@ -47,7 +47,7 @@ GENERATED_FIELDS = frozenset(["price_per_game"])
 PORTABLE_LIBRARY_MODELS = frozenset(
     [
         "games.game",
-        "games.purchase",
+        "games.legacypurchase",
         "games.filterpreset",
         "games.libraryeventstreamhead",
         "games.libraryevent",
@@ -61,7 +61,7 @@ PORTABLE_LIBRARY_MODELS = frozenset(
 DUMP_LABELS = [
     "games.Platform",
     "games.Game",
-    "games.Purchase",
+    "games.LegacyPurchase",
     "games.LibraryEventStreamHead",
     "games.LibraryEvent",
     "games.LibraryEventReference",
@@ -87,7 +87,7 @@ DEFAULT_NAME_OVERRIDES = (
 # derive from recorded_at, not created_at, and from each other's grouping
 # (aggregate/correlation/stream), so they get their own dedicated pass in
 # _reassign_event_identities rather than this generic one.
-IDENTITY_MODELS = (Platform, Device, Game, Purchase)
+IDENTITY_MODELS = (Platform, Device, Game, LegacyPurchase)
 #: Old identity to new, per model.
 type Replacements = Mapping[UUID, UUID]
 type ReplacementsByModel = Mapping[type, Replacements]
@@ -291,7 +291,10 @@ class Command(BaseCommand):
             .order_by("pk")
             .values_list("pk", flat=True)
         )
-        if not reassignable_game_ids and Purchase.objects.for_library(library).exists():
+        if (
+            not reassignable_game_ids
+            and LegacyPurchase.objects.for_library(library).exists()
+        ):
             raise CommandError("Purchases exist but no games to reassign them to.")
 
         name_overrides = self._load_overrides(options["name_overrides"])
@@ -337,7 +340,7 @@ class Command(BaseCommand):
         LibraryEventReference.objects.exclude(library=library).delete()
         LibraryEvent.objects.exclude(library=library).delete()
         LibraryEventStreamHead.objects.exclude(library=library).delete()
-        Purchase.objects.exclude(library=library).delete()
+        LegacyPurchase.objects.exclude(library=library).delete()
         Game.objects.exclude(library=library).delete()
         Device.objects.exclude(library=library).delete()
         Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
@@ -356,9 +359,9 @@ class Command(BaseCommand):
             for game_id in all_game_ids
         }
 
-        purchases = list(Purchase.objects.order_by("pk"))
+        purchases = list(LegacyPurchase.objects.order_by("pk"))
         through_rows = []
-        Through = Purchase.games.through
+        Through = LegacyPurchase.games.through
         Through.objects.all().delete()
         for purchase in purchases:
             offset = timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
@@ -370,20 +373,21 @@ class Command(BaseCommand):
             purchase.converted_currency = "CZK"
             purchase.needs_price_update = False
             purchase.name = ""
-            if purchase.type != Purchase.GAME:
+            if purchase.type != LegacyPurchase.GAME:
                 purchase.related_game_id = random.choice(reassignable_game_ids)
             count = random.randint(
                 1, min(MAX_GAMES_PER_PURCHASE, len(reassignable_game_ids))
             )
             chosen = random.sample(reassignable_game_ids, count)
             through_rows.extend(
-                Through(purchase_id=purchase.pk, game_id=game_id) for game_id in chosen
+                Through(legacypurchase_id=purchase.pk, game_id=game_id)
+                for game_id in chosen
             )
             purchase.num_purchases = count
             purchase.created_at = _midnight(purchase.date_purchased)
             purchase.updated_at = purchase.created_at
         Through.objects.bulk_create(through_rows)
-        Purchase.objects.bulk_update(
+        LegacyPurchase.objects.bulk_update(
             purchases,
             [
                 "date_purchased",

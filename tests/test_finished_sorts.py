@@ -9,7 +9,7 @@ from django.urls import reverse
 from purchase_rows import row_order
 
 from common.criteria import Modifier, StringCriterion, UUIDMultiCriterion
-from games.filters import GameFilter, PurchaseFilter
+from games.filters import GameFilter, LegacyPurchaseFilter
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -154,7 +154,7 @@ def test_a_filter_does_not_narrow_the_reported_completion(
         reverse("games:list_purchases"),
         {
             "filter": json.dumps(
-                PurchaseFilter(
+                LegacyPurchaseFilter(
                     game_filter=GameFilter(
                         name=StringCriterion(modifier=Modifier.INCLUDES, value="Keep")
                     )
@@ -209,9 +209,9 @@ def test_every_join_path_prints_one_row(logged_client, owned_user, owned_library
     )
     keep = StringCriterion(modifier=Modifier.INCLUDES, value="Keep")
     filters = {
-        "game_filter": PurchaseFilter(game_filter=GameFilter(name=keep)),
-        "search": PurchaseFilter(search=keep),
-        "games": PurchaseFilter(
+        "game_filter": LegacyPurchaseFilter(game_filter=GameFilter(name=keep)),
+        "search": LegacyPurchaseFilter(search=keep),
+        "games": LegacyPurchaseFilter(
             games=UUIDMultiCriterion(
                 value=[str(first.pk), str(second.pk)], modifier=Modifier.INCLUDES
             )

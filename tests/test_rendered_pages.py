@@ -21,7 +21,7 @@ from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
 from common.components.primitives import _FIELD_ERROR_CLASS, control_button_class
-from games.models import Game, Platform, PlayerSession, Purchase
+from games.models import Game, LegacyPurchase, Platform, PlayerSession
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
@@ -116,7 +116,7 @@ class RenderedPagesTest(TestCase):
         self.game = Game.objects.create(
             library=self.user.library, name="Test Game", platform=self.platform
         )
-        self.purchase = Purchase.objects.create(
+        self.purchase = LegacyPurchase.objects.create(
             library=self.user.library,
             price_currency="CZK",
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
@@ -670,14 +670,14 @@ class PurchaseListDateFilterTest(TestCase):
         late_game = Game.objects.create(
             library=self.user.library, name="LATE-MARKER", platform=self.platform
         )
-        self.early = Purchase.objects.create(
+        self.early = LegacyPurchase.objects.create(
             library=self.user.library,
             price_currency="CZK",
             platform=self.platform,
             date_purchased=datetime.date(2024, 1, 15),
         )
         self.early.games.add(early_game)
-        self.mid = Purchase.objects.create(
+        self.mid = LegacyPurchase.objects.create(
             library=self.user.library,
             price_currency="CZK",
             platform=self.platform,
@@ -685,7 +685,7 @@ class PurchaseListDateFilterTest(TestCase):
             date_refunded=datetime.date(2024, 7, 1),
         )
         self.mid.games.add(mid_game)
-        self.late = Purchase.objects.create(
+        self.late = LegacyPurchase.objects.create(
             library=self.user.library,
             price_currency="CZK",
             platform=self.platform,

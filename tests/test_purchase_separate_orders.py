@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 
 class AddPurchasePricingTest(TestCase):
@@ -26,8 +26,8 @@ class AddPurchasePricingTest(TestCase):
             "platform": self.platform.id,
             "date_purchased": "2025-01-01",
             "price_currency": "USD",
-            "ownership_type": Purchase.DIGITAL,
-            "type": Purchase.GAME,
+            "ownership_type": LegacyPurchase.DIGITAL,
+            "type": LegacyPurchase.GAME,
             "name": "",
         }
         data.update(overrides)
@@ -38,8 +38,8 @@ class AddPurchasePricingTest(TestCase):
         response = self.client.post(reverse("games:add_purchase"), data)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Purchase.objects.count(), 1)
-        bundle = Purchase.objects.get()
+        self.assertEqual(LegacyPurchase.objects.count(), 1)
+        bundle = LegacyPurchase.objects.get()
         self.assertEqual(bundle.num_purchases, 2)
         self.assertEqual(bundle.price, 30)
 
@@ -54,13 +54,16 @@ class AddPurchasePricingTest(TestCase):
         response = self.client.post(reverse("games:add_purchase"), data)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Purchase.objects.count(), 2)
+        self.assertEqual(LegacyPurchase.objects.count(), 2)
 
-        for purchase in Purchase.objects.all():
+        for purchase in LegacyPurchase.objects.all():
             self.assertEqual(purchase.num_purchases, 1)
-        self.assertEqual(sorted(p.price for p in Purchase.objects.all()), [10.0, 20.0])
+        self.assertEqual(
+            sorted(p.price for p in LegacyPurchase.objects.all()), [10.0, 20.0]
+        )
         linked_games = [
-            list(p.games.values_list("id", flat=True)) for p in Purchase.objects.all()
+            list(p.games.values_list("id", flat=True))
+            for p in LegacyPurchase.objects.all()
         ]
         self.assertTrue(all(len(games) == 1 for games in linked_games))
         self.assertEqual(
@@ -69,13 +72,13 @@ class AddPurchasePricingTest(TestCase):
         )
 
     def test_full_name_keeps_parenthesized_detail_shape(self):
-        bundle = Purchase.objects.create(
+        bundle = LegacyPurchase.objects.create(
             name="Humble Bundle",
             library=self.library,
             date_purchased=date(2025, 1, 1),
             price=30,
             price_currency="USD",
-            ownership_type=Purchase.DIGITAL,
+            ownership_type=LegacyPurchase.DIGITAL,
         )
         bundle.games.set([self.game_a, self.game_b])
         bundle.refresh_from_db()
@@ -101,14 +104,14 @@ class SplitPurchaseTest(TestCase):
         )
 
     def _bundle(self, games, price=30.0):
-        bundle = Purchase.objects.create(
+        bundle = LegacyPurchase.objects.create(
             library=self.library,
             price=price,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
             platform=self.platform,
-            ownership_type=Purchase.DIGITAL,
-            type=Purchase.GAME,
+            ownership_type=LegacyPurchase.DIGITAL,
+            type=LegacyPurchase.GAME,
         )
         bundle.games.set(games)
         return bundle
@@ -121,8 +124,8 @@ class SplitPurchaseTest(TestCase):
         self.assertRedirects(
             response, reverse("games:list_purchases"), fetch_redirect_response=False
         )
-        visible = Purchase.objects.for_library(self.library)
-        self.assertTrue(Purchase.objects.filter(id=bundle.id).exists())
+        visible = LegacyPurchase.objects.for_library(self.library)
+        self.assertTrue(LegacyPurchase.objects.filter(id=bundle.id).exists())
         self.assertFalse(visible.filter(id=bundle.id).exists())
         self.assertEqual(visible.count(), 2)
         for purchase in visible:
@@ -138,5 +141,5 @@ class SplitPurchaseTest(TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertIn("two or more games", response.content.decode())
-        self.assertTrue(Purchase.objects.filter(id=single.id).exists())
-        self.assertEqual(Purchase.objects.for_library(self.library).count(), 1)
+        self.assertTrue(LegacyPurchase.objects.filter(id=single.id).exists())
+        self.assertEqual(LegacyPurchase.objects.for_library(self.library).count(), 1)

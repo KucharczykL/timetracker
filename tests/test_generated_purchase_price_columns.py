@@ -4,13 +4,13 @@ import pytest
 from django.db import connection, models
 from django.db.models import F
 
-from games.models import Game, Purchase
+from games.models import Game, LegacyPurchase
 
 pytestmark = pytest.mark.django_db
 
 
 def test_price_per_game_is_null_until_games_are_linked(owned_library):
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         date_purchased=date(2026, 8, 9),
         library=owned_library,
         price=12,
@@ -34,7 +34,7 @@ def test_price_per_game_is_null_until_games_are_linked(owned_library):
 
 
 def test_price_per_game_still_prefers_converted_price(owned_library):
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         date_purchased=date(2026, 8, 9),
         library=owned_library,
         price=12,
@@ -54,7 +54,7 @@ def test_price_per_game_still_prefers_converted_price(owned_library):
 
 
 def test_price_per_game_uses_guarded_source_columns():
-    field = Purchase._meta.get_field("price_per_game")
+    field = LegacyPurchase._meta.get_field("price_per_game")
     references = {
         expression.name
         for expression in field.expression.flatten()

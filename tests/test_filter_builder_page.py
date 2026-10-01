@@ -18,7 +18,7 @@ def logged_in_client(client, django_user_model):
     [
         "game",
         "playersession",
-        "purchase",
+        "legacypurchase",
         "playthrough",
         "historicalplaytime",
         "device",
@@ -42,7 +42,7 @@ def test_builder_page_renders(logged_in_client, model):
     [
         "game",
         "playersession",
-        "purchase",
+        "legacypurchase",
         "playthrough",
         "historicalplaytime",
         "device",
@@ -107,7 +107,7 @@ def test_builder_requires_login(client):
     [
         ("list_games", "game"),
         ("list_sessions", "playersession"),
-        ("list_purchases", "purchase"),
+        ("list_purchases", "legacypurchase"),
         ("list_playthroughs", "playthrough"),
         ("list_historical_playtime", "historicalplaytime"),
         ("list_devices", "device"),

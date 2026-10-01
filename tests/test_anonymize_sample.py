@@ -42,12 +42,12 @@ from games.management.commands.anonymize_sample import (
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     LibraryCalendar,
     LibraryEvent,
     Platform,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.removal import remove
 from games.retention import purging_library
@@ -69,7 +69,7 @@ PROMOTED_MODELS = frozenset(
         "games.device",
         "games.filterpreset",
         "games.platform",
-        "games.purchase",
+        "games.legacypurchase",
         "games.libraryevent",
         "games.libraryeventstreamhead",
         "games.libraryeventreference",
@@ -146,7 +146,7 @@ def _build_dataset():
     ]
 
     base_game = games[0]
-    game_purchase = Purchase.objects.create(
+    game_purchase = LegacyPurchase.objects.create(
         library=owner.library,
         price_currency="CZK",
         platform=platform,
@@ -157,13 +157,13 @@ def _build_dataset():
     )
     game_purchase.games.set([games[1], games[2]])
 
-    dlc_purchase = Purchase.objects.create(
+    dlc_purchase = LegacyPurchase.objects.create(
         library=owner.library,
         price_currency="CZK",
         platform=platform,
         date_purchased=date(2022, 3, 3),
         price=9.99,
-        type=Purchase.DLC,
+        type=LegacyPurchase.DLC,
         related_game=base_game,
     )
     dlc_purchase.games.set([games[3]])
@@ -430,7 +430,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             [label for label in by_model if label.endswith(".session")], []
         )
 
-        for purchase in by_model["games.purchase"]:
+        for purchase in by_model["games.legacypurchase"]:
             fields = purchase["fields"]
             self.assertEqual(fields["name"], "")
             self.assertFalse(fields["needs_price_update"])
@@ -438,7 +438,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             self.assertLessEqual(fields["price"], 100)
             self.assertGreaterEqual(len(fields["games"]), 1)
             self.assertLessEqual(len(fields["games"]), 10)
-            if fields["type"] != Purchase.GAME:
+            if fields["type"] != LegacyPurchase.GAME:
                 self.assertIn(
                     str(fields["related_game"]),
                     {str(identity(item)) for item in by_model["games.game"]},
@@ -549,7 +549,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             ):
                 call_command("load_sample_data", "--user", target.username)
 
-        for purchase in Purchase.objects.all():
+        for purchase in LegacyPurchase.objects.all():
             self.assertEqual(purchase.library, target.library)
             self.assertLessEqual(purchase.price, 100)
             self.assertEqual(purchase.name, "")
@@ -671,7 +671,7 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertEqual(len(removed_rows), 1)
         self.assertEqual(len(_events_of(by_model, "library.playersession.created")), 4)
         removed_identity = str(identity(removed_rows[0]))
-        for purchase in by_model["games.purchase"]:
+        for purchase in by_model["games.legacypurchase"]:
             self.assertNotIn(
                 removed_identity,
                 {str(game) for game in purchase["fields"]["games"]},
@@ -704,7 +704,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             if item["model"] in {
                 "games.device",
                 "games.game",
-                "games.purchase",
+                "games.legacypurchase",
                 "games.filterpreset",
             }:
                 self.assertEqual(
@@ -755,7 +755,7 @@ class ReassignedIdentityTest(TransactionTestCase):
 
         for model_label, date_field in (
             ("games.game", "created_at"),
-            ("games.purchase", "created_at"),
+            ("games.legacypurchase", "created_at"),
             ("games.libraryevent", "recorded_at"),
         ):
             records = by_model[model_label]
@@ -776,7 +776,7 @@ class ReassignedIdentityTest(TransactionTestCase):
         by_model = self._dump()
 
         emitted = {identity(item) for item in by_model["games.game"]}
-        for purchase in by_model["games.purchase"]:
+        for purchase in by_model["games.legacypurchase"]:
             related = purchase["fields"]["related_game"]
             if related is not None:
                 self.assertIn(str(related), {str(value) for value in emitted})

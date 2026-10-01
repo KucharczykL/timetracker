@@ -29,10 +29,10 @@ from games.models import (
     ExchangeRate,
     FilterPreset,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     PlayerSession,
-    Purchase,
     PurchaseConversionState,
 )
 from games.reads.player_sessions import library_sessions
@@ -115,7 +115,7 @@ def parity_world(monkeypatch):
         _session(shared_game_b, device_b, 4, 1),
     ]
 
-    purchase_a = Purchase.objects.create(
+    purchase_a = LegacyPurchase.objects.create(
         library=library_a,
         name="Reconcile A Purchase",
         platform=platform_a,
@@ -126,7 +126,7 @@ def parity_world(monkeypatch):
         converted_currency="CZK",
     )
     purchase_a.games.set([game_a, shared_game_a])
-    purchase_b = Purchase.objects.create(
+    purchase_b = LegacyPurchase.objects.create(
         library=library_b,
         name="Reconcile B Purchase",
         platform=platform_b,
@@ -137,7 +137,7 @@ def parity_world(monkeypatch):
         converted_currency="CZK",
     )
     purchase_b.games.set([game_b, shared_game_b])
-    Purchase.objects.filter(pk__in=[purchase_a.pk, purchase_b.pk]).update(
+    LegacyPurchase.objects.filter(pk__in=[purchase_a.pk, purchase_b.pk]).update(
         needs_price_update=False
     )
     for state in PurchaseConversionState.objects.filter(
@@ -178,12 +178,14 @@ def test_row_link_and_audit_reconciliation_is_independent(parity_world):
     ):
         assert Game.objects.for_library(library).count() == 2
         assert Device.objects.for_library(library).count() == 1
-        assert Purchase.objects.for_library(library).count() == 1
+        assert LegacyPurchase.objects.for_library(library).count() == 1
         assert library_sessions(library).count() == 2
         assert Platform.objects.for_library(library).count() == 1
         assert Platform.objects.visible_to(library).count() == 2
         assert (
-            Purchase.games.through.objects.filter(purchase__library=library).count()
+            LegacyPurchase.games.through.objects.filter(
+                legacypurchase__library=library
+            ).count()
             == 2
         )
         output = StringIO()
@@ -315,7 +317,7 @@ def test_statistics_and_exact_links_reconcile_per_library(parity_world):
             (stats_links.games_played(YEAR), Game, stats["total_games"]),
             (
                 stats_links.purchases_total(YEAR),
-                Purchase,
+                LegacyPurchase,
                 stats["all_purchased_this_year_count"],
             ),
             (

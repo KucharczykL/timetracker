@@ -15,7 +15,7 @@ from playwright.sync_api import expect
 from common.components import DatePicker
 from common.components.primitives import CsrfInput
 from common.date_time_presentation import date_time_presentation_for_request
-from games.models import Game, Platform, Purchase, UserPreferences
+from games.models import Game, LegacyPurchase, Platform, UserPreferences
 
 # ── Real-app tests: add/edit Purchase and Playthrough ───────────────────────
 
@@ -66,7 +66,7 @@ def test_add_purchase_date_field_iso_order_and_persists(
     with page.expect_navigation():
         page.get_by_role("button", name="Submit", exact=True).click()
 
-    purchase = Purchase.objects.get()
+    purchase = LegacyPurchase.objects.get()
     assert str(purchase.date_purchased) == "2026-03-15"
 
 
@@ -97,7 +97,7 @@ def test_add_purchase_date_field_mdy_order_persists_same_iso_date(
     with page.expect_navigation():
         page.get_by_role("button", name="Submit", exact=True).click()
 
-    purchase = Purchase.objects.get()
+    purchase = LegacyPurchase.objects.get()
     assert str(purchase.date_purchased) == "2026-03-15"
 
 
@@ -111,14 +111,14 @@ def test_edit_purchase_date_field_prefills_from_instance(
     game = Game.objects.create(
         library=user.library, name="Alpha Game", platform=platform
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=user.library,
         price=10,
         price_currency="USD",
         date_purchased="2025-06-01",
         platform=platform,
-        ownership_type=Purchase.DIGITAL,
-        type=Purchase.GAME,
+        ownership_type=LegacyPurchase.DIGITAL,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.add(game)
 

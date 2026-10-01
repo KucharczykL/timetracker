@@ -10,7 +10,12 @@ from django.utils.timezone import now
 from django_q.models import Schedule
 from django_q.tasks import async_task, schedule
 
-from games.models import ExchangeRate, Purchase, PurchaseConversionState, UserLibrary
+from games.models import (
+    ExchangeRate,
+    LegacyPurchase,
+    PurchaseConversionState,
+    UserLibrary,
+)
 
 logger = logging.getLogger("games")
 
@@ -126,7 +131,9 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
         state.last_error = ""
         state.save(update_fields=["status", "last_error"])
 
-    purchases = list(Purchase.objects.filter(library_id=library_pk).order_by("pk"))
+    purchases = list(
+        LegacyPurchase.objects.filter(library_id=library_pk).order_by("pk")
+    )
     snapshot = [
         (
             purchase.pk,
@@ -166,13 +173,13 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
             ):
                 return
             current_snapshot = list(
-                Purchase.objects.filter(library_id=library_pk)
+                LegacyPurchase.objects.filter(library_id=library_pk)
                 .order_by("pk")
                 .values_list("pk", "price", "price_currency", "date_purchased")
             )
             if current_snapshot != snapshot:
                 return
-            Purchase.objects.bulk_update(
+            LegacyPurchase.objects.bulk_update(
                 purchases,
                 ["converted_price", "converted_currency", "needs_price_update"],
             )

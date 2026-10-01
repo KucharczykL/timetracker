@@ -20,9 +20,9 @@ from common.criteria import filter_from_json
 from games.filters import (
     GameFilter,
     HistoricalPlaytimeFilter,
+    LegacyPurchaseFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
-    PurchaseFilter,
 )
 
 FILTER_TREE_DIR = (
@@ -34,7 +34,7 @@ CANONICAL_PATH = FILTER_TREE_DIR / "fixtures.canonical.json"
 FILTER_FOR_MODEL = {
     "game": GameFilter,
     "playersession": PlayerSessionFilter,
-    "purchase": PurchaseFilter,
+    "legacypurchase": LegacyPurchaseFilter,
     "playthrough": PlaythroughFilter,
     "historicalplaytime": HistoricalPlaytimeFilter,
 }

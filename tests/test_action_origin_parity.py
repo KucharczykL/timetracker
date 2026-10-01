@@ -17,7 +17,7 @@ from django.urls import Resolver404, resolve, reverse
 from historical_playtime_rows import record_row
 from session_rows import session_row
 
-from games.models import Game, Platform, Playthrough, Purchase
+from games.models import Game, LegacyPurchase, Platform, Playthrough
 from games.views.returns import ORIGIN_AWARE
 
 LINK_ATTRIBUTE = re.compile(r'\b(?:href|action)="([^"]*)"')
@@ -30,11 +30,11 @@ def world(owned_library):
     game = Game.objects.create(
         library=owned_library, name="Test Game", platform=platform
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
         date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.set([game])
     session_row(

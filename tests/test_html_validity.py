@@ -22,9 +22,9 @@ from session_rows import session_row
 
 from games.models import (
     Game,
+    LegacyPurchase,
     Platform,
     Playthrough,
-    Purchase,
 )
 
 ZONEINFO = ZoneInfo("Europe/Prague")
@@ -126,14 +126,14 @@ class HtmlValidityTest(TestCase):
         )
 
         # A multi-game bundle: LinkedPurchase renders the games-list popover.
-        self.bundle = Purchase.objects.create(
+        self.bundle = LegacyPurchase.objects.create(
             price_currency="CZK",
             library=library,
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
         )
         self.bundle.games.add(self.long_game, self.other_game)
-        self.other_bundle = Purchase.objects.create(
+        self.other_bundle = LegacyPurchase.objects.create(
             price_currency="CZK",
             library=library,
             date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
@@ -181,7 +181,7 @@ class HtmlValidityTest(TestCase):
         for model in (
             "game",
             "playersession",
-            "purchase",
+            "legacypurchase",
             "playthrough",
             "historicalplaytime",
             "device",

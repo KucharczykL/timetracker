@@ -23,7 +23,7 @@ from playwright.sync_api import Browser, Page, ViewportSize
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -78,7 +78,7 @@ def populated(e2e_library) -> None:
             started_at=BASE + timedelta(days=index),
             ended_at=BASE + timedelta(days=index, hours=2),
         )
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=e2e_library,
             platform=platform,
             date_purchased=BASE + timedelta(days=index),

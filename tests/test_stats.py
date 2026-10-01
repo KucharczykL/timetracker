@@ -17,7 +17,7 @@ from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row, session_row, tracked_run
 
-from games.models import Game, Platform, PlayerSession, Purchase
+from games.models import Game, LegacyPurchase, Platform, PlayerSession
 from games.reads import playtime as playtime_reads
 from games.reads.playtime import (
     MonthPlaytime,
@@ -274,11 +274,11 @@ def played_and_recorded(owned_library):
     start = datetime(2022, 3, 1, 10, tzinfo=TZ)
     session_row(played, started_at=start, ended_at=start + HOUR)
     #: The recorded game's purchase, for the count.
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
         date_purchased=start,
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([recorded])
     return played, recorded, platform
 
@@ -350,11 +350,11 @@ def test_a_day_precision_record_moves_the_day_figures_too(
 def test_a_bundle_two_records_reach_counts_once(owned_library):
     first = Game.objects.create(library=owned_library, name="First")
     second = Game.objects.create(library=owned_library, name="Second")
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
         date_purchased=datetime(2022, 1, 1, tzinfo=TZ),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([first, second])
     record_row([tracked_run(owned_library, first)], when="2022-03")
     record_row([tracked_run(owned_library, second)], when="2022-04")

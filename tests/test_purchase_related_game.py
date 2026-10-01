@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 
 class PurchaseRelatedGameTest(TestCase):
@@ -21,24 +21,24 @@ class PurchaseRelatedGameTest(TestCase):
         )
 
     def test_non_game_purchase_requires_related_game(self):
-        purchase = Purchase(
+        purchase = LegacyPurchase(
             price=10.0,
             library=self.library,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
-            type=Purchase.SEASONPASS,
+            type=LegacyPurchase.SEASONPASS,
             name="Season Pass",
         )
         with self.assertRaises(ValidationError):
             purchase.save()
 
     def test_non_game_purchase_saves_with_related_game(self):
-        purchase = Purchase(
+        purchase = LegacyPurchase(
             price=10.0,
             library=self.library,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
-            type=Purchase.SEASONPASS,
+            type=LegacyPurchase.SEASONPASS,
             name="Season Pass",
             related_game=self.base_game,
         )
@@ -50,12 +50,12 @@ class PurchaseRelatedGameTest(TestCase):
         self.assertIn(purchase, self.base_game.addon_purchases.all())
 
     def test_plain_game_purchase_needs_no_related_game(self):
-        purchase = Purchase(
+        purchase = LegacyPurchase(
             price=50.0,
             library=self.library,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
-            type=Purchase.GAME,
+            type=LegacyPurchase.GAME,
         )
         purchase.save()  # must not raise
         self.assertIsNone(purchase.related_game)

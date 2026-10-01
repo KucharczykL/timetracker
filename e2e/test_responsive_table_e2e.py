@@ -21,9 +21,9 @@ from e2e.helpers import settle_layout
 from games.models import (
     Game,
     HistoricalPlaytimeProvenance,
+    LegacyPurchase,
     Platform,
     Playthrough,
-    Purchase,
 )
 from timetracker.temporal import TemporalValue
 
@@ -80,7 +80,7 @@ def populated(e2e_library) -> None:
         note="a session note",
     )
     for index, purchased_game in enumerate((game, short)):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=e2e_library,
             platform=platform,
             date_purchased=BASE + timedelta(days=index),
@@ -109,7 +109,7 @@ def populated(e2e_library) -> None:
 def bundled_purchase(populated, e2e_library) -> None:
     """A two-game purchase: it carries the extra Split action, which widens the
     Actions column past what a single-game row needs."""
-    bundle = Purchase.objects.create(
+    bundle = LegacyPurchase.objects.create(
         library=e2e_library,
         platform=Platform.objects.first(),
         date_purchased=BASE + timedelta(days=9),

@@ -8,14 +8,14 @@ from common.criteria import Modifier, StringCriterion
 from common.filter_execution import execute_filter
 from games.filters import (
     GameFilter,
-    PurchaseFilter,
+    LegacyPurchaseFilter,
     filter_query_context_for_library,
 )
-from games.models import Game, Purchase
+from games.models import Game, LegacyPurchase
 
 
 def a_purchase_of(library, game):
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=library,
         name="Order",
         date_purchased=date(2026, 1, 1),
@@ -28,7 +28,7 @@ def a_purchase_of(library, game):
 
 def named_outer_wilds():
     """A non-empty sub-filter, so the compiler builds the subquery."""
-    return PurchaseFilter(
+    return LegacyPurchaseFilter(
         game_filter=GameFilter(
             name=StringCriterion(value="Outer", modifier=Modifier.INCLUDES)
         )
@@ -43,7 +43,7 @@ def test_an_untracked_game_matches_no_nested_filter(owned_library):
 
     matched = execute_filter(
         named_outer_wilds(),
-        Purchase.objects.for_library(owned_library),
+        LegacyPurchase.objects.for_library(owned_library),
         filter_query_context_for_library(owned_library),
     )
 
@@ -57,7 +57,7 @@ def test_a_tracked_game_matches(owned_library):
 
     matched = execute_filter(
         named_outer_wilds(),
-        Purchase.objects.for_library(owned_library),
+        LegacyPurchase.objects.for_library(owned_library),
         filter_query_context_for_library(owned_library),
     )
 

@@ -56,7 +56,7 @@ from common.temporal_presentation import TemporalText
 from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
 from games.list_columns import column_choice
-from games.models import Game, PlayerGameStatus, Purchase, UserLibrary
+from games.models import Game, LegacyPurchase, PlayerGameStatus, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
@@ -133,10 +133,10 @@ PURCHASE_COLUMNS: list[Column] = [
 ]
 
 
-def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
+def _purchases_with_completions(library: UserLibrary) -> QuerySet[LegacyPurchase]:
     """The list's rows, carrying the Finished facts."""
     return (
-        Purchase.objects.for_library(library)
+        LegacyPurchase.objects.for_library(library)
         .select_related("platform")
         .prefetch_related("games", "games__platform")
         .annotate(
@@ -148,7 +148,10 @@ def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
 
 
 def _purchase_cells(
-    purchase: Purchase, presentation: DateTimePresentation, *, origin: OriginUrl | None
+    purchase: LegacyPurchase,
+    presentation: DateTimePresentation,
+    *,
+    origin: OriginUrl | None,
 ) -> list[Cell]:
     """One row's cells, one for each column."""
     #: Read the act, not the value.
@@ -187,7 +190,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     library = cast(User, request.user).library
     origin = request.get_full_path()
-    purchases: QuerySet[Purchase] = _purchases_with_completions(library)
+    purchases: QuerySet[LegacyPurchase] = _purchases_with_completions(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
@@ -246,13 +249,13 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         QuickFilterBar,
         parse_filter_dict,
     )
-    from games.filters import PurchaseFilter
+    from games.filters import LegacyPurchaseFilter
     from games.views.filtering import builder_url_for
 
     builder_url = builder_url_for(
         "purchases", filter_json, find.sort, find.per_page_override
     )
-    parsed_filter = parse_filter_dict(filter_json, PurchaseFilter)
+    parsed_filter = parse_filter_dict(filter_json, LegacyPurchaseFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="purchases",
@@ -343,7 +346,7 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
             price = float(raw_price) if raw_price not in (None, "") else 0.0
         except ValueError:
             price = 0.0
-        purchase = Purchase(price=price, **shared)
+        purchase = LegacyPurchase(price=price, **shared)
         purchase.save()
         purchase.games.set([game])
 
@@ -418,7 +421,7 @@ def add_purchase(request: HttpRequest, game_id: UUID | None = None) -> HttpRespo
 def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
+        LegacyPurchase.objects.for_library(library), library, id=purchase_id
     )
     form = PurchaseForm(
         request.POST or None,
@@ -444,7 +447,7 @@ def restore_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.filter(library=library), library, id=purchase_id
+        LegacyPurchase.objects.filter(library=library), library, id=purchase_id
     )
     return restore_and_return(
         request,
@@ -458,7 +461,7 @@ def restore_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
+        LegacyPurchase.objects.for_library(library), library, id=purchase_id
     )
     return confirm_and_remove(
         request,
@@ -473,7 +476,7 @@ def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 
 
 def _view_purchase_content(
-    purchase: Purchase, presentation: DateTimePresentation
+    purchase: LegacyPurchase, presentation: DateTimePresentation
 ) -> Node:
     first_game = purchase.first_game
     owned = f"Owned on {presentation.format(purchase.date_purchased, 'date')}"
@@ -507,7 +510,9 @@ def _view_purchase_content(
     return ContentContainer(class_="dark:text-white")[inner]
 
 
-def _purchase_page_title(purchase: Purchase, presentation: DateTimePresentation) -> str:
+def _purchase_page_title(
+    purchase: LegacyPurchase, presentation: DateTimePresentation
+) -> str:
     return label_with_details(
         purchase.standardized_name,
         f"{purchase.num_purchases} game{pluralize(purchase.num_purchases)}",
@@ -520,7 +525,7 @@ def _purchase_page_title(purchase: Purchase, presentation: DateTimePresentation)
 def view_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
+        LegacyPurchase.objects.for_library(library), library, id=purchase_id
     )
     presentation = date_time_presentation_for_request(request)
     return render_page(
@@ -530,7 +535,7 @@ def view_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     )
 
 
-def _refund(user: User, purchase: Purchase) -> None:
+def _refund(user: User, purchase: LegacyPurchase) -> None:
     """Abandon every game of the purchase, then mark it refunded."""
     if purchase.date_refunded is not None:
         raise CommandFailed("This purchase is already refunded.", CONFLICT_STATUS)
@@ -565,7 +570,7 @@ def _refund(user: User, purchase: Purchase) -> None:
 def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
+        LegacyPurchase.objects.for_library(library), library, id=purchase_id
     )
 
     def refund() -> None:
@@ -585,12 +590,12 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     )
 
 
-def _split(purchase: Purchase) -> int:
+def _split(purchase: LegacyPurchase) -> int:
     """One purchase per game; answers how many."""
     #: No dispatch here: run_in_transaction refuses to nest.
     with transaction.atomic():
         #: Locked: a second split waits, then refuses.
-        purchase = Purchase.objects.select_for_update().get(pk=purchase.pk)
+        purchase = LegacyPurchase.objects.select_for_update().get(pk=purchase.pk)
         if purchase.removed_at is not None:
             raise CommandFailed("This purchase is already split.", CONFLICT_STATUS)
         games = list(purchase.games.in_display_order())
@@ -601,7 +606,7 @@ def _split(purchase: Purchase) -> int:
             )
         share = purchase.price / count
         for game in games:
-            new_purchase = Purchase(
+            new_purchase = LegacyPurchase(
                 library=purchase.library,
                 price=share,
                 price_currency=purchase.price_currency,
@@ -631,7 +636,7 @@ def _split(purchase: Purchase) -> int:
 def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
+        LegacyPurchase.objects.for_library(library), library, id=purchase_id
     )
     #: What _split counts, removed games included.
     count = purchase.games.count()

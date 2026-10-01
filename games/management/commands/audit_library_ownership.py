@@ -9,10 +9,10 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    LegacyPurchase,
     LibraryEntry,
     Platform,
     PlayerSession,
-    Purchase,
     PurchaseConversionState,
     UserLibrary,
     UserLibraryPreferences,
@@ -56,7 +56,7 @@ class Command(BaseCommand):
             ("games", Game.objects.filter(library_id__in=library_ids).count()),
             (
                 "purchases",
-                Purchase.objects.filter(library_id__in=library_ids).count(),
+                LegacyPurchase.objects.filter(library_id__in=library_ids).count(),
             ),
             ("devices", Device.objects.filter(library_id__in=library_ids).count()),
             (
@@ -186,7 +186,7 @@ class Command(BaseCommand):
         ):
             violations.append(f"Game.parent: game {game_id}, parent {parent_id}")
         for purchase_id, platform_id in (
-            Purchase.objects.filter(
+            LegacyPurchase.objects.filter(
                 Q(library_id__in=library_ids) | Q(platform__library_id__in=library_ids),
                 platform__library__isnull=False,
             )
@@ -197,7 +197,7 @@ class Command(BaseCommand):
                 f"Purchase.platform: purchase {purchase_id}, platform {platform_id}"
             )
         for purchase_id, game_id in (
-            Purchase.objects.filter(
+            LegacyPurchase.objects.filter(
                 Q(library_id__in=library_ids)
                 | Q(related_game__library_id__in=library_ids),
                 related_game__isnull=False,
@@ -208,14 +208,14 @@ class Command(BaseCommand):
             violations.append(
                 f"Purchase.related_game: purchase {purchase_id}, game {game_id}"
             )
-        through = Purchase.games.through
+        through = LegacyPurchase.games.through
         for purchase_id, game_id in (
             through.objects.filter(
-                Q(purchase__library_id__in=library_ids)
+                Q(legacypurchase__library_id__in=library_ids)
                 | Q(game__library_id__in=library_ids)
             )
-            .exclude(game__library_id=F("purchase__library_id"))
-            .values_list("purchase_id", "game_id")
+            .exclude(game__library_id=F("legacypurchase__library_id"))
+            .values_list("legacypurchase_id", "game_id")
         ):
             violations.append(f"Purchase.games: purchase {purchase_id}, game {game_id}")
         #: A key, not a relation.

@@ -20,10 +20,10 @@ from common.returns import action_url
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.views.general import model_counts
 
@@ -169,7 +169,7 @@ def world(client, django_user_model):
     own_running = session_row(
         own_game, device=own_device, started_at=own_start - timedelta(hours=3)
     )
-    own_purchase = Purchase.objects.create(
+    own_purchase = LegacyPurchase.objects.create(
         library=owner_library,
         name="Owner purchase",
         platform=own_platform,
@@ -180,7 +180,7 @@ def world(client, django_user_model):
         converted_currency="USD",
     )
     own_purchase.games.add(own_game)
-    foreign_purchase = Purchase.objects.create(
+    foreign_purchase = LegacyPurchase.objects.create(
         library=foreign_library,
         name="Foreign purchase",
         platform=foreign_platform,
@@ -300,7 +300,7 @@ def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
     [
         ("games:remove_game", "foreign_game", Game),
         ("games:remove_session", "foreign_row", PlayerSession),
-        ("games:remove_purchase", "foreign_purchase", Purchase),
+        ("games:remove_purchase", "foreign_purchase", LegacyPurchase),
         ("games:remove_device", "foreign_device", Device),
         ("games:remove_platform", "foreign_platform", Platform),
         ("games:remove_playthrough", "foreign_run", Playthrough),
@@ -321,7 +321,7 @@ def test_foreign_removal_posts_return_404_without_mutation(
     ("url_name", "object_name", "model"),
     [
         ("games:remove_session", "own_row", PlayerSession),
-        ("games:remove_purchase", "own_purchase", Purchase),
+        ("games:remove_purchase", "own_purchase", LegacyPurchase),
         ("games:remove_device", "own_device", Device),
         ("games:remove_platform", "own_platform", Platform),
         #: Removing a run stamps the projection,
@@ -399,7 +399,7 @@ def test_foreign_session_action_posts_return_404_without_mutation(world):
 
 def test_foreign_purchase_action_posts_return_404_without_mutation(world):
     purchase = world.foreign_purchase
-    before = Purchase.objects.count()
+    before = LegacyPurchase.objects.count()
 
     refund_response = world.client.post(
         reverse("games:refund_purchase", args=[purchase.pk])
@@ -410,7 +410,7 @@ def test_foreign_purchase_action_posts_return_404_without_mutation(world):
 
     purchase.refresh_from_db()
     assert (refund_response.status_code, split_response.status_code) == (404, 404)
-    assert Purchase.objects.count() == before
+    assert LegacyPurchase.objects.count() == before
     assert purchase.date_refunded is None
 
 

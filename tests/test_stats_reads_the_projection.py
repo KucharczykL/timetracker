@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from django.contrib.auth import get_user_model
 
-from games.models import Game, PlayerGame, PlayerGameStatus, Purchase
+from games.models import Game, LegacyPurchase, PlayerGame, PlayerGameStatus
 from games.views.stats_data import compute_stats
 
 YEAR = 2024
@@ -15,10 +15,10 @@ YEAR = 2024
 def a_bought_game(db):
     library = get_user_model().objects.create_user(username="stats-cutover").library
     game = Game.objects.create(library=library, name="Outer Wilds")
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
         date_purchased=datetime(YEAR, 1, 5, tzinfo=UTC),
     )
     purchase.games.set([game])

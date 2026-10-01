@@ -16,11 +16,11 @@ from common.criteria import (
 from games.filters import (
     GAME_SESSIONS,
     GameFilter,
+    LegacyPurchaseFilter,
     PlayerSessionFilter,
-    PurchaseFilter,
     filter_query_context_for_library,
 )
-from games.models import Game, PlayerSession, Purchase
+from games.models import Game, LegacyPurchase, PlayerSession
 from games.removal import remove
 
 #: A stated day; nothing counts by day.
@@ -138,15 +138,15 @@ def test_an_unscoped_count_reads_the_library_scope(owned_library):
 def test_an_unscoped_purchase_count_omits_a_removed_purchase(owned_library):
     game = Game.objects.create(library=owned_library, name="Bought")
     for name in ("kept", "removed"):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=owned_library,
             name=name,
             price_currency="CZK",
             date_purchased=PURCHASE_DAY,
         )
         purchase.games.add(game)
-    remove(Purchase.objects.get(name="removed"))
+    remove(LegacyPurchase.objects.get(name="removed"))
 
-    spec = AggregateSpec("count", "purchases", PurchaseFilter)
+    spec = AggregateSpec("count", "purchases", LegacyPurchaseFilter)
 
     assert _counted(owned_library, spec, 1) == [game]

@@ -30,11 +30,11 @@ from games.models import (
     ExchangeRate,
     FilterPreset,
     Game,
+    LegacyPurchase,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
     Platform,
-    Purchase,
     PurchaseConversionState,
 )
 
@@ -43,7 +43,7 @@ TARGET_LIBRARY_MARKER = "__target_library__"
 
 PRIVATE_MODELS = {
     "games.game": Game,
-    "games.purchase": Purchase,
+    "games.legacypurchase": LegacyPurchase,
     "games.filterpreset": FilterPreset,
     "games.libraryeventstreamhead": LibraryEventStreamHead,
     "games.libraryevent": LibraryEvent,
@@ -74,7 +74,7 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
             "platform", "games.platform", False, False, reference_field="pk"
         ),
     ),
-    "games.purchase": (
+    "games.legacypurchase": (
         FixtureRelationship(
             "platform", "games.platform", False, False, reference_field="pk"
         ),
@@ -140,7 +140,7 @@ class Command(BaseCommand):
                     f"Sample fixture could not be loaded: {error}"
                 ) from error
 
-            purchases = Purchase.objects.for_library(user.library)
+            purchases = LegacyPurchase.objects.for_library(user.library)
             cache_mismatch = purchases.filter(
                 Q(converted_price__isnull=True)
                 | Q(needs_price_update=True)
@@ -500,7 +500,7 @@ class Command(BaseCommand):
                 and fields.get("aggregate_id") == TARGET_LIBRARY_MARKER
             ):
                 fields["aggregate_id"] = str(library.pk)
-            if model in {"games.game", "games.purchase"}:
+            if model in {"games.game", "games.legacypurchase"}:
                 platform_reference = fields.get("platform")
                 if platform_reference is not None:
                     if str(platform_reference) not in platform_uuids:

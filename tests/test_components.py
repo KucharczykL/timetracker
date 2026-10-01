@@ -15,7 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 from session_rows import session_row
 
 from common import components
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 # Component builders return lazy ``Node`` objects; these tests assert on rendered
 # HTML, so node-returning calls are wrapped in ``str(...)`` at the call site
@@ -1678,7 +1678,7 @@ class ModelDependentComponentsTest(django.test.TestCase):
         return Game.objects.create(library=self.library, name=name, platform=platform)
 
     def _create_purchase(self, games, platform=None, price=19.99):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             platform=platform or (games[0].platform if games else None),
             library=self.library,
             date_purchased="2025-01-01",
@@ -1935,7 +1935,9 @@ class ModelDependentComponentsTest(django.test.TestCase):
 
     def test_linked_purchase_orders_prefetched_bundle_without_a_query(self):
         purchase = self._bundle_created_out_of_display_order()
-        prefetched = Purchase.objects.prefetch_related("games").get(pk=purchase.pk)
+        prefetched = LegacyPurchase.objects.prefetch_related("games").get(
+            pk=purchase.pk
+        )
         with self.assertNumQueries(0):
             html = str(components.LinkedPurchase(prefetched))
         self.assertEqual(self._tooltip_names(html), self.BUNDLE_IN_DISPLAY_ORDER)

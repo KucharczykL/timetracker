@@ -10,7 +10,7 @@ from playwright.sync_api import Locator, Page, Route, expect
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 LONG_NAME = (
     "A Deliberately Extraordinary Game Name That Is Much Wider Than Any Practical "
@@ -360,7 +360,7 @@ def test_multi_game_purchase_has_one_always_available_informational_tooltip(
     second = Game.objects.create(
         name="Bundle Game Two", platform=platform, library=e2e_library
     )
-    bundle = Purchase.objects.create(
+    bundle = LegacyPurchase.objects.create(
         name=LONG_NAME,
         date_purchased=date(2026, 1, 1),
         platform=platform,

@@ -15,9 +15,9 @@ from django.utils.timezone import now
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     LibraryEntry,
     Platform,
-    Purchase,
     PurchaseConversionState,
     Release,
     SiteSetting,
@@ -61,7 +61,7 @@ def invalidate_settings_cache(sender, instance, **kwargs):
     transaction.on_commit(clear_settings_cache)
 
 
-@receiver(m2m_changed, sender=Purchase.games.through)
+@receiver(m2m_changed, sender=LegacyPurchase.games.through)
 def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **kwargs):
     if action != "pre_add" or not pk_set:
         return
@@ -73,7 +73,7 @@ def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **
         raise ValidationError("Purchase and Game must belong to the same library.")
 
 
-@receiver(m2m_changed, sender=Purchase.games.through)
+@receiver(m2m_changed, sender=LegacyPurchase.games.through)
 def update_num_purchases(sender, instance, action, reverse, **kwargs):
     if not reverse and action.startswith("post_"):
         instance.num_purchases = instance.games.alive().count()

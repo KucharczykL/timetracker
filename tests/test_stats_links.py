@@ -31,12 +31,12 @@ from games.models import (
     Game,
     GameKind,
     HistoricalPlaytime,
+    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.reads.play_figures import games_in_scope
 from games.reads.player_sessions import GAME, library_sessions
@@ -88,37 +88,37 @@ def world(db):
     )
 
     # Purchases (single-game).
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",  # finished, bought in-year
         date_purchased=_dt(YEAR, 1, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([finished_game])
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",  # abandoned -> dropped
         date_purchased=_dt(YEAR, 2, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([abandoned_game])
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",  # refunded
         date_purchased=_dt(YEAR, 3, 5),
         date_refunded=_dt(YEAR, 4, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([playing_game])
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",  # unfinished (playing, not refunded/finished)
         date_purchased=_dt(YEAR, 5, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([playing_game])
     # backlog decrease: bought prior year, game finished, ended in-year
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(YEAR - 1, 5, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([finished_game])
 
     #: Record-only games: one in-year, one outside.
@@ -153,11 +153,11 @@ def world(db):
         foreign_game,
         started_at=_dt(YEAR, 6, 4),
     )
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=foreign_library,
         price_currency="CZK",
         date_purchased=_dt(YEAR, 1, 6),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([foreign_game])
 
     return {
@@ -400,7 +400,7 @@ def test_games_played_all_time_counts_every_record(world):
 def test_total_purchases_matches_count(world):
     stats = _stats(world, YEAR)
     assert (
-        _count(stats_links.purchases_total(YEAR), Purchase, world["library"])
+        _count(stats_links.purchases_total(YEAR), LegacyPurchase, world["library"])
         == stats["all_purchased_this_year_count"]
     )
 
@@ -408,7 +408,7 @@ def test_total_purchases_matches_count(world):
 def test_refunded_purchases_matches_count(world):
     stats = _stats(world, YEAR)
     assert (
-        _count(stats_links.purchases_refunded(YEAR), Purchase, world["library"])
+        _count(stats_links.purchases_refunded(YEAR), LegacyPurchase, world["library"])
         == stats["all_purchased_refunded_this_year_count"]
     )
 
@@ -420,7 +420,7 @@ def test_dropped_matches_count(world):
     stats = _stats(world, YEAR)
     assert stats["dropped_count"] == 2  # guard: discriminating, non-zero
     assert (
-        _count(stats_links.purchases_dropped(YEAR), Purchase, world["library"])
+        _count(stats_links.purchases_dropped(YEAR), LegacyPurchase, world["library"])
         == stats["dropped_count"]
     )
 
@@ -429,7 +429,7 @@ def test_unfinished_matches_count(world):
     stats = _stats(world, YEAR)
     assert stats["purchased_unfinished_count"] == 1
     assert (
-        _count(stats_links.purchases_unfinished(YEAR), Purchase, world["library"])
+        _count(stats_links.purchases_unfinished(YEAR), LegacyPurchase, world["library"])
         == stats["purchased_unfinished_count"]
     )
 
@@ -443,11 +443,11 @@ def endless(world):
         library, "Left endless", status=PlayerGameStatus.ABANDONED
     )
     for month, games in ((5, [endless]), (6, [left])):
-        Purchase.objects.create(
+        LegacyPurchase.objects.create(
             library=library,
             price_currency="CZK",
             date_purchased=_dt(YEAR, month, 10),
-            type=Purchase.GAME,
+            type=LegacyPurchase.GAME,
         ).games.set(games)
     return [endless, left]
 
@@ -458,9 +458,9 @@ def _figures_and_links(world, year):
     link_year = year if year is not None else "Alltime"
     return (
         stats["purchased_unfinished_count"],
-        _count(stats_links.purchases_unfinished(link_year), Purchase, library),
+        _count(stats_links.purchases_unfinished(link_year), LegacyPurchase, library),
         stats["dropped_count"],
-        _count(stats_links.purchases_dropped(link_year), Purchase, library),
+        _count(stats_links.purchases_dropped(link_year), LegacyPurchase, library),
     )
 
 
@@ -506,11 +506,11 @@ def test_a_bundle_holding_an_excluded_game_leaves_the_figure(
         library, "Bundled endless", status=PlayerGameStatus.PLAYED, **{flag: True}
     )
     beside = create_tracked_game(library, "Beside", status=beside_status)
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(YEAR, 7, 10),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([bundled, beside])
 
     assert _stats(world, YEAR)[figure] == before
@@ -541,7 +541,7 @@ def test_finished_matches_count(world):
     stats = _stats(world, YEAR)
     assert stats["all_finished_this_year_count"] == 2
     assert (
-        _count(stats_links.purchases_finished(YEAR), Purchase, world["library"])
+        _count(stats_links.purchases_finished(YEAR), LegacyPurchase, world["library"])
         == stats["all_finished_this_year_count"]
     )
 
@@ -550,7 +550,9 @@ def test_finished_released_matches_count(world):
     stats = _stats(world, YEAR)
     assert (
         _count(
-            stats_links.purchases_finished_released(YEAR), Purchase, world["library"]
+            stats_links.purchases_finished_released(YEAR),
+            LegacyPurchase,
+            world["library"],
         )
         == stats["this_year_finished_this_year_count"]
     )
@@ -562,7 +564,9 @@ def test_bought_and_finished_matches_list(world):
     assert expected == 1
     assert (
         _count(
-            stats_links.purchases_bought_and_finished(YEAR), Purchase, world["library"]
+            stats_links.purchases_bought_and_finished(YEAR),
+            LegacyPurchase,
+            world["library"],
         )
         == expected
     )
@@ -572,7 +576,11 @@ def test_backlog_decrease_matches_count(world):
     stats = _stats(world, YEAR)
     assert stats["backlog_decrease_count"] == 1
     assert (
-        _count(stats_links.purchases_backlog_decrease(YEAR), Purchase, world["library"])
+        _count(
+            stats_links.purchases_backlog_decrease(YEAR),
+            LegacyPurchase,
+            world["library"],
+        )
         == stats["backlog_decrease_count"]
     )
 
@@ -594,7 +602,7 @@ def test_finished_alltime_matches_backlog(world):
     assert (
         _count(
             stats_links.purchases_backlog_decrease("Alltime"),
-            Purchase,
+            LegacyPurchase,
             world["library"],
         )
         == stats["backlog_decrease_count"]
@@ -623,23 +631,31 @@ def test_stats_link_destination_count_parity_for_each_library(world):
 # must survive the same to_json → from_json the view performs.
 
 _NESTED_BUILDERS = [
-    ("purchases_finished", lambda: stats_links.purchases_finished(YEAR), Purchase),
+    (
+        "purchases_finished",
+        lambda: stats_links.purchases_finished(YEAR),
+        LegacyPurchase,
+    ),
     (
         "purchases_finished_released",
         lambda: stats_links.purchases_finished_released(YEAR),
-        Purchase,
+        LegacyPurchase,
     ),
     (
         "purchases_bought_and_finished",
         lambda: stats_links.purchases_bought_and_finished(YEAR),
-        Purchase,
+        LegacyPurchase,
     ),
-    ("purchases_dropped", lambda: stats_links.purchases_dropped(YEAR), Purchase),
-    ("purchases_unfinished", lambda: stats_links.purchases_unfinished(YEAR), Purchase),
+    ("purchases_dropped", lambda: stats_links.purchases_dropped(YEAR), LegacyPurchase),
+    (
+        "purchases_unfinished",
+        lambda: stats_links.purchases_unfinished(YEAR),
+        LegacyPurchase,
+    ),
     (
         "purchases_backlog_decrease",
         lambda: stats_links.purchases_backlog_decrease(YEAR),
-        Purchase,
+        LegacyPurchase,
     ),
     ("games_played", lambda: stats_links.games_played(YEAR), Game),
     ("games_played_alltime", lambda: stats_links.games_played(None), Game),
@@ -673,7 +689,7 @@ def test_finished_link_round_trips_to_same_count_as_stat(world):
     stats = _stats(world, YEAR)
     assert (
         _count_via_json(
-            stats_links.purchases_finished(YEAR), Purchase, world["library"]
+            stats_links.purchases_finished(YEAR), LegacyPurchase, world["library"]
         )
         == stats["all_finished_this_year_count"]
     )
@@ -683,11 +699,11 @@ def test_finished_link_round_trips_to_same_count_as_stat(world):
 def a_retired_purchase(world):
     library = world["library"]
     game = create_tracked_game(library, "Retired", status=PlayerGameStatus.RETIRED)
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(YEAR, 6, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([game])
 
     #: Bought earlier, ended in scope.
@@ -698,11 +714,11 @@ def a_retired_purchase(world):
         completion_recorded_at=timezone.now(),
         completed=TemporalValue.from_day(date(YEAR, 8, 2)),
     )
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(YEAR - 1, 6, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([earlier])
     return world
 
@@ -723,6 +739,6 @@ def test_a_retired_purchase_links_to_the_same_count(
     stats = compute_stats(library, YEAR)
 
     assert (
-        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
+        _count(getattr(stats_links, builder)(YEAR), LegacyPurchase, library)
         == stats[stat_key]
     )

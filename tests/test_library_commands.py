@@ -23,6 +23,7 @@ from games.models import (
     Device,
     ExchangeRate,
     Game,
+    LegacyPurchase,
     LibraryCalendar,
     LibraryEvent,
     Platform,
@@ -30,7 +31,6 @@ from games.models import (
     PlayerSession,
     Playthrough,
     PlaythroughKind,
-    Purchase,
     PurchaseConversionState,
     UserLibraryPreferences,
 )
@@ -58,7 +58,7 @@ def _owned_graph(owner):
         name="Owner game",
         platform=platform,
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owner.library,
         price=10,
         price_currency="CZK",
@@ -216,13 +216,13 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     # the fixture's, so the loaded rows must have been remapped onto this exact
     # platform rather than carrying the fixture's identity through.
     assert Game.objects.filter(platform=steam).exists()
-    assert Purchase.objects.filter(platform=steam).exists()
+    assert LegacyPurchase.objects.filter(platform=steam).exists()
     assert Game.objects.filter(library=owner.library).exists()
     assert not Game.objects.exclude(library=owner.library).exists()
     assert Device.objects.filter(library=owner.library).exists()
     assert not Device.objects.exclude(library=owner.library).exists()
-    assert Purchase.objects.filter(library=owner.library).exists()
-    assert not Purchase.objects.exclude(library=owner.library).exists()
+    assert LegacyPurchase.objects.filter(library=owner.library).exists()
+    assert not LegacyPurchase.objects.exclude(library=owner.library).exists()
     assert PlayerSession.objects.filter(library=owner.library).exists()
     assert not PlayerSession.objects.exclude(library=owner.library).exists()
     assert LibraryCalendar.objects.filter(library=owner.library).exists()
@@ -274,11 +274,11 @@ def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
 
     promoted = {
         model: [record for record in records if record["model"] == model]
-        for model in ("games.filterpreset", "games.purchase")
+        for model in ("games.filterpreset", "games.legacypurchase")
     }
     #: A device travels as its events, never as a row.
     assert not any(record["model"] == "games.device" for record in records)
-    assert promoted["games.purchase"]
+    assert promoted["games.legacypurchase"]
     for model_records in promoted.values():
         assert all(isinstance(record["pk"], str) for record in model_records)
         assert all(UUID(record["pk"]).version == 7 for record in model_records)
@@ -315,7 +315,7 @@ def test_sample_load_requests_conversion_when_preserved_cache_currency_differs(
     fixture = tmp_path / "sample.yaml"
     purchase_uuid = "00000000-0000-7000-8000-000000000101"
     fixture.write_text(
-        f"""- model: games.purchase
+        f"""- model: games.legacypurchase
   pk: {purchase_uuid}
   fields:
     library: __target_library__
@@ -347,7 +347,7 @@ def test_sample_load_requests_conversion_when_preserved_cache_currency_differs(
     call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
     state.refresh_from_db()
-    purchase = Purchase.objects.get(pk=purchase_uuid)
+    purchase = LegacyPurchase.objects.get(pk=purchase_uuid)
     assert (purchase.converted_price, purchase.converted_currency) == (230, "CZK")
     assert (
         state.requested_version,
@@ -365,7 +365,7 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     fixture = tmp_path / "sample.yaml"
     purchase_id = "00000000-0000-7000-8000-000000000202"
     fixture.write_text(
-        f"""- model: games.purchase
+        f"""- model: games.legacypurchase
   pk: {purchase_id}
   fields:
     library: null
@@ -382,7 +382,7 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     with pytest.raises(CommandError, match="portable owner marker"):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not Purchase.objects.filter(pk=purchase_id).exists()
+    assert not LegacyPurchase.objects.filter(pk=purchase_id).exists()
 
 
 @pytest.mark.django_db
@@ -488,12 +488,12 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
     ("model", "fields", "target_model"),
     [
         (
-            "games.purchase",
+            "games.legacypurchase",
             {"library": "__target_library__", "games": [999]},
             "Game",
         ),
         (
-            "games.purchase",
+            "games.legacypurchase",
             {"library": "__target_library__", "related_game": ABSENT_GAME_UUID},
             "Game",
         ),
@@ -503,7 +503,7 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
             "Platform",
         ),
         (
-            "games.purchase",
+            "games.legacypurchase",
             {"library": "__target_library__", "platform": ABSENT_PLATFORM_UUID},
             "Platform",
         ),
@@ -590,7 +590,7 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
         yaml.safe_dump(
             [
                 {
-                    "model": "games.purchase",
+                    "model": "games.legacypurchase",
                     "pk": duplicate_purchase_id,
                     "fields": {
                         "library": "__target_library__",
@@ -598,7 +598,7 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
                     },
                 },
                 {
-                    "model": "games.purchase",
+                    "model": "games.legacypurchase",
                     "pk": duplicate_purchase_id,
                     "fields": {
                         "library": "__target_library__",
@@ -612,11 +612,11 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
 
     with pytest.raises(
         CommandError,
-        match=rf"duplicate games.purchase primary key {duplicate_purchase_id}",
+        match=rf"duplicate games.legacypurchase primary key {duplicate_purchase_id}",
     ):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not Purchase.objects.filter(pk=duplicate_purchase_id).exists()
+    assert not LegacyPurchase.objects.filter(pk=duplicate_purchase_id).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -650,7 +650,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
                     },
                 },
                 {
-                    "model": "games.purchase",
+                    "model": "games.legacypurchase",
                     "pk": colliding_purchase_id,
                     "fields": {
                         "library": "__target_library__",
@@ -672,7 +672,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     def insert_after_check(records):
         original_check(records)
-        Purchase.objects.create(
+        LegacyPurchase.objects.create(
             pk=colliding_purchase_id,
             library=owner.library,
             name="Concurrent purchase",
@@ -692,7 +692,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     assert "duplicate key" in str(error.value).lower()
     assert not Platform.objects.filter(name="Rollback platform").exists()
-    assert not Purchase.objects.filter(pk=colliding_purchase_id).exists()
+    assert not LegacyPurchase.objects.filter(pk=colliding_purchase_id).exists()
     assert not ExchangeRate.objects.filter(
         currency_from="USD",
         currency_to="EUR",
@@ -714,12 +714,12 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     )
 
     Game.objects.filter(pk=outsider_game.pk).update(platform=owner_platform)
-    Purchase.objects.filter(pk=outsider_purchase.pk).update(
+    LegacyPurchase.objects.filter(pk=outsider_purchase.pk).update(
         platform=owner_platform,
         related_game=owner_game,
     )
-    Purchase.games.through.objects.create(
-        purchase_id=outsider_purchase.pk,
+    LegacyPurchase.games.through.objects.create(
+        legacypurchase_id=outsider_purchase.pk,
         game_id=owner_game.pk,
     )
     PlayerSession.objects.filter(pk=outsider_session.pk).update(device=owner_device)

@@ -10,7 +10,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.forms import PurchaseForm
-from games.models import Game, Purchase
+from games.models import Game, LegacyPurchase
 
 #: A stated day; nothing counts by day.
 PURCHASE_DAY = date(2026, 3, 5)
@@ -64,16 +64,16 @@ def foreign_key_target(table_name: str, column_name: str) -> tuple[str, str] | N
 # --- Live ORM behaviour -------------------------------------------------------
 
 
-def _purchase(library, **overrides) -> Purchase:
+def _purchase(library, **overrides) -> LegacyPurchase:
     fields = {
         "library": library,
         "date_purchased": PURCHASE_DAY,
         "price": 10.0,
         "price_currency": "USD",
-        "ownership_type": Purchase.DIGITAL,
-        "type": Purchase.GAME,
+        "ownership_type": LegacyPurchase.DIGITAL,
+        "type": LegacyPurchase.GAME,
     }
-    return Purchase.objects.create(**{**fields, **overrides})
+    return LegacyPurchase.objects.create(**{**fields, **overrides})
 
 
 @pytest.fixture
@@ -90,7 +90,7 @@ def other_game(owned_library):
 def dlc_purchase(owned_library, base_game):
     return _purchase(
         owned_library,
-        type=Purchase.DLC,
+        type=LegacyPurchase.DLC,
         name="Expansion",
         related_game=base_game,
     )
@@ -103,8 +103,8 @@ def test_related_game_attname_reads_back_as_the_games_identity(base_game, dlc_pu
 def test_purchase_filters_by_related_instance_and_by_integer_id(
     base_game, dlc_purchase
 ):
-    assert Purchase.objects.filter(related_game=base_game).count() == 1
-    assert Purchase.objects.filter(related_game__id=base_game.id).count() == 1
+    assert LegacyPurchase.objects.filter(related_game=base_game).count() == 1
+    assert LegacyPurchase.objects.filter(related_game__id=base_game.id).count() == 1
 
 
 def test_addon_purchases_reverse_accessor_reaches_the_purchase(base_game, dlc_purchase):
@@ -118,22 +118,22 @@ def test_deleting_the_base_game_clears_the_link_without_deleting_the_purchase(
     base_game.delete()
     dlc_purchase.refresh_from_db()
     assert dlc_purchase.related_game_id is None
-    assert Purchase.objects.filter(pk=dlc_purchase.pk).exists()
+    assert LegacyPurchase.objects.filter(pk=dlc_purchase.pk).exists()
 
 
 def test_database_rejects_a_purchase_naming_a_game_uuid_no_game_owns(owned_library):
     # bulk_create, not save(): save() runs clean(), which dereferences
     # self.related_game and would raise in Python before PostgreSQL sees the row.
-    orphan = Purchase(
+    orphan = LegacyPurchase(
         library=owned_library,
         date_purchased=PURCHASE_DAY,
         price_currency="USD",
-        type=Purchase.DLC,
+        type=LegacyPurchase.DLC,
         name="Orphan",
     )
     orphan.related_game_id = uuid.uuid4()
     with pytest.raises(IntegrityError), transaction.atomic():
-        Purchase.objects.bulk_create([orphan])
+        LegacyPurchase.objects.bulk_create([orphan])
 
 
 # --- Form identity ------------------------------------------------------------
@@ -160,8 +160,8 @@ def test_purchaseform_posting_an_identity_saves_the_right_base_game(
             "date_purchased": "2026-01-01",
             "price": "1",
             "price_currency": "USD",
-            "ownership_type": Purchase.DIGITAL,
-            "type": Purchase.DLC,
+            "ownership_type": LegacyPurchase.DIGITAL,
+            "type": LegacyPurchase.DLC,
             "related_game": str(base_game.id),
             "name": "Expansion",
         },
@@ -179,14 +179,14 @@ def test_purchaseform_posting_an_identity_saves_the_right_base_game(
 
 
 def test_the_purchase_games_through_table_uses_promoted_relation_identities():
-    assert column_type("games_purchase_games", "game_id") == "uuid_v7"
-    assert column_type("games_purchase_games", "purchase_id") == "uuid_v7"
-    assert foreign_key_target("games_purchase_games", "game_id") == (
+    assert column_type("games_legacypurchase_games", "game_id") == "uuid_v7"
+    assert column_type("games_legacypurchase_games", "legacypurchase_id") == "uuid_v7"
+    assert foreign_key_target("games_legacypurchase_games", "game_id") == (
         "games_game",
         "id",
     )
-    assert foreign_key_target("games_purchase_games", "purchase_id") == (
-        "games_purchase",
+    assert foreign_key_target("games_legacypurchase_games", "legacypurchase_id") == (
+        "games_legacypurchase",
         "id",
     )
 
@@ -196,6 +196,6 @@ def test_the_purchase_games_pair_is_still_unique(owned_library, base_game):
     purchase.games.add(base_game)
     # Through the through model directly: a second .add() is silently filtered
     # by _get_missing_target_ids and would prove nothing.
-    through = Purchase.games.through
+    through = LegacyPurchase.games.through
     with pytest.raises(IntegrityError), transaction.atomic():
-        through.objects.create(purchase_id=purchase.pk, game_id=base_game.pk)
+        through.objects.create(legacypurchase_id=purchase.pk, game_id=base_game.pk)

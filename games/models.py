@@ -1041,7 +1041,7 @@ class ExternalReference(models.Model):
         super().save(*args, **kwargs)
 
 
-class PurchaseQueryset(RemovableLibraryQuerySet):
+class LegacyPurchaseQueryset(RemovableLibraryQuerySet):
     def for_library(self, library):
         #: One live game keeps a bundle.
         #: A purchase that names no game
@@ -1060,7 +1060,7 @@ class PurchaseQueryset(RemovableLibraryQuerySet):
         return self.filter(date_refunded__isnull=True)
 
     def games_only(self):
-        return self.filter(type=Purchase.GAME)
+        return self.filter(type=LegacyPurchase.GAME)
 
     def finished(self, library):
         #: Local: the reads module imports models.
@@ -1077,7 +1077,7 @@ class PurchaseQueryset(RemovableLibraryQuerySet):
         ).distinct()
 
 
-class Purchase(models.Model):
+class LegacyPurchase(models.Model):
     if TYPE_CHECKING:
         #: Annotations, not columns: the Finished cell reads
         #: the act from one and the value from the other, and
@@ -1115,7 +1115,7 @@ class Purchase(models.Model):
         (BATTLEPASS, "Battle Pass"),
     )
 
-    objects = PurchaseQueryset().as_manager()
+    objects = LegacyPurchaseQueryset().as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False, serialize=False)
     library = models.ForeignKey(
@@ -1231,7 +1231,7 @@ class Purchase(models.Model):
         if not self.price_currency:
             raise ValidationError({"price_currency": "Purchase currency is required."})
         self.clean()
-        if self.type != Purchase.GAME and not self.related_game:
+        if self.type != LegacyPurchase.GAME and not self.related_game:
             raise ValidationError(
                 f"{self.get_type_display()} must have a related game."
             )
@@ -1257,7 +1257,9 @@ class Purchase(models.Model):
             price_changed = is_new
             if not is_new:
                 previous = (
-                    Purchase.objects.only("date_purchased", "price", "price_currency")
+                    LegacyPurchase.objects.only(
+                        "date_purchased", "price", "price_currency"
+                    )
                     .filter(pk=self.pk)
                     .first()
                 )
@@ -1280,6 +1282,10 @@ class Purchase(models.Model):
                     conversion_state,
                     conversion_state.requested_currency,
                 )
+
+    class Meta:
+        verbose_name = "purchase"
+        verbose_name_plural = "purchases"
 
 
 class ExchangeRate(models.Model):

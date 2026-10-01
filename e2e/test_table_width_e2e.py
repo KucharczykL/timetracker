@@ -19,10 +19,10 @@ from e2e.helpers import settle_layout
 from games.models import (
     Game,
     HistoricalPlaytimeProvenance,
+    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     Playthrough,
-    Purchase,
 )
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
@@ -110,7 +110,7 @@ def populated(e2e_user, e2e_library) -> None:
     )
     # One refunded, one not, so both renderings of the Refunded column appear.
     for index, purchased_game in enumerate((game, short)):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=e2e_library,
             platform=platform,
             date_purchased=BASE + timedelta(days=index),

@@ -16,11 +16,11 @@ from games.models import (
     FilterPreset,
     Game,
     HistoricalPlaytime,
+    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
@@ -89,11 +89,11 @@ def _removed_run(user, game):
 
 
 def _removed_purchase(user, game):
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=user.library,
         price_currency="CZK",
         date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.set([game])
     remove(purchase)

@@ -42,7 +42,7 @@ from common.date_time_presentation import (
 from games.filters import (
     MODE_PARSERS,
     GameFilter,
-    PurchaseFilter,
+    LegacyPurchaseFilter,
     filter_for_model,
 )
 from games.views.filtering import BUILDER_MODES, builder_url_for
@@ -241,7 +241,7 @@ class IsQuickEditableTest(SimpleTestCase):
             is_quick_editable(
                 {"games": {"value": ["1"], "modifier": "INCLUDES_ALL"}},
                 {"games"},
-                filter_cls=PurchaseFilter,
+                filter_cls=LegacyPurchaseFilter,
             )
         )
 

@@ -6,7 +6,7 @@ import uuid
 import pytest
 from django.db import IntegrityError, transaction
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -27,7 +27,7 @@ def game(owned_library, platform):
 
 
 def make_purchase(library, platform):
-    return Purchase.objects.create(
+    return LegacyPurchase.objects.create(
         library=library,
         platform=platform,
         date_purchased=datetime.date(2026, 1, 1),
@@ -67,7 +67,7 @@ def test_platform_reverse_accessors_expose_games_and_purchases(
 ):
     purchase = make_purchase(owned_library, platform)
     assert list(platform.game_set.all()) == [game]
-    assert list(platform.purchase_set.all()) == [purchase]
+    assert list(platform.legacypurchase_set.all()) == [purchase]
 
 
 def test_deleting_a_platform_nulls_both_relations(game, owned_library, platform):
@@ -94,9 +94,9 @@ def test_database_rejects_a_purchase_referencing_a_uuid_no_platform_owns(
     owned_library,
 ):
     with pytest.raises(IntegrityError), transaction.atomic():
-        Purchase.objects.bulk_create(
+        LegacyPurchase.objects.bulk_create(
             [
-                Purchase(
+                LegacyPurchase(
                     library=owned_library,
                     platform_id=uuid.uuid7(),
                     date_purchased=datetime.date(2026, 1, 1),

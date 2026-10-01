@@ -10,20 +10,20 @@ from tracked_games import create_tracked_game
 
 from common.date_time_presentation import date_time_presentation_for_request
 from games.filters import (
+    LegacyPurchaseFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
-    PurchaseFilter,
     filter_query_context_for_library,
     filter_url,
 )
 from games.formatting import session_time_range
 from games.models import (
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
@@ -40,11 +40,11 @@ def game(owned_library):
         owned_library, "Test Game", status=PlayerGameStatus.PLAYED, platform=platform
     )
     session_row(game, started_at=_dt(1), ended_at=_dt(1, 13))
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
         date_purchased=_dt(1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([game])
     return game
 
@@ -63,7 +63,7 @@ def test_sessions_section_links_to_filtered_sessions(game, rendered):
 
 
 def test_purchases_section_links_to_filtered_purchases(game, rendered):
-    href = escape(filter_url(PurchaseFilter.where(games=[game.id])))
+    href = escape(filter_url(LegacyPurchaseFilter.where(games=[game.id])))
     assert href in rendered
 
 
@@ -80,11 +80,11 @@ def test_link_filters_scope_to_game(game):
         library=game.library, name="Other", platform=game.platform
     )
     session_row(other, started_at=_dt(3), ended_at=_dt(3, 13))
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=game.library,
         price_currency="CZK",
         date_purchased=_dt(3),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([other])
     context = filter_query_context_for_library(game.library)
     sessions = PlayerSession.objects.filter(
@@ -94,8 +94,8 @@ def test_link_filters_scope_to_game(game):
         PlayerSession.objects.filter(playthrough__player_game__game=game)
     )
 
-    purchases = Purchase.objects.filter(
-        PurchaseFilter.where(games=[game.id]).to_q(context)
+    purchases = LegacyPurchase.objects.filter(
+        LegacyPurchaseFilter.where(games=[game.id]).to_q(context)
     )
     assert list(purchases) == list(game.purchases.all())
 

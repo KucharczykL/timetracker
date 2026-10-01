@@ -17,13 +17,13 @@ from games.filters import parse_game_filter
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     LibraryCalendar,
     Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
-    Purchase,
     UserPreferences,
 )
 from games.reads.playtime import game_playtime
@@ -60,7 +60,7 @@ def _owned_game(**values):
 
 
 def _owned_purchase(**values):
-    return Purchase.objects.create(library=_test_library(), **values)
+    return LegacyPurchase.objects.create(library=_test_library(), **values)
 
 
 def test_existing_endpoint_requires_auth():
@@ -116,7 +116,7 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
     Game.objects.filter(pk=old_game.pk).update(
         updated_at=datetime(2025, 1, 1, tzinfo=UTC)
     )
-    Purchase.objects.filter(pk=recent_purchase.pk).update(
+    LegacyPurchase.objects.filter(pk=recent_purchase.pk).update(
         updated_at=datetime(2026, 1, 1, tzinfo=UTC)
     )
 
@@ -139,7 +139,7 @@ def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_clien
         query["sql"] for query in queries if 'FROM "games_platform"' in query["sql"]
     )
     assert 'LEFT OUTER JOIN "games_game"' not in search_sql
-    assert 'LEFT OUTER JOIN "games_purchase"' not in search_sql
+    assert 'LEFT OUTER JOIN "games_legacypurchase"' not in search_sql
 
 
 def test_device_search_offers_ended_devices_after_held_ones(auth_client):

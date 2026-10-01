@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from historical_playtime_rows import record_row
 
-from games.models import Game, Platform, Playthrough, Purchase
+from games.models import Game, LegacyPurchase, Platform, Playthrough
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 
@@ -32,7 +32,7 @@ class PathWorksTest(TestCase):
         self.game = Game.objects.create(
             library=library, name="Test Game", platform=self.platform
         )
-        self.purchase = Purchase.objects.create(
+        self.purchase = LegacyPurchase.objects.create(
             date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
             library=library,
@@ -47,7 +47,7 @@ class PathWorksTest(TestCase):
         # the one above and both the purchase list and the game detail page (which
         # lists a game's purchases) 500'd under DEBUG. Linked to the same game so
         # one fixture covers both.
-        self.same_price_purchase = Purchase.objects.create(
+        self.same_price_purchase = LegacyPurchase.objects.create(
             date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
             platform=self.platform,
             library=library,

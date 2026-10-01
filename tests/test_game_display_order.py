@@ -23,11 +23,11 @@ from games.forms import _game_options
 from games.models import (
     Game,
     HistoricalPlaytime,
+    LegacyPurchase,
     LibraryEntry,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
-    Purchase,
     game_display_key,
     game_display_order_through,
 )
@@ -67,7 +67,7 @@ class GameDisplayOrderReadsTest(TestCase):
 
     def test_related_manager_reads_in_display_order(self):
         games = tied_games(self.library)
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=self.library, date_purchased="2025-01-01", price_currency="USD"
         )
         purchase.games.set(games)
@@ -93,19 +93,21 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
         self.expected = [game.id for game in self.games]
 
     def _bundle(self):
-        bundle = Purchase.objects.create(
+        bundle = LegacyPurchase.objects.create(
             library=self.library,
             price=70,
             price_currency="USD",
             date_purchased=date(2025, 1, 1),
-            ownership_type=Purchase.DIGITAL,
-            type=Purchase.GAME,
+            ownership_type=LegacyPurchase.DIGITAL,
+            type=LegacyPurchase.GAME,
         )
         bundle.games.set(reversed(self.games))
         return bundle
 
     def _games_of_new_purchases(self, excluding=None):
-        purchases = Purchase.objects.for_library(self.library).exclude(pk=excluding)
+        purchases = LegacyPurchase.objects.for_library(self.library).exclude(
+            pk=excluding
+        )
         return [purchase.games.get().id for purchase in purchases.order_by("id")]
 
     def test_search_answers_in_display_order(self):
@@ -130,8 +132,8 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
                 "games": list(reversed(self.expected)),
                 "date_purchased": "2025-01-01",
                 "price_currency": "USD",
-                "ownership_type": Purchase.DIGITAL,
-                "type": Purchase.GAME,
+                "ownership_type": LegacyPurchase.DIGITAL,
+                "type": LegacyPurchase.GAME,
                 "name": "",
                 "pricing_mode": "per_game",
             },
@@ -171,7 +173,9 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
         self.assertEqual(self._bundle().first_game, self.games[0])
 
     def test_first_game_reads_prefetched_games(self):
-        bundle = Purchase.objects.prefetch_related("games").get(pk=self._bundle().pk)
+        bundle = LegacyPurchase.objects.prefetch_related("games").get(
+            pk=self._bundle().pk
+        )
         with self.assertNumQueries(0):
             self.assertEqual(bundle.first_game, self.games[0])
 

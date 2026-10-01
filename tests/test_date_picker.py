@@ -306,14 +306,14 @@ class DatePickerWidgetFormTest(TestCase):
         )
 
     def _valid_data(self, game, **overrides):
-        from games.models import Purchase
+        from games.models import LegacyPurchase
 
         data = {
             "games": [game.pk],
             "date_purchased": "2024-03-15",
             "price_currency": "USD",
-            "ownership_type": Purchase.DIGITAL,
-            "type": Purchase.GAME,
+            "ownership_type": LegacyPurchase.DIGITAL,
+            "type": LegacyPurchase.GAME,
         }
         data.update(overrides)
         return data
@@ -368,11 +368,13 @@ class DatePickerWidgetFormTest(TestCase):
         """A cross-field error elsewhere (missing related_game for a
         non-GAME purchase type) must not blank an already-complete, valid
         date_purchased on redisplay."""
-        from games.models import Purchase
+        from games.models import LegacyPurchase
 
         game = self._game()
         form = self._form(
-            data=self._valid_data(game, type=Purchase.DLC, related_game="", name="")
+            data=self._valid_data(
+                game, type=LegacyPurchase.DLC, related_game="", name=""
+            )
         )
         self.assertFalse(form.is_valid())
         self.assertIn("related_game", form.errors)
@@ -386,10 +388,10 @@ class DatePickerWidgetFormTest(TestCase):
     def test_edit_round_trip_preserves_instance_date(self):
         from datetime import date
 
-        from games.models import Purchase
+        from games.models import LegacyPurchase
 
         game = self._game()
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=self.library,
             price_currency="CZK",
             price=10,

@@ -13,7 +13,7 @@ from games.bulk_actions import BULK_ACTIONS
 from games.bulk_parts import LedgerRows
 from games.bulk_platforms import PLATFORM_GONE
 from games.bulk_removal import REMOVE_PLATFORM
-from games.models import Game, Platform, Purchase, UserLibrary
+from games.models import Game, LegacyPurchase, Platform, UserLibrary
 from games.reads.platform_departures import platform_departures_of
 from games.removal import remove, restore
 from games.views.bulk import STATEMENT_FIELD, TOKEN_FIELD, _act_of
@@ -104,7 +104,7 @@ def test_the_counts_are_the_live_rows_naming_each(
         platform=amiga,
     )
     remove(gone.game)
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=owned_library,
         name="Lemmings",
         platform=amiga,

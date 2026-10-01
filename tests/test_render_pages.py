@@ -15,7 +15,7 @@ from games.management.commands.render_pages import (
     normalise,
     render_plan,
 )
-from games.models import Game, Platform, Purchase
+from games.models import Game, LegacyPurchase, Platform
 from games.views.returns import READ_ONLY
 
 pytestmark = pytest.mark.django_db
@@ -27,7 +27,7 @@ def furnished(owned_user):
     platform = Platform.objects.create(library=library, name="PC")
     first = Game.objects.create(library=library, name="Outer Wilds", platform=platform)
     second = Game.objects.create(library=library, name="Tunic", platform=platform)
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=library,
         price_currency="EUR",
         date_purchased=datetime(2024, 5, 1, tzinfo=UTC).date(),

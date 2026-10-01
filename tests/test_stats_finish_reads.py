@@ -11,10 +11,10 @@ from games.commands.playthrough import CompletePlaythrough
 from games.events.dispatch import dispatch
 from games.models import (
     Game,
+    LegacyPurchase,
     PlayerGameStatus,
     Playthrough,
     PlaythroughKind,
-    Purchase,
 )
 from games.removal import remove
 from games.views.stats_data import compute_stats
@@ -36,10 +36,10 @@ def _bought_and_completed(
 ) -> Playthrough:
     game = Game.objects.create(library=library, name=name)
     track_game(user, game, correlation_id=new_correlation_id())
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
         date_purchased=date(YEAR, 1, 5),
     )
     purchase.games.set([game])
@@ -135,7 +135,7 @@ def test_a_bundle_reports_one_row_for_two_completed_games(owned_user, owned_libr
         completed=TemporalValue.from_day(date(YEAR, 9, 1)),
         completion_recorded_at=second.created_at,
     )
-    purchase = Purchase.objects.get(games=first.player_game.game)
+    purchase = LegacyPurchase.objects.get(games=first.player_game.game)
     purchase.games.add(second_game)
 
     data = compute_stats(owned_library, YEAR)
@@ -183,10 +183,10 @@ def test_a_command_states_the_completion_the_year_counts(owned_user, owned_libra
     """Drives the command, not the row."""
     game = Game.objects.create(library=owned_library, name="Commanded")
     track_game(owned_user, game, correlation_id=new_correlation_id())
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
         date_purchased=date(YEAR, 1, 5),
     )
     purchase.games.set([game])
@@ -240,11 +240,11 @@ def test_an_untracked_game_supplies_no_completion(owned_user, owned_library):
 def test_a_purchase_naming_no_game_finishes_nothing(owned_user, owned_library):
     """No game: the Purchase reports no finish."""
     _bought_and_completed(owned_user, owned_library, "Dated", date(YEAR, 6, 1))
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=owned_library,
         name="Gift card",
         price_currency="CZK",
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
         date_purchased=date(YEAR, 2, 1),
     )
 
@@ -272,7 +272,7 @@ def test_a_bundle_released_this_year_reports_one_row(owned_user, owned_library):
         completed=TemporalValue.from_day(date(YEAR, 9, 1)),
         completion_recorded_at=second.created_at,
     )
-    Purchase.objects.get(games=first_game).games.add(second_game)
+    LegacyPurchase.objects.get(games=first_game).games.add(second_game)
 
     data = compute_stats(owned_library, YEAR)
 
@@ -288,7 +288,7 @@ def test_a_bundle_leaves_the_backlog_once(owned_user, owned_library):
     first = _bought_and_completed(
         owned_user, owned_library, "Backlog A", date(YEAR, 3, 1)
     )
-    purchase = Purchase.objects.get(games=first.player_game.game)
+    purchase = LegacyPurchase.objects.get(games=first.player_game.game)
     purchase.date_purchased = date(YEAR - 1, 1, 5)
     purchase.save()
     second_game = Game.objects.create(library=owned_library, name="Backlog B")

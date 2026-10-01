@@ -21,12 +21,12 @@ from games.filters import FindFilter, GameFilter, PlayerSessionFilter
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
     Playthrough,
     PlaythroughKind,
-    Purchase,
     UserPreferences,
 )
 from games.reads.player_sessions import library_sessions
@@ -859,7 +859,7 @@ class TestListPurchasesSort:
         alpha, beta = two_games
         # cheap (Alpha, price=10) purchased LATER so default -purchased order would show Alpha first
         # dear (Beta, price=90) purchased EARLIER — so -price must override default order to pass
-        dear = Purchase.objects.create(
+        dear = LegacyPurchase.objects.create(
             price_currency="CZK",
             library=beta.library,
             date_purchased=datetime(2022, 1, 1, tzinfo=ZONEINFO),
@@ -868,7 +868,7 @@ class TestListPurchasesSort:
             platform=beta.platform,
         )
         dear.games.add(beta)
-        cheap = Purchase.objects.create(
+        cheap = LegacyPurchase.objects.create(
             price_currency="CZK",
             library=alpha.library,
             date_purchased=datetime(2022, 1, 2, tzinfo=ZONEINFO),

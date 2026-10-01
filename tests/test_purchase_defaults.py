@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from games.models import Game, Platform, Purchase, UserPreferences
+from games.models import Game, LegacyPurchase, Platform, UserPreferences
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_user_setting
 
@@ -34,8 +34,8 @@ class AddPurchaseDefaultsTest(TestCase):
             "platform": "",
             "date_purchased": "2025-01-01",
             "price_currency": "",
-            "ownership_type": Purchase.DIGITAL,
-            "type": Purchase.GAME,
+            "ownership_type": LegacyPurchase.DIGITAL,
+            "type": LegacyPurchase.GAME,
             "name": "",
         }
         data.update(overrides)
@@ -48,7 +48,7 @@ class AddPurchaseDefaultsTest(TestCase):
         response = self.client.post(reverse("games:add_purchase"), data)
 
         self.assertEqual(response.status_code, 302)
-        purchase = Purchase.objects.get()
+        purchase = LegacyPurchase.objects.get()
         self.assertIsNone(purchase.platform)
         self.assertEqual(purchase.price_currency, "CZK")
 
@@ -74,10 +74,10 @@ class AddPurchaseDefaultsTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Purchase.objects.get().price, 0)
+        self.assertEqual(LegacyPurchase.objects.get().price, 0)
 
     def test_edit_form_keeps_the_stored_price(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=self.library,
             date_purchased=date(2025, 1, 1),
             price=0,
@@ -106,8 +106,8 @@ class AddPurchaseDefaultsTest(TestCase):
         response = self.client.post(reverse("games:add_purchase"), data)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Purchase.objects.count(), 2)
-        for purchase in Purchase.objects.all():
+        self.assertEqual(LegacyPurchase.objects.count(), 2)
+        for purchase in LegacyPurchase.objects.all():
             self.assertIsNone(purchase.platform)
             self.assertEqual(purchase.price_currency, "CZK")
 
@@ -123,10 +123,10 @@ class AddPurchaseDefaultsTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Purchase.objects.get().price_currency, "EUR")
+        self.assertEqual(LegacyPurchase.objects.get().price_currency, "EUR")
 
     def test_changing_purchase_default_never_rewrites_stored_purchase(self):
-        purchase = Purchase.objects.create(
+        purchase = LegacyPurchase.objects.create(
             library=self.library,
             date_purchased=date(2025, 1, 1),
             price=10,
@@ -139,7 +139,7 @@ class AddPurchaseDefaultsTest(TestCase):
         self.assertEqual(purchase.price_currency, "USD")
 
     def test_purchase_save_rejects_missing_explicit_currency(self):
-        purchase = Purchase(
+        purchase = LegacyPurchase(
             library=self.library,
             date_purchased=date(2025, 1, 1),
             price=10,

@@ -37,13 +37,13 @@ from games.models import (
     Device,
     Edition,
     Game,
+    LegacyPurchase,
     LibraryEvent,
     LibraryEventReference,
     Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
-    Purchase,
     ReferencedRow,
     Release,
     UserLibraryPreferences,
@@ -286,14 +286,14 @@ def populate(library):
     edition = Edition.objects.create(game=doomed, is_default=True)
     Release.objects.create(edition=edition, is_default=True, platform=platform)
 
-    alone = Purchase.objects.create(
+    alone = LegacyPurchase.objects.create(
         library=library,
         date_purchased=date(2026, 1, 1),
         platform=platform,
         price_currency="USD",
     )
     alone.games.set([doomed])
-    bundle = Purchase.objects.create(
+    bundle = LegacyPurchase.objects.create(
         library=library,
         date_purchased=date(2026, 1, 2),
         platform=platform,
@@ -304,10 +304,10 @@ def populate(library):
 
 
 def snapshot(library, bundle, bystander) -> LibraryState:
-    surviving = Purchase.objects.filter(pk=bundle.pk).first()
+    surviving = LegacyPurchase.objects.filter(pk=bundle.pk).first()
     return LibraryState(
         sessions=PlayerSession.objects.filter(library=library).count(),
-        purchases=Purchase.objects.filter(library=library).count(),
+        purchases=LegacyPurchase.objects.filter(library=library).count(),
         editions=Edition.objects.filter(game__library=library).count(),
         releases=Release.objects.filter(edition__game__library=library).count(),
         bundle_count=None if surviving is None else surviving.num_purchases,
@@ -354,7 +354,7 @@ def test_removing_a_platform_keeps_what_names_it(owned_library, platform):
     game = Game.objects.create(
         library=owned_library, name="Tetris", year_released=1984, platform=platform
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         date_purchased=date(2026, 1, 1),
         platform=platform,
@@ -369,7 +369,7 @@ def test_removing_a_platform_keeps_what_names_it(owned_library, platform):
     remove(platform)
 
     assert Game.objects.get(pk=game.pk).platform_id == platform.pk
-    assert Purchase.objects.get(pk=purchase.pk).platform_id == platform.pk
+    assert LegacyPurchase.objects.get(pk=purchase.pk).platform_id == platform.pk
     assert Release.objects.get(pk=release.pk).platform_id == platform.pk
 
 

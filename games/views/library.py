@@ -32,13 +32,13 @@ from common.layout import render_page
 from common.returns import OriginUrl, UrlName, action_url
 from games.end_ways import END_WAY_LABELS
 from games.endpoints import DEVICE_ACCESS_END
-from games.filters import GameFilter, PurchaseFilter, filter_url
+from games.filters import GameFilter, LegacyPurchaseFilter, filter_url
 from games.forms import LibraryPreferencesForm
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     Platform,
-    Purchase,
     PurchaseConversionState,
 )
 from games.reads.endpoints import stated, way_of
@@ -81,7 +81,7 @@ def library(request: HttpRequest) -> HttpResponse:
     durations = duration_presentation_for_request(request)
     playtime = total_playtime(library)
     games = Game.objects.for_library(library)
-    purchases = Purchase.objects.for_library(library)
+    purchases = LegacyPurchase.objects.for_library(library)
     devices = Device.objects.for_library(library)
     platforms = Platform.objects.for_library(library)
     not_refunded = purchases.not_refunded()
@@ -186,7 +186,7 @@ def library(request: HttpRequest) -> HttpResponse:
             StatisticCard(
                 "Total spent",
                 total_spent_value,
-                href=filter_url(PurchaseFilter.where(is_refunded=False)),
+                href=filter_url(LegacyPurchaseFilter.where(is_refunded=False)),
             ),
             StatisticCard(
                 "Refunded purchases",

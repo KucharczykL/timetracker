@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
 
-from games.models import Game, Purchase
+from games.models import Game, LegacyPurchase
 
 #: Transactional: a refund dispatches, and a dispatch cannot
 #: nest in the transaction pytest-django rolls back.
@@ -71,7 +71,7 @@ def runtime_world(db):
     foreign_game = Game.objects.create(
         library=foreign_user.library, name="Foreign runtime game"
     )
-    own_purchase = Purchase.objects.create(
+    own_purchase = LegacyPurchase.objects.create(
         library=owner.library,
         name="Owned runtime purchase",
         date_purchased=date(2026, 8, 20),
@@ -79,7 +79,7 @@ def runtime_world(db):
         price_currency="USD",
     )
     own_purchase.games.set([own_game_one, own_game_two])
-    foreign_purchase = Purchase.objects.create(
+    foreign_purchase = LegacyPurchase.objects.create(
         library=foreign_user.library,
         name="Foreign runtime purchase",
         date_purchased=date(2026, 8, 20),
@@ -130,7 +130,7 @@ def test_purchase_identity_routes_hide_foreign_uuidv7s(
 ):
     """Removing the library-scoped Purchase lookup reveals another library's UUID."""
     foreign_purchase = runtime_world.foreign_purchase
-    before_count = Purchase.objects.count()
+    before_count = LegacyPurchase.objects.count()
 
     response = getattr(runtime_world.client, method)(
         reverse(route_name, args=[foreign_purchase.pk])
@@ -138,5 +138,5 @@ def test_purchase_identity_routes_hide_foreign_uuidv7s(
 
     foreign_purchase.refresh_from_db()
     assert response.status_code == 404
-    assert Purchase.objects.count() == before_count
+    assert LegacyPurchase.objects.count() == before_count
     assert foreign_purchase.date_refunded is None

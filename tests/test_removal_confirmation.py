@@ -67,17 +67,17 @@ def test_the_confirmation_form_keeps_the_origin(logged_in, game):
 def removables(owned_library):
     from datetime import date
 
-    from games.models import Purchase
+    from games.models import LegacyPurchase
 
     platform = Platform.objects.create(name="Console")
     owned = Game.objects.create(
         library=owned_library, name="Removable", platform=platform
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price_currency="CZK",
         date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.set([owned])
     return {

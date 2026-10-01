@@ -96,11 +96,11 @@ from games.filters import (
     FindFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    LegacyPurchaseFilter,
     LibraryEntryFilter,
     NarrowingClauses,
     PlayerSessionFilter,
     PlaythroughFilter,
-    PurchaseFilter,
     filter_query_context_for_library,
     filter_url,
     parse_game_filter,
@@ -114,11 +114,11 @@ from games.models import (
     ExternalReference,
     Game,
     GameKind,
+    LegacyPurchase,
     PlayerGameStatus,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
     Playthrough,
-    Purchase,
     Release,
     UserLibrary,
 )
@@ -1197,7 +1197,7 @@ def _addons_section(game: Game, library: UserLibrary, origin: OriginUrl | None) 
 
 def _purchases_section(
     game: Game,
-    purchases: QuerySet[Purchase],
+    purchases: QuerySet[LegacyPurchase],
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
 ) -> Node:
@@ -1246,7 +1246,7 @@ def _purchases_section(
         purchases.count(),
         table,
         "No purchases yet.",
-        view_all_url=filter_url(PurchaseFilter.where(games=[game.id])),
+        view_all_url=filter_url(LegacyPurchaseFilter.where(games=[game.id])),
     )
 
 
@@ -1470,7 +1470,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
     sessions = game_sessions(library, game)
-    purchases = Purchase.objects.for_library(library).filter(games=game)
+    purchases = LegacyPurchase.objects.for_library(library).filter(games=game)
     tracked = tracked_game(library, game)
     #: A run may name another library's PlayerGame.
     runs = list(

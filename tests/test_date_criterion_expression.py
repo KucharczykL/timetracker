@@ -9,7 +9,7 @@ from django.db.models import F
 
 from common.criteria import DateCriterion, FilterError, Modifier
 from games.filters import parse_game_filter, parse_session_filter
-from games.models import Purchase
+from games.models import LegacyPurchase
 
 pytestmark = pytest.mark.django_db
 
@@ -20,7 +20,7 @@ DAYS = (date(2026, 3, 4), date(2026, 3, 5), date(2026, 3, 6))
 def three_days(owned_library):
     for day in DAYS:
         purchase = make_purchase(owned_library, name=day.isoformat())
-        Purchase.objects.filter(pk=purchase.pk).update(date_refunded=day)
+        LegacyPurchase.objects.filter(pk=purchase.pk).update(date_refunded=day)
     #: Never refunded: the NULL row.
     make_purchase(owned_library, name="kept")
 
@@ -35,8 +35,10 @@ def _criterion(modifier: Modifier) -> DateCriterion:
 def test_both_forms_match_the_same_rows(three_days, modifier):
     criterion = _criterion(modifier)
 
-    by_column = set(Purchase.objects.filter(criterion.to_q("date_refunded")))
-    by_expression = set(Purchase.objects.filter(criterion.to_q_on(F("date_refunded"))))
+    by_column = set(LegacyPurchase.objects.filter(criterion.to_q("date_refunded")))
+    by_expression = set(
+        LegacyPurchase.objects.filter(criterion.to_q_on(F("date_refunded")))
+    )
 
     assert by_expression == by_column
     assert by_column

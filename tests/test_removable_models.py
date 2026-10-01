@@ -13,8 +13,8 @@ from games.models import (
     Edition,
     FilterPreset,
     Game,
+    LegacyPurchase,
     Platform,
-    Purchase,
     Release,
     UserLibrary,
 )
@@ -39,12 +39,12 @@ def _platform(library: UserLibrary) -> Platform:
     return Platform.objects.create(library=library, name="Playdate")
 
 
-def _purchase(library: UserLibrary) -> Purchase:
-    purchase = Purchase.objects.create(
+def _purchase(library: UserLibrary) -> LegacyPurchase:
+    purchase = LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase.games.set([_game(library)])
     return purchase
@@ -61,7 +61,7 @@ BUILDERS: dict[type[Model], Builder] = {
     Edition: _edition,
     Release: _release,
     Platform: _platform,
-    Purchase: _purchase,
+    LegacyPurchase: _purchase,
     FilterPreset: _filter_preset,
 }
 

@@ -22,20 +22,20 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    LegacyPurchaseFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
-    PurchaseFilter,
     filter_query_context_for_library,
 )
 from games.models import (
     Device,
     Game,
     HistoricalPlaytime,
+    LegacyPurchase,
     Platform,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.reads.calendar import calendar_today
 
@@ -82,7 +82,7 @@ def _purchase(library):
 
 ROWS = {
     Game: (_game, GameFilter, ("created_at", "updated_at")),
-    Purchase: (_purchase, PurchaseFilter, ("created_at", "updated_at")),
+    LegacyPurchase: (_purchase, LegacyPurchaseFilter, ("created_at", "updated_at")),
     Platform: (_platform, PlatformFilter, ("created_at",)),
     Device: (_device, DeviceFilter, ("created_at",)),
     Playthrough: (_run, PlaythroughFilter, ("created_at",)),
@@ -210,16 +210,16 @@ def test_a_date_operand_meets_a_timestamp_on_the_calendar(
 ):
     """The date column stays; the timestamp is read in the calendar."""
     purchase = _purchase(owned_library)
-    Purchase.objects.filter(pk=purchase.pk).update(
+    LegacyPurchase.objects.filter(pk=purchase.pk).update(
         date_purchased=calendar_today(owned_library),
         created_at=library_noon(owned_library),
     )
-    bought_on_creation = PurchaseFilter(
+    bought_on_creation = LegacyPurchaseFilter(
         field_comparisons=[_same_day("date_purchased", "created_at")]
     )
 
     with timezone.override(elsewhere):
-        matched = _matching(owned_library, Purchase, bought_on_creation)
+        matched = _matching(owned_library, LegacyPurchase, bought_on_creation)
 
     assert matched == {purchase}
 

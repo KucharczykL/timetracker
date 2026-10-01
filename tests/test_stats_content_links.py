@@ -21,7 +21,7 @@ from common.duration_presentation import (
 )
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library, filter_url
-from games.models import Game, Platform, PlayerGameStatus, Playthrough, Purchase
+from games.models import Game, LegacyPurchase, Platform, PlayerGameStatus, Playthrough
 from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
@@ -66,30 +66,30 @@ def rendered(db):
     abandoned = create_tracked_game(
         library, "Abandoned", status=PlayerGameStatus.ABANDONED, platform=pc
     )
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(1, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([games[0]])
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(2, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([abandoned])  # dropped
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(3, 5),
         date_refunded=_dt(4, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([games[1]])  # refunded
-    Purchase.objects.create(
+    LegacyPurchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(5, 5),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     ).games.set([games[2]])  # unfinished
 
     finished_game = games[0]

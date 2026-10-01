@@ -8,7 +8,7 @@ from ninja import ModelSchema
 
 from games import api as api_module
 from games.forms import PurchaseForm
-from games.models import Purchase
+from games.models import LegacyPurchase
 from timetracker.uuidv7 import UUIDv7Field
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -50,7 +50,7 @@ def make_purchase(library, **overrides):
         "price": 10.0,
         "price_currency": "USD",
     } | overrides
-    return Purchase.objects.create(**field_values)
+    return LegacyPurchase.objects.create(**field_values)
 
 
 # --- Field contract ---------------------------------------------------------
@@ -68,7 +68,7 @@ def test_purchase_created_through_the_orm_gets_a_distinct_version_7_uuid(
 
 def test_raw_purchase_insert_omitting_id_gets_the_database_default(owned_library):
     purchase_uuid = raw_insert_without_identity(
-        Purchase,
+        LegacyPurchase,
         library=owned_library,
         date_purchased=PURCHASED_ON,
         price=10.0,
@@ -76,7 +76,7 @@ def test_raw_purchase_insert_omitting_id_gets_the_database_default(owned_library
         name="Raw Purchase",
     )
     assert purchase_uuid.version == 7
-    assert Purchase.objects.get(pk=purchase_uuid).name == "Raw Purchase"
+    assert LegacyPurchase.objects.get(pk=purchase_uuid).name == "Raw Purchase"
 
 
 def test_database_rejects_a_duplicate_purchase_uuid(owned_library):
@@ -107,20 +107,20 @@ def test_no_model_schema_generates_fields_from_purchase():
 
     class PurchaseProbe(ModelSchema):
         class Meta:
-            model = Purchase
+            model = LegacyPurchase
             fields = ("name",)
 
     #: No `ModelSchema` is left to find.
     #: The probe says the scan would find one.
-    assert models_covered({"probe": PurchaseProbe}) == {Purchase}
+    assert models_covered({"probe": PurchaseProbe}) == {LegacyPurchase}
 
-    assert Purchase not in models_covered(vars(api_module))
+    assert LegacyPurchase not in models_covered(vars(api_module))
 
 
 def test_the_model_declares_one_uuidv7_primary_key_and_no_second_uuid_field():
-    assert isinstance(Purchase._meta.pk, UUIDv7Field)
-    assert Purchase._meta.pk.name == "id"
-    assert Purchase._meta.pk.primary_key is True
-    assert Purchase._meta.pk.editable is False
-    assert Purchase._meta.pk.serialize is False
-    assert "uuid" not in {field.name for field in Purchase._meta.local_fields}
+    assert isinstance(LegacyPurchase._meta.pk, UUIDv7Field)
+    assert LegacyPurchase._meta.pk.name == "id"
+    assert LegacyPurchase._meta.pk.primary_key is True
+    assert LegacyPurchase._meta.pk.editable is False
+    assert LegacyPurchase._meta.pk.serialize is False
+    assert "uuid" not in {field.name for field in LegacyPurchase._meta.local_fields}

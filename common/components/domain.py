@@ -31,9 +31,9 @@ from games.models import (
     EntryFormat,
     ExternalReference,
     Game,
+    LegacyPurchase,
     PlayerGameStatus,
     PlayerSession,
-    Purchase,
     game_display_key,
 )
 from games.reads.endpoints import way_of
@@ -309,7 +309,7 @@ def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
     ]
 
 
-def _game_name(game: Game, purchase: Purchase) -> str:
+def _game_name(game: Game, purchase: LegacyPurchase) -> str:
     """The game's name, or words instead.
 
     `Game.name` is not blank, so an empty one is a row
@@ -324,7 +324,7 @@ def _game_name(game: Game, purchase: Purchase) -> str:
     return "Untitled game"
 
 
-def LinkedPurchase(purchase: Purchase) -> Node:
+def LinkedPurchase(purchase: LegacyPurchase) -> Node:
     link = reverse("games:view_purchase", args=[purchase.id])
     games_list: Node | None = None
     #: Sort the prefetched games here: `order_by()` skips the

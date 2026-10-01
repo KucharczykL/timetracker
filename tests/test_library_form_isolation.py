@@ -25,11 +25,11 @@ from games.forms import (
 from games.models import (
     Device,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 
 pytestmark = pytest.mark.django_db
@@ -213,7 +213,7 @@ def test_session_form_rejects_foreign_game_and_device_without_saving(world):
 
 
 def test_purchase_form_rejects_foreign_relationships_without_saving(world):
-    before = Purchase.objects.count()
+    before = LegacyPurchase.objects.count()
     form = PurchaseForm(
         data={
             "games": [world.foreign_game.pk],
@@ -222,8 +222,8 @@ def test_purchase_form_rejects_foreign_relationships_without_saving(world):
             "date_refunded": "",
             "price": "10",
             "price_currency": "USD",
-            "ownership_type": Purchase.DIGITAL,
-            "type": Purchase.DLC,
+            "ownership_type": LegacyPurchase.DIGITAL,
+            "type": LegacyPurchase.DLC,
             "related_game": world.foreign_game.pk,
             "name": "Foreign add-on",
         },
@@ -234,7 +234,7 @@ def test_purchase_form_rejects_foreign_relationships_without_saving(world):
 
     assert not form.is_valid()
     assert {"games", "platform", "related_game"} <= set(form.errors)
-    assert Purchase.objects.count() == before
+    assert LegacyPurchase.objects.count() == before
     html = str(form)
     assert world.foreign_game.name not in html
     assert world.foreign_platform.name not in html
@@ -301,7 +301,7 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
     options carry — an integer Platform pk — not the foreign key's attname."""
     import datetime
 
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=world.owner_library,
         platform=world.own_platform,
         date_purchased=datetime.date(2026, 1, 1),
@@ -324,7 +324,7 @@ def test_bound_forms_preselect_platform_by_integer_id(world):
 def test_bound_forms_leave_an_unset_platform_unselected(world):
     import datetime
 
-    platformless_purchase = Purchase.objects.create(
+    platformless_purchase = LegacyPurchase.objects.create(
         library=world.owner_library,
         platform=None,
         date_purchased=datetime.date(2026, 1, 1),

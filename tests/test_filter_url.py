@@ -8,8 +8,8 @@ from django.urls import reverse
 from common.criteria import IntCriterion, Modifier, filter_to_json
 from games.filters import (
     GameFilter,
+    LegacyPurchaseFilter,
     PlayerSessionFilter,
-    PurchaseFilter,
     filter_url,
     parse_game_filter,
 )
@@ -20,7 +20,7 @@ def test_filter_url_path_inferred_from_filter_type():
     assert urlparse(filter_url(PlayerSessionFilter())).path == reverse(
         "games:list_sessions"
     )
-    assert urlparse(filter_url(PurchaseFilter())).path == reverse(
+    assert urlparse(filter_url(LegacyPurchaseFilter())).path == reverse(
         "games:list_purchases"
     )
 

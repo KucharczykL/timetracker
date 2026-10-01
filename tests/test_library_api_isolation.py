@@ -21,19 +21,19 @@ from common.criteria import (
 from common.filter_execution import execute_filter
 from games.filters import (
     GameFilter,
+    LegacyPurchaseFilter,
     PlatformFilter,
     PlayerSessionFilter,
-    PurchaseFilter,
     filter_query_context_for_library,
 )
 from games.models import (
     FilterPreset,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
     Playthrough,
-    Purchase,
 )
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
@@ -127,24 +127,24 @@ def two_libraries(db):
             completion_recorded_at=timezone.now(),
         )
 
-    purchase_a = Purchase.objects.create(
+    purchase_a = LegacyPurchase.objects.create(
         library=library_a,
         price=30,
         price_currency="CZK",
         converted_price=30,
         converted_currency="CZK",
         date_purchased=date(YEAR, 3, 1),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase_a.games.set([game_a])
-    purchase_b = Purchase.objects.create(
+    purchase_b = LegacyPurchase.objects.create(
         library=library_b,
         price=100,
         price_currency="CZK",
         converted_price=100,
         converted_currency="CZK",
         date_purchased=date(YEAR, 3, 2),
-        type=Purchase.GAME,
+        type=LegacyPurchase.GAME,
     )
     purchase_b.games.set([game_b])
 
@@ -356,7 +356,11 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
             {"game_filter": {"name": {"value": "Library A", "modifier": "INCLUDES"}}},
             1,
         ),
-        ("purchase", {"converted_price": {"value": 0, "modifier": "GREATER_THAN"}}, 1),
+        (
+            "legacypurchase",
+            {"converted_price": {"value": 0, "modifier": "GREATER_THAN"}},
+            1,
+        ),
         ("playthrough", {"note": {"value": "event", "modifier": "INCLUDES"}}, 1),
         ("device", {"name": {"value": "Device", "modifier": "INCLUDES"}}, 1),
         ("platform", {"name": {"value": "Platform", "modifier": "INCLUDES"}}, 1),
@@ -477,7 +481,7 @@ def test_purchase_games_filter_is_scoped_and_lazy(
     django_assert_num_queries,
 ):
     world = two_libraries
-    filter_object = PurchaseFilter(
+    filter_object = LegacyPurchaseFilter(
         games=ChoiceCriterion(
             value=[world["game_a"].id],
             modifier=Modifier.INCLUDES_ONLY,
@@ -487,7 +491,7 @@ def test_purchase_games_filter_is_scoped_and_lazy(
     with django_assert_num_queries(0):
         queryset = execute_filter(
             filter_object,
-            Purchase.objects.for_library(world["library_a"]),
+            LegacyPurchase.objects.for_library(world["library_a"]),
             filter_query_context_for_library(world["library_a"]),
         )
 

@@ -12,12 +12,12 @@ from stated_runs import state_run
 from games.commands.playthrough import ActStatement
 from games.models import (
     Game,
+    LegacyPurchase,
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.writes.answers import (
     CONFLICT_STATUS,
@@ -354,7 +354,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
         game = Game.objects.create(library=owned_library, name=name)
         track_game(owned_user, game, correlation_id=new_correlation_id())
         games.append(game)
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price=0,
         price_currency="CZK",
@@ -384,7 +384,7 @@ def test_a_failed_refund_answers_the_refusal_on_the_confirmation(
 ):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track_game(owned_user, game, correlation_id=new_correlation_id())
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price=0,
         price_currency="CZK",
@@ -462,7 +462,7 @@ def test_a_partly_applied_refund_says_how_far_it_went(
         game = Game.objects.create(library=owned_library, name=name)
         track_game(owned_user, game, correlation_id=new_correlation_id())
         games.append(game)
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=owned_library,
         price=0,
         price_currency="CZK",

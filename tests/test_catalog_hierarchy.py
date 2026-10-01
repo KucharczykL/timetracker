@@ -18,10 +18,10 @@ from games.forms import GameForm
 from games.models import (
     Edition,
     Game,
+    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     PlayerSession,
-    Purchase,
     Release,
 )
 from games.removal import remove
@@ -384,7 +384,9 @@ def test_qualifier_columns_project_beside_the_bounds_they_do_not_move(owned_libr
     assert release.release_date_end_qualifier == "both"
 
 
-@pytest.mark.parametrize("model", [Game, PlayerSession, Purchase, Platform, Release])
+@pytest.mark.parametrize(
+    "model", [Game, PlayerSession, LegacyPurchase, Platform, Release]
+)
 def test_temporal_schema_does_not_expand_comparison_choices(model):
     values = {column["value"] for column in comparable_columns(model)}
     assert not any(

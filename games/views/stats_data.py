@@ -29,11 +29,11 @@ from games.filters import SESSION_GAME
 from games.models import (
     DONE_STATUSES,
     Game,
+    LegacyPurchase,
+    LegacyPurchaseQueryset,
     PlayerGameStatus,
     PlayerSessionQuerySet,
-    Purchase,
     PurchaseConversionState,
-    PurchaseQueryset,
     UserLibrary,
     VisibilityField,
 )
@@ -233,7 +233,7 @@ def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
     return _compute_stats_from_scoped_querysets(
         library=library,
         sessions=library_sessions(library),
-        purchases=Purchase.objects.for_library(library),
+        purchases=LegacyPurchase.objects.for_library(library),
         year=year,
         fallback_currency=published_currency,
     )
@@ -243,7 +243,7 @@ def _compute_stats_from_scoped_querysets(
     *,
     library: UserLibrary,
     sessions: PlayerSessionQuerySet,
-    purchases: PurchaseQueryset,
+    purchases: LegacyPurchaseQueryset,
     year: YearScope,
     fallback_currency: str,
 ) -> StatsData:
@@ -299,7 +299,7 @@ def _compute_stats_from_scoped_querysets(
     without_refunded_count = without_refunded.count()
 
     # ── Purchase breakdown ───────────────────────────────────────────────────
-    only_games_and_dlc = Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
+    only_games_and_dlc = Q(type=LegacyPurchase.GAME) | Q(type=LegacyPurchase.DLC)
     unfinished = (
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)

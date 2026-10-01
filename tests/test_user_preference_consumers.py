@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase, UserPreferences
+from games.models import Device, Game, LegacyPurchase, Platform, UserPreferences
 from timetracker import settings_resolver
 
 
@@ -61,12 +61,12 @@ def test_purchase_edit_uses_user_currency_only_when_existing_value_is_empty(
     auth_client, user, game
 ):
     _set_purchase_currency(user)
-    empty = Purchase.objects.create(
+    empty = LegacyPurchase.objects.create(
         library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
     )
     empty.games.add(game)
-    Purchase.objects.filter(pk=empty.pk).update(price_currency="")
-    existing = Purchase.objects.create(
+    LegacyPurchase.objects.filter(pk=empty.pk).update(price_currency="")
+    existing = LegacyPurchase.objects.create(
         library=user.library,
         date_purchased=date(2026, 1, 2),
         price_currency="GBP",
@@ -88,7 +88,7 @@ def test_purchase_edit_blank_currency_falls_back_to_user_currency(
     auth_client, user, game
 ):
     _set_purchase_currency(user)
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=user.library, date_purchased=date(2026, 1, 1), price_currency="USD"
     )
     purchase.games.add(game)
@@ -110,8 +110,8 @@ def _purchase_post_data(game_ids: list[int], **overrides: object) -> dict[str, o
         "date_purchased": "2026-01-01",
         "price": "10",
         "price_currency": "",
-        "ownership_type": Purchase.DIGITAL,
-        "type": Purchase.GAME,
+        "ownership_type": LegacyPurchase.DIGITAL,
+        "type": LegacyPurchase.GAME,
         "name": "",
     }
     data.update(overrides)
@@ -127,7 +127,7 @@ def test_combined_purchase_save_falls_back_to_user_currency(auth_client, user, g
     )
 
     assert response.status_code == 302
-    assert Purchase.objects.get().price_currency == "EUR"
+    assert LegacyPurchase.objects.get().price_currency == "EUR"
 
 
 def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, game):
@@ -149,7 +149,9 @@ def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, g
     )
 
     assert response.status_code == 302
-    assert set(Purchase.objects.values_list("price_currency", flat=True)) == {"EUR"}
+    assert set(LegacyPurchase.objects.values_list("price_currency", flat=True)) == {
+        "EUR"
+    }
 
 
 @pytest.mark.parametrize(

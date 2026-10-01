@@ -11,7 +11,7 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.models import Game, Platform, Purchase, UserPreferences
+from games.models import Game, LegacyPurchase, Platform, UserPreferences
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_site_setting
@@ -93,7 +93,7 @@ def test_purchase_form_requires_explicit_library_and_user_context(db):
 
 
 def test_purchase_model_never_resolves_a_hidden_currency(user):
-    purchase = Purchase(
+    purchase = LegacyPurchase(
         library=user.library,
         price=10,
         date_purchased=date(2025, 1, 1),
@@ -118,7 +118,7 @@ def test_convert_prices_targets_display_currency(
         "DEFAULT_DISPLAY_CURRENCY",
         "EUR",
     )
-    purchase = Purchase.objects.create(
+    purchase = LegacyPurchase.objects.create(
         library=user.library,
         price=50,
         price_currency="EUR",
