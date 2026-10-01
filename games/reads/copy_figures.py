@@ -186,37 +186,42 @@ def copies_matching(
     )
 
 
-class CopyCounts(NamedTuple):
+class CopyFigures[Value](NamedTuple):
     """One scope's copy figures and denominators."""
 
-    unfinished: int
-    owned_held: int
-    dropped: int
-    owned: int
-    backlog_decrease: int
-    finished_released: int
-    played: int
+    unfinished: Value
+    owned_held: Value
+    dropped: Value
+    owned: Value
+    backlog_decrease: Value
+    finished_released: Value
+    played: Value
 
 
-def copy_counts(library: UserLibrary, year: YearScope) -> CopyCounts:
+def copy_statements(year: YearScope) -> CopyFigures[LibraryEntryFilter]:
+    """Each figure's filter, as its link states it."""
+    return CopyFigures(
+        unfinished=unfinished_copies(year),
+        owned_held=owned_held(year),
+        dropped=dropped_copies(year),
+        owned=owned(year),
+        backlog_decrease=backlog_decrease_copies(year),
+        finished_released=finished_released_copies(year),
+        played=played_copies(year),
+    )
+
+
+def copy_counts(library: UserLibrary, year: YearScope) -> CopyFigures[int]:
     """Every count, one statement, one context."""
     context = filter_query_context_for_library(library)
-    statements = {
-        "unfinished": unfinished_copies(year),
-        "owned_held": owned_held(year),
-        "dropped": dropped_copies(year),
-        "owned": owned(year),
-        "backlog_decrease": backlog_decrease_copies(year),
-        "finished_released": finished_released_copies(year),
-        "played": played_copies(year),
-    }
+    statements = copy_statements(year)._asdict()
     counts = filter_queryset_for_library("libraryentry", library).aggregate(
         **{
             name: Count("pk", filter=statement.to_q(context))
             for name, statement in statements.items()
         }
     )
-    return CopyCounts(**counts)
+    return CopyFigures(**counts)
 
 
 def paid_for_copy(library: UserLibrary) -> Subquery:

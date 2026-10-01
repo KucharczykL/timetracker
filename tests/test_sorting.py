@@ -885,6 +885,45 @@ class TestListPurchasesSort:
         tbody = tbody_match.group(1)
         assert tbody.index("Beta") < tbody.index("Alpha")  # 90 before 10
 
+    def test_amount_sorts_by_the_valuation_first(self, logged_client, two_games):
+        from purchases import request_run
+
+        from games import tasks
+        from games.models import ExchangeRate
+
+        alpha, beta = two_games
+        ExchangeRate.objects.update_or_create(
+            currency_from="USD",
+            currency_to="EUR",
+            year=2022,
+            defaults={"rate": Decimal("0.5")},
+        )
+        #: 10 USD is worth 5 EUR, less than 8 EUR.
+        record_purchase(
+            record_entry(alpha.library, default_graph(alpha, alpha.library).release),
+            amount=Decimal(10),
+            currency="USD",
+            purchased=TemporalValue.parse("2022-01-01"),
+        )
+        record_purchase(
+            record_entry(beta.library, default_graph(beta, beta.library).release),
+            amount=Decimal(8),
+            currency="EUR",
+            purchased=TemporalValue.parse("2022-01-02"),
+        )
+        tasks.convert_library_prices(
+            str(alpha.library.pk), request_run(alpha.library, "EUR")
+        )
+
+        response = logged_client.get(
+            reverse("games:list_purchases"), {"sort": "-amount"}
+        )
+        tbody = re.search(
+            r"<tbody[^>]*>(.*?)</tbody>", response.content.decode(), re.DOTALL
+        ).group(1)
+
+        assert tbody.index("Beta") < tbody.index("Alpha")
+
     def test_name_sort_orders_by_the_game(self, logged_client, two_purchases):
         response = logged_client.get(reverse("games:list_purchases"), {"sort": "name"})
         body = response.content.decode()

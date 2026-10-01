@@ -189,11 +189,13 @@ def _count(filter_obj, model, library):
         library,
         filter_obj if isinstance(filter_obj, GameFilter) else None,
     )
-    return (
-        execute_filter(filter_obj, queryset, filter_query_context_for_library(library))
-        .distinct()
-        .count()
+    rows = execute_filter(
+        filter_obj, queryset, filter_query_context_for_library(library)
     )
+    #: The purchase and copy lists count without it.
+    if model in (Purchase, LibraryEntry):
+        return rows.count()
+    return rows.distinct().count()
 
 
 def _count_via_json(filter_obj, model, library):

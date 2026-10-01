@@ -231,3 +231,83 @@ def test_a_dlc_copy_counts_through_its_own_game(owned_library):
     )
 
     assert matching(owned_library, unfinished_copies(YEAR)) == {dlc}
+
+
+# ── Each count is its own list's ─────────────────────────────────────────────
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("year", [YEAR, None])
+def test_each_count_equals_its_own_list(owned_library, year):
+    from completed_runs import add_run
+
+    from games.reads.copy_figures import copy_counts, copy_statements
+
+    busy = copy_of(owned_library, "Busy", year_released=YEAR)
+    complete(busy, f"{YEAR}-05-01")
+    add_run(
+        owned_library.user, busy.player_game.game, TemporalValue.parse(f"{YEAR}-07-01")
+    )
+    for month in (2, 4, 6):
+        session_row(
+            busy.player_game.game,
+            started_at=datetime(YEAR, month, 1, 12, tzinfo=UTC),
+        )
+    record_row(
+        list(Playthrough.objects.filter(player_game=busy.player_game_id)),
+        when=f"{YEAR}-05",
+    )
+    copy_of(owned_library, "Second copy", year_released=YEAR)
+    state(copy_of(owned_library, "Dropped"), status=PlayerGameStatus.ABANDONED)
+
+    counts = copy_counts(owned_library, year)._asdict()
+
+    for name, statement in copy_statements(year)._asdict().items():
+        assert counts[name] == copies_matching(owned_library, statement).count(), name
+    assert counts["played"] >= 1
+
+
+# ── The Paid column ─────────────────────────────────────────────────────────
+
+
+def test_paid_sums_a_copy_s_unrefunded_valuations(owned_library):
+    from decimal import Decimal
+
+    from purchases import refund_purchase, request_run
+
+    from games import tasks
+    from games.reads.copy_figures import paid_for_copy
+
+    bought = copy_of(owned_library, "Bought")
+    record_purchase(bought, amount=Decimal(20), currency="EUR", purchased=IN_YEAR)
+    record_purchase(
+        bought,
+        kind="season_pass",
+        name="Pass",
+        amount=Decimal(5),
+        currency="EUR",
+        purchased=IN_YEAR,
+    )
+    refund_purchase(
+        record_purchase(
+            bought,
+            kind="upgrade",
+            name="Deluxe",
+            amount=Decimal(9),
+            currency="EUR",
+            purchased=IN_YEAR,
+        ),
+        IN_YEAR,
+    )
+    unpaid = copy_of(owned_library, "Unpaid")
+    tasks.convert_library_prices(
+        str(owned_library.pk), request_run(owned_library, "EUR")
+    )
+
+    paid = dict(
+        LibraryEntry.objects.filter(pk__in=[bought.pk, unpaid.pk])
+        .annotate(paid=paid_for_copy(owned_library))
+        .values_list("pk", "paid")
+    )
+
+    assert paid == {bought.pk: Decimal("25.00"), unpaid.pk: None}

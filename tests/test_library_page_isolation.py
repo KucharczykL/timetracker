@@ -495,3 +495,42 @@ def test_owned_or_404_is_lookup_only_for_an_already_scoped_queryset(world):
     )
     with pytest.raises(Http404):
         owned_or_404(scoped_queryset, world.owner_library, pk=world.foreign_game.pk)
+
+
+def test_the_spending_cards_read_the_purchases(client, django_user_model):
+    import html
+    import json
+    from decimal import Decimal
+    from urllib.parse import parse_qs, urlparse
+
+    from purchases import refund_purchase, request_run
+
+    from games import tasks
+    from games.filters import PurchaseFilter
+    from games.reads.purchase_figures import purchases_matching
+    from timetracker.temporal import TemporalValue
+
+    owner = django_user_model.objects.create_user(username="spender", password="p")
+    library = owner.library
+    day = TemporalValue.parse("2021-03-01")
+    graph = default_graph(Game(library=library, name="Tunic"), library)
+    copy = record_entry(library, graph.release)
+    record_purchase(copy, amount=Decimal(20), currency="EUR", purchased=day)
+    refund_purchase(
+        record_purchase(copy, amount=Decimal(30), currency="EUR", purchased=day), day
+    )
+    record_purchase(copy, amount=None, purchased=day)
+    tasks.convert_library_prices(str(library.pk), request_run(library, "EUR"))
+    client.force_login(owner)
+
+    body = client.get(reverse("games:library")).content.decode()
+    spent = statistic_card(body, "Total spent")
+
+    assert "EUR 20.00" in spent
+    assert ">1<" in statistic_card(body, "Refunded purchases")
+    assert ">3<" in statistic_card(body, "Purchases")
+    href = html.unescape(re.search(r'href="([^"]+)"', spent).group(1))
+    linked = PurchaseFilter.from_json(
+        json.loads(parse_qs(urlparse(href).query)["filter"][0])
+    )
+    assert purchases_matching(library, linked).count() == 1
