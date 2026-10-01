@@ -33,10 +33,11 @@ def readable_purchases(library: UserLibrary) -> PurchaseQuerySet:
 
 
 def coupled_end(library: UserLibrary, purchase: Purchase) -> LibraryEvent | None:
-    """The copy's standing end, where the refund wrote it.
+    """The copy's end this refund wrote.
 
     Its dispatch appended a refund statement or correction of
-    this purchase: one idempotency key per dispatch.
+    this purchase; it holds while every dispatch stamps one
+    idempotency key, which a direct appender must keep.
     """
     end = latest_end_act(library, purchase.entry_id)
     if end is None or end.event_type not in END_STATEMENTS:

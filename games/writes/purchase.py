@@ -148,12 +148,7 @@ def restate_purchase(
     refund: ActStatement | None | Keep = KEEP,
     correlation_id: uuid.UUID,
 ) -> bool:
-    """Describe and refund in an order that holds.
-
-    A reversed day order is refused before any dispatch, so
-    a refused body appends nothing. Answers whether anything
-    was appended.
-    """
+    """Describe and refund; answers whether appended."""
     move: EndpointMove[ActStatement] = (
         Nothing()
         if isinstance(refund, Keep)
@@ -244,12 +239,7 @@ def _refuse_a_reversed_draft(
     purchased: ActStatement | None,
     move: EndpointMove[ActStatement],
 ) -> None:
-    """Refuse up front: a committed act stays.
-
-    Each final day is compared with the other final day, so a
-    refusal a command would raise later is raised before
-    anything commits.
-    """
+    """Refuse up front: a committed act stays."""
     match move:
         case Act(statement) | Correct(statement):
             refunded, refund_is_new = statement.when, True

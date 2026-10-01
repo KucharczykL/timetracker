@@ -474,7 +474,7 @@ class RestorePurchase(Command):
 
 @dataclass(frozen=True, slots=True)
 class RefundPurchase(Command):
-    """The purchase was refunded; a game's copy ends."""
+    """Refunded; a game's copy ends too."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_REFUND
     purchase_id: uuid.UUID

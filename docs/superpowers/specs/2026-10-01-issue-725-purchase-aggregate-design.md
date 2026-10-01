@@ -77,12 +77,12 @@ entry.
 
 `/api/purchases/` has `GET /`, `GET /{id}`, `POST /` and `PATCH /{id}`.
 A body refuses an unknown key. `PATCH` states `amount` with `currency`,
-and `purchased` with `purchase_note`; else it answers 422. A `PATCH` is
-one dispatch of `DescribePurchase`. A price that
+and `purchased` with `purchase_note`; else it answers 422. A `PATCH`
+dispatches `DescribePurchase`, and the refund act where it states one.
+A price that
 `check_price` refuses answers 409.
 
 ## Limits
 
-- P2 adds refunds. A refunded purchase that moves to a different entry
-  must carry or refuse the end of access.
+- P2 adds refunds. A refunded purchase does not move to another entry.
 - P3 adds valuation. P4 converts the legacy rows.

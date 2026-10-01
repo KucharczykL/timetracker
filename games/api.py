@@ -1569,7 +1569,7 @@ class PurchaseIn(Schema):
 
 
 class PurchaseRefundIn(Schema):
-    """One refund, stated whole; its day may be unknown."""
+    """One refund, stated whole."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1593,7 +1593,7 @@ class PurchaseUpdate(Schema):
     entry_id: UUIDv7 | None = None
     purchased: StatedTemporal = None
     purchase_note: str | None = None
-    #: Object states, null voids; the route reads absence.
+    #: Object states; null voids; absent keeps.
     refund: PurchaseRefundIn | None = None
 
     @model_validator(mode="after")

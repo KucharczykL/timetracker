@@ -93,7 +93,7 @@ class PurchaseMarkPayload(TypedDict):
 
 @with_config(STRICT_SCHEMA)
 class PurchaseRefundVoidedPayload(TypedDict):
-    """The library takes back the record of a refund."""
+    """A refund taken back."""
 
 
 def _spec[PayloadT](
