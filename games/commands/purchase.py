@@ -281,6 +281,20 @@ def _refuse_a_reversed_refund(
     )
 
 
+def _refuse_a_new_refund_before_purchase(
+    purchase: Purchase,
+    *,
+    refunded: TemporalValue | None,
+    purchased: TemporalValue | None,
+) -> None:
+    _refuse_a_reversed_refund(
+        purchase,
+        purchased=purchased,
+        purchase_day_is_new=False,
+        refund=StandingRefund(refunded, is_new=True),
+    )
+
+
 def _refuse_an_end_before_the_acquisition(
     purchase: Purchase, copy: LibraryEntry, *, refunded: TemporalValue | None
 ) -> None:
@@ -367,11 +381,8 @@ def _refund_statement(
 
     def before_event() -> None:
         _refuse_a_live_act(purchase)
-        _refuse_a_reversed_refund(
-            purchase,
-            purchased=purchased,
-            purchase_day_is_new=False,
-            refund=StandingRefund(statement.when, is_new=True),
+        _refuse_a_new_refund_before_purchase(
+            purchase, refunded=statement.when, purchased=purchased
         )
         if ends_the_copy:
             _refuse_an_end_before_the_acquisition(
@@ -407,11 +418,8 @@ def _refund_correction(
 
     def before_event() -> None:
         _refuse_a_live_act(purchase)
-        _refuse_a_reversed_refund(
-            purchase,
-            purchased=purchased,
-            purchase_day_is_new=False,
-            refund=StandingRefund(statement.when, is_new=True),
+        _refuse_a_new_refund_before_purchase(
+            purchase, refunded=statement.when, purchased=purchased
         )
         if moves_the_end:
             _refuse_an_end_before_the_acquisition(
@@ -616,17 +624,19 @@ class DescribePurchase(Command):
         if events:
             _refuse_a_live_act(purchase)
         if self.refund is not None:
+            stated_kind = (
+                cast(PurchaseKindValue, purchase.kind) if kind is None else kind
+            )
+            purchased = (
+                purchase.purchased if self.purchased is None else self.purchased.when
+            )
             refund = _restated_refund(
                 context,
                 purchase,
                 self.refund,
-                kind=cast(PurchaseKindValue, purchase.kind) if kind is None else kind,
+                kind=stated_kind,
                 copy=copy,
-                purchased=(
-                    purchase.purchased
-                    if self.purchased is None
-                    else self.purchased.when
-                ),
+                purchased=purchased,
             )
             if not isinstance(refund, Unchanged):
                 events.extend(refund)

@@ -51,10 +51,13 @@ from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
+MARCH = TemporalValue.parse("2021-03-01")
+APRIL = TemporalValue.parse("2021-04-01")
 MAY = TemporalValue.parse("2021-05-10")
 JUNE = TemporalValue.parse("2021-06-03")
 JULY = TemporalValue.parse("2021-07-01")
-APRIL = TemporalValue.parse("2021-04-01")
+AUGUST = TemporalValue.parse("2021-08-01")
+SEPTEMBER = TemporalValue.parse("2021-09-01")
 
 
 @pytest.fixture
@@ -415,11 +418,7 @@ def test_removing_a_refunded_purchase_leaves_the_end(owned_library, entry, purch
     assert _fresh(entry).access_end_way == "refunded"
 
 
-# --- one PATCH, two dispatches --------------------------------------------
-
-AUGUST = TemporalValue.parse("2021-08-01")
-SEPTEMBER = TemporalValue.parse("2021-09-01")
-MARCH = TemporalValue.parse("2021-03-01")
+# --- one PATCH -------------------------------------------------------------
 
 
 def _restate(purchase, **facts) -> bool:
@@ -431,7 +430,7 @@ def _restate(purchase, **facts) -> bool:
     )
 
 
-def _appended_since(purchase) -> int:
+def _library_event_count(purchase) -> int:
     return LibraryEvent.objects.filter(library=purchase.library).count()
 
 
@@ -494,26 +493,26 @@ def test_a_void_lets_the_purchase_move(owned_library, graph, entry, purchase):
 
 
 def test_a_reversed_body_appends_nothing(owned_library, purchase):
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(purchase, name="Deluxe", refund=ActStatement(APRIL))
 
     assert refused.value.message == REFUND_BEFORE_PURCHASE
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
 
 
 def test_a_purchase_day_past_the_standing_refund_appends_nothing(
     owned_library, purchase
 ):
     _dispatch(owned_library, _refund(purchase))
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(purchase, name="Deluxe", purchased=ActStatement(JULY))
 
     assert refused.value.message == PURCHASE_AFTER_REFUND
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
 
 
 def test_a_refund_before_the_target_copys_acquisition_appends_nothing(
@@ -522,33 +521,33 @@ def test_a_refund_before_the_target_copys_acquisition_appends_nothing(
     elsewhere = record_entry(
         owned_library, second_release(owned_library, graph.release), acquired=JULY
     )
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(purchase, entry_id=elsewhere.pk, refund=ActStatement(JUNE))
 
     assert refused.value.message == REFUND_BEFORE_ACQUISITION
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
 
 
 def test_a_refused_move_keeps_the_refund(owned_library, stated_graph, entry, purchase):
     elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
     other_game_copy = record_entry(owned_library, elsewhere.release)
     _dispatch(owned_library, _refund(purchase))
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(purchase, entry_id=other_game_copy.pk, refund=TAKE_REFUND_BACK)
 
     assert refused.value.message == ENTRY_OF_ANOTHER_GAME
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
     assert _fresh(purchase).refunded == JUNE
     assert _fresh(entry).access_end_way == "refunded"
 
 
 def test_a_refused_price_keeps_the_refund_as_it_was(owned_library, entry, purchase):
     _dispatch(owned_library, _refund(purchase))
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(
@@ -558,18 +557,18 @@ def test_a_refused_price_keeps_the_refund_as_it_was(owned_library, entry, purcha
         )
 
     assert refused.value.message == TOO_PRECISE_AMOUNT
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
     assert _fresh(entry).access_ended == JUNE
 
 
 def test_an_unstorable_refund_note_keeps_the_description(owned_library, purchase):
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(purchase, name="Deluxe", refund=ActStatement(JUNE, "bad\x00"))
 
     assert refused.value.message == UNSTORABLE_NOTE
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
 
 
 def test_a_first_refund_onto_another_games_copy_names_the_game(
@@ -595,13 +594,13 @@ def test_a_corrected_refund_before_the_acquisition_appends_nothing(
     owned_library, entry, purchase
 ):
     _dispatch(owned_library, _refund(purchase))
-    before = _appended_since(purchase)
+    before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
         _restate(purchase, purchased=ActStatement(MARCH), refund=ActStatement(APRIL))
 
     assert refused.value.message == REFUND_BEFORE_ACQUISITION
-    assert _appended_since(purchase) == before
+    assert _library_event_count(purchase) == before
 
 
 def test_a_kind_stated_as_game_ends_the_copy(owned_library, entry):
