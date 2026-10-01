@@ -685,11 +685,13 @@ Then Access, Format, Acquired (a temporal field defaulting to the
 calendar's day), Note, and from P5 a three-way Purchase segment on the
 "Add to library…" page, never on the one-click add: Paid (amount,
 currency), Free, No purchase. An access other than Owned starts on No
-purchase and Owned on Paid; a default, changed at will. Kind and Name
-appear for a pass or an upgrade, which name an existing entry of the game
-in place of a Release; on a game with no entry the picker offers to record
-one, Owned and Digital, in the same submit. The "separate price per game"
-mode and the row Split go with the bundle.
+purchase and Owned on Paid; a default, changed at will. That segment is
+the game's own purchase and nothing more: no Kind, no Name, no copy
+picker. A pass, an upgrade or a second purchase of a copy is added
+through "Add purchase…" in the copy's ⋯ menu, on Game detail and the
+Library tab, a page stating Kind, Name, Paid or Free amount, Purchased
+and Note; the Library page's "Add purchase" summary action goes. The
+"separate price per game" mode and the row Split go with the bundle.
 
 **Edit copy**: access, format, release, acquired, note. The end of
 access has its own pages: "I no longer have it" and "I have it again"
@@ -726,7 +728,7 @@ game, or product · game), Kind, Amount (Free and Unknown as words, the
 valuation beside), Purchased, Refunded, Finished, Created. Facets kind,
 amount, price state (Paid, Free, Unknown), purchased, refunded, and access
 and platform through the entry. Tray Edit and Remove; row menu Edit,
-Refund, Remove.
+Refund, Remove, the list's own.
 
 **Games**: an Access column, off by default (`AccessBadge`, filled only
 where a copy is held now, whose popover says one sentence) and facets
@@ -738,7 +740,11 @@ is the one held-or-ended rule, and `AccessSummary` carries an
 the copies had now grouped by version (`SummaryGroup` over dense
 `SummaryRow`s), every per-copy act inline and never one press without
 Undo, ended copies out of the section with one muted line pointing at
-View all, and from P5 each copy's purchases under its row; an Add-ons
+View all, and from P5 each copy's purchases under its row (a copy with none shows
+no line; a refunded pass or upgrade on a held copy is hidden, a refunded
+game purchase having ended its Owned copy already; a purchase line has
+no ⋯ of its own, its Edit…, Refund and Remove… sitting in the copy's ⋯
+menu as one submenu per purchase, beside "Add purchase…"); an Add-ons
 section on a main game listing the add-ons the library tracks grouped by
 kind, before the Library section and half width beside it from `lg` up,
 in the same kit's shapes with no Add button of its own, empty rendering
@@ -879,7 +885,8 @@ edition word.
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
 | P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, the legacy id kept on a bundle's first game and a UUIDv7 minted for the rest, `verify-purchase-conversion`, the reconciliation |
 | P5a | #734, #735, the read half of #1266 | every read, since the stats links point into the Purchases list and a member between the two would emit links its own list refuses: `PurchaseFilter` on the projection and the `purchases` mode on it, `purchase_filter`, `purchase_count` and `purchase_price_total` on the new paths, the saved presets rewritten once, the Purchases list reading the projection with the wave's columns and facets and no row act yet, every statistic through entries, purchases and valuations, `stats_links` with their parity tests, #1157's readers, and the parity command that judges the new readers against P4's snapshot (a command of its own, since P5c drops the table `verify_purchase_conversion` reads) |
-| P5b | #724, the rest of #1266 | every write: the purchase segment on Add to library, Edit purchase with one-click Refund and Remove, the row menu and the tray (`purchase.edit`, `purchase.remove`, the Actions column retired), each copy's purchases on Game detail, the review surface; inside the stack P5a still writes through the legacy form, so a purchase added there shows nowhere until P5b, a state `main` never holds |
+| P5b | #724 | every write: the purchase segment on Add to library, Add purchase on a copy, Edit purchase, one-click Refund with sequence-keyed Undo, Remove and Restore through commands, the Purchases list's row menu, Game detail's purchases, and the legacy add, edit, view, Split and Refund routes, `PurchaseForm` and `add_purchase.ts` retired; inside the stack P5a still writes through the legacy form, so a purchase added there shows nowhere until P5b, a state `main` never holds |
+| P5b2 | the rest of #1266 | the Purchases list selectable, tray Edit and Remove (`purchase.edit`, `purchase.remove`, `EventRows`), the Conversion review section with its Hide toggle |
 | P5c | #736 | `LegacyPurchase`, its tables, routes, signals and float cache dropped, P4's `verify_purchase_conversion` and reconciliation with them, the fixture regenerated |
 
 Each member passes the full gate on its own against a fresh database.
@@ -894,10 +901,11 @@ inside a member says so in its body and closes with it.
   stays in the stream under the old game. The cost of lifting it later is
   a command that restates `player_game`, and every reader that caches the
   game key.
-- **A pass without an entry.** A pass or an upgrade names an entry. The
-  form records one in the same submit where the game has none, so the
-  person is never blocked, but a pass on a game the library does not own
-  is recorded as owning it.
+- **A pass without a copy.** A pass or an upgrade is added from a copy's
+  ⋯ menu, so it always names a copy the library holds; on a game with
+  no copy the person adds one first (Add to library, No purchase). A
+  pass on a game the library never owned therefore needs a copy that
+  says so, in the access word of the person's choosing.
 - **One end per entry at a time.** The projection holds the latest end;
   the stream holds them all, and a resume leaves nothing on the row. So
   the day-order rules see only what the row holds: after an end and a
