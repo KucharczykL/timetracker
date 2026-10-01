@@ -849,9 +849,10 @@ The entry, catalog and PlayerGame members merge alone, each a PR against
 nothing in them converts data, and each holds events for every row it
 projects. The Purchase members cannot: a `ProjectionModel` whose rows
 hold no events fails the replay gate, so the Purchase aggregate, its
-conversion and the cutover are one `gh stack merge`, P1 to P5. M1 before
-M2 before M3; M7 and M8 any time; the stack after every member, and P5's
-backlog reads M7's edition word.
+conversion and the cutover are one `gh stack merge`, P1 to P5c, each
+member passing the full gate on its own. M1 before M2 before M3; M7 and
+M8 any time; the stack after every member, and P5's backlog reads M7's
+edition word.
 
 | Member | Issues | Delivers |
 |---|---|---|
@@ -864,7 +865,9 @@ backlog reads M7's edition word.
 | P2 | #727 | refund endpoints and the coupled entry end |
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
 | P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, the legacy id kept on a bundle's first game and a UUIDv7 minted for the rest, `verify-purchase-conversion`, the reconciliation |
-| P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface; `LegacyPurchase`, its tables, every legacy route and reader and the float writer dropped |
+| P5a | #734, #735 | reads first, since the Purchases list needs the new filter: `PurchaseFilter` on the projection, the saved-preset rewrite, every statistic through entries, purchases and valuations, `stats_links` parity, #1157's readers, and the parity command that judges the new readers against P4's snapshot (a command of its own, since P5c drops the table `verify_purchase_conversion` reads) |
+| P5b | #724, #1266 | the purchase segment on Add to library, the Purchases list on the projection (selectable, `purchase.edit`/`purchase.remove`, the Actions column retired), Edit purchase with one-click Refund, each copy's purchases on Game detail, the review surface |
+| P5c | #736 | `LegacyPurchase`, its tables, routes, signals and float cache dropped, P4's `verify_purchase_conversion` and reconciliation with them, the fixture regenerated |
 
 Each member passes the full gate on its own against a fresh database.
 Each gets its own specification and plan before code. An issue delivered
