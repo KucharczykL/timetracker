@@ -118,6 +118,7 @@ from games.sorting import (
     parse_per_page_override,
 )
 from games.toast_middleware import RELOAD_HEADER
+from games.valuations import CurrencyCode
 from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.endpoint import KEEP, Keep
@@ -1634,7 +1635,7 @@ class ValuationOut(Schema):
     """An amount in the reporting currency."""
 
     amount: Decimal
-    currency: str
+    currency: CurrencyCode
 
 
 class PurchaseOut(Schema):
@@ -1660,7 +1661,6 @@ class PurchaseOut(Schema):
     refund_recorded_at: datetime | None = None
     refund_note: str
     created_at: datetime
-    #: Null without a current valuation.
     valuation: ValuationOut | None = None
 
     @staticmethod

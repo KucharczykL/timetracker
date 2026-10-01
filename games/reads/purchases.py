@@ -4,8 +4,17 @@ from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from django.db.models import Exists, F, Func, OuterRef, Q, QuerySet, Subquery
-from django.db.models.functions import Coalesce, ExtractYear
+from django.db.models import (
+    Exists,
+    F,
+    Func,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Value,
+)
+from django.db.models.functions import Coalesce, ExtractYear, NullIf
 
 from games.events.purchase import PURCHASE_REFUND_EVENTS
 from games.models import (
@@ -122,7 +131,7 @@ class ValuedPurchase(Protocol):
 
     #: Null without a current valuation.
     valuation_amount: Decimal | None
-    #: The published target, read in the same statement.
+    #: The published target; null before any.
     valuation_currency: CurrencyCode | None
 
 
@@ -135,7 +144,7 @@ def with_valuation(
         rate_year=valuation_year(calendar_day_zone(library))
     ).annotate(
         valuation_amount=Subquery(current.values("amount")[:1]),
-        valuation_currency=_published_target(library),
+        valuation_currency=NullIf(_published_target(library), Value("")),
     )
 
 

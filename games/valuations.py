@@ -1,10 +1,12 @@
 """A purchase's amount in the reporting currency."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import NamedTuple
 from uuid import UUID
+
+from django.db import transaction
 
 from games.models import PurchaseValuation, UserLibrary
 
@@ -79,6 +81,44 @@ def value(
     )
 
 
+class Valuations(NamedTuple):
+    """A run's rows, and inputs lacking a rate."""
+
+    rows: list[PurchaseValuation]
+    skipped: list[ValuationInput]
+
+
+def value_all(
+    snapshot: Iterable[ValuationInput],
+    rates: Mapping[RateKey, Decimal],
+    target: CurrencyCode,
+    *,
+    library: UserLibrary,
+    version: ConversionVersion,
+    calculated_at: datetime,
+) -> Valuations:
+    """Value each input; skip one without a rate."""
+    rows: list[PurchaseValuation] = []
+    skipped: list[ValuationInput] = []
+    for facts in snapshot:
+        rate_needed = needs_rate(facts, target)
+        rate = rates.get(facts.rate_key) if rate_needed else None
+        if rate_needed and rate is None:
+            skipped.append(facts)
+            continue
+        rows.append(
+            value(
+                facts,
+                target,
+                rate,
+                library=library,
+                version=version,
+                calculated_at=calculated_at,
+            )
+        )
+    return Valuations(rows, skipped)
+
+
 def publish_valuations(
     library: UserLibrary, valuations: Iterable[PurchaseValuation]
 ) -> None:
@@ -86,6 +126,8 @@ def publish_valuations(
 
     The caller holds the transaction and the conversion state's lock.
     """
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("Valuations publish inside a transaction.")
     rows = list(valuations)
     foreign = [row.purchase_id for row in rows if row.library_id != library.pk]
     if foreign:

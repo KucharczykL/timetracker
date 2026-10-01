@@ -223,15 +223,17 @@ docs/           — Additional documentation
   `rate` is `Decimal(24, 12)`, read and fetched through `exchange_rate`
   (`games/exchange_rates.py`), parsed without a float
 - **PurchaseValuation** — conventional, derived (#728, #729; P3): one
-  row per purchase key and target, `amount` `Decimal(26, 2)` rounded half
-  up once, beside its inputs (`source_amount`, `source_currency`,
-  `rate_year`, `rate`, null where none is needed). The currency task alone
-  writes it, through `publish_valuations` (`games/valuations.py`), whole
-  per library. CHECKs hold the rate rule and currency codes;
+  row per purchase key, `amount` `Decimal(26, 2)` rounded half up once,
+  beside its inputs (`source_amount`, `source_currency`, `rate_year`,
+  `rate`, null where none is needed). The currency task alone writes it,
+  through `value_all` and `publish_valuations` (`games/valuations.py`),
+  whole per library; a purchase without a rate is skipped with a warning.
+  CHECKs hold the rate rule and currency codes;
   `valuation_library_violations` joins the ownership audit.
   `VALUATION_EVENTS` (`games/events/purchase.py`) names the events a
-  write requests a run after; a test classifies every purchase event. `stale_purchases`/`with_valuation` in
-  `games/reads/purchases.py` read the current one. Contract is
+  write requests a run after; a test classifies every purchase event.
+  `stale_purchases`/`with_valuation` in `games/reads/purchases.py` read
+  the current one. Contract is
   [Purchase valuations](docs/superpowers/specs/2026-10-01-issue-728-purchase-valuation-design.md)
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read; beside them two Visibility flags, `excluded_from_unfinished` and `excluded_from_dropped` (#1334), each read by its own figure alone. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game

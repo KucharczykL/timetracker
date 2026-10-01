@@ -1,18 +1,22 @@
 """A purchase's valuation: the rule, the reads and the publication."""
 
+import json
 import uuid
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
+from io import StringIO
 from typing import cast
 from unittest.mock import Mock
 
 import pytest
+from django.core.management import CommandError, call_command
 from django.db import IntegrityError, transaction
 from entries import record_entry
 from purchases import record_purchase, remove_purchase, request_run
 
-from games import tasks
+from games import conversion, exchange_rates, tasks
 from games.commands.calendar import SetCalendarDayZone
+from games.commands.purchase import LARGEST_AMOUNT
 from games.events.dispatch import dispatch
 from games.models import (
     ExchangeRate,
@@ -50,10 +54,17 @@ def entry(owned_library, stated_graph):
     return record_entry(owned_library, graph.release)
 
 
+class StoredRates(dict[tuple[str, str, int], Decimal]):
+    """Rates the task reads; each is stored too."""
+
+    def __setitem__(self, key: tuple[str, str, int], rate: Decimal) -> None:
+        super().__setitem__(key, rate)
+        _store_rate(*key, str(rate))
+
+
 @pytest.fixture
 def rates(monkeypatch):
-    """Rates the task reads, by pair and year."""
-    table: dict[tuple[str, str, int], Decimal] = {}
+    table = StoredRates()
 
     def read(source, target, year):
         return table.get((source, target, year))
@@ -260,40 +271,49 @@ def test_a_target_change_replaces_the_set_whole(entry):
     ) == [("USD", Decimal("11.00"))]
 
 
-def test_a_missing_rate_keeps_the_old_set_and_the_legacy_cache(
-    entry, rates, monkeypatch
+def test_a_purchase_without_a_rate_is_skipped_and_the_rest_publish(
+    entry, rates, capture_games_logger
 ):
     rates["EUR", "CZK", 2021] = Decimal(25)
-    purchase = record_purchase(
+    valued = record_purchase(
         entry, amount=Decimal(10), currency="EUR", purchased=MARCH_2021
     )
-    legacy = LegacyPurchase.objects.create(
+    skipped = record_purchase(
+        entry, amount=Decimal(3), currency="EUO", purchased=MARCH_2021
+    )
+
+    with capture_games_logger() as caplog:
+        _run(entry.library)
+
+    state = PurchaseConversionState.objects.get(library=entry.library)
+    assert state.status == PurchaseConversionState.Status.COMPLETE
+    assert list(PurchaseValuation.objects.values_list("purchase_id", flat=True)) == [
+        valued.pk
+    ]
+    assert [row.pk for row in stale_purchases(entry.library)] == [skipped.pk]
+    (warning,) = [record for record in caplog.records if record.levelname == "WARNING"]
+    assert str(skipped.pk) in warning.getMessage()
+
+
+def test_a_legacy_row_without_a_rate_still_fails_the_run(entry, rates, monkeypatch):
+    purchase = record_purchase(entry, amount=Decimal(10), currency="CZK")
+    LegacyPurchase.objects.create(
         library=entry.library,
         price=10,
-        price_currency="CZK",
+        price_currency="GBP",
         date_purchased=date(2021, 3, 1),
-        converted_price=7,
-        converted_currency="EUR",
     )
-    _run(entry.library)
-    published = PurchaseConversionState.objects.get(library=entry.library)
-    LegacyPurchase.objects.filter(pk=legacy.pk).update(converted_price=7)
-    record_purchase(entry, amount=Decimal(3), currency="GBP", purchased=MARCH_2021)
     monkeypatch.setattr(tasks, "schedule", Mock())
 
     _run(entry.library)
 
     state = PurchaseConversionState.objects.get(library=entry.library)
-    legacy.refresh_from_db()
     assert state.status == PurchaseConversionState.Status.FAILED
-    assert "GBP" in state.last_error
-    assert list(PurchaseValuation.objects.values_list("purchase_id", "version")) == [
-        (purchase.pk, published.published_version)
-    ]
-    assert legacy.converted_price == 7
+    assert "GBP" in state.last_error and "2021" in state.last_error
+    assert not PurchaseValuation.objects.filter(purchase_id=purchase.pk).exists()
 
 
-def test_a_changed_purchase_publishes_nothing(entry, monkeypatch):
+def test_a_changed_purchase_publishes_nothing_and_requests_again(entry, monkeypatch):
     purchase = record_purchase(entry, amount=Decimal(10), currency="CZK")
 
     def change_while_fetching(source, target, year):
@@ -302,16 +322,14 @@ def test_a_changed_purchase_publishes_nothing(entry, monkeypatch):
 
     record_purchase(entry, amount=Decimal(1), currency="EUR", purchased=MARCH_2021)
     monkeypatch.setattr(tasks, "exchange_rate", change_while_fetching)
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    version = request_run(entry.library)
 
-    _run(entry.library)
+    tasks.convert_library_prices(str(entry.library.pk), version)
 
     assert not PurchaseValuation.objects.exists()
     state = PurchaseConversionState.objects.get(library=entry.library)
-    #: The next run supersedes it; the recovery re-enqueues it.
-    assert (state.published_version, state.status) == (
-        0,
-        PurchaseConversionState.Status.RUNNING,
-    )
+    assert (state.published_version, state.requested_version) == (0, version + 1)
 
 
 def test_a_stale_worker_publishes_nothing(entry, rates):
@@ -488,7 +506,158 @@ def test_the_audit_reports_another_library_s_purchase(entry, django_user_model):
 
     sentence = (
         f"PurchaseValuation.purchase_id: {row.pk} of library {stranger.pk} "
-        f"names another library's Purchase {purchase.pk}"
+        f"names no Purchase of that library: {purchase.pk}"
     )
     assert valuation_library_violations([stranger.pk]) == [sentence]
     assert valuation_library_violations([entry.library.pk]) == []
+
+
+def test_an_interval_across_new_year_takes_the_earlier_year(entry):
+    purchase = record_purchase(entry, purchased=TemporalValue.parse("2020-12/2021-01"))
+
+    assert _year(purchase) == 2020
+
+
+def test_a_fetched_rate_publishes_a_current_valuation(entry, monkeypatch):
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(
+        side_effect=lambda **kwargs: json.loads(
+            '{"eur": {"czk": 25.123456789012345678}}', **kwargs
+        )
+    )
+    monkeypatch.setattr(exchange_rates.requests, "get", Mock(return_value=response))
+    purchase = record_purchase(
+        entry, amount=Decimal(10), currency="EUR", purchased=MARCH_2021
+    )
+
+    _run(entry.library)
+
+    assert _current(purchase) == (Decimal("251.23"), "CZK")
+    assert not stale_purchases(entry.library).exists()
+
+
+def test_a_removed_purchase_loses_its_row_on_the_next_publication(entry):
+    kept = _published(entry)
+    removed = remove_purchase(
+        record_purchase(entry, amount=Decimal(1), currency="CZK", purchased=MARCH_2021)
+    )
+
+    _run(entry.library)
+
+    assert list(PurchaseValuation.objects.values_list("purchase_id", flat=True)) == [
+        kept.pk
+    ]
+    assert removed.removed_at is not None
+
+
+def test_the_widest_product_is_exact_and_storable(owned_library):
+    amount = LARGEST_AMOUNT
+    #: The default 28-digit context rounds this cent wrong.
+    rate = Decimal("331743552646.500029195578")
+    facts = ValuationInput(
+        purchase_id=uuid.uuid7(), amount=amount, currency="EUR", rate_year=2021
+    )
+
+    row = value(
+        facts,
+        "CZK",
+        rate,
+        library=owned_library,
+        version=1,
+        calculated_at=datetime.now(UTC),
+    )
+    row.save()
+
+    with localcontext(prec=80):
+        exact = (amount * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    row.refresh_from_db()
+    assert row.amount == exact
+
+
+def _row(owned_library, **changes) -> PurchaseValuation:
+    fields = {
+        "library": owned_library,
+        "purchase_id": uuid.uuid7(),
+        "target_currency": "CZK",
+        "amount": Decimal("250.00"),
+        "source_amount": Decimal("10.00"),
+        "source_currency": "EUR",
+        "rate_year": 2021,
+        "rate": Decimal(25),
+        "version": 1,
+        "calculated_at": datetime.now(UTC),
+    }
+    return PurchaseValuation(**(fields | changes))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"source_currency": "CZK"},
+        {"source_amount": Decimal(0), "amount": Decimal(0)},
+        {"rate": None},
+        {"rate": None, "source_currency": "CZK", "amount": Decimal(11)},
+        {"rate": Decimal(-1)},
+        {"amount": Decimal(-1)},
+        {"target_currency": "czk"},
+        {"source_currency": "EU"},
+    ],
+    ids=[
+        "rate for the same currency",
+        "rate for a free purchase",
+        "no rate where needed",
+        "no rate and a changed amount",
+        "negative rate",
+        "negative amount",
+        "lowercase target",
+        "short source",
+    ],
+)
+def test_the_table_refuses_a_shape_no_run_writes(owned_library, changes):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        _row(owned_library, **changes).save()
+
+
+def test_publication_refuses_outside_a_transaction(owned_library, monkeypatch):
+    monkeypatch.setattr(
+        transaction.get_connection(), "in_atomic_block", False, raising=False
+    )
+
+    with pytest.raises(RuntimeError):
+        publish_valuations(owned_library, [])
+
+
+def test_value_refuses_a_negative_rate(owned_library):
+    with pytest.raises(ValueError):
+        value(
+            _facts("EUR"),
+            "CZK",
+            Decimal(-1),
+            library=owned_library,
+            version=1,
+            calculated_at=datetime.now(UTC),
+        )
+
+
+def test_the_audit_reports_an_orphan_valuation(owned_library):
+    _row(owned_library).save()
+
+    (sentence,) = valuation_library_violations([owned_library.pk])
+
+    assert "names no Purchase of that library" in sentence
+
+
+def test_the_audit_command_runs_the_valuation_check(owned_library):
+    _row(owned_library).save()
+    output = StringIO()
+
+    with pytest.raises(CommandError):
+        call_command(
+            "audit_library_ownership",
+            "--library",
+            str(owned_library.pk),
+            stdout=output,
+        )
+
+    assert "PurchaseValuation.purchase_id" in output.getvalue()

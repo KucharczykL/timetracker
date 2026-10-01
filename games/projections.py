@@ -254,17 +254,17 @@ def entry_game_violations(library_ids: Sequence[uuid.UUID]) -> list[ViolationSen
 def valuation_library_violations(
     library_ids: Sequence[uuid.UUID],
 ) -> list[ViolationSentence]:
-    """Valuations naming another library's purchase."""
-    foreign = Purchase.objects.filter(pk=OuterRef("purchase_id")).exclude(
-        library_id=OuterRef("library_id")
+    """Valuations naming no purchase of their library."""
+    own = Purchase.objects.filter(
+        pk=OuterRef("purchase_id"), library_id=OuterRef("library_id")
     )
     rows = (
         PurchaseValuation.objects.filter(library_id__in=library_ids)
-        .filter(Exists(foreign))
+        .filter(~Exists(own))
         .values_list("pk", "library_id", "purchase_id")
     )
     return [
         f"PurchaseValuation.purchase_id: {row_id} of library {library_id} "
-        f"names another library's Purchase {purchase_id}"
+        f"names no Purchase of that library: {purchase_id}"
         for row_id, library_id, purchase_id in rows
     ]

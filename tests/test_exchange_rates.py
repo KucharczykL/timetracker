@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 import requests
+from django.db import IntegrityError, transaction
 
 from games import exchange_rates
 from games.models import ExchangeRate
@@ -29,6 +30,8 @@ def _answer(text: str) -> Mock:
 
 
 def test_the_copy_keeps_the_shortest_spelling():
+    #: The binary expansion rounds up; repr does not.
+    assert RATE_MIGRATION.decimal_rate(23.1234567890125) == Decimal("23.123456789012")
     assert RATE_MIGRATION.decimal_rate(0.1) == Decimal("0.100000000000")
     assert RATE_MIGRATION.decimal_rate(25.123456789012345) == Decimal("25.123456789012")
 
@@ -41,6 +44,11 @@ def test_a_fetched_rate_is_stored_quantized_and_answered(monkeypatch):
 
     rate = exchange_rates.exchange_rate("USD", "CZK", 2025)
 
+    get.assert_called_once_with(
+        "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@2025-01-01"
+        "/v1/currencies/usd.json",
+        timeout=30,
+    )
     stored = ExchangeRate.objects.get(currency_from="USD", currency_to="CZK", year=2025)
     assert rate == stored.rate == Decimal("23.123456789012")
     assert isinstance(rate, Decimal)
@@ -84,8 +92,28 @@ def test_a_failed_request_is_none(monkeypatch):
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "text",
-    ["[]", '{"eur": {}}', '{"usd": {"czk": 0.0000000000001}}', '{"usd": {"czk": 0}}'],
-    ids=["not an object", "no source table", "rounds to zero", "zero"],
+    [
+        "[]",
+        '{"eur": {}}',
+        '{"usd": {"czk": 0.0000000000001}}',
+        '{"usd": {"czk": 0}}',
+        '{"usd": {"czk": -2}}',
+        '{"usd": {"czk": true}}',
+        '{"usd": {"czk": "n/a"}}',
+        '{"usd": {"czk": [1]}}',
+        '{"usd": {"czk": 1e30}}',
+    ],
+    ids=[
+        "not an object",
+        "no source table",
+        "rounds to zero",
+        "zero",
+        "negative",
+        "boolean",
+        "text",
+        "list",
+        "too wide",
+    ],
 )
 def test_an_unusable_answer_is_none_and_stores_nothing(monkeypatch, text):
     monkeypatch.setattr(
@@ -107,3 +135,11 @@ def test_a_rate_stored_during_the_fetch_wins(monkeypatch):
     monkeypatch.setattr(exchange_rates.requests, "get", store_then_answer)
 
     assert exchange_rates.exchange_rate("USD", "CZK", 2025) == Decimal(22)
+
+
+@pytest.mark.django_db
+def test_the_table_refuses_a_rate_that_is_not_positive():
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ExchangeRate.objects.create(
+            currency_from="USD", currency_to="CZK", year=2025, rate=Decimal(0)
+        )

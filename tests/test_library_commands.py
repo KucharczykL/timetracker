@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from gzip import open as gzip_open
 from io import StringIO
 from pathlib import Path
+from unittest.mock import Mock
 from uuid import UUID, uuid7
 
 import pytest
@@ -921,3 +922,18 @@ def test_sample_load_requests_a_run_after_the_replay(owner, monkeypatch):
     call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
     assert projected_at_request == [True]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sample_load_requests_a_run_for_stale_purchases_alone(owner, monkeypatch):
+    from games.management.commands import load_sample_data
+
+    stale = Mock()
+    stale.exists.return_value = True
+    monkeypatch.setattr(load_sample_data, "stale_purchases", lambda library: stale)
+    before = PurchaseConversionState.objects.get(library=owner.library)
+
+    call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    after = PurchaseConversionState.objects.get(library=owner.library)
+    assert after.requested_version == before.requested_version + 1

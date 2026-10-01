@@ -10,7 +10,10 @@ from django.utils.timezone import now
 from django_q.models import Schedule
 from django_q.tasks import async_task, schedule
 
-from games.conversion import request_revaluation
+from games.conversion import (
+    _request_conversion_for_locked_state,
+    request_revaluation,
+)
 from games.exchange_rates import exchange_rate
 from games.models import (
     LegacyPurchase,
@@ -19,12 +22,13 @@ from games.models import (
 )
 from games.reads.purchases import stale_purchases, valuation_inputs
 from games.valuations import (
+    ConversionVersion,
     CurrencyCode,
     RateKey,
     ValuationInput,
     needs_rate,
     publish_valuations,
-    value,
+    value_all,
 )
 
 logger = logging.getLogger("games")
@@ -51,17 +55,37 @@ def _required_rate(key: RateKey, target: CurrencyCode, needed_by: str) -> Decima
 def _rates_for(
     snapshot: list[ValuationInput], target: CurrencyCode
 ) -> dict[RateKey, Decimal]:
-    """One rate per key a purchase needs."""
+    """The rates available; a missing key is absent."""
     rates: dict[RateKey, Decimal] = {}
+    missing: set[RateKey] = set()
     for facts in snapshot:
-        if needs_rate(facts, target) and facts.rate_key not in rates:
-            rates[facts.rate_key] = _required_rate(
-                facts.rate_key, target, f"purchase {facts.purchase_id}"
-            )
+        key = facts.rate_key
+        if not needs_rate(facts, target) or key in rates or key in missing:
+            continue
+        rate = exchange_rate(key.currency, target, key.year)
+        if rate is None:
+            missing.add(key)
+        else:
+            rates[key] = rate
     return rates
 
 
-def _not_published(library_id: str, version: int, reason: str) -> None:
+def _warn_skipped(
+    library_id: str, target: CurrencyCode, skipped: list[ValuationInput]
+) -> None:
+    for facts in skipped:
+        logger.warning(
+            "[convert_library_prices]: library %s purchase %s not valued: "
+            "no %s->%s rate for %s",
+            library_id,
+            facts.purchase_id,
+            facts.currency,
+            target,
+            facts.rate_year,
+        )
+
+
+def _not_published(library_id: str, version: ConversionVersion, reason: str) -> None:
     logger.info(
         "[convert_library_prices]: library %s version %s not published: %s",
         library_id,
@@ -79,9 +103,11 @@ def _mark_failed(
     requested_version: int,
     error: Exception,
     *,
-    schedule_retry: bool,
+    schedule_retry: bool = False,
+    retry: bool = True,
 ) -> None:
-    retry_at = now() + RETRY_DELAY
+    """Mark the version failed; a defect gets no retry."""
+    retry_at = now() + RETRY_DELAY if retry else None
     library_pk = UUID(library_id)
     should_schedule = False
     with transaction.atomic():
@@ -96,13 +122,13 @@ def _mark_failed(
             or state.published_version >= requested_version
         ):
             return
-        should_schedule = schedule_retry and state.retry_at is None
+        should_schedule = retry and schedule_retry and state.retry_at is None
         state.status = PurchaseConversionState.Status.FAILED
         state.retry_at = retry_at
         state.last_error = _concise_error(error)
         state.save(update_fields=["status", "retry_at", "last_error"])
 
-    if should_schedule:
+    if should_schedule and retry_at is not None:
         schedule(
             "games.tasks.convert_library_prices",
             library_id,
@@ -182,33 +208,32 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                 .order_by("pk")
                 .values_list("pk", "price", "price_currency", "date_purchased")
             )
-            if current_snapshot != snapshot:
-                _not_published(library_id, requested_version, "legacy rows changed")
-                return
-            if valuation_inputs(library) != valuation_snapshot:
-                _not_published(library_id, requested_version, "purchases changed")
+            changed = (
+                "legacy rows changed"
+                if current_snapshot != snapshot
+                else "purchases changed"
+                if valuation_inputs(library) != valuation_snapshot
+                else None
+            )
+            if changed is not None:
+                #: A removal requests nothing; request here.
+                _request_conversion_for_locked_state(state, state.requested_currency)
+                _not_published(library_id, requested_version, changed)
                 return
             LegacyPurchase.objects.bulk_update(
                 purchases,
                 ["converted_price", "converted_currency", "needs_price_update"],
             )
-            calculated_at = now()
-            publish_valuations(
-                library,
-                (
-                    value(
-                        facts,
-                        target_currency,
-                        rates[facts.rate_key]
-                        if needs_rate(facts, target_currency)
-                        else None,
-                        library=library,
-                        version=requested_version,
-                        calculated_at=calculated_at,
-                    )
-                    for facts in valuation_snapshot
-                ),
+            valuations = value_all(
+                valuation_snapshot,
+                rates,
+                target_currency,
+                library=library,
+                version=requested_version,
+                calculated_at=now(),
             )
+            publish_valuations(library, valuations.rows)
+            _warn_skipped(library_id, target_currency, valuations.skipped)
             state.published_version = requested_version
             state.published_currency = target_currency
             state.status = PurchaseConversionState.Status.COMPLETE
@@ -223,7 +248,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                     "last_error",
                 ]
             )
-    except Exception as error:
+    except (MissingExchangeRate, DatabaseError) as error:
         logger.exception(
             "[convert_library_prices]: conversion failed for library %s version %s",
             library_id,
@@ -235,6 +260,13 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
             error,
             schedule_retry=schedule_retry,
         )
+    except Exception as error:
+        logger.exception(
+            "[convert_library_prices]: defect in library %s version %s; not retried",
+            library_id,
+            requested_version,
+        )
+        _mark_failed(library_id, requested_version, error, retry=False)
 
 
 def recover_library_price_conversions() -> None:
@@ -251,13 +283,14 @@ def recover_library_price_conversions() -> None:
         | Q(status=PurchaseConversionState.Status.FAILED, retry_at__lte=now())
     )
     for state in stale:
+        #: One library's failure must not skip the rest.
         try:
             async_task(
                 "games.tasks.convert_library_prices",
                 str(state.library_id),
                 state.requested_version,
             )
-        except DatabaseError:
+        except Exception:
             logger.exception(
                 "[recover]: enqueue failed for library %s", state.library_id
             )
@@ -265,6 +298,12 @@ def recover_library_price_conversions() -> None:
         requested_version=F("published_version")
     ).select_related("library")
     for state in at_rest:
+        if len(state.requested_currency) != 3:
+            logger.warning(
+                "[recover]: library %s states no target currency; skipped",
+                state.library_id,
+            )
+            continue
         try:
             stale_count = stale_purchases(state.library).count()
             if stale_count:
@@ -274,7 +313,7 @@ def recover_library_price_conversions() -> None:
                     stale_count,
                 )
                 request_revaluation(state.library)
-        except DatabaseError:
+        except Exception:
             logger.exception(
                 "[recover]: revaluation request failed for library %s",
                 state.library_id,

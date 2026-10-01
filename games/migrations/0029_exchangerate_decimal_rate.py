@@ -11,12 +11,21 @@ def decimal_rate(rate: float) -> Decimal:
     return Decimal(repr(rate)).quantize(PLACES)
 
 
+#: The column's integer digits.
+CEILING = Decimal(10) ** 12
+
+
 def copy_forward(apps, schema_editor):
     ExchangeRate = apps.get_model("games", "ExchangeRate")
     rows = list(ExchangeRate.objects.all())
+    usable = []
     for row in rows:
-        row.rate_decimal = decimal_rate(row.rate)
-    ExchangeRate.objects.bulk_update(rows, ["rate_decimal"])
+        if 0 < row.rate < CEILING and decimal_rate(row.rate) > 0:
+            row.rate_decimal = decimal_rate(row.rate)
+            usable.append(row)
+    ExchangeRate.objects.bulk_update(usable, ["rate_decimal"])
+    #: A cache: an unusable rate is fetched again.
+    ExchangeRate.objects.filter(rate_decimal__isnull=True).delete()
 
 
 def copy_backward(apps, schema_editor):
@@ -52,5 +61,11 @@ class Migration(migrations.Migration):
             model_name="exchangerate",
             name="rate",
             field=models.DecimalField(decimal_places=12, max_digits=24),
+        ),
+        migrations.AddConstraint(
+            model_name="exchangerate",
+            constraint=models.CheckConstraint(
+                condition=models.Q(rate__gt=0), name="games_exchangerate_rate_positive"
+            ),
         ),
     ]

@@ -1,6 +1,7 @@
 """A purchase write requests a run; the recovery finds what it lost."""
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import Mock
 
@@ -9,10 +10,13 @@ from django.db import DatabaseError
 from entries import record_entry
 from purchases import record_purchase as record_purchase_event
 from purchases import remove_purchase as remove_purchase_event
+from purchases import request_run
 
 from games import conversion, tasks
+from games.commands.calendar import SetCalendarDayZone
 from games.commands.endpoint import ActStatement
 from games.commands.purchase import StatedPrice
+from games.events.dispatch import dispatch
 from games.events.purchase import (
     PURCHASE_ENTRY_CHANGED,
     PURCHASE_KIND_CHANGED,
@@ -23,7 +27,8 @@ from games.events.purchase import (
     VALUATION_EVENTS,
 )
 from games.events.vocabulary import DEFAULT_EVENT_TYPES
-from games.models import Game, PurchaseConversionState
+from games.models import Game, Purchase, PurchaseConversionState
+from games.reads.purchases import stale_purchases
 from games.writes import purchase as purchase_writes
 from games.writes.answers import CommandFailed
 from games.writes.playergame import remove_from_library, restore_to_library
@@ -152,8 +157,37 @@ def test_a_lost_request_still_answers_the_write(
             owned_library.user, _draft(entry.pk), correlation_id=uuid.uuid7()
         )
 
-    assert recorded.purchase_id
+    assert Purchase.objects.filter(pk=recorded.purchase_id).exists()
     assert "Revaluation request lost" in caplog.text
+
+
+def test_a_missing_state_row_is_a_defect(owned_library, entry):
+    PurchaseConversionState.objects.filter(library=owned_library).delete()
+
+    with pytest.raises(PurchaseConversionState.DoesNotExist):
+        record_purchase(
+            owned_library.user, _draft(entry.pk), correlation_id=uuid.uuid7()
+        )
+
+
+def test_a_repeated_creation_requests_nothing(owned_library, entry):
+    key = str(uuid.uuid7())
+    record_purchase(
+        owned_library.user,
+        _draft(entry.pk),
+        correlation_id=uuid.uuid7(),
+        idempotency_key=key,
+    )
+    version, _ = _requested(owned_library)
+
+    record_purchase(
+        owned_library.user,
+        _draft(entry.pk),
+        correlation_id=uuid.uuid7(),
+        idempotency_key=key,
+    )
+
+    assert _requested(owned_library)[0] == version
 
 
 def test_an_unchanged_or_refused_restatement_requests_nothing(owned_library, purchase):
@@ -303,3 +337,62 @@ def test_every_purchase_event_is_classified():
 
     assert VALUATION_EVENTS.isdisjoint(NOT_VALUATION_EVENTS)
     assert VALUATION_EVENTS | NOT_VALUATION_EVENTS == purchase_events
+
+
+def test_a_zone_change_stales_the_recorded_year(owned_library, entry):
+    purchase = record_purchase_event(entry, amount=Decimal(5), currency="CZK")
+    Purchase.objects.filter(pk=purchase.pk).update(
+        purchase_recorded_at=datetime(2025, 12, 31, 12, tzinfo=UTC)
+    )
+    _at_rest(owned_library)
+    request_run(owned_library)
+    tasks.convert_library_prices(str(owned_library.pk), _requested(owned_library)[0])
+    version = _requested(owned_library)[0]
+    assert not stale_purchases(owned_library).exists()
+
+    dispatch(
+        SetCalendarDayZone(day_zone="Pacific/Kiritimati"),
+        actor=owned_library.user,
+        library=owned_library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+    tasks.recover_library_price_conversions()
+
+    assert [row.pk for row in stale_purchases(owned_library)] == [purchase.pk]
+    assert _requested(owned_library)[0] == version + 1
+
+
+def test_one_failing_enqueue_leaves_the_others(
+    owned_library, django_user_model, monkeypatch
+):
+    other = django_user_model.objects.create_user(username="other").library
+    for library in (owned_library, other):
+        PurchaseConversionState.objects.filter(library=library).update(
+            requested_version=2,
+            published_version=1,
+            status=PurchaseConversionState.Status.PENDING,
+        )
+
+    def fail_for_the_owner(name, library_id, version):
+        if library_id == str(owned_library.pk):
+            raise RuntimeError("broker down")
+        enqueued.append(library_id)
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(tasks, "async_task", fail_for_the_owner)
+
+    tasks.recover_library_price_conversions()
+
+    assert enqueued == [str(other.pk)]
+
+
+def test_the_recovery_skips_a_blank_target(owned_library, purchase, queued):
+    PurchaseConversionState.objects.filter(library=owned_library).update(
+        requested_currency="", published_currency=""
+    )
+    version = _at_rest(owned_library)
+
+    tasks.recover_library_price_conversions()
+
+    assert _requested(owned_library)[0] == version
+    queued.assert_not_called()

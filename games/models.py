@@ -1298,6 +1298,11 @@ class ExchangeRate(models.Model):
 
     class Meta:
         unique_together = ("currency_from", "currency_to", "year")
+        constraints = (
+            models.CheckConstraint(
+                condition=Q(rate__gt=0), name="games_exchangerate_rate_positive"
+            ),
+        )
 
     def __str__(self):
         return f"{self.currency_from}/{self.currency_to} - {self.rate} ({self.year})"
@@ -2560,7 +2565,7 @@ class PurchaseValuation(models.Model):
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(UserLibrary, on_delete=models.CASCADE, related_name="+")
-    #: A key: projection rows take no foreign key.
+    #: Nothing keys into a projection row.
     purchase_id = models.UUIDField()
     target_currency = models.CharField(max_length=3)
     amount = models.DecimalField(max_digits=26, decimal_places=2)
@@ -2570,14 +2575,16 @@ class PurchaseValuation(models.Model):
     rate = models.DecimalField(
         max_digits=24, decimal_places=RATE_PLACES, null=True, default=None
     )
+    #: Provenance; currency is judged on inputs.
     version = models.PositiveBigIntegerField()
     calculated_at = models.DateTimeField()
 
     class Meta:
         constraints = (
+            #: Publication keeps one target per library.
             models.UniqueConstraint(
-                fields=("purchase_id", "target_currency"),
-                name="games_purchasevaluation_one_per_target",
+                fields=("library", "purchase_id"),
+                name="games_purchasevaluation_one_per_purchase",
             ),
             models.CheckConstraint(
                 condition=Q(amount__gte=0) & Q(source_amount__gte=0),

@@ -476,3 +476,13 @@ def test_post_answers_no_valuation_yet(auth_client, entry, monkeypatch):
 
     assert response.status_code == 201, response.content
     assert response.json()["valuation"] is None
+
+
+def test_a_note_patch_keeps_the_valuation(auth_client, library, entry, monkeypatch):
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    purchase = record_purchase(entry, amount=Decimal("19.99"), currency="EUR")
+    _convert(library)
+
+    row = _patch(auth_client, purchase.pk, {"note": "gift"}).json()
+
+    assert row["valuation"] == {"amount": "19.99", "currency": "EUR"}

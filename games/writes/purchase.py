@@ -31,7 +31,7 @@ from games.events.purchase import (
     PurchaseKindValue,
 )
 from games.events.vocabulary import EventType
-from games.models import Purchase, PurchaseConversionState
+from games.models import Purchase
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import KEEP, Keep
@@ -94,14 +94,14 @@ def _appended_types(result: CommandResult) -> frozenset[EventType]:
 def _revalue_after(actor: User, event_types: frozenset[EventType]) -> None:
     """Request a run; recovery catches a loss.
 
-    The write already committed, so a failed
-    request is logged, never answered.
+    The write already committed, so a database
+    failure is logged, never answered.
     """
     if VALUATION_EVENTS.isdisjoint(event_types):
         return
     try:
         request_revaluation(actor.library)
-    except DatabaseError, PurchaseConversionState.DoesNotExist:
+    except DatabaseError:
         logger.exception(
             "Revaluation request lost for library %s after %s; "
             "the daily recovery requests it.",

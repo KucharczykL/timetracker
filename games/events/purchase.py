@@ -142,7 +142,7 @@ PURCHASE_REFUNDED = PURCHASE_REFUND_EVENTS.stated
 PURCHASE_REFUND_CORRECTED = PURCHASE_REFUND_EVENTS.corrected
 PURCHASE_REFUND_VOIDED = PURCHASE_REFUND_EVENTS.voided
 
-#: Events that move a purchase's valuation.
+#: Purchase events after which a write requests a run.
 VALUATION_EVENTS: frozenset[EventType] = frozenset(
     {
         PURCHASE_CREATED.event_type,

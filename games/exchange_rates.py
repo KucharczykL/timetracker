@@ -11,6 +11,8 @@ from games.valuations import CurrencyCode, RateYear
 logger = logging.getLogger("games")
 
 QUANTUM = Decimal(1).scaleb(-RATE_PLACES)
+#: The column holds twelve integer digits.
+CEILING = Decimal(10) ** 12
 #: The API speaks lowercase codes.
 RATE_SOURCE = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency}.json"
 
@@ -49,8 +51,13 @@ def exchange_rate(
         )
         return None
     answered = rates.get(target.lower())
-    rate = Decimal(answered).quantize(QUANTUM) if answered else Decimal(0)
-    if rate <= 0:
+    raw = (
+        Decimal(answered)
+        if isinstance(answered, Decimal | int) and not isinstance(answered, bool)
+        else None
+    )
+    rate = raw.quantize(QUANTUM) if raw is not None and _usable(raw) else None
+    if rate is None or not _usable(rate):
         logger.warning(
             "[exchange_rate]: %s answered no usable %s->%s rate for %s: %r",
             url,
@@ -68,3 +75,11 @@ def exchange_rate(
         defaults={"rate": rate},
     )
     return stored.rate
+
+
+def _usable(rate: Decimal) -> bool:
+    """Positive and storable."""
+    if 0 < rate < CEILING:
+        return True
+    logger.warning("[exchange_rate]: unusable rate %s", rate)
+    return False
