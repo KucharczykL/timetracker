@@ -282,7 +282,9 @@ float cache and its writer go at the cutover.
 
 The legacy converter rounds `converted_price` to a whole unit. P4 seeds
 valuations from `converted_price` through `publish_valuations(library,
-rows)` in `games/valuations.py`, each row built with `value(...)`, under
+rows)` in `games/valuations.py`, each row built with `seeded(...)`, a
+sibling of `value()` under the same rate rule, since a whole-unit amount
+is not `amount × rate`, under
 the pass's transaction and the state lock (it deletes and inserts the
 library's whole set), carrying that rounding with inputs that read
 current, then calls `request_revaluation(library)` once, so the
@@ -518,14 +520,25 @@ nothing. In order:
    applies and the adjacency is `RefundPurchase`'s own; a dispatch cannot
    run in a migration's transaction, a build can. A refusal aborts the
    migration naming the legacy row, which the preflight has shown first.
-   The migration imports live models and command code and is elided once
-   the deployment records it, as #700 and #1274 were. A pass or an upgrade
-   with no base copy records its own, Owned, by the table. A removed
-   legacy row is converted, then removed. Valuations are seeded from
+   The pass reads the legacy rows through the migration's historical
+   model, since P4 and P5 ship in one image and the pass runs under P5's
+   code where `LegacyPurchase` is gone; everything it writes goes through
+   live models and command code, behind a schema guard as #1274's that
+   refuses where a live model it touches declares a column the database
+   lacks. **So P5 adds no column to a table the pass reads or writes**:
+   the projections, the event tables, Game, Edition, Release, Platform,
+   `PurchaseConversionState`, `PurchaseValuation`, `ExchangeRate`; its
+   review flag on `UserLibraryPreferences` is fine. The migration is
+   elided once the deployment records it, as #700 and #1274 were. A pass
+   or an upgrade with no base copy records its own, Owned, by the table.
+   A removed legacy row is converted, then removed; a row whose only
+   games the library removed is skipped and reported as
+   `skipped_removed_game`. Valuations are seeded from
    `converted_price` at the current published version; sums per currency
    are compared before and after.
 6. **Infinite (30 games).** Both exclusions stated through
-   `RecordPlayerGameFacts`; the 6 mixed games are printed with the old and
+   `RecordPlayerGameFacts` on the legacy row's game and, for an infinite
+   DLC row, on its new DLC Game too, or the 7 would enter the backlog; the 6 mixed games are printed with the old and
    new backlog counts.
 7. The legacy columns go, in the same stack.
 
