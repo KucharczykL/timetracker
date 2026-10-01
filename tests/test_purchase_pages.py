@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from calendar_days import displace_calendar
 from django.urls import reverse
+from django.utils.html import escape
 from entries import end_entry_access, record_entry, remove_entry
 from purchases import record_purchase, refund_purchase, remove_purchase
 
@@ -15,7 +16,12 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.commands.purchase import REFUND_OVERTAKEN
+from games.commands.purchase import (
+    NOT_AN_AMOUNT,
+    REFUND_OVERTAKEN,
+    SIGNED_AMOUNT,
+    TOO_PRECISE_AMOUNT,
+)
 from games.end_ways import EndWay
 from games.models import Game, LibraryEvent, Purchase, UserPreferences
 from games.purchase_forms import PurchaseAddForm, PurchaseEditForm
@@ -123,12 +129,20 @@ def test_add_offers_today_on_the_library_calendar(owned_library, entry):
     )
 
 
-def test_add_answers_a_command_refusal_on_the_page(logged_in, entry):
+@pytest.mark.parametrize(
+    ("amount", "sentence"),
+    [("-1", SIGNED_AMOUNT), ("1.005", TOO_PRECISE_AMOUNT), ("NaN", NOT_AN_AMOUNT)],
+    ids=["signed", "precise", "nan"],
+)
+def test_add_shows_the_commands_amount_rule_on_the_field(
+    logged_in, entry, amount, sentence
+):
     response = logged_in.post(
-        reverse("games:add_purchase", args=[entry.pk]), _add_post(amount="-1")
+        reverse("games:add_purchase", args=[entry.pk]), _add_post(amount=amount)
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 200
+    assert escape(sentence) in response.content.decode()
     assert not Purchase.objects.exists()
 
 
@@ -524,3 +538,62 @@ def test_the_library_tab_omits_refunded_purchases(logged_in, entry):
     html = logged_in.get(reverse("games:list_library")).content.decode()
 
     assert f"purchase-{refunded.pk}" not in html
+
+
+def test_a_day_change_keeps_the_purchase_note(logged_in, entry):
+    purchase = record_purchase(
+        entry, purchased=TemporalValue.parse("2021-05-01"), purchase_note="receipt"
+    )
+
+    logged_in.post(
+        reverse("games:edit_purchase", args=[purchase.pk]),
+        _edit_post(purchase, **_day("purchased", datetime.date(2021, 6, 3))),
+    )
+
+    purchase.refresh_from_db()
+    assert purchase.purchased == JUNE
+    assert purchase.purchase_note == "receipt"
+
+
+def test_the_undo_and_season_pass_toasts(logged_in, purchase, entry):
+    undo = _offered_undo(logged_in, _refund_now(logged_in, purchase))
+    undone = _page(logged_in, logged_in.post(undo))
+    season_pass = record_purchase(entry, kind="season_pass", name="Pass")
+    refunded = _page(
+        logged_in, _refund_now(logged_in, season_pass, token=OTHER_SUBMISSION)
+    )
+
+    assert "Refund undone; the copy is yours again." in undone
+    assert "Refunded." in refunded
+    assert "Refunded;" not in refunded
+
+
+def test_the_copy_confirmation_lists_purchases_by_day(logged_in, entry):
+    for name, day in (
+        ("July", "2021-07-01"),
+        ("Unknown", None),
+        ("June", "2021-06-03"),
+    ):
+        record_purchase(
+            entry,
+            kind="upgrade",
+            name=name,
+            purchased=None if day is None else TemporalValue.parse(day),
+        )
+
+    page = logged_in.get(
+        reverse("games:remove_library_entry", args=[entry.pk])
+    ).content.decode()
+
+    assert page.index("Upgrade: June") < page.index("Upgrade: July")
+    assert page.index("Upgrade: July") < page.index("Upgrade: Unknown")
+
+
+def test_removing_a_removed_purchase_says_so(logged_in, purchase):
+    remove_purchase(purchase)
+
+    response = logged_in.post(reverse("games:remove_purchase", args=[purchase.pk]))
+
+    page = _page(logged_in, response)
+    assert "This purchase is already removed." in page
+    assert reverse("games:restore_purchase", args=[purchase.pk]) not in page

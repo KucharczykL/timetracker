@@ -81,6 +81,7 @@ from games.commands.purchase import (
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    UndoPurchaseRefund,
     VoidPurchaseRefund,
 )
 from games.commands.session_reclassification import (
@@ -738,6 +739,20 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "correct-purchase-refund",
     )
     run(VoidPurchaseRefund(purchase_id=refunded_purchase), "void-purchase-refund")
+    undone = run(
+        RefundPurchase(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-03"), ""),
+        ),
+        "refund-purchase-to-undo",
+    )
+    assert undone.sequences is not None
+    run(
+        UndoPurchaseRefund(
+            purchase_id=refunded_purchase, refunded_at=undone.sequences.first
+        ),
+        "undo-purchase-refund",
+    )
     #: Left refunded, so the columns are compared.
     run(
         RefundPurchase(

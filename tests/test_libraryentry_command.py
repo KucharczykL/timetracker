@@ -548,7 +548,7 @@ def test_an_entry_naming_a_foreign_private_release_is_a_defect(
 
 
 def test_a_purchase_is_the_one_entry_referrer_and_it_cascades():
-    #: A new member needs its remove and restore.
+    #: A new member needs remove and restore.
     assert referrers_of(LibraryEntry) == ()
     assert [(referrer.model, referrer.target) for referrer in CASCADING_REFERRERS] == [
         (Purchase, LibraryEntry)

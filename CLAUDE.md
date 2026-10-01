@@ -678,10 +678,12 @@ docs/           — Additional documentation
   [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
   #724 (P5b) moves every purchase write onto the projection. Add to
   library states the game's purchase with the copy (`PriceFields`,
-  `games/price_fields.py`: Paid, Free or No purchase; Add and Edit
-  purchase, in `games/purchase_forms.py`, offer Paid, Free, Unknown);
+  `games/price_fields.py`, offers Paid, Free, Unknown; Add to library
+  swaps Unknown for No purchase; Add and Edit purchase live in
+  `games/purchase_forms.py`); amount refusals show on the field through
+  `check_price`;
   an Edit page's untouched refund block states nothing. Refund is one
-  click through `refund_purchase`; its Undo is `UndoPurchaseRefund`,
+  click (`refund_purchase_now`, through `refund_purchase`); its Undo is `UndoPurchaseRefund`,
   refused under the lock once a later refund act overtook it.
   Game detail lists each held copy's live, unrefunded purchases
   (`held_purchases`), and the copy's menu carries their acts
@@ -1367,7 +1369,7 @@ artifact absent; `make check`/`make test` order `test-ts` first.
 Chrome/Chromium (see env section); otherwise `uv run playwright install
 chromium` once. All JS vendored, so tests run fully offline. Bare `make test`
 collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.py`
-(onReady lifecycle, FilterSelect/RangeSlider),
+(onReady lifecycle, FilterSelect, sort headers),
 `test_search_select_e2e.py` (single-select edge cases on synthetic page).
 
 ## Conventions for AI assistants

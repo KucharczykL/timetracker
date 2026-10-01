@@ -23,7 +23,7 @@ from games.entry_forms import SubmissionKind, one_click_key
 from games.events.idempotency import IdempotencyKey
 from games.models import Game, LibraryEntry
 from games.ownership import owned_or_404
-from games.reads.entries import library_entries
+from games.reads.entries import EntryId, library_entries
 from games.views.removal import AfterAct, said
 from games.views.returns import return_url
 from games.views.submission import SUBMISSION_FIELD
@@ -37,7 +37,7 @@ def game_page(request: HttpRequest, game: Game) -> str:
     )
 
 
-def held_entry(request: HttpRequest, entry_id: uuid.UUID) -> LibraryEntry:
+def held_entry(request: HttpRequest, entry_id: EntryId) -> LibraryEntry:
     library = cast(User, request.user).library
     return owned_or_404(
         library_entries(library).select_related(

@@ -26,7 +26,13 @@ from games.commands.playersession import check_note, storable
 from games.commands.scope import library_entry_row, library_purchase_row
 from games.end_ways import EndWay
 from games.endpoints import ENTRY_ACCESS_END, PURCHASE_DAY, PURCHASE_REFUND
-from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
+from games.events.dispatch import (
+    Command,
+    CommandContext,
+    CommandName,
+    CommandRejected,
+    RowUnreadable,
+)
 from games.events.libraryentry import (
     ENTRY_ACCESS_END_EVENTS,
     LibraryEntryAccessEndPayload,
@@ -781,7 +787,15 @@ class UndoPurchaseRefund(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         purchase = library_purchase_row(context, self.purchase_id)
         _refuse_an_overtaken_refund(context, purchase, self.refunded_at)
-        return _refund_void(context, purchase)
+        events = _refund_void(context, purchase)
+        if isinstance(events, Unchanged):
+            #: Stream says refunded; the row does not.
+            raise RowUnreadable(
+                f"Purchase {purchase.pk} of library {purchase.library_id} has "
+                f"its refund at sequence {self.refunded_at} latest, but its "
+                "row states no refund."
+            )
+        return events
 
 
 def _refuse_an_overtaken_refund(

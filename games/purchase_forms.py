@@ -122,11 +122,14 @@ class PurchaseAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
 
     def draft(self, entry_id: uuid.UUID) -> PurchaseDraft:
         cleaned = self.cleaned_data
+        price = self.price_statement()
+        if price is None:
+            raise ValueError("Add purchase offers no 'No purchase'.")
         return PurchaseDraft(
             copy=entry_id,
             kind=cleaned["kind"],
             name=cleaned["name"],
-            price=self.stated_price(),
+            price=price,
             note=cleaned["note"],
             purchased=ActStatement(cleaned["purchased"], ""),
         )
@@ -154,6 +157,9 @@ def refund_seen(purchase: Purchase) -> RefundFingerprint:
 
 class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
     """A purchase's facts and refund restated."""
+
+    #: Unset until clean; reading it raises.
+    _refund: Restated[ActStatement]
 
     refund = forms.TypedChoiceField(
         coerce=RefundChoice,
@@ -197,9 +203,6 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         super().__init__(*args, user=purchase.library.user, **kwargs)
         self._purchase = purchase
         self._standing = standing
-        #: Set by clean; the posted block.
-        self._submitted_refund: ActStatement | None = None
-        self._refund_untouched = False
         _purchase_fields(self, presentation)
         self.fields["refunded"] = TemporalFormField(
             presentation=presentation, label="Refunded on"
@@ -229,17 +232,20 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         cleaned = super().clean()
         if cleaned is None:
             return cleaned
+        submitted: ActStatement | None = None
         if cleaned.get("refund") is RefundChoice.REFUNDED:
-            self._submitted_refund = ActStatement(
+            submitted = ActStatement(
                 cleaned.get("refunded"), cleaned.get("refund_note", "")
             )
         else:
             ignore_fields(self, "refunded", "refund_note")
         seen = cleaned.get("refund_seen") or ""
-        self._refund_untouched = _refund_block(self._submitted_refund) == seen
+        untouched = _refund_block(submitted) == seen
         #: Moved since opened, and changed here.
-        if seen != refund_seen(self._purchase) and not self._refund_untouched:
+        if seen != refund_seen(self._purchase) and not untouched:
             self.add_error(None, REFUND_CHANGED_SINCE_OPENED)
+        #: An untouched block states nothing.
+        self._refund = KEEP if untouched or submitted == self._standing else submitted
         return cleaned
 
     def purchased(self) -> ActStatement:
@@ -248,7 +254,5 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         )
 
     def refund_statement(self) -> Restated[ActStatement]:
-        """An untouched block states nothing."""
-        if self._refund_untouched or self._submitted_refund == self._standing:
-            return KEEP
-        return self._submitted_refund
+        """Set by clean; unset before it."""
+        return self._refund

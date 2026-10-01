@@ -30,7 +30,7 @@ from games.events.purchase import (
 )
 from games.events.vocabulary import EventType
 from games.models import Purchase
-from games.reads.entries import EventSequence
+from games.reads.entries import EntryId, EventSequence
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import KEEP, Keep, Restated
@@ -43,7 +43,7 @@ class PurchaseDraft(NamedTuple):
     """What a creation states."""
 
     #: A held copy's key, or a new copy.
-    copy: uuid.UUID | EntryStatement
+    copy: EntryId | EntryStatement
     kind: PurchaseKindValue
     name: str
     price: StatedPrice
@@ -55,7 +55,7 @@ class RecordedPurchase(NamedTuple):
     """What a creation answers."""
 
     purchase_id: uuid.UUID
-    entry_id: uuid.UUID
+    entry_id: EntryId
     #: The dispatch recorded a new copy.
     created_the_entry: bool
     #: The dispatch tracked an untracked game.

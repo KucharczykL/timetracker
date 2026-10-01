@@ -3,6 +3,7 @@ from functools import partial
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
@@ -11,6 +12,7 @@ from django.http import (
     HttpResponse,
 )
 from django.middleware.csrf import get_token
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
@@ -89,6 +91,7 @@ from games.views.removal import (
     confirm_and_remove,
     restore_and_return,
 )
+from games.views.returns import return_url
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.purchase import (
@@ -246,7 +249,8 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
 
 ALREADY_REFUNDED = "This purchase is already refunded."
-#: What a refund act did to the copy.
+ALREADY_REMOVED = "This purchase is already removed."
+#: What a refund did to the copy.
 COPY_END_WORDS: dict[CopyEnd, str] = {
     CopyEnd.ENDED: "the copy is marked as no longer yours",
     CopyEnd.MOVED: "the copy's end moved with it",
@@ -334,7 +338,7 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
                 purchase,
                 kind=cleaned["kind"],
                 name=cleaned["name"],
-                price=form.stated_price(),
+                price=form.price_statement(),
                 note=cleaned["note"],
                 purchased=form.purchased(),
                 refund=form.refund_statement(),
@@ -359,6 +363,10 @@ def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     purchase = _any_purchase(request, purchase_id)
     game = purchase.entry.player_game.game
+    if request.method == "POST" and purchase.removed_at is not None:
+        #: No Undo: nothing was removed now.
+        messages.info(request, ALREADY_REMOVED)
+        return redirect(return_url(request, **_game_fallback(game)))
     return confirm_and_remove(
         request,
         purchase,

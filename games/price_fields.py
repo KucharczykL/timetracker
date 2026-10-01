@@ -9,7 +9,13 @@ from django import forms
 from django.contrib.auth.models import User
 
 from common.components import FormFieldGroup, FormFieldPresentation
-from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
+from games.commands.purchase import (
+    AMOUNT_WITHOUT_CURRENCY,
+    UNKNOWN_PRICE,
+    StatedPrice,
+    check_price,
+)
+from games.events.dispatch import CommandRejected
 from games.forms import RadioListWidget
 from games.models import Purchase
 from timetracker.settings_resolver import resolve_str_for_user
@@ -107,6 +113,21 @@ class PriceFields(forms.Form):
         else:
             self._clean_amount(cleaned)
         self._clean_currency(cleaned)
+        if choice == PriceChoice.PAID and not self.errors.keys() & {
+            "amount",
+            "currency",
+        }:
+            self._check_price(cleaned)
+
+    def _check_price(self, cleaned: dict[str, Any]) -> None:
+        """The command's rules, shown on the field."""
+        try:
+            check_price(StatedPrice(cleaned["amount"], cleaned["currency"]))
+        except CommandRejected as refusal:
+            field = (
+                "currency" if refusal.sentence == AMOUNT_WITHOUT_CURRENCY else "amount"
+            )
+            self.add_error(field, refusal.sentence or NOT_AN_AMOUNT)
 
     def _clean_amount(self, cleaned: dict[str, Any]) -> None:
         text = (cleaned.get("amount") or "").strip()
@@ -125,10 +146,8 @@ class PriceFields(forms.Form):
         elif "currency" not in self.errors:
             self.add_error("currency", CURRENCY_REQUIRED)
 
-    def states_purchase(self) -> bool:
-        return self.cleaned_data["price"] is not PriceChoice.NONE
-
-    def stated_price(self) -> StatedPrice:
+    def price_statement(self) -> StatedPrice | None:
+        """None states no purchase."""
         cleaned = self.cleaned_data
         choice: PriceChoice = cleaned["price"]
         match choice:
@@ -139,7 +158,7 @@ class PriceFields(forms.Form):
             case PriceChoice.UNKNOWN:
                 return UNKNOWN_PRICE
             case PriceChoice.NONE:
-                raise ValueError("No purchase states no price.")
+                return None
 
 
 def price_group() -> FormFieldGroup:

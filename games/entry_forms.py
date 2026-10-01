@@ -156,7 +156,7 @@ class _SeenEnd(forms.Form):
             self.add_error(None, CHANGED_SINCE_OPENED)
 
 
-#: The presses a key names.
+#: One press kind per key prefix.
 type SubmissionKind = Literal[
     "copy-add", "copy-end", "copy-resume", "purchase-add", "purchase-refund"
 ]
@@ -285,13 +285,13 @@ class EntryAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
 
     def purchase_draft(self) -> PurchaseDraft | None:
         """The game's purchase, on the acquired day."""
-        if not self.states_purchase():
+        if (price := self.price_statement()) is None:
             return None
         return PurchaseDraft(
             copy=self.draft(),
             kind="game",
             name="",
-            price=self.stated_price(),
+            price=price,
             note="",
             purchased=ActStatement(self.cleaned_data["acquired"], ""),
         )

@@ -363,3 +363,14 @@ def test_each_row_rule_reads_its_group(group, rows):
     name = group.removeprefix("group")
     for row in rows:
         assert f"]{name}:block" in row
+
+
+def test_the_refund_statement_is_read_after_validation(entry):
+    form = PurchaseEditForm(
+        _edit_data(record_purchase(entry)),
+        purchase=entry.purchases.get(),
+        presentation=PRESENTATION,
+    )
+
+    with pytest.raises(AttributeError):
+        form.refund_statement()

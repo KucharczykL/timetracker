@@ -12,6 +12,7 @@ from games.commands.purchase import (
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    UndoPurchaseRefund,
     VoidPurchaseRefund,
 )
 from games.events.dispatch import Command, CommandResult, append_command
@@ -106,3 +107,23 @@ def void_refund(purchase: Purchase) -> Purchase:
     _state(purchase.library, VoidPurchaseRefund(purchase_id=purchase.pk))
     purchase.refresh_from_db()
     return purchase
+
+
+def undo_refund(purchase: Purchase, refunded_at: int) -> CommandResult:
+    result = _state(
+        purchase.library,
+        UndoPurchaseRefund(purchase_id=purchase.pk, refunded_at=refunded_at),
+    )
+    purchase.refresh_from_db()
+    return result
+
+
+def refund_sequence(purchase: Purchase) -> int:
+    """The purchase's latest refund statement."""
+    return (
+        LibraryEvent.objects.filter(
+            aggregate_id=purchase.pk, event_type="library.purchase.refunded"
+        )
+        .latest("sequence")
+        .sequence
+    )

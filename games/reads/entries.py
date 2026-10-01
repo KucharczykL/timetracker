@@ -52,6 +52,8 @@ def game_entries(library: UserLibrary, game: Game) -> LibraryEntryQuerySet:
 
 #: A position in a library's event stream.
 type EventSequence = int
+#: A copy's key.
+type EntryId = uuid.UUID
 
 END_STATEMENTS = (
     ENTRY_ACCESS_END_EVENTS.stated.event_type,

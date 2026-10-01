@@ -11,6 +11,7 @@ from games.reads import referrers
 from games.reads.referrers import (
     BLOCKING_REFERRERS,
     BlockingReferrer,
+    CascadingReferrer,
     blocking_referrer,
     referrers_of,
     rows_naming,
@@ -71,6 +72,24 @@ def test_on_refuses_a_field_naming_another_model_than_the_target():
         BlockingReferrer.on(
             PlayerSession, "playthrough", target=PlayerGame, sentence="unused"
         )
+
+
+@pytest.mark.parametrize(
+    ("model", "field_name", "target", "match"),
+    [
+        (PlayerSession, "note", Playthrough, "not a foreign key"),
+        (PlayerSession, "playthrough", PlayerGame, "not a playergame"),
+        (Playthrough, "player_game", PlayerGame, "states no alive"),
+    ],
+    ids=["not-a-key", "wrong-target", "no-alive"],
+)
+def test_every_construction_refuses_a_malformed_member(
+    model, field_name, target, match
+):
+    with pytest.raises(TypeError, match=match):
+        CascadingReferrer.on(model, field_name, target=target)
+    with pytest.raises(TypeError, match=match):
+        BlockingReferrer(model, field_name, target, "unused")
 
 
 def test_referrers_of_reads_the_patched_tuple(monkeypatch):

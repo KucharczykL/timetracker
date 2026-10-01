@@ -497,6 +497,21 @@ def test_a_purchase_naming_another_librarys_copy_is_unreadable(
         _dispatch(owned_library, DescribePurchase(purchase_id=purchase.pk, name="x"))
 
 
+def test_a_foreign_purchase_naming_the_copy_refuses_its_removal(
+    owned_library, second_library, their_graph, entry
+):
+    their_entry = record_entry(second_library, their_graph.release)
+    theirs = record_purchase(their_entry)
+    Purchase.objects.filter(pk=theirs.pk).update(entry=entry)
+
+    with pytest.raises(RowUnreadable, match=str(second_library.pk)):
+        _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+
+    assert not _removed(entry)
+    assert not _removed(theirs)
+    assert "library.purchase.removed" not in _event_types(theirs)
+
+
 # --- the day --------------------------------------------------------------
 
 

@@ -146,7 +146,7 @@ def confirm_and_remove(
     )
 
 
-#: A sentence, or one read after the act.
+#: A sentence, or one read afterwards.
 type AfterAct = str | Callable[[], str]
 
 

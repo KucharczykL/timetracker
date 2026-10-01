@@ -35,7 +35,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.calendar import calendar_day_zone
-from games.reads.entries import END_STATEMENTS, latest_end_act
+from games.reads.entries import END_STATEMENTS, EntryId, latest_end_act
 from games.reads.unscoped import require_library
 from games.valuations import CurrencyCode, ValuationInput
 
@@ -240,20 +240,18 @@ def refund_owns_the_end(library: UserLibrary, purchase: Purchase) -> bool:
 PURCHASE_ORDER = (F("purchased_lower").asc(nulls_last=True), "created_at", "id")
 
 
-def unremoved_purchases(library: UserLibrary, entry_id: uuid.UUID) -> PurchaseQuerySet:
+def unremoved_purchases(library: UserLibrary, entry_id: EntryId) -> PurchaseQuerySet:
     """The copy's unremoved purchases, refunded included."""
     return Purchase.objects.filter(
         library=require_library(library), entry_id=entry_id, removed_at__isnull=True
     ).order_by(*PURCHASE_ORDER)
 
 
-def unremoved_purchase_ids(
-    library: UserLibrary, entry_id: uuid.UUID
-) -> list[uuid.UUID]:
+def unremoved_purchase_ids(library: UserLibrary, entry_id: EntryId) -> list[uuid.UUID]:
     return list(unremoved_purchases(library, entry_id).values_list("pk", flat=True))
 
 
-def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uuid.UUID]:
+def cascaded_purchase_ids(library: UserLibrary, entry_id: EntryId) -> list[uuid.UUID]:
     """Purchases the copy's latest removal took."""
     library = require_library(library)
     removal = (
@@ -291,9 +289,7 @@ def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uui
     )
 
 
-#: A copy's key.
-type EntryId = uuid.UUID
-#: An absent copy holds none.
+#: Absent key means none: .get(pk, ()).
 type HeldPurchases = Mapping[EntryId, Sequence[Purchase]]
 
 

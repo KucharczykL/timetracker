@@ -93,7 +93,7 @@ from games.models import (
     UserLibrary,
 )
 from games.projections import projection_models
-from games.reads.entries import library_entries
+from games.reads.entries import EntryId, library_entries
 from games.reads.purchases import valuation_inputs
 from games.valuations import ValuationInput, needs_rate, publish_valuations, seeded
 from timetracker.temporal import TemporalValue
@@ -108,7 +108,6 @@ type ConversionAct = Literal[
     "created", "entry", "refunded", "ended", "removed", "removed_copy"
 ]
 type CommandInput = dict[str, Any]
-type EntryId = uuid.UUID
 type Build = Callable[[], Sequence[NewEvent] | Unchanged]
 type PlannedRows = list[tuple[LegacyRow, list[PlannedCopy]]]
 

@@ -10,6 +10,7 @@ read modules import the command modules back.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol, cast
 
 from django.db import models
@@ -61,7 +62,8 @@ def _checked(
         )
 
 
-class BlockingReferrer(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class BlockingReferrer:
     """A way to name a row that blocks its removal."""
 
     #: A projection: ProjectionModel gives it library.
@@ -73,6 +75,9 @@ class BlockingReferrer(NamedTuple):
     #: What a person is shown.
     sentence: str
 
+    def __post_init__(self) -> None:
+        _checked(self.model, self.field_name, self.target)
+
     @classmethod
     def on(
         cls,
@@ -82,17 +87,19 @@ class BlockingReferrer(NamedTuple):
         target: type[ProjectionModel],
         sentence: str,
     ) -> BlockingReferrer:
-        """The one construction path."""
-        _checked(model, field_name, target)
         return cls(model, field_name, target, sentence)
 
 
-class CascadingReferrer(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class CascadingReferrer:
     """A way to name a row its removal takes."""
 
     model: type[ProjectionModel]
     field_name: FieldName
     target: type[ProjectionModel]
+
+    def __post_init__(self) -> None:
+        _checked(self.model, self.field_name, self.target)
 
     @classmethod
     def on(
@@ -102,8 +109,6 @@ class CascadingReferrer(NamedTuple):
         *,
         target: type[ProjectionModel],
     ) -> CascadingReferrer:
-        """The one construction path."""
-        _checked(model, field_name, target)
         return cls(model, field_name, target)
 
 
@@ -134,7 +139,7 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
     ),
 )
 
-#: The target's remove and restore take these.
+#: Cascaded by hand in the target's commands.
 CASCADING_REFERRERS: tuple[CascadingReferrer, ...] = (
     CascadingReferrer.on(Purchase, "entry", target=LibraryEntry),
 )

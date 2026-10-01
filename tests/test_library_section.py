@@ -211,7 +211,7 @@ def test_a_copy_lists_its_live_unrefunded_purchases(
     assert "data-summary-detail" in html
     assert re.search(r"Bought</span>.*?Free", html, re.DOTALL)
     assert "Season pass: Year one" in html
-    assert "Unknown" in html
+    assert "Season pass: Year one · Unknown price" in html
     assert "Gone back" not in html
     assert "Removed one" not in html
     assert str(refunded.pk) not in html
@@ -285,3 +285,39 @@ def test_the_query_count_holds_over_more_purchases(
     four = _count_queries(client, graph.game)
 
     assert four == one
+
+
+def test_each_copy_lists_only_its_own_purchases(
+    client, owned_user, owned_library, graph
+):
+    first = record_entry(owned_library, graph.release)
+    second = record_entry(owned_library, graph.release)
+    on_first = record_purchase(first)
+    on_second = record_purchase(second)
+    client.force_login(owned_user)
+
+    for html in (
+        _page(client, graph.game),
+        client.get(reverse("games:list_library")).content.decode(),
+    ):
+        assert f"entry-menu-{first.pk}-purchase-{on_first.pk}" in html
+        assert f"entry-menu-{second.pk}-purchase-{on_second.pk}" in html
+        assert f"entry-menu-{first.pk}-purchase-{on_second.pk}" not in html
+
+
+def test_the_library_tab_query_count_holds_over_more_purchases(
+    client, owned_user, owned_library, graph
+):
+    record_purchase(record_entry(owned_library, graph.release))
+    client.force_login(owned_user)
+    url = reverse("games:list_library")
+    client.get(url)
+    with CaptureQueriesContext(connection) as one:
+        client.get(url)
+
+    for _ in range(3):
+        record_purchase(record_entry(owned_library, graph.release))
+    with CaptureQueriesContext(connection) as four:
+        client.get(url)
+
+    assert len(four) == len(one)
