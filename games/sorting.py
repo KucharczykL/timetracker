@@ -166,7 +166,7 @@ PURCHASE_SORTS: SortMap = {
     "purchased": SortSpec("purchased_lower", then=("purchased_upper",)),
     "refunded": SortSpec("refunded_lower", then=("refunded_upper",)),
     "created": SortSpec("created_at"),
-    # No annotate dict: _purchases_with_completions annotates `completed_day`.
+    # No annotate dict: purchase_list_rows annotates `completed_day`.
     "finished": SortSpec("completed_day"),
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"

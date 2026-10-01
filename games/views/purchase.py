@@ -113,7 +113,7 @@ PURCHASE_COLUMNS: list[Column] = [
 ]
 
 
-def _purchases_with_completions(library: UserLibrary) -> PurchaseQuerySet:
+def purchase_list_rows(library: UserLibrary) -> PurchaseQuerySet:
     """The list's rows, carrying the Finished facts."""
     return (
         library_purchases(library)
@@ -164,7 +164,7 @@ def _purchase_cells(
 def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     library = cast(User, request.user).library
-    purchases: QuerySet[Purchase] = _purchases_with_completions(library)
+    purchases: QuerySet[Purchase] = purchase_list_rows(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
