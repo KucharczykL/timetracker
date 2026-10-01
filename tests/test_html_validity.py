@@ -17,7 +17,10 @@ from devices import create_device
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row
 
 from games.models import (
@@ -125,7 +128,7 @@ class HtmlValidityTest(TestCase):
             library=library, name="Second Game In The Bundle", platform=self.platform
         )
 
-        # A multi-game bundle: LinkedPurchase renders the games-list popover.
+        # The legacy routes still render a bundle.
         self.bundle = LegacyPurchase.objects.create(
             price_currency="CZK",
             library=library,
@@ -141,6 +144,10 @@ class HtmlValidityTest(TestCase):
             price=1,
         )
         self.other_bundle.games.add(self.long_game, self.other_game)
+        record_purchase(
+            record_entry(library, default_graph(self.long_game, library).release),
+            name="Deluxe",
+        )
 
         self.session = session_row(
             self.long_game,
@@ -181,7 +188,7 @@ class HtmlValidityTest(TestCase):
         for model in (
             "game",
             "playersession",
-            "legacypurchase",
+            "purchase",
             "playthrough",
             "historicalplaytime",
             "device",

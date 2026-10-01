@@ -10,7 +10,10 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row, timed_row, tracked_run
 from statistic_cards import statistic_card
 
@@ -106,7 +109,7 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
 def test_library_page_evaluates_each_summary_count_once(
     client, django_user_model, django_assert_num_queries
 ):
-    """Twenty-five queries; the Playtime section counts three.
+    """Twenty-four queries; the Playtime section counts three.
 
     The navbar's calendar read costs nothing here: the user
     and its library arrive in one statement.
@@ -114,7 +117,7 @@ def test_library_page_evaluates_each_summary_count_once(
     owner = django_user_model.objects.create_user(username="query-owner", password="p")
     client.force_login(owner)
 
-    with django_assert_num_queries(25):
+    with django_assert_num_queries(24):
         response = client.get("/tracker/library")
 
     assert response.status_code == 200
@@ -191,6 +194,16 @@ def world(client, django_user_model):
         converted_currency="USD",
     )
     foreign_purchase.games.add(foreign_game)
+    #: The list reads the projection.
+    for library, game, name in (
+        (owner_library, own_game, "Owner purchase"),
+        (foreign_library, foreign_game, "Foreign purchase"),
+    ):
+        record_purchase(
+            record_entry(library, default_graph(game, library).release),
+            kind="season_pass",
+            name=name,
+        )
     #: #1012 keyed the edit route on the run, and tracking
     #: states one, so each library names its own. None where
     #: the test tracks no game, which names no run either.

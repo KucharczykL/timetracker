@@ -17,6 +17,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, refund_purchase
 from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
@@ -123,6 +126,13 @@ class RenderedPagesTest(TestCase):
             platform=self.platform,
         )
         self.purchase.games.add(self.game)
+        #: The projection reads this one.
+        record_purchase(
+            record_entry(
+                self.user.library,
+                default_graph(self.game, self.user.library).release,
+            )
+        )
         self.session = timed_row(
             tracked_run(self.user.library, self.game),
             datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
@@ -369,7 +379,6 @@ class RenderedPagesTest(TestCase):
             'event="status-changed"',
             'id="library"',
             "Add to library",
-            "Purchases",
             "Sessions",
             "Playthroughs",
             "History",
@@ -471,7 +480,6 @@ class RenderedPagesTest(TestCase):
         html = self.client.get(lonely.get_absolute_url()).content.decode()
         for marker in [
             "Nothing in your library yet.",
-            "No purchases yet.",
             "No sessions yet.",
         ]:
             self.assertIn(marker, html)
@@ -650,7 +658,6 @@ class PurchaseListDateFilterTest(TestCase):
     """
 
     def setUp(self) -> None:
-        import datetime
 
         self.user = User.objects.create_superuser(
             username="datetester", email="dt@example.com", password="testpass"
@@ -659,39 +666,25 @@ class PurchaseListDateFilterTest(TestCase):
         self.platform = Platform.objects.create(
             library=self.user.library, name="DateP", icon="gog"
         )
-        # Markers are placed on the Game name because LinkedPurchase renders
-        # the linked game's name (purchase.name doesn't surface in the list row).
-        early_game = Game.objects.create(
-            library=self.user.library, name="EARLY-MARKER", platform=self.platform
-        )
-        mid_game = Game.objects.create(
-            library=self.user.library, name="MID-MARKER", platform=self.platform
-        )
-        late_game = Game.objects.create(
-            library=self.user.library, name="LATE-MARKER", platform=self.platform
-        )
-        self.early = LegacyPurchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            platform=self.platform,
-            date_purchased=datetime.date(2024, 1, 15),
-        )
-        self.early.games.add(early_game)
-        self.mid = LegacyPurchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            platform=self.platform,
-            date_purchased=datetime.date(2024, 6, 15),
-            date_refunded=datetime.date(2024, 7, 1),
-        )
-        self.mid.games.add(mid_game)
-        self.late = LegacyPurchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            platform=self.platform,
-            date_purchased=datetime.date(2025, 1, 15),
-        )
-        self.late.games.add(late_game)
+        # Markers are the game names the Name column prints.
+        bought = []
+        for name, purchased in (
+            ("EARLY-MARKER", "2024-01-15"),
+            ("MID-MARKER", "2024-06-15"),
+            ("LATE-MARKER", "2025-01-15"),
+        ):
+            game = Game(library=self.user.library, name=name, platform=self.platform)
+            graph = default_graph(game, self.user.library, platform=self.platform)
+            bought.append(
+                record_purchase(
+                    record_entry(self.user.library, graph.release),
+                    kind="season_pass",
+                    name="Pass",
+                    purchased=TemporalValue.parse(purchased),
+                )
+            )
+        self.early, self.mid, self.late = bought
+        refund_purchase(self.mid, TemporalValue.parse("2024-07-01"))
 
     def _get(self, filter_obj=None, raw_filter=None):
         import json
@@ -713,18 +706,19 @@ class PurchaseListDateFilterTest(TestCase):
             self.assertEqual(
                 len(
                     re.findall(
-                        rf'data-truncated-clip=""[^>]*>{re.escape(marker)}', html
+                        rf'data-truncated-clip=""[^>]*>Pass · {re.escape(marker)}',
+                        html,
                     )
                 ),
                 1,
             )
 
-    def test_date_purchased_between_narrows_and_prepopulates(self):
+    def test_purchased_between_narrows_and_prepopulates(self):
         """BETWEEN 2024-01-01..2024-12-31 → only early + mid; both date
         inputs pre-filled with the filter bounds."""
         response = self._get(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-01-01",
                     "value2": "2024-12-31",
                     "modifier": "BETWEEN",
@@ -738,21 +732,19 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("LATE-MARKER", html)
         # Pre-populated date inputs round-trip the filter bounds.
         self.assertIn(
-            'name="quick-date_purchased-min" id="quick-date_purchased-min" '
-            'value="2024-01-01"',
+            'name="quick-purchased-min" id="quick-purchased-min" value="2024-01-01"',
             html,
         )
         self.assertIn(
-            'name="quick-date_purchased-max" id="quick-date_purchased-max" '
-            'value="2024-12-31"',
+            'name="quick-purchased-max" id="quick-purchased-max" value="2024-12-31"',
             html,
         )
 
-    def test_date_purchased_greater_than_single_bound(self):
+    def test_purchased_greater_than_single_bound(self):
         """GREATER_THAN populates min only, leaves max blank."""
         response = self._get(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-06-15",
                     "modifier": "GREATER_THAN",
                 }
@@ -764,17 +756,16 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("MID-MARKER", html)
         self.assertIn("LATE-MARKER", html)
         self.assertIn(
-            'name="quick-date_purchased-min" id="quick-date_purchased-min" '
-            'value="2024-06-15"',
+            'name="quick-purchased-min" id="quick-purchased-min" value="2024-06-15"',
             html,
         )
         self.assertIn(
-            'name="quick-date_purchased-max" id="quick-date_purchased-max" value=""',
+            'name="quick-purchased-max" id="quick-purchased-max" value=""',
             html,
         )
 
-    def test_date_refunded_not_null(self):
-        response = self._get({"date_refunded": {"value": "", "modifier": "NOT_NULL"}})
+    def test_refunded_not_null(self):
+        response = self._get({"refunded": {"value": "", "modifier": "NOT_NULL"}})
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertNotIn("EARLY-MARKER", html)
@@ -782,16 +773,16 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("LATE-MARKER", html)
 
     def test_combined_dates_and_is_refunded(self):
-        """date_purchased BETWEEN 2024 AND date_refunded NOT_NULL → only the
+        """purchased BETWEEN 2024 AND refunded NOT_NULL → only the
         mid purchase. Confirms AND-composition through the view layer."""
         response = self._get(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-01-01",
                     "value2": "2024-12-31",
                     "modifier": "BETWEEN",
                 },
-                "date_refunded": {"value": "", "modifier": "NOT_NULL"},
+                "refunded": {"value": "", "modifier": "NOT_NULL"},
             }
         )
         self.assertEqual(response.status_code, 200)
@@ -813,11 +804,21 @@ class PurchaseListDateFilterTest(TestCase):
         # A warning toast is queued (rendered into the django-messages blob).
         self.assertIn("Ignored invalid filter", html)
 
+    def test_a_legacy_key_warns_and_falls_back(self):
+        """A filter the legacy list spelled is refused, not dropped."""
+        response = self._get(
+            {"date_purchased": {"value": "2024-06-15", "modifier": "GREATER_THAN"}}
+        )
+        html = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("EARLY-MARKER", html)
+        self.assertIn("Ignored invalid filter", html)
+
     def test_semantically_invalid_filter_warns_and_falls_back(self):
         """Parseable JSON but a build-time-invalid filter (BETWEEN without value2)
         must warn-and-ignore, not 500."""
         response = self._get(
-            {"date_purchased": {"value": "2024-01-01", "modifier": "BETWEEN"}}
+            {"purchased": {"value": "2024-01-01", "modifier": "BETWEEN"}}
         )
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()

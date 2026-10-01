@@ -256,6 +256,8 @@ RULES: Mapping[StatsKey, Rule] = {
     "this_year_finished_this_year_count": _unchanged,
     "total_spent": _unchanged,
     "total_spent_currency": _unchanged,
+    "total_spent_unpriced": _unchanged,
+    "total_spent_unvalued": _unchanged,
     "spent_per_game": _unchanged,
     "all_purchased_this_year_count": _unchanged,
     "all_purchased_refunded_this_year": _unchanged,

@@ -6,13 +6,13 @@ from datetime import date
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 
 from games.commands.playthrough import CompletePlaythrough
 from games.events.dispatch import dispatch
 from games.models import (
     Game,
-    LegacyPurchase,
-    PlayerGameStatus,
     Playthrough,
     PlaythroughKind,
 )
@@ -20,7 +20,6 @@ from games.removal import remove
 from games.views.stats_data import compute_stats
 from games.writes.playergame import (
     new_correlation_id,
-    record_facts,
     track_game,
     untrack_game,
 )
@@ -31,18 +30,21 @@ pytestmark = pytest.mark.untracked_games
 YEAR = 2024
 
 
+def _copy_of(library, game) -> None:
+    """An owned copy, acquired early in the year."""
+    record_entry(
+        library,
+        default_graph(game, library).release,
+        acquired=TemporalValue.from_day(date(YEAR, 1, 5)),
+    )
+
+
 def _bought_and_completed(
     user, library, name: str, day: date | None = None
 ) -> Playthrough:
     game = Game.objects.create(library=library, name=name)
     track_game(user, game, correlation_id=new_correlation_id())
-    purchase = LegacyPurchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        type=LegacyPurchase.GAME,
-        date_purchased=date(YEAR, 1, 5),
-    )
-    purchase.games.set([game])
+    _copy_of(library, game)
     run = Playthrough.objects.get(player_game__game=game)
     if day is not None:
         Playthrough.objects.filter(pk=run.pk).update(
@@ -124,29 +126,6 @@ def test_a_year_reports_one_row_at_its_earliest_completion(owned_user, owned_lib
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_bundle_reports_one_row_for_two_completed_games(owned_user, owned_library):
-    first = _bought_and_completed(
-        owned_user, owned_library, "Bundle A", date(YEAR, 3, 1)
-    )
-    second_game = Game.objects.create(library=owned_library, name="Bundle B")
-    track_game(owned_user, second_game, correlation_id=new_correlation_id())
-    second = Playthrough.objects.get(player_game__game=second_game)
-    Playthrough.objects.filter(pk=second.pk).update(
-        completed=TemporalValue.from_day(date(YEAR, 9, 1)),
-        completion_recorded_at=second.created_at,
-    )
-    purchase = LegacyPurchase.objects.get(games=first.player_game.game)
-    purchase.games.add(second_game)
-
-    data = compute_stats(owned_library, YEAR)
-
-    assert data["all_finished_this_year_count"] == 1
-    assert [row.date_finished for row in data["all_finished_this_year"]] == [
-        date(YEAR, 3, 1)
-    ]
-
-
-@pytest.mark.django_db(transaction=True)
 def test_a_year_ascends_from_its_first_finish(owned_user, owned_library):
     _bought_and_completed(owned_user, owned_library, "Later", date(YEAR, 9, 1))
     _bought_and_completed(owned_user, owned_library, "Earlier", date(YEAR, 2, 1))
@@ -183,13 +162,7 @@ def test_a_command_states_the_completion_the_year_counts(owned_user, owned_libra
     """Drives the command, not the row."""
     game = Game.objects.create(library=owned_library, name="Commanded")
     track_game(owned_user, game, correlation_id=new_correlation_id())
-    purchase = LegacyPurchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        type=LegacyPurchase.GAME,
-        date_purchased=date(YEAR, 1, 5),
-    )
-    purchase.games.set([game])
+    _copy_of(owned_library, game)
     run = Playthrough.objects.get(player_game__game=game)
     dispatch(
         CompletePlaythrough(
@@ -234,77 +207,3 @@ def test_an_untracked_game_supplies_no_completion(owned_user, owned_library):
 
     assert compute_stats(owned_library, YEAR)["all_finished_this_year_count"] == 0
     assert compute_stats(owned_library, None)["backlog_decrease_count"] == 0
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_purchase_naming_no_game_finishes_nothing(owned_user, owned_library):
-    """No game: the Purchase reports no finish."""
-    _bought_and_completed(owned_user, owned_library, "Dated", date(YEAR, 6, 1))
-    LegacyPurchase.objects.create(
-        library=owned_library,
-        name="Gift card",
-        price_currency="CZK",
-        type=LegacyPurchase.GAME,
-        date_purchased=date(YEAR, 2, 1),
-    )
-
-    data = compute_stats(owned_library, YEAR)
-
-    assert data["all_finished_this_year_count"] == 1
-    assert compute_stats(owned_library, None)["backlog_decrease_count"] == 1
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_bundle_released_this_year_reports_one_row(owned_user, owned_library):
-    """Two games of one year, one row."""
-    first = _bought_and_completed(
-        owned_user, owned_library, "Released A", date(YEAR, 3, 1)
-    )
-    first_game = first.player_game.game
-    first_game.year_released = YEAR
-    first_game.save()
-    second_game = Game.objects.create(
-        library=owned_library, name="Released B", year_released=YEAR
-    )
-    track_game(owned_user, second_game, correlation_id=new_correlation_id())
-    second = Playthrough.objects.get(player_game__game=second_game)
-    Playthrough.objects.filter(pk=second.pk).update(
-        completed=TemporalValue.from_day(date(YEAR, 9, 1)),
-        completion_recorded_at=second.created_at,
-    )
-    LegacyPurchase.objects.get(games=first_game).games.add(second_game)
-
-    data = compute_stats(owned_library, YEAR)
-
-    assert data["this_year_finished_this_year_count"] == 1
-    assert [row.date_finished for row in data["this_year_finished_this_year"]] == [
-        date(YEAR, 3, 1)
-    ]
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_bundle_leaves_the_backlog_once(owned_user, owned_library):
-    """Two done games, one Purchase, one row."""
-    first = _bought_and_completed(
-        owned_user, owned_library, "Backlog A", date(YEAR, 3, 1)
-    )
-    purchase = LegacyPurchase.objects.get(games=first.player_game.game)
-    purchase.date_purchased = date(YEAR - 1, 1, 5)
-    purchase.save()
-    second_game = Game.objects.create(library=owned_library, name="Backlog B")
-    track_game(owned_user, second_game, correlation_id=new_correlation_id())
-    second = Playthrough.objects.get(player_game__game=second_game)
-    Playthrough.objects.filter(pk=second.pk).update(
-        completed=TemporalValue.from_day(date(YEAR, 9, 1)),
-        completion_recorded_at=second.created_at,
-    )
-    purchase.games.add(second_game)
-    for game in (first.player_game.game, second_game):
-        record_facts(
-            owned_user,
-            game,
-            status=PlayerGameStatus.COMPLETED,
-            correlation_id=new_correlation_id(),
-        )
-
-    assert compute_stats(owned_library, YEAR)["backlog_decrease_count"] == 1

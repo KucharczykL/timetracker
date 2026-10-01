@@ -3,17 +3,19 @@
 The retired parity suite was their cover.
 """
 
-from datetime import date
-
 import pytest
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
 
 from common.filter_execution import execute_filter
 from games.filters import (
     GameFilter,
-    LegacyPurchaseFilter,
+    PurchaseFilter,
     filter_query_context_for_library,
 )
-from games.models import Game, LegacyPurchase, PlayerGame, PlayerGameStatus
+from games.models import Game, PlayerGame, PlayerGameStatus
+from games.reads.purchases import library_purchases
 
 
 @pytest.fixture
@@ -40,21 +42,16 @@ def matching_games(library, game_filter):
 def matching_purchases(library, purchase_filter):
     return execute_filter(
         purchase_filter,
-        LegacyPurchase.objects.for_library(library),
+        library_purchases(library),
         filter_query_context_for_library(library),
     )
 
 
 def a_purchase_of(library, game):
-    purchase = LegacyPurchase.objects.create(
-        library=library,
-        name=f"Order of {game.name}",
-        date_purchased=date(2026, 1, 1),
-        price=0,
-        price_currency="CZK",
+    graph = default_graph(game, library)
+    return record_purchase(
+        record_entry(library, graph.release), name=f"Order of {game.name}"
     )
-    purchase.games.add(game)
-    return purchase
 
 
 @pytest.mark.django_db
@@ -105,9 +102,7 @@ def test_a_purchase_is_found_by_the_word_its_game_holds(
 
     matched = matching_purchases(
         owned_library,
-        LegacyPurchaseFilter(
-            game_filter=GameFilter.where(status=[PlayerGameStatus.SHELVED])
-        ),
+        PurchaseFilter(game_filter=GameFilter.where(status=[PlayerGameStatus.SHELVED])),
     )
 
     assert list(matched) == [shelved]
@@ -120,9 +115,9 @@ def test_a_negated_word_leaves_the_other_purchase(owned_library, one_game_per_wo
 
     matched = matching_purchases(
         owned_library,
-        LegacyPurchaseFilter(
+        PurchaseFilter(
             NOT=[
-                LegacyPurchaseFilter(
+                PurchaseFilter(
                     game_filter=GameFilter.where(status=[PlayerGameStatus.SHELVED])
                 )
             ]

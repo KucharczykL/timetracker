@@ -15,7 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 from session_rows import session_row
 
 from common import components
-from games.models import Game, LegacyPurchase, Platform
+from games.models import Game, Platform
 
 # Component builders return lazy ``Node`` objects; these tests assert on rendered
 # HTML, so node-returning calls are wrapped in ``str(...)`` at the call site
@@ -1677,19 +1677,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
     def _create_game(self, platform, name="Test Game"):
         return Game.objects.create(library=self.library, name=name, platform=platform)
 
-    def _create_purchase(self, games, platform=None, price=19.99):
-        purchase = LegacyPurchase.objects.create(
-            platform=platform or (games[0].platform if games else None),
-            library=self.library,
-            date_purchased="2025-01-01",
-            price=price,
-            price_currency="USD",
-            converted_price=price,
-            converted_currency="USD",
-        )
-        purchase.games.set(games)
-        return purchase
-
     def test_name_with_icon_linkify_with_game(self):
         platform = self._create_platform(name="Steam", icon="steam")
         game = self._create_game(platform)
@@ -1791,16 +1778,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertNotIn("<button", html)
         self._assert_no_button_inside_link(html)
 
-    def test_linked_purchase_bundle_reveal_is_button_beside_link(self):
-        platform = self._create_platform(name="Steam", icon="steam")
-        game_one = self._create_game(platform, name="Bundle Game One")
-        game_two = self._create_game(platform, name="Bundle Game Two")
-        purchase = self._create_purchase([game_one, game_two], platform=platform)
-        html = str(components.LinkedPurchase(purchase))
-        self.assertIn("<truncated-text", html)
-        self.assertRegex(html, r"<button[^>]*data-truncated-reveal")
-        self._assert_no_button_inside_link(html)
-
     def test_name_with_icon_emulated_flag(self):
         platform = self._create_platform(icon="steam")
         game = self._create_game(platform)
@@ -1829,82 +1806,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIsInstance(result, SafeText)
         self.assertIn("Epic Game", result)
 
-    def test_purchase_price_renders_currency(self):
-        platform = self._create_platform()
-        game = self._create_game(platform)
-        purchase = self._create_purchase([game], price=29.99)
-        result = str(components.PurchasePrice(purchase))
-        self.assertIsInstance(result, SafeText)
-        # floatformat rounds to 1 decimal: 29.99 -> 30.0
-        self.assertIn("30.0", result)
-        self.assertIn("USD", result)
-        self.assertIn("<pop-over", result)
-
-    def test_purchase_price_ids_differ_for_equal_prices(self):
-        """Two purchases at the same price must not share a popover id (#529).
-
-        Popover falls back to hashing its own content, so identical prices used to
-        emit identical ids and blow up assert_unique_element_ids under DEBUG.
-        """
-        platform = self._create_platform()
-        first = self._create_purchase([self._create_game(platform)], price=43)
-        second = self._create_purchase([self._create_game(platform)], price=43)
-
-        first_ids = re.findall(r'id="([^"]+)"', str(components.PurchasePrice(first)))
-        second_ids = re.findall(r'id="([^"]+)"', str(components.PurchasePrice(second)))
-
-        self.assertTrue(first_ids)
-        self.assertEqual(set(first_ids) & set(second_ids), set())
-
-    def test_linked_purchase_single_game(self):
-        platform = self._create_platform(icon="steam")
-        game = self._create_game(platform, name="Single Game")
-        purchase = self._create_purchase([game], price=14.99)
-        result = str(components.LinkedPurchase(purchase))
-        self.assertIsInstance(result, SafeText)
-        self.assertIn("Single Game", result)
-        self.assertIn("<a ", result)
-        self.assertIn("/tracker/purchase/", result)
-
-    def test_linked_purchase_multiple_games(self):
-        platform = self._create_platform(icon="steam")
-        game1 = self._create_game(platform, name="Game One")
-        game2 = self._create_game(platform, name="Game Two")
-        purchase = self._create_purchase([game1, game2], price=24.99)
-        result = str(components.LinkedPurchase(purchase))
-        self.assertIsInstance(result, SafeText)
-        self.assertIn("2 games", result)
-        self.assertIn("<a ", result)
-        self.assertIn("/tracker/purchase/", result)
-
-    def test_linked_purchase_with_name(self):
-        platform = self._create_platform(icon="steam")
-        game1 = self._create_game(platform, name="Game A")
-        game2 = self._create_game(platform, name="Game B")
-        purchase = self._create_purchase(
-            [game1, game2],
-            price=24.99,
-        )
-        purchase.name = "Bundle"
-        purchase.save()
-        result = str(components.LinkedPurchase(purchase))
-        self.assertIsInstance(result, SafeText)
-        self.assertIn("Bundle", result)
-
-    def test_linked_purchase_named_bundle_shows_games_list(self):
-        """A multi-game purchase shows its games-list popover even when the
-        purchase name is short enough to display untruncated."""
-        platform = self._create_platform(icon="steam")
-        game1 = self._create_game(platform, name="Game A")
-        game2 = self._create_game(platform, name="Game B")
-        purchase = self._create_purchase([game1, game2], price=24.99)
-        purchase.name = "Bundle"
-        purchase.save()
-        result = str(components.LinkedPurchase(purchase))
-        self.assertIn("<truncated-text", result)
-        self.assertIn("Game A", result)
-        self.assertIn("Game B", result)
-
     #: Neither creation order, name order nor case-blind order.
     BUNDLE_IN_DISPLAY_ORDER = ("Zeta Prime", "alpha", "Doom", "Doom", "Aardvark")
 
@@ -1927,30 +1828,6 @@ class ModelDependentComponentsTest(django.test.TestCase):
 
     def _tooltip_names(self, html):
         return tuple(re.findall(r"<li>([^<]+)</li>", html))
-
-    def test_linked_purchase_lists_bundle_in_display_order(self):
-        purchase = self._bundle_created_out_of_display_order()
-        html = str(components.LinkedPurchase(purchase))
-        self.assertEqual(self._tooltip_names(html), self.BUNDLE_IN_DISPLAY_ORDER)
-
-    def test_linked_purchase_orders_prefetched_bundle_without_a_query(self):
-        purchase = self._bundle_created_out_of_display_order()
-        prefetched = LegacyPurchase.objects.prefetch_related("games").get(
-            pk=purchase.pk
-        )
-        with self.assertNumQueries(0):
-            html = str(components.LinkedPurchase(prefetched))
-        self.assertEqual(self._tooltip_names(html), self.BUNDLE_IN_DISPLAY_ORDER)
-
-    def test_linked_purchase_renders_game_names_in_popover(self):
-        platform = self._create_platform(icon="steam")
-        game1 = self._create_game(platform, name="Alpha")
-        game2 = self._create_game(platform, name="Beta")
-        purchase = self._create_purchase([game1, game2], price=19.99)
-        result = str(components.LinkedPurchase(purchase))
-        self.assertIsInstance(result, SafeText)
-        self.assertIn("Alpha", result)
-        self.assertIn("Beta", result)
 
 
 class NameWithIconPlatformTest(django.test.TestCase):

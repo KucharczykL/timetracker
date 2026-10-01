@@ -151,7 +151,7 @@ class ReachableModelsTest(TestCase):
             {
                 "game",
                 "playersession",
-                "legacypurchase",
+                "purchase",
                 "playthrough",
                 "historicalplaytime",
                 "platform",
@@ -176,7 +176,7 @@ class ReachableModelsTest(TestCase):
             {
                 "game",
                 "playersession",
-                "legacypurchase",
+                "purchase",
                 "playthrough",
                 "historicalplaytime",
                 "platform",
@@ -207,7 +207,7 @@ class ReachableModelsTest(TestCase):
         full = {
             "game",
             "playersession",
-            "legacypurchase",
+            "purchase",
             "playthrough",
             "historicalplaytime",
             "platform",
@@ -227,7 +227,7 @@ class ReachableModelsTest(TestCase):
         for root in [
             "game",
             "playersession",
-            "legacypurchase",
+            "purchase",
             "playthrough",
             "historicalplaytime",
             "platform",
@@ -277,7 +277,7 @@ class FilterGroupComparisonTest(TestCase):
         for key in (
             "game",
             "playersession",
-            "legacypurchase",
+            "purchase",
             "playthrough",
             "platform",
             "device",

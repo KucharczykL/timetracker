@@ -28,7 +28,7 @@
       },
       "scopes": {}
     },
-    "legacypurchase": {
+    "purchase": {
       "fields": [
         "name"
       ],
@@ -406,13 +406,13 @@
       }
     },
     {
-      "description": "purchase: name INCLUDES related_game__name",
-      "model": "legacypurchase",
+      "description": "purchase: name INCLUDES entry__player_game__game__name",
+      "model": "purchase",
       "filter": {
         "field_comparisons": [
           {
             "left": "name",
-            "right": "related_game__name",
+            "right": "entry__player_game__game__name",
             "modifier": "INCLUDES"
           }
         ]
@@ -558,20 +558,6 @@
             "modifier": "GREATER_THAN",
             "granularity": "date",
             "quantifier": "NONE"
-          }
-        ]
-      }
-    },
-    {
-      "description": "multivalued comparison raw M2M: purchase name INCLUDES games__name (ALL)",
-      "model": "legacypurchase",
-      "filter": {
-        "field_comparisons": [
-          {
-            "left": "name",
-            "right": "games__name",
-            "modifier": "INCLUDES",
-            "quantifier": "ALL"
           }
         ]
       }

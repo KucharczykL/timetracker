@@ -15,7 +15,10 @@ from zoneinfo import ZoneInfo
 import pytest
 from devices import create_device
 from django.contrib.auth import get_user_model
+from entries import record_entry
 from filter_contexts import unrestricted_filter_context
+from graphs import default_graph
+from purchases import record_purchase, refund_purchase
 from session_rows import session_row
 
 from common.criteria import (
@@ -27,8 +30,9 @@ from common.criteria import (
     StringCriterion,
     UUIDMultiCriterion,
 )
-from games.filters import GameFilter, LegacyPurchaseFilter, PlayerSessionFilter
-from games.models import Device, Game, LegacyPurchase, Platform, PlayerSession
+from games.filters import GameFilter, PlayerSessionFilter, PurchaseFilter
+from games.models import Device, Game, Platform, PlayerSession
+from timetracker.temporal import TemporalValue
 
 UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
@@ -45,10 +49,21 @@ def _single_library_relation_world(db, monkeypatch):
 
         return create
 
-    for model in (Game, LegacyPurchase):
+    for model in (Game,):
         manager = model.objects
         monkeypatch.setattr(manager, "create", owned_create(manager.create))
     return user.library
+
+
+def _bought(game, *, refunded: bool = False) -> None:
+    """One copy of the game, bought."""
+    graph = default_graph(game, game.library)
+    purchase = record_purchase(
+        record_entry(game.library, graph.release),
+        purchased=TemporalValue.parse("2024-06-01"),
+    )
+    if refunded:
+        refund_purchase(purchase, TemporalValue.parse("2024-07-01"))
 
 
 def _dt(year=2024, month=6, day=1):
@@ -127,15 +142,11 @@ def test_nested_purchase_refunded_none(db):
     refunded = Game.objects.create(name="Refunded", platform=pc)
     kept = Game.objects.create(name="Kept", platform=pc)
     none = Game.objects.create(name="NoPurchase", platform=pc)
-    LegacyPurchase.objects.create(
-        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
-    ).games.set([refunded])
-    LegacyPurchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
-        [kept]
-    )
+    _bought(refunded, refunded=True)
+    _bought(kept)
 
     nested_none = GameFilter(
-        purchase_filter=LegacyPurchaseFilter(
+        purchase_filter=PurchaseFilter(
             is_refunded=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
@@ -232,57 +243,7 @@ def test_aggregate_average_duration(db):
     assert _ids(over_one_hour) == {high.id}  # avg 2h vs 1h
 
 
-def test_aggregate_price_sum(db):
-    """purchase_price_total uses float Sum + numeric compare (not duration)."""
-    from decimal import Decimal
-
-    pc = Platform.objects.create(name="PC")
-    pricey = Game.objects.create(name="Pricey", platform=pc)
-    cheap = Game.objects.create(name="Cheap", platform=pc)
-    for amount in (10, 15):
-        purchase = LegacyPurchase.objects.create(
-            price_currency="CZK", date_purchased=_dt(), converted_price=Decimal(amount)
-        )
-        purchase.games.set([pricey])
-    purchase = LegacyPurchase.objects.create(
-        price_currency="CZK", date_purchased=_dt(), converted_price=Decimal(5)
-    )
-    purchase.games.set([cheap])
-
-    over_twenty = GameFilter(
-        purchase_price_total=AggregateCriterion(
-            value=20, modifier=Modifier.GREATER_THAN
-        )
-    )
-    assert _ids(over_twenty) == {pricey.id}  # 25 vs 5
-
-
-# ── NONE on the M2M parent_field + non-Game parents ──────────────────────────
-
-
-def test_m2m_relation_none_excludes_partial_bundle(db):
-    """PurchaseFilter.game_filter NONE negates over the M2M parent_field
-    (`games__id`): a bundle containing the matching game must be excluded."""
-    pc = Platform.objects.create(name="PC")
-    hit = Game.objects.create(name="Hit", platform=pc)
-    miss = Game.objects.create(name="Miss", platform=pc)
-    bundle = LegacyPurchase.objects.create(price_currency="CZK", date_purchased=_dt())
-    bundle.games.set([hit, miss])
-    solo = LegacyPurchase.objects.create(price_currency="CZK", date_purchased=_dt())
-    solo.games.set([miss])
-    empty = LegacyPurchase.objects.create(price_currency="CZK", date_purchased=_dt())
-
-    no_hit = LegacyPurchaseFilter(
-        game_filter=GameFilter(
-            name=StringCriterion(value="Hit"), match=RelationMatch.NONE
-        )
-    )
-    purchase_ids = set(
-        LegacyPurchase.objects.filter(no_hit.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        .distinct()
-        .values_list("id", flat=True)
-    )
-    assert purchase_ids == {solo.id, empty.id}  # bundle (contains Hit) excluded
+# ── NONE on non-Game parents ──────────────────────────────────────────────────
 
 
 def test_relation_none_on_non_game_parent(db):
@@ -414,18 +375,10 @@ def boolean_world(_single_library_relation_world):
     session_row(refund_only, started_at=_dt(), emulated=False)
     session_row(neither, started_at=_dt(), emulated=False)
 
-    LegacyPurchase.objects.create(
-        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
-    ).games.set([both])
-    LegacyPurchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
-        [emu_only]
-    )
-    LegacyPurchase.objects.create(
-        price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
-    ).games.set([refund_only])
-    LegacyPurchase.objects.create(price_currency="CZK", date_purchased=_dt()).games.set(
-        [neither]
-    )
+    _bought(both, refunded=True)
+    _bought(emu_only)
+    _bought(refund_only, refunded=True)
+    _bought(neither)
 
     # split: emulated session and deck session are two different rows.
     split = Game.objects.create(name="Split", platform=pc)
@@ -455,9 +408,7 @@ def test_and_list_two_independent_subfilters_both_required(boolean_world):
                 session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
-                purchase_filter=LegacyPurchaseFilter(
-                    is_refunded=BoolCriterion(value=True)
-                )
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
             ),
         ]
     )
@@ -506,9 +457,7 @@ def test_or_list_two_subfilters_union(boolean_world):
                 session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
-                purchase_filter=LegacyPurchaseFilter(
-                    is_refunded=BoolCriterion(value=True)
-                )
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
             ),
         ]
     )
@@ -548,9 +497,7 @@ def test_multi_element_and_list_round_trip(boolean_world):
                 session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
-                purchase_filter=LegacyPurchaseFilter(
-                    is_refunded=BoolCriterion(value=True)
-                )
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
             ),
         ]
     )
@@ -577,7 +524,7 @@ def test_not_list_single_and_multi(boolean_world):
         session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
     )
     refunded = GameFilter(
-        purchase_filter=LegacyPurchaseFilter(is_refunded=BoolCriterion(value=True))
+        purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
     )
     not_emulated = GameFilter(NOT=[emulated])
     assert _ids(not_emulated) == {
@@ -601,9 +548,7 @@ def test_mixed_and_or_not_composition_order(boolean_world):
         ],
         OR=[
             GameFilter(
-                purchase_filter=LegacyPurchaseFilter(
-                    is_refunded=BoolCriterion(value=True)
-                )
+                purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
             )
         ],
         NOT=[

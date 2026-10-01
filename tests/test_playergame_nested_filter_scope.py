@@ -1,53 +1,33 @@
 """A nested game filter resolves from the library's tracked games."""
 
-from datetime import date
-
 import pytest
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
 
 from common.criteria import Modifier, StringCriterion
 from common.filter_execution import execute_filter
 from games.filters import (
     GameFilter,
-    LegacyPurchaseFilter,
+    PurchaseFilter,
     filter_query_context_for_library,
 )
-from games.models import Game, LegacyPurchase
+from games.models import Game
+from games.reads.purchases import library_purchases
 
 
 def a_purchase_of(library, game):
-    purchase = LegacyPurchase.objects.create(
-        library=library,
-        name="Order",
-        date_purchased=date(2026, 1, 1),
-        price=0,
-        price_currency="CZK",
-    )
-    purchase.games.add(game)
-    return purchase
+    graph = default_graph(game, library)
+    return record_purchase(record_entry(library, graph.release), name="Order")
 
 
 def named_outer_wilds():
     """A non-empty sub-filter, so the compiler builds the subquery."""
-    return LegacyPurchaseFilter(
+    return PurchaseFilter(
         game_filter=GameFilter(
             name=StringCriterion(value="Outer", modifier=Modifier.INCLUDES)
         )
     )
-
-
-@pytest.mark.django_db
-@pytest.mark.untracked_games
-def test_an_untracked_game_matches_no_nested_filter(owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    a_purchase_of(owned_library, game)
-
-    matched = execute_filter(
-        named_outer_wilds(),
-        LegacyPurchase.objects.for_library(owned_library),
-        filter_query_context_for_library(owned_library),
-    )
-
-    assert not matched.exists()
 
 
 @pytest.mark.django_db
@@ -57,7 +37,7 @@ def test_a_tracked_game_matches(owned_library):
 
     matched = execute_filter(
         named_outer_wilds(),
-        LegacyPurchase.objects.for_library(owned_library),
+        library_purchases(owned_library),
         filter_query_context_for_library(owned_library),
     )
 

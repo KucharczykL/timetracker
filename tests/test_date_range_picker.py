@@ -322,10 +322,10 @@ class QuickBarDateRangePanelTest(TestCase):
         html = self.render()
         self.assertIn("<date-range-picker", html)
         self.assertIn("data-static-calendar", html)
-        self.assertIn('data-input-name-prefix="quick-date_purchased"', html)
+        self.assertIn('data-input-name-prefix="quick-purchased"', html)
         # The hidden ISO inputs keep the names the bar serializer reads.
-        self.assertIn('name="quick-date_purchased-min"', html)
-        self.assertIn('name="quick-date_purchased-max"', html)
+        self.assertIn('name="quick-purchased-min"', html)
+        self.assertIn('name="quick-purchased-max"', html)
 
     def test_created_uses_date_range_panel(self):
         html = self.render()
@@ -336,7 +336,7 @@ class QuickBarDateRangePanelTest(TestCase):
     def test_prefilled_between_filter_round_trips_into_picker(self):
         filter_json = json.dumps(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-03-15",
                     "value2": "2024-09-20",
                     "modifier": "BETWEEN",

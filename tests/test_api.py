@@ -9,6 +9,9 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
 from session_rows import duration_only_row, session_row, timed_row, tracked_run
 
 from games.commands.playersession import INTO_THE_BUCKET
@@ -17,7 +20,6 @@ from games.filters import parse_game_filter
 from games.models import (
     Device,
     Game,
-    LegacyPurchase,
     LibraryCalendar,
     Platform,
     PlayerGame,
@@ -59,8 +61,12 @@ def _owned_game(**values):
     return Game.objects.create(library=_test_library(), **values)
 
 
-def _owned_purchase(**values):
-    return LegacyPurchase.objects.create(library=_test_library(), **values)
+def _owned_purchase(platform):
+    """A purchase of a copy on `platform`."""
+    library = _test_library()
+    game = Game(library=library, name=f"Bought on {platform.name}")
+    graph = default_graph(game, library, platform=platform)
+    return record_purchase(record_entry(library, graph.release))
 
 
 def test_existing_endpoint_requires_auth():
@@ -110,14 +116,10 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
     atari = Platform.objects.create(name="Atari")
     switch = Platform.objects.create(name="Switch")
     old_game = _owned_game(name="Old game", platform=atari)
-    recent_purchase = _owned_purchase(
-        price_currency="CZK", platform=switch, date_purchased=date(2026, 1, 1)
-    )
+    #: Only the copy's Release names Switch.
+    _owned_purchase(switch)
     Game.objects.filter(pk=old_game.pk).update(
         updated_at=datetime(2025, 1, 1, tzinfo=UTC)
-    )
-    LegacyPurchase.objects.filter(pk=recent_purchase.pk).update(
-        updated_at=datetime(2026, 1, 1, tzinfo=UTC)
     )
 
     rows = auth_client.get("/api/platforms/search", {"limit": 10}).json()
@@ -128,9 +130,7 @@ def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
 def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_client):
     platform = Platform.objects.create(name="PC")
     _owned_game(name="One", platform=platform)
-    _owned_purchase(
-        price_currency="CZK", platform=platform, date_purchased=date(2026, 1, 1)
-    )
+    _owned_purchase(platform)
 
     with CaptureQueriesContext(connection) as queries:
         auth_client.get("/api/platforms/search", {"limit": 10})
@@ -139,7 +139,7 @@ def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_clien
         query["sql"] for query in queries if 'FROM "games_platform"' in query["sql"]
     )
     assert 'LEFT OUTER JOIN "games_game"' not in search_sql
-    assert 'LEFT OUTER JOIN "games_legacypurchase"' not in search_sql
+    assert 'LEFT OUTER JOIN "games_purchase"' not in search_sql
 
 
 def test_device_search_offers_ended_devices_after_held_ones(auth_client):

@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import UTC, date, timedelta
+from decimal import Decimal
 from functools import reduce
 from typing import ClassVar
 from uuid import UUID
@@ -24,7 +25,10 @@ from django.db.models.lookups import (
     LessThanOrEqual,
 )
 from django.utils import timezone
+from entries import record_entry
 from filter_contexts import unrestricted_filter_context
+from graphs import default_graph
+from purchases import record_purchase
 from session_rows import duration_only_row, session_row, tracked_run
 
 from common.criteria import (
@@ -76,11 +80,11 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
-    LegacyPurchaseFilter,
     LibraryEntryFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
+    PurchaseFilter,
     parse_device_filter,
     parse_game_filter,
     parse_platform_filter,
@@ -88,7 +92,7 @@ from games.filters import (
     parse_purchase_filter,
     parse_session_filter,
 )
-from games.models import PlayerSession
+from games.models import PlayerSession, Purchase
 from timetracker.temporal import TemporalValue
 
 UTC_ZONE = ZoneInfo("UTC")
@@ -527,8 +531,7 @@ class TestChoiceCriterion:
     )
     def test_m2m_modifiers_require_filter_builder(self, modifier):
         """INCLUDES_ALL / INCLUDES_ONLY cannot be built by the generic criterion
-        layer — they require a filter-level Q builder (see
-        PurchaseFilter._games_to_q)."""
+        layer — they require a filter-level Q builder."""
         c = ChoiceCriterion(value=["f", "p"], modifier=modifier)
         # Must raise FilterError (catchable user-input error), NOT AssertionError
         # (which vanishes under `python -O` and would re-open the 500 path).
@@ -698,228 +701,6 @@ class TestChoiceCriterionAgainstDB:
         assert self._count(c) == 0
 
 
-class TestPurchaseGamesIncludesAllAgainstDB:
-    """INCLUDES_ALL on the many-to-many ``LegacyPurchase.games`` should match only
-    purchases linked to *all* of the given games — Stash's ``includes all``."""
-
-    def _seed(self):
-        import datetime
-
-        from games.models import Game, LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
-        a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
-        b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
-        c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
-
-        def make(linked):
-            purchase = LegacyPurchase.objects.create(
-                price_currency="CZK",
-                platform=platform,
-                date_purchased=datetime.date(2024, 1, 1),
-            )
-            purchase.games.set(linked)
-            return purchase
-
-        return {
-            "a": a,
-            "b": b,
-            "both": make([a, b]),
-            "only_a": make([a]),
-            "all_three": make([a, b, c]),
-        }
-
-    @pytest.mark.django_db
-    def test_includes_all_matches_only_supersets(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [seeded["a"].id, seeded["b"].id],
-                    "modifier": "INCLUDES_ALL",
-                }
-            }
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["both"], seeded["all_three"]}
-
-    @pytest.mark.django_db
-    def test_includes_any_is_broader(self):
-        """Contrast: plain INCLUDES (any) also matches the A-only purchase."""
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [seeded["a"].id, seeded["b"].id],
-                    "modifier": "INCLUDES",
-                }
-            }
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["both"], seeded["only_a"], seeded["all_three"]}
-
-    @pytest.mark.django_db
-    def test_includes_any_no_duplicates(self):
-        """INCLUDES [A, B] must not return duplicate rows for a purchase linked
-        to both A and B — the M2M join must not inflate the result.
-
-        Regression: ``games__in`` on a many-to-many field produces one row per
-        matching through-table entry, so a purchase linked to N of the selected
-        games would appear N times.  The fix uses a subquery so each purchase
-        appears at most once.
-        """
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [seeded["a"].id, seeded["b"].id],
-                    "modifier": "INCLUDES",
-                }
-            }
-        )
-        result = list(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        # Must have 3 distinct purchases, not duplicates
-        assert len(result) == 3
-        assert set(result) == {seeded["both"], seeded["only_a"], seeded["all_three"]}
-
-    @pytest.mark.django_db
-    def test_includes_all_strips_embedded_labels(self):
-        """Stash-style {id, label} value items are normalised to bare ids."""
-        from common.criteria import Modifier
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [
-                        {"id": seeded["a"].id, "label": "A"},
-                        {"id": seeded["b"].id, "label": "B"},
-                    ],
-                    "modifier": "INCLUDES_ALL",
-                }
-            }
-        )
-        assert pf.games is not None
-        assert pf.games.modifier == Modifier.INCLUDES_ALL
-        assert pf.games.value == [seeded["a"].id, seeded["b"].id]
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["both"], seeded["all_three"]}
-
-
-class TestPurchaseGamesIncludesOnlyAgainstDB:
-    """INCLUDES_ONLY on the many-to-many ``LegacyPurchase.games`` should match only
-    purchases linked to *exactly* the given games — Stash's ``only`` mode,
-    which INCLUDES_ALL does not provide (it includes supersets)."""
-
-    def _seed(self):
-        import datetime
-
-        from games.models import Game, LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
-        a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
-        b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
-        c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
-
-        def make(linked):
-            purchase = LegacyPurchase.objects.create(
-                price_currency="CZK",
-                platform=platform,
-                date_purchased=datetime.date(2024, 1, 1),
-            )
-            purchase.games.set(linked)
-            return purchase
-
-        return {
-            "a": a,
-            "b": b,
-            "both": make([a, b]),
-            "only_a": make([a]),
-            "all_three": make([a, b, c]),
-        }
-
-    @pytest.mark.django_db
-    def test_includes_only_matches_exact_set(self):
-        """INCLUDES_ONLY [A, B] returns only purchases with exactly A and B."""
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [seeded["a"].id, seeded["b"].id],
-                    "modifier": "INCLUDES_ONLY",
-                }
-            }
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["both"]}
-
-    @pytest.mark.django_db
-    def test_includes_only_single_game(self):
-        """INCLUDES_ONLY [A] = exactly game A, no others."""
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [seeded["a"].id],
-                    "modifier": "INCLUDES_ONLY",
-                }
-            }
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["only_a"]}
-
-    @pytest.mark.django_db
-    def test_includes_only_contrast_with_includes_all(self):
-        """INCLUDES_ONLY excludes the superset that INCLUDES_ALL would match."""
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [seeded["a"].id, seeded["b"].id],
-                    "modifier": "INCLUDES_ONLY",
-                }
-            }
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        # all_three has A, B, C — INCLUDES_ALL would match it, ONLY does not.
-        assert seeded["all_three"] not in result
-        assert seeded["both"] in result
-
-
 class TestGameFilterFromJson:
     def test_status_choice_criterion(self):
         gf = GameFilter.from_json(
@@ -972,10 +753,10 @@ class TestGameFilterToQ:
         raises on user input in every list view.
         """
         from common.criteria import filter_from_json
-        from games.filters import LegacyPurchaseFilter
+        from games.filters import PurchaseFilter
 
         parsed = filter_from_json(
-            LegacyPurchaseFilter,
+            PurchaseFilter,
             '{"game_filter": {"status": {"value": ["completed"],'
             ' "modifier": "INCLUDES"}}}',
         )
@@ -1080,85 +861,6 @@ class TestFilterBarRendering:
         assert "(Any)" in platform_section or "(None)" in platform_section
 
 
-class TestPurchaseNumPurchasesAgainstDB:
-    """num_purchases IntCriterion filters purchases by game count."""
-
-    def _seed(self):
-        import datetime
-
-        from games.models import Game, LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
-        a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
-        b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
-        c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
-
-        single = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-        single.games.set([a])
-
-        double = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-        double.games.set([a, b])
-
-        triple = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-        triple.games.set([a, b, c])
-
-        return {"single": single, "double": double, "triple": triple}
-
-    @pytest.mark.django_db
-    def test_between_two_and_three(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {"num_purchases": {"value": 2, "value2": 3, "modifier": "BETWEEN"}}
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["double"], seeded["triple"]}
-
-    @pytest.mark.django_db
-    def test_greater_than_one(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {"num_purchases": {"value": 1, "modifier": "GREATER_THAN"}}
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["double"], seeded["triple"]}
-
-    @pytest.mark.django_db
-    def test_equals_one(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {"num_purchases": {"value": 1, "modifier": "EQUALS"}}
-        )
-        result = set(
-            LegacyPurchase.objects.filter(pf.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        )
-        assert result == {seeded["single"]}
-
-
 @pytest.mark.django_db
 class TestExpandedFiltersAgainstDB:
     def _setup_entities(self):
@@ -1168,7 +870,6 @@ class TestExpandedFiltersAgainstDB:
         from games.models import (
             Device,
             Game,
-            LegacyPurchase,
             Platform,
             PlayerGame,
             PlayerGameStatus,
@@ -1197,23 +898,13 @@ class TestExpandedFiltersAgainstDB:
         )
 
         # 3. Purchase
-        pur = LegacyPurchase.objects.create(
-            platform=plat,
-            date_purchased=datetime.date(2026, 1, 1),
-            infinite=True,
-            price=49.99,
-            price_currency="JPY",
-            converted_price=45.00,
-            converted_currency="USD",
-            needs_price_update=False,
+        graph = default_graph(game, game.library, platform=plat)
+        pur = record_purchase(
+            record_entry(game.library, graph.release),
+            amount=Decimal("49.99"),
+            currency="JPY",
+            purchased=TemporalValue.parse("2026-01-01"),
         )
-        pur.games.add(game)
-        LegacyPurchase.objects.filter(pk=pur.pk).update(
-            converted_price=45.00,
-            converted_currency="USD",
-            needs_price_update=False,
-        )
-        pur.refresh_from_db()
 
         return {
             "plat": plat,
@@ -1266,8 +957,8 @@ class TestExpandedFiltersAgainstDB:
     def test_platform_criterion_selects_by_integer_id(self):
         """The platform facet carries integer Platform pks, whichever identity
         the FK column itself holds."""
-        from games.filters import GameFilter, LegacyPurchaseFilter
-        from games.models import Game, LegacyPurchase, Platform
+        from games.filters import GameFilter, PurchaseFilter
+        from games.models import Game, Platform, Purchase
 
         data = self._setup_entities()
         other = Platform.objects.create(name="Other Console", group="Sega")
@@ -1281,27 +972,22 @@ class TestExpandedFiltersAgainstDB:
         assert data["game2"] in games
         assert elsewhere not in games
 
-        purchase_filter = LegacyPurchaseFilter.from_json(
+        purchase_filter = PurchaseFilter.from_json(
             {"platform": {"value": [data["plat"].id], "modifier": "INCLUDES"}}
         )
-        assert data["pur"] in set(LegacyPurchase.objects.filter(purchase_filter.to_q()))
+        assert data["pur"] in set(
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        )
 
     def test_platform_excludes_keeps_platformless_rows(self):
         """The excludes isnull arm, now that the lookup traverses the relation:
         excluding a platform must keep rows that have none at all."""
-        import datetime
 
-        from games.filters import GameFilter, LegacyPurchaseFilter
-        from games.models import Game, LegacyPurchase
+        from games.filters import GameFilter
+        from games.models import Game
 
         data = self._setup_entities()
         platformless_game = Game.objects.create(name="Homebrew", platform=None)
-        platformless_purchase = LegacyPurchase.objects.create(
-            platform=None,
-            date_purchased=datetime.date(2026, 2, 1),
-            price=1,
-            price_currency="USD",
-        )
 
         game_filter = GameFilter.from_json(
             {"platform": {"value": [data["plat"].id], "modifier": "EXCLUDES"}}
@@ -1310,27 +996,13 @@ class TestExpandedFiltersAgainstDB:
         assert platformless_game in games
         assert data["game"] not in games
 
-        purchase_filter = LegacyPurchaseFilter.from_json(
-            {"platform": {"value": [data["plat"].id], "modifier": "EXCLUDES"}}
-        )
-        purchases = set(LegacyPurchase.objects.filter(purchase_filter.to_q()))
-        assert platformless_purchase in purchases
-        assert data["pur"] not in purchases
-
     def test_platform_presence_modifiers_split_the_null_set(self):
-        import datetime
 
-        from games.filters import GameFilter, LegacyPurchaseFilter
-        from games.models import Game, LegacyPurchase
+        from games.filters import GameFilter
+        from games.models import Game
 
         data = self._setup_entities()
         platformless_game = Game.objects.create(name="Homebrew", platform=None)
-        platformless_purchase = LegacyPurchase.objects.create(
-            platform=None,
-            date_purchased=datetime.date(2026, 2, 1),
-            price=1,
-            price_currency="USD",
-        )
 
         is_null = GameFilter.from_json({"platform": {"modifier": "IS_NULL"}})
         games = set(Game.objects.filter(is_null.to_q()))
@@ -1341,19 +1013,12 @@ class TestExpandedFiltersAgainstDB:
         assert data["game"] in games
         assert platformless_game not in games
 
-        is_null_purchase = LegacyPurchaseFilter.from_json(
-            {"platform": {"modifier": "IS_NULL"}}
-        )
-        assert set(LegacyPurchase.objects.filter(is_null_purchase.to_q())) == {
-            platformless_purchase
-        }
-
     def test_platform_relation_traverses_in_both_directions(self):
-        """The three relation lookups that spell the FK column: the parent's
+        """The relation lookups that spell the FK column: the parent's
         ``related_lookup`` (Platform → Game, Platform → Purchase) and the
-        child's ``parent_field`` (Game → Platform, Purchase → Platform)."""
-        from games.filters import GameFilter, LegacyPurchaseFilter, PlatformFilter
-        from games.models import Game, LegacyPurchase, Platform
+        child's ``parent_field`` (Game → Platform)."""
+        from games.filters import GameFilter, PlatformFilter
+        from games.models import Game, Platform
 
         data = self._setup_entities()
         other = Platform.objects.create(name="Other Console", group="Sega")
@@ -1378,22 +1043,11 @@ class TestExpandedFiltersAgainstDB:
 
         # parent → child, via Purchase
         by_purchase = PlatformFilter.from_json(
-            {"purchase_filter": {"price": {"value": 49.99, "modifier": "EQUALS"}}}
+            {"purchase_filter": {"amount": {"value": 49.99, "modifier": "EQUALS"}}}
         )
         assert set(
             Platform.objects.filter(by_purchase.to_q(UNRESTRICTED_FILTER_CONTEXT))
         ) == {data["plat"]}
-
-        # child → parent, from Purchase
-        purchase_filter = LegacyPurchaseFilter.from_json(
-            {"platform_filter": {"group": {"value": "Nintendo", "modifier": "EQUALS"}}}
-        )
-        assert purchase_filter.platform_filter is not None
-        assert set(
-            LegacyPurchase.objects.filter(
-                purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
-            )
-        ) == {data["pur"]}
 
     def test_session_filter_reads_the_effective_duration_and_mode(self):
         from games.filters import PlayerSessionFilter
@@ -1415,21 +1069,6 @@ class TestExpandedFiltersAgainstDB:
         assert PlayerSession.objects.filter(running.to_q()).count() == 0
         not_running = PlayerSessionFilter.from_json({"is_running": {"value": False}})
         assert PlayerSession.objects.filter(not_running.to_q()).count() == 1
-
-    def test_purchase_filter_new_fields(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        self._setup_entities()
-
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "infinite": {"value": True, "modifier": "EQUALS"},
-                "needs_price_update": {"value": False, "modifier": "EQUALS"},
-                "converted_currency": {"value": "USD", "modifier": "EQUALS"},
-            }
-        )
-        assert LegacyPurchase.objects.filter(pf.to_q()).count() == 1
 
     def test_game_filter_stats_and_existence(self):
         from games.filters import GameFilter
@@ -1526,55 +1165,6 @@ class TestExpandedFiltersAgainstDB:
         results = set(Game.objects.filter(gf.to_q()))
         assert platformless in results
         assert data["game"] not in results
-        assert data["game2"] not in results
-
-    def test_purchase_games_excludes_keeps_gameless_purchase(self):
-        """DB proof of the deliberate M2M asymmetry: ``games`` excludes go
-        through ``_games_to_q``'s plain ``~Q(games__in=...)``, not
-        ``_SetCriterion._not_in_q`` — the isnull arm is an FK-column device,
-        while ORM negation over the M2M join already keeps purchases with no
-        linked games."""
-        import datetime
-
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        data = self._setup_entities()
-        gameless = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=data["plat"],
-            date_purchased=datetime.date(2026, 2, 1),
-        )
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "games": {
-                    "value": [],
-                    "excludes": [data["game"].pk],
-                    "modifier": "INCLUDES",
-                }
-            }
-        )
-        results = set(LegacyPurchase.objects.filter(pf.to_q()))
-        assert gameless in results
-        assert data["pur"] not in results
-
-    def test_game_filter_purchase_price_total(self):
-        from games.filters import GameFilter
-        from games.models import Game
-
-        data = self._setup_entities()
-        # data["pur"] has converted_price=45.00 linked to data["game"]
-        gf_total = GameFilter.from_json(
-            {
-                "purchase_price_total": {
-                    "value": 40.0,
-                    "value2": 50.0,
-                    "modifier": "BETWEEN",
-                }
-            }
-        )
-        results = set(Game.objects.filter(gf_total.to_q(UNRESTRICTED_FILTER_CONTEXT)))
-        assert data["game"] in results
         assert data["game2"] not in results
 
     def test_game_filter_session_playtime_and_its_mode_scope(self):
@@ -1756,7 +1346,7 @@ class TestRetiredPlaytimeComparison:
         [
             (parse_game_filter, "playtime"),
             (parse_session_filter, "playthrough__player_game__game__playtime"),
-            (parse_purchase_filter, "games__playtime"),
+            (parse_purchase_filter, "entry__player_game__game__playtime"),
         ],
     )
     def test_a_playtime_operand_names_why_it_is_refused(self, parse, operand):
@@ -1854,196 +1444,6 @@ class TestDateCriterion:
             }
         )
         assert restored == original
-
-
-class TestPurchaseFilterDates:
-    """End-to-end: a PurchaseFilter built from JSON narrows the queryset
-    correctly across the two DateCriterion fields and composes with
-    BoolCriterion (is_refunded)."""
-
-    def _seed(self):
-        import datetime
-
-        from games.models import LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
-        early = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 15),
-        )
-        mid = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 6, 15),
-            date_refunded=datetime.date(2024, 7, 1),
-        )
-        late = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2025, 1, 15),
-        )
-        return {"early": early, "mid": mid, "late": late}
-
-    @pytest.mark.django_db
-    def test_date_purchased_between(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "date_purchased": {
-                    "value": "2024-01-01",
-                    "value2": "2024-12-31",
-                    "modifier": "BETWEEN",
-                }
-            }
-        )
-        results = set(LegacyPurchase.objects.filter(pf.to_q()))
-        assert results == {seeded["early"], seeded["mid"]}
-
-    @pytest.mark.django_db
-    def test_date_purchased_greater_than(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "date_purchased": {
-                    "value": "2024-06-15",
-                    "modifier": "GREATER_THAN",
-                }
-            }
-        )
-        results = set(LegacyPurchase.objects.filter(pf.to_q()))
-        assert results == {seeded["late"]}
-
-    @pytest.mark.django_db
-    def test_date_refunded_is_null(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {"date_refunded": {"value": "", "modifier": "IS_NULL"}}
-        )
-        results = set(LegacyPurchase.objects.filter(pf.to_q()))
-        assert results == {seeded["early"], seeded["late"]}
-
-    @pytest.mark.django_db
-    def test_date_refunded_not_null(self):
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {"date_refunded": {"value": "", "modifier": "NOT_NULL"}}
-        )
-        results = set(LegacyPurchase.objects.filter(pf.to_q()))
-        assert results == {seeded["mid"]}
-
-    @pytest.mark.django_db
-    def test_purchased_between_and_refunded_not_null(self):
-        """AND-composition: only the mid purchase satisfies both."""
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase
-
-        seeded = self._seed()
-        pf = LegacyPurchaseFilter.from_json(
-            {
-                "date_purchased": {
-                    "value": "2024-01-01",
-                    "value2": "2024-12-31",
-                    "modifier": "BETWEEN",
-                },
-                "date_refunded": {"value": "", "modifier": "NOT_NULL"},
-            }
-        )
-        results = set(LegacyPurchase.objects.filter(pf.to_q()))
-        assert results == {seeded["mid"]}
-
-    @pytest.mark.django_db
-    def test_purchase_filter_json_round_trip(self):
-        """PurchaseFilter with both DateCriterion fields and is_refunded
-        survives a json → object → json round-trip — confirms
-        DateCriterion is dispatched correctly by OperatorFilter.from_json
-        via field-type introspection (``_field_types``)."""
-        from games.filters import LegacyPurchaseFilter
-
-        payload = {
-            "date_purchased": {
-                "value": "2024-01-01",
-                "value2": "2024-12-31",
-                "modifier": "BETWEEN",
-            },
-            "date_refunded": {"value": "", "modifier": "NOT_NULL"},
-            "is_refunded": {"value": True, "modifier": "EQUALS"},
-        }
-        pf = LegacyPurchaseFilter.from_json(payload)
-        assert isinstance(pf.date_purchased, DateCriterion)
-        assert isinstance(pf.date_refunded, DateCriterion)
-        # round-trip back out
-        out = pf.to_json()
-        assert out["date_purchased"]["value"] == "2024-01-01"
-        assert out["date_purchased"]["value2"] == "2024-12-31"
-        assert out["date_purchased"]["modifier"] == Modifier.BETWEEN
-        assert out["date_refunded"]["modifier"] == Modifier.NOT_NULL
-
-    @pytest.mark.django_db
-    def test_cross_entity_subfilter_json_round_trip(self):
-        """A PurchaseFilter nesting game_filter → playthrough_filter survives the
-        JSON round-trip the stats links / list views perform (issue #120)."""
-        from games.filters import GameFilter, LegacyPurchaseFilter, PlaythroughFilter
-
-        original = LegacyPurchaseFilter(
-            game_filter=GameFilter(
-                playthrough_filter=PlaythroughFilter(
-                    completed=DateCriterion(
-                        value="2024-01-01",
-                        value2="2024-12-31",
-                        modifier=Modifier.BETWEEN,
-                    )
-                )
-            )
-        )
-        out = original.to_json()
-        # The nested structure must actually be serialized, not dropped.
-        assert (
-            out["game_filter"]["playthrough_filter"]["completed"]["value"]
-            == "2024-01-01"
-        )
-
-        restored = LegacyPurchaseFilter.from_json(json.loads(json.dumps(out)))
-        assert restored.game_filter is not None
-        assert restored.game_filter.playthrough_filter is not None
-        completed = restored.game_filter.playthrough_filter.completed
-        assert isinstance(completed, DateCriterion)
-        assert completed.value2 == "2024-12-31"
-        assert str(restored.to_q(UNRESTRICTED_FILTER_CONTEXT)) == str(
-            original.to_q(UNRESTRICTED_FILTER_CONTEXT)
-        )
-
-    def test_an_empty_subfilter_still_states_has_one(self):
-        """An empty relation is EXISTS over any row: kept, not dropped."""
-        from games.filters import GameFilter, LegacyPurchaseFilter
-
-        blob = LegacyPurchaseFilter(game_filter=GameFilter()).to_json()
-        assert blob == {"game_filter": {}}
-        assert LegacyPurchaseFilter.from_json(blob).game_filter is not None
-
-    def test_where_refuses_a_bound_pair_on_a_string(self):
-        from games.filters import GameFilter
-
-        with pytest.raises(TypeError, match="takes no bound pair"):
-            GameFilter.where(name__within=("a", "b"))
-
-    def test_where_refuses_a_pair_that_is_not_one(self):
-        from games.filters import HistoricalPlaytimeFilter
-
-        with pytest.raises(TypeError, match="takes a \\(lower, upper\\) pair"):
-            HistoricalPlaytimeFilter.where(when__within="ab")
 
 
 class TestPlaythroughFilterDates:
@@ -2278,7 +1678,7 @@ class TestFilterErrorBoundary:
             parse_game_filter(bad)
 
     def test_between_without_value2_float(self):
-        bad = json.dumps({"price": {"modifier": "BETWEEN", "value": 1.0}})
+        bad = json.dumps({"amount": {"modifier": "BETWEEN", "value": 1.0}})
         with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_purchase_filter(bad)
 
@@ -2298,10 +1698,10 @@ class TestFilterErrorBoundary:
         with pytest.raises(FilterError):
             parse_session_filter(bad)
 
-    def test_non_uuid_games_id(self):
+    def test_non_uuid_game_id(self):
         """A hand-edited malformed game id must raise FilterError, not let a
         bare ValueError from the UUID parser escape the boundary."""
-        bad = json.dumps({"games": {"modifier": "INCLUDES", "value": ["not-a-uuid"]}})
+        bad = json.dumps({"game": {"modifier": "INCLUDES", "value": ["not-a-uuid"]}})
         with pytest.raises(FilterError, match="expected a UUIDv7"):
             parse_purchase_filter(bad)
 
@@ -2681,8 +2081,8 @@ class TestFilterBreadthGuard:
 
     def test_field_comparisons_past_cap_raises(self):
         entry = {
-            "left": "date_purchased",
-            "right": "date_refunded",
+            "left": "purchased_lower",
+            "right": "refunded_lower",
             "modifier": "LESS_THAN",
         }
         bad = json.dumps(
@@ -2693,8 +2093,8 @@ class TestFilterBreadthGuard:
 
     def test_field_comparisons_at_cap_parses(self):
         entry = {
-            "left": "date_purchased",
-            "right": "date_refunded",
+            "left": "purchased_lower",
+            "right": "refunded_lower",
             "modifier": "LESS_THAN",
         }
         good = json.dumps(
@@ -2796,7 +2196,7 @@ _WRONG_VALUE_BY_CRITERION = {
 _ALL_FILTERS = [
     GameFilter,
     PlayerSessionFilter,
-    LegacyPurchaseFilter,
+    PurchaseFilter,
     DeviceFilter,
     PlatformFilter,
     PlaythroughFilter,
@@ -2892,10 +2292,10 @@ class TestValueTypeBoundaryEdges:
         assert result.year_released.value == 2000
 
     def test_decimal_string_accepted_for_float_field(self):
-        good = json.dumps({"price": {"modifier": "EQUALS", "value": "3.5"}})
+        good = json.dumps({"amount": {"modifier": "EQUALS", "value": "3.5"}})
         result = parse_purchase_filter(good)
-        assert result is not None and result.price is not None
-        assert result.price.value == 3.5
+        assert result is not None and result.amount is not None
+        assert result.amount.value == 3.5
 
     def test_aggregate_integral_value_round_trips_as_int(self):
         # A count bound stays int (5, not 5.0) so saved-filter JSON stays clean;
@@ -4185,53 +3585,53 @@ class TestFilterComparisonModels:
         from games.filters import (
             DeviceFilter,
             GameFilter,
-            LegacyPurchaseFilter,
             PlatformFilter,
             PlayerSessionFilter,
             PlaythroughFilter,
+            PurchaseFilter,
         )
         from games.models import (
             Device,
             Game,
-            LegacyPurchase,
             Platform,
             PlayerSession,
             Playthrough,
+            Purchase,
         )
 
         assert GameFilter()._comparison_model() is Game
         assert PlayerSessionFilter()._comparison_model() is PlayerSession
-        assert LegacyPurchaseFilter()._comparison_model() is LegacyPurchase
+        assert PurchaseFilter()._comparison_model() is Purchase
         assert DeviceFilter()._comparison_model() is Device
         assert PlatformFilter()._comparison_model() is Platform
         assert PlaythroughFilter()._comparison_model() is Playthrough
 
     @pytest.mark.django_db
     def test_purchase_filter_happy_path_to_q(self):
-        from games.filters import LegacyPurchaseFilter
+        from games.filters import PurchaseFilter
 
-        pf = LegacyPurchaseFilter(
+        pf = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
-                    right="date_purchased",
+                    left="refunded_lower",
+                    right="purchased_lower",
                     modifier=Modifier.LESS_THAN,
                 )
             ]
         )
-        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert pf.to_q() == Q(date_refunded__lt=F("date_purchased")) & guards
+        guards = Q(refunded_lower__isnull=False) & Q(purchased_lower__isnull=False)
+        assert pf.to_q() == Q(refunded_lower__lt=F("purchased_lower")) & guards
 
     @pytest.mark.django_db
     def test_purchase_filter_json_parse_roundtrip(self):
         from common.criteria import filter_to_json
-        from games.filters import LegacyPurchaseFilter, parse_purchase_filter
+        from games.filters import PurchaseFilter, parse_purchase_filter
 
-        pf = LegacyPurchaseFilter(
+        pf = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
-                    right="date_purchased",
+                    left="refunded_lower",
+                    right="purchased_lower",
                     modifier=Modifier.LESS_THAN,
                 )
             ]
@@ -4239,11 +3639,11 @@ class TestFilterComparisonModels:
         parsed = parse_purchase_filter(filter_to_json(pf))
         assert parsed is not None
         assert len(parsed.field_comparisons) == 1
-        assert parsed.field_comparisons[0].left == "date_refunded"
-        assert parsed.field_comparisons[0].right == "date_purchased"
+        assert parsed.field_comparisons[0].left == "refunded_lower"
+        assert parsed.field_comparisons[0].right == "purchased_lower"
         assert parsed.field_comparisons[0].modifier == Modifier.LESS_THAN
-        guards = Q(date_refunded__isnull=False) & Q(date_purchased__isnull=False)
-        assert parsed.to_q() == Q(date_refunded__lt=F("date_purchased")) & guards
+        guards = Q(refunded_lower__isnull=False) & Q(purchased_lower__isnull=False)
+        assert parsed.to_q() == Q(refunded_lower__lt=F("purchased_lower")) & guards
 
     @pytest.mark.django_db
     def test_cross_group_pair_raises_filter_error_via_parse(self):
@@ -4253,8 +3653,8 @@ class TestFilterComparisonModels:
             {
                 "field_comparisons": [
                     {
-                        "left": "date_refunded",
-                        "right": "price",
+                        "left": "refunded_lower",
+                        "right": "amount",
                         "modifier": "LESS_THAN",
                     }
                 ]
@@ -4388,6 +3788,22 @@ class TestComparisonSpaces:
 # ── T5 — end-to-end DB + integration tests ───────────────────────────────────
 
 
+def _dated_purchase(library, purchased: str, refunded: str | None):
+    """A purchase whose days a command would refuse."""
+    from games.models import Game, Purchase
+
+    graph = default_graph(
+        Game(library=library, name=f"{purchased} {refunded}"), library
+    )
+    purchase = record_purchase(record_entry(library, graph.release))
+    Purchase.objects.filter(pk=purchase.pk).update(
+        purchased=TemporalValue.parse(purchased),
+        refunded=None if refunded is None else TemporalValue.parse(refunded),
+        refund_recorded_at=None if refunded is None else timezone.now(),
+    )
+    return Purchase.objects.get(pk=purchase.pk)
+
+
 @pytest.mark.django_db
 class TestFieldComparisonEndToEnd:
     """T5: DB-backed field-comparison tests through the full parse → to_q → filter path.
@@ -4406,53 +3822,27 @@ class TestFieldComparisonEndToEnd:
         )
         return platform, game
 
-    def test_purchase_refund_before_purchase(self):
-        """date_refunded < date_purchased finds only A.
+    def test_purchase_refund_before_purchase(self, owned_library):
+        """refunded < purchased finds only A.
 
-        B (refund after purchase) and C (NULL date_refunded) are excluded,
+        B (refund after purchase) and C (no refund) are excluded,
         proving both the comparison and NULL-operand exclusion semantics.
         """
-        import datetime
+        purchase_a = _dated_purchase(owned_library, "2024-03-01", "2024-01-01")
+        _dated_purchase(owned_library, "2024-01-01", "2024-03-01")
+        _dated_purchase(owned_library, "2024-01-01", None)
 
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
-
-        # A: refund BEFORE purchase — the data-error case; must be returned
-        purchase_a = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 3, 1),
-            date_refunded=datetime.date(2024, 1, 1),
-        )
-        # B: refund AFTER purchase — normal order; must NOT be returned
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-            date_refunded=datetime.date(2024, 3, 1),
-        )
-        # C: no refund (NULL operand) — SQL comparison against NULL yields no match
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-
-        purchase_filter = LegacyPurchaseFilter(
+        purchase_filter = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
-                    right="date_purchased",
+                    left="refunded_lower",
+                    right="purchased_lower",
                     modifier=Modifier.LESS_THAN,
                 )
             ]
         )
         result = set(
-            LegacyPurchase.objects.filter(
-                purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
-            )
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
         assert result == {purchase_a}
 
@@ -4589,12 +3979,10 @@ class TestFieldComparisonEndToEnd:
 
     def test_unknown_right_column_raises(self):
         """An unknown right-operand raises FilterError via to_q()."""
-        from games.filters import LegacyPurchaseFilter
-
-        purchase_filter = LegacyPurchaseFilter(
+        purchase_filter = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
+                    left="refunded_lower",
                     right="nonexistent",
                     modifier=Modifier.LESS_THAN,
                 )
@@ -4603,55 +3991,27 @@ class TestFieldComparisonEndToEnd:
         with pytest.raises(FilterError):
             purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
 
-    def test_not_equals_strict_null_semantics(self):
-        """date_refunded NOT_EQUALS date_purchased with strict two-valued NULL semantics (#169):
-        - A (different dates, both set) → included.
-        - B (equal dates) → excluded by NOT_EQUALS.
-        - C (NULL date_refunded) → EXCLUDED: the explicit isnull=False guard fires.
-        Previously C was included (Django's ~Q treated NULL as "not equal"); strict
-        semantics require BOTH operands to be non-NULL for any match.
+    def test_not_equals_strict_null_semantics(self, owned_library):
+        """refunded NOT_EQUALS purchased with strict two-valued NULL semantics:
+        - A (different days, both set) → included.
+        - B (equal days) → excluded by NOT_EQUALS.
+        - C (no refund) → EXCLUDED: the explicit isnull=False guard fires.
         """
-        import datetime
+        purchase_a = _dated_purchase(owned_library, "2024-01-01", "2024-03-01")
+        _dated_purchase(owned_library, "2024-02-01", "2024-02-01")
+        _dated_purchase(owned_library, "2024-01-01", None)
 
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
-
-        # A: date_refunded differs from date_purchased → returned
-        purchase_a = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-            date_refunded=datetime.date(2024, 3, 1),
-        )
-        # B: date_refunded equals date_purchased → excluded (NOT FALSE = FALSE)
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 2, 1),
-            date_refunded=datetime.date(2024, 2, 1),
-        )
-        # C: date_refunded is NULL → EXCLUDED (strict NULL guard, behavior change from #169)
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-
-        purchase_filter = LegacyPurchaseFilter(
+        purchase_filter = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
-                    right="date_purchased",
+                    left="refunded_lower",
+                    right="purchased_lower",
                     modifier=Modifier.NOT_EQUALS,
                 )
             ]
         )
         result = set(
-            LegacyPurchase.objects.filter(
-                purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
-            )
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
         assert result == {purchase_a}
 
@@ -4698,121 +4058,58 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {differ}
 
-    def test_two_comparisons_both_must_hold(self):
+    def test_two_comparisons_both_must_hold(self, owned_library):
         """Two field comparisons in one filter AND-accumulate:
         a row must satisfy BOTH to be returned; satisfying only one is not enough.
         Proves _apply_operators ANDs rather than replaces.
         """
-        import datetime
+        #: Both hold.
+        purchase_a = _dated_purchase(owned_library, "2024-01-01", "2024-03-01")
+        #: Only the first: a month's upper bound is later.
+        _dated_purchase(owned_library, "2024-01", "2024-01-15")
+        #: Neither: no refund.
+        _dated_purchase(owned_library, "2024-01-01", None)
 
-        from games.filters import LegacyPurchaseFilter
-        from games.models import LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
-
-        # A: refund after purchase AND price > converted_price → returned
-        purchase_a = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-            date_refunded=datetime.date(2024, 3, 1),
-            price=50.0,
-            converted_price=40.0,
-            needs_price_update=False,
-        )
-        # B: refund after purchase BUT price < converted_price → excluded (fails comparison 2)
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-            date_refunded=datetime.date(2024, 3, 1),
-            price=30.0,
-            converted_price=40.0,
-            needs_price_update=False,
-        )
-        # C: price > converted_price BUT no refund (NULL) → excluded (fails comparison 1)
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-            price=50.0,
-            converted_price=40.0,
-            needs_price_update=False,
-        )
-
-        purchase_filter = LegacyPurchaseFilter(
+        purchase_filter = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
-                    right="date_purchased",
+                    left="refunded_lower",
+                    right="purchased_lower",
                     modifier=Modifier.GREATER_THAN,
                 ),
                 FieldComparisonCriterion(
-                    left="price",
-                    right="converted_price",
+                    left="refunded_lower",
+                    right="purchased_upper",
                     modifier=Modifier.GREATER_THAN,
                 ),
             ]
         )
         result = set(
-            LegacyPurchase.objects.filter(
-                purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
-            )
+            Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
         assert result == {purchase_a}
 
-    def test_json_round_trip_purchase_comparison(self):
-        """Serializing and re-parsing the purchase filter queries identically.
-
-        Takes the PurchaseFilter from test_purchase_refund_before_purchase,
-        round-trips it through filter_to_json → parse_purchase_filter, then
-        confirms the parsed filter returns the same single purchase A.
-        """
-        import datetime
-
+    def test_json_round_trip_purchase_comparison(self, owned_library):
+        """Serializing and re-parsing the purchase filter queries identically."""
         from common.criteria import filter_to_json
-        from games.filters import LegacyPurchaseFilter, parse_purchase_filter
-        from games.models import LegacyPurchase, Platform
 
-        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
+        purchase_a = _dated_purchase(owned_library, "2024-03-01", "2024-01-01")
+        _dated_purchase(owned_library, "2024-01-01", "2024-03-01")
+        _dated_purchase(owned_library, "2024-01-01", None)
 
-        # A: refund BEFORE purchase — should be returned
-        purchase_a = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 3, 1),
-            date_refunded=datetime.date(2024, 1, 1),
-        )
-        # B: refund AFTER purchase — should NOT be returned
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-            date_refunded=datetime.date(2024, 3, 1),
-        )
-        # C: NULL date_refunded — should NOT be returned
-        LegacyPurchase.objects.create(
-            price_currency="CZK",
-            platform=platform,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-
-        purchase_filter = LegacyPurchaseFilter(
+        purchase_filter = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="date_refunded",
-                    right="date_purchased",
+                    left="refunded_lower",
+                    right="purchased_lower",
                     modifier=Modifier.LESS_THAN,
                 )
             ]
         )
-        json_string = filter_to_json(purchase_filter)
-        parsed_filter = parse_purchase_filter(json_string)
+        parsed_filter = parse_purchase_filter(filter_to_json(purchase_filter))
         assert parsed_filter is not None
         result = set(
-            LegacyPurchase.objects.filter(
-                parsed_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
-            )
+            Purchase.objects.filter(parsed_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
         assert result == {purchase_a}
 
@@ -5259,7 +4556,7 @@ class TestFilterFieldDescriptors:
     ALL_FILTERS = (
         GameFilter,
         PlayerSessionFilter,
-        LegacyPurchaseFilter,
+        PurchaseFilter,
         DeviceFilter,
         PlatformFilter,
         PlaythroughFilter,
@@ -5346,33 +4643,6 @@ class TestFilterFieldDescriptors:
                     f"{filter_cls.__name__}.fields[{name!r}] is imperative but has "
                     f"no lookup"
                 )
-
-    @pytest.mark.django_db
-    def test_imperative_field_is_applied_once_via_extra_q(self):
-        """``to_q`` must skip an ``imperative`` descriptor field (its Q is built in
-        ``_extra_q``) — never double-apply it.
-
-        The M2M ``games`` is in ``PurchaseFilter.fields`` with ``imperative=True``.
-        With only ``games`` set, the generic ``fields`` loop must contribute
-        nothing, so ``to_q()`` carries exactly the one ``games`` clause ``_extra_q``
-        builds — not two. (``Q``s can't be compared with ``==`` because each
-        ``_games_to_q`` call builds a fresh, unequal subquery, so we count clauses:
-        a double-apply would add a second child.)
-        """
-        from games.filters import LegacyPurchaseFilter
-
-        pf = LegacyPurchaseFilter.from_json(
-            {"games": {"value": _uuid_series(2), "modifier": "INCLUDES"}}
-        )
-        assert pf is not None
-        assert (
-            len(pf.to_q(UNRESTRICTED_FILTER_CONTEXT).children)
-            == len(pf._extra_q(UNRESTRICTED_FILTER_CONTEXT).children)
-            == 1
-        )
-        assert str(pf.to_q(UNRESTRICTED_FILTER_CONTEXT)) == str(
-            pf._extra_q(UNRESTRICTED_FILTER_CONTEXT)
-        )
 
 
 # ── FilterField handlers (issue #161) ────────────────────────────────────────
@@ -5483,9 +4753,9 @@ class TestFilterFieldHandlers:
         )
 
     def test_is_refunded_wired(self):
-        # value=False must select non-refunded (date_refunded IS NULL).
-        assert LegacyPurchaseFilter(is_refunded=BoolCriterion(value=False)).to_q() == Q(
-            date_refunded__isnull=True
+        # value=False must select non-refunded (no refund act).
+        assert PurchaseFilter(is_refunded=BoolCriterion(value=False)).to_q() == Q(
+            refund_recorded_at__isnull=True
         )
 
     def test_playtime_hours_wired(self):
@@ -5614,7 +4884,11 @@ class TestPerFilterSearchColumns:
             "device__name",
             "device__type",
         ),
-        LegacyPurchaseFilter: ("name", "games__name", "platform__name"),
+        PurchaseFilter: (
+            "name",
+            "entry__player_game__game__name",
+            "entry__release__platform__name",
+        ),
         DeviceFilter: ("name", "type"),
         PlatformFilter: ("name", "group"),
         PlaythroughFilter: (
@@ -5814,7 +5088,7 @@ class TestFieldMetadata:
     def test_aggregate_scope_model_names_the_reduced_relation(self):
         by_name = self._by_name(GameFilter)
         assert by_name["session_count"]["scope_model"] == "playersession"
-        assert by_name["purchase_price_total"]["scope_model"] == "legacypurchase"
+        assert by_name["purchase_price_total"]["scope_model"] == "purchase"
         assert by_name["playthrough_count"]["scope_model"] == "playthrough"
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
@@ -5836,7 +5110,7 @@ class TestFieldMetadata:
         for root_model in (
             "game",
             "playersession",
-            "legacypurchase",
+            "purchase",
             "device",
             "platform",
         ):
@@ -5867,15 +5141,15 @@ class TestFieldMetadata:
         assert entry["choices"] == self._expected_choices(PlayerGame, "status")
 
     def test_static_choices_purchase(self):
-        from games.models import LegacyPurchase
+        from games.models import Purchase
 
-        by_name = self._by_name(LegacyPurchaseFilter)
-        assert by_name["ownership_type"]["choices"] == self._expected_choices(
-            LegacyPurchase, "ownership_type"
-        )
-        assert by_name["type"]["choices"] == self._expected_choices(
-            LegacyPurchase, "type"
-        )
+        by_name = self._by_name(PurchaseFilter)
+        assert by_name["kind"]["choices"] == self._expected_choices(Purchase, "kind")
+        assert [choice["value"] for choice in by_name["price_state"]["choices"]] == [
+            "paid",
+            "free",
+            "unknown",
+        ]
 
     def test_static_choices_device(self):
         from games.models import Device
@@ -5887,10 +5161,9 @@ class TestFieldMetadata:
         game_fields = self._by_name(GameFilter)
         assert game_fields["platform"]["choices"] == []
         assert game_fields["platform_group"]["choices"] == []
-        # M2M ``games`` must resolve without AttributeError on ``.null``.
-        purchase_fields = self._by_name(LegacyPurchaseFilter)
-        assert purchase_fields["games"]["choices"] == []
-        assert purchase_fields["games"]["nullable"] is False
+        purchase_fields = self._by_name(PurchaseFilter)
+        assert purchase_fields["game"]["choices"] == []
+        assert purchase_fields["game"]["nullable"] is False
 
     def test_nullable_reads_fk_attname(self):
         from games.models import Game
@@ -5904,7 +5177,7 @@ class TestFieldMetadata:
         # nullable field: a game with no platform has no platform group either,
         # and the ORM matches it on platform__group__isnull=True.
         assert self._by_name(GameFilter)["platform_group"]["nullable"] is True
-        assert self._by_name(LegacyPurchaseFilter)["platform"]["nullable"] is True
+        assert self._by_name(PurchaseFilter)["platform"]["nullable"] is True
 
     def test_session_relation_facets_keep_their_presence_metadata(self):
         # Both session facets reach the target's own NOT NULL id through the
@@ -6489,51 +5762,6 @@ class TestScopedAggregatesAgainstDB:
         assert self._games_matching(scoped) == {data["deck_heavy"]}
         assert self._games_matching(unscoped) == set()
 
-    def test_purchase_price_total_scoped_to_physical(self):
-        """Issue use case: "sum of physical purchase prices > 100". The mixed
-        game's digital purchase pushes its unscoped total past 100, so it only
-        drops out when the scope filters the summed rows."""
-        import datetime
-
-        from games.models import Game, LegacyPurchase, Platform
-
-        platform = Platform.objects.create(name="PC")
-        physical_expensive = Game.objects.create(name="Boxed", platform=platform)
-        mixed = Game.objects.create(name="Mixed", platform=platform)
-
-        def make_purchase(game, price, ownership_type):
-            purchase = LegacyPurchase.objects.create(
-                platform=platform,
-                date_purchased=datetime.date(2026, 1, 1),
-                price=price,
-                price_currency="CZK",
-                converted_price=price,
-                converted_currency="CZK",
-                ownership_type=ownership_type,
-            )
-            purchase.games.add(game)
-            return purchase
-
-        make_purchase(physical_expensive, 150, LegacyPurchase.PHYSICAL)
-        make_purchase(mixed, 50, LegacyPurchase.PHYSICAL)
-        make_purchase(mixed, 200, LegacyPurchase.DIGITAL)
-
-        scoped = {
-            "purchase_price_total": {
-                "value": 100,
-                "modifier": "GREATER_THAN",
-                "scope": {
-                    "ownership_type": {
-                        "value": [LegacyPurchase.PHYSICAL],
-                        "modifier": "INCLUDES",
-                    }
-                },
-            }
-        }
-        unscoped = {"purchase_price_total": {"value": 100, "modifier": "GREATER_THAN"}}
-        assert self._games_matching(unscoped) == {physical_expensive, mixed}
-        assert self._games_matching(scoped) == {physical_expensive}
-
 
 class TestScopedAggregateJSON:
     """Serialization contract for the aggregate ``scope`` (issue #151)."""
@@ -6650,70 +5878,8 @@ class TestScopedAggregateJSON:
 @pytest.mark.django_db
 class TestScopedAggregateReducers:
     """Reducer-specific scoped-aggregate semantics the base class doesn't cover:
-    the distinct M2M count, the avg reducer, a nested relation inside the scope,
+    the avg reducer, a nested relation inside the scope,
     and the NULL sum for parents whose related rows all fail the scope."""
-
-    def test_scoped_purchase_count_is_distinct_over_the_m2m(self):
-        """A bundle purchase linked to two games must count once per game under
-        a scope — distinct + FILTER + M2M join is the shape most prone to
-        alias/duplication bugs."""
-        import datetime
-
-        from games.filters import GameFilter
-        from games.models import Game, LegacyPurchase, Platform
-
-        platform = Platform.objects.create(name="PC")
-        first_game = Game.objects.create(name="First", platform=platform)
-        second_game = Game.objects.create(name="Second", platform=platform)
-
-        def make_purchase(games, ownership_type):
-            purchase = LegacyPurchase.objects.create(
-                price_currency="CZK",
-                platform=platform,
-                date_purchased=datetime.date(2026, 1, 1),
-                ownership_type=ownership_type,
-            )
-            purchase.games.set(games)
-            return purchase
-
-        make_purchase([first_game, second_game], LegacyPurchase.PHYSICAL)  # the bundle
-        make_purchase([first_game], LegacyPurchase.PHYSICAL)
-        make_purchase([first_game], LegacyPurchase.DIGITAL)  # fails the scope
-
-        game_filter = GameFilter.from_json(
-            {
-                "purchase_count": {
-                    "value": 2,
-                    "modifier": "EQUALS",
-                    "scope": {
-                        "ownership_type": {
-                            "value": [LegacyPurchase.PHYSICAL],
-                            "modifier": "INCLUDES",
-                        }
-                    },
-                }
-            }
-        )
-        assert set(
-            Game.objects.filter(game_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        ) == {first_game}
-        one_physical = GameFilter.from_json(
-            {
-                "purchase_count": {
-                    "value": 1,
-                    "modifier": "EQUALS",
-                    "scope": {
-                        "ownership_type": {
-                            "value": [LegacyPurchase.PHYSICAL],
-                            "modifier": "INCLUDES",
-                        }
-                    },
-                }
-            }
-        )
-        assert set(
-            Game.objects.filter(one_physical.to_q(UNRESTRICTED_FILTER_CONTEXT))
-        ) == {second_game}
 
     def _seed_two_device_games(self):
         import datetime
@@ -6958,31 +6124,25 @@ class TestComparisonOperandPaths:
                 side="left",
             )
 
-    def test_cross_model_wiring_end_to_end(self, db):
-        import datetime
+    def test_cross_model_wiring_end_to_end(self, owned_library):
+        from games.models import Game, Purchase
 
-        from games.models import Game, LegacyPurchase, Platform
-
-        platform, _ = Platform.objects.get_or_create(
-            name="OperandPathTest", icon="eaorigin"
+        graph = default_graph(Game(library=owned_library, name="Doom"), owned_library)
+        dlc = record_purchase(
+            record_entry(owned_library, graph.release),
+            kind="season_pass",
+            name="Doom: Eternal Pass",
         )
-        game = Game.objects.create(name="Doom", platform=platform)
-        dlc = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            name="Doom: Eternal DLC",
-            related_game=game,
-            date_purchased=datetime.date(2024, 1, 1),
-        )
-        query = LegacyPurchaseFilter(
+        query = PurchaseFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="name",
-                    right="related_game__name",
+                    right="entry__player_game__game__name",
                     modifier=Modifier.INCLUDES,
                 )
             ]
-        ).to_q()
-        assert dlc in LegacyPurchase.objects.filter(query)
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
+        assert dlc in Purchase.objects.filter(query)
 
     def test_shared_join_for_both_side_paths(self, db):
         from games.models import Game
@@ -7131,38 +6291,6 @@ class TestMultivaluedComparison:
             "after_all",
             "after_some",
         }
-
-    def test_raw_space_multivalued_string_contains(self, db):
-        # Raw string space, multi operand on the right (Purchase.games M2M).
-        import datetime as dt
-
-        from games.models import Game, LegacyPurchase
-
-        purchased = dt.date(2024, 1, 1)
-        game_match = Game.objects.create(name="Zelda")
-        game_other = Game.objects.create(name="Doom")
-        hit = LegacyPurchase.objects.create(
-            price_currency="CZK", name="Great Zelda Bundle", date_purchased=purchased
-        )
-        hit.games.add(game_match)
-        # same name...
-        miss = LegacyPurchase.objects.create(
-            price_currency="CZK", name="Great Zelda Bundle", date_purchased=purchased
-        )
-        miss.games.add(game_other)  # ...but no linked game name it contains
-        query = LegacyPurchaseFilter(
-            field_comparisons=[
-                FieldComparisonCriterion(
-                    left="name",
-                    right="games__name",
-                    modifier=Modifier.INCLUDES,
-                    quantifier=RelationMatch.ANY,
-                )
-            ]
-        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
-        matched = set(LegacyPurchase.objects.filter(query).values_list("pk", flat=True))
-        assert hit.pk in matched
-        assert miss.pk not in matched
 
     def test_both_multivalued_same_relation_is_same_row(self, db):
         # #282 follow-up: two operands on the SAME multi-valued relation dedupe to

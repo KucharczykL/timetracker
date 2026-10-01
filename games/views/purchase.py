@@ -1,5 +1,5 @@
 from functools import partial
-from typing import cast
+from typing import Protocol, cast
 from uuid import UUID
 
 from django.contrib import messages
@@ -18,9 +18,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.components import (
-    ICON_BUTTON_SIZE_CLASS,
     AddForm,
-    ButtonGroup,
     Cell,
     Checkbox,
     Column,
@@ -30,19 +28,20 @@ from common.components import (
     FormFields,
     Fragment,
     GameLink,
-    Icon,
     Input,
     Link,
-    LinkedPurchase,
     ModuleScript,
     Node,
     PriceConverted,
-    PurchasePrice,
+    PurchaseAmount,
+    PurchaseName,
+    QuickFilterBar,
     SelectionFields,
     TableData,
     drop_columns,
     make_row,
     paginated_table_content,
+    parse_filter_dict,
 )
 from common.components.primitives import Li, P, Ul
 from common.date_time_presentation import (
@@ -51,19 +50,35 @@ from common.date_time_presentation import (
 )
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
-from common.returns import OriginUrl, action_url
+from common.returns import action_url
 from common.temporal_presentation import TemporalText
 from common.utils import label_with_details, paginate
+from games.endpoints import PURCHASE_REFUND
+from games.filters import (
+    PurchaseFilter,
+    filter_query_context_for_library,
+    parse_purchase_filter,
+)
 from games.forms import PurchaseForm
 from games.list_columns import column_choice
-from games.models import Game, LegacyPurchase, PlayerGameStatus, UserLibrary
+from games.models import (
+    Game,
+    LegacyPurchase,
+    PlayerGameStatus,
+    Purchase,
+    PurchaseKind,
+    PurchaseQuerySet,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
+from games.reads.endpoints import stated
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
     completion_exists,
     reported_completion,
     reported_completion_day,
 )
+from games.reads.purchases import library_purchases
 from games.removal import remove, restore
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
@@ -71,7 +86,11 @@ from games.sorting import (
     apply_sort,
     parse_find_filter,
 )
-from games.views.filtering import warn_unknown_sort
+from games.views.filtering import (
+    apply_structured_filter,
+    builder_url_for,
+    warn_unknown_sort,
+)
 from games.views.general import request_calendar_today
 from games.views.removal import (
     confirm_and_apply,
@@ -81,106 +100,62 @@ from games.views.removal import (
 from games.views.returns import origin_from, return_url
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts
-
-
-def _render_purchase_buttons(
-    purchase_id: UUID, is_refunded, can_split=False, *, origin: OriginUrl | None
-):
-    """Return button group HTML for a purchase row."""
-    return ButtonGroup(
-        [
-            {
-                "href": action_url("games:refund_purchase", purchase_id, origin=origin),
-                "slot": Icon("refund", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Mark as refunded",
-            }
-            if not is_refunded
-            else {},
-            {
-                "href": action_url("games:split_purchase", purchase_id, origin=origin),
-                "slot": Icon("split", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Split into per-game purchases",
-                "color": "gray",
-            }
-            if can_split
-            else {},
-            {
-                "href": action_url("games:edit_purchase", purchase_id, origin=origin),
-                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Edit",
-                "color": "gray",
-            },
-            {
-                "href": action_url("games:remove_purchase", purchase_id, origin=origin),
-                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Remove",
-                "color": "red",
-            },
-        ]
-    )
-
+from timetracker.temporal import TemporalValue
 
 PURCHASE_COLUMNS: list[Column] = [
     Column("Name", "name", shrinkable=True, key="name", hideable=False),
-    Column("Type", "type", priority=2, key="type"),
-    Column("Price", "price", priority=3, key="price"),
-    Column("Infinite", "infinite", key="infinite", hidden_by_default=True),
+    Column("Kind", "kind", priority=2, key="kind"),
+    Column("Amount", "amount", priority=3, key="amount"),
     Column("Purchased", "purchased", priority=2, key="purchased"),
-    Column("Finished", "finished", key="finished"),
     Column("Refunded", "refunded", key="refunded", hidden_by_default=True),
+    Column("Finished", "finished", key="finished"),
     Column("Created", "created", key="created", hidden_by_default=True),
-    Column("Actions", align="right", priority=4, key="actions", hideable=False),
 ]
 
 
-def _purchases_with_completions(library: UserLibrary) -> QuerySet[LegacyPurchase]:
+def _purchases_with_completions(library: UserLibrary) -> PurchaseQuerySet:
     """The list's rows, carrying the Finished facts."""
     return (
-        LegacyPurchase.objects.for_library(library)
-        .select_related("platform")
-        .prefetch_related("games", "games__platform")
+        library_purchases(library)
+        .annotated_for_filtering(library)
+        .select_related("entry__player_game__game", "entry__release__platform")
         .annotate(
-            has_completion=completion_exists(library, None),
+            has_completion=completion_exists(library, None, PURCHASE_RUNS),
             completed_value=reported_completion(library, PURCHASE_RUNS),
             completed_day=reported_completion_day(library, PURCHASE_RUNS),
         )
     )
 
 
+class ListedPurchase(Protocol):
+    """The Finished cell's two annotations."""
+
+    has_completion: bool
+    completed_value: TemporalValue | None
+
+
 def _purchase_cells(
-    purchase: LegacyPurchase,
-    presentation: DateTimePresentation,
-    *,
-    origin: OriginUrl | None,
+    purchase: Purchase, presentation: DateTimePresentation
 ) -> list[Cell]:
     """One row's cells, one for each column."""
+    listed = cast(ListedPurchase, purchase)
     #: Read the act, not the value.
     #: A null value is a completion nobody dated, which
     #: TemporalText prints as Unknown. No completion is a dash.
     date_finished = (
-        TemporalText(purchase.completed_value, presentation)
-        if purchase.has_completion
+        TemporalText(listed.completed_value, presentation)
+        if listed.has_completion
         else "-"
     )
+    refunded = stated(purchase, PURCHASE_REFUND)
     return [
-        LinkedPurchase(purchase),
-        purchase.get_type_display(),
-        PurchasePrice(purchase),
-        str(purchase.infinite),
-        presentation.format(purchase.date_purchased, "date"),
+        PurchaseName(purchase),
+        PurchaseKind(purchase.kind).label,
+        PurchaseAmount(purchase),
+        TemporalText(purchase.purchased, presentation),
+        "-" if refunded is None else TemporalText(refunded.when, presentation),
         date_finished,
-        (
-            presentation.format(purchase.date_refunded, "date")
-            if purchase.date_refunded
-            else "-"
-        ),
         presentation.format(purchase.created_at, "date"),
-        _render_purchase_buttons(
-            purchase.id,
-            bool(purchase.date_refunded),
-            can_split=purchase.num_purchases > 1,
-            origin=origin,
-        ),
     ]
 
 
@@ -189,17 +164,10 @@ def _purchase_cells(
 def list_purchases(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     library = cast(User, request.user).library
-    origin = request.get_full_path()
-    purchases: QuerySet[LegacyPurchase] = _purchases_with_completions(library)
+    purchases: QuerySet[Purchase] = _purchases_with_completions(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
-        from games.filters import (
-            filter_query_context_for_library,
-            parse_purchase_filter,
-        )
-        from games.views.filtering import apply_structured_filter
-
         purchase_filter = apply_structured_filter(
             request, parse_purchase_filter, filter_json
         )
@@ -209,32 +177,29 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
                 purchases,
                 filter_query_context_for_library(library),
             )
-            #: `game_filter` joins; a bundle answers per match.
-            purchases = purchases.distinct()
 
     find = parse_find_filter(request)
     sort = apply_sort(purchases, find, PURCHASE_SORTS, PURCHASE_DEFAULT_SORT)
-    purchases = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="purchase")
-
-    purchases, page_obj, elided_page_range = paginate(purchases, find)
+    page, page_obj, elided_page_range = paginate(sort.queryset, find)
+    #: One read serves cells and rows.
+    page_purchases: list[Purchase] = list(page)
 
     hidden, picker = column_choice(request, "purchases", PURCHASE_COLUMNS)
     kept_columns, kept_cells = drop_columns(
         PURCHASE_COLUMNS,
-        [
-            _purchase_cells(purchase, presentation, origin=origin)
-            for purchase in purchases
-        ],
+        [_purchase_cells(purchase, presentation) for purchase in page_purchases],
         hidden,
     )
     data: TableData = {
         "caption": "Purchases",
         "columns": kept_columns,
+        #: Holds the picker; the row menu is coming.
+        "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [
             make_row(*cells, id=f"purchase-row-{purchase.id}")
-            for purchase, cells in zip(purchases, kept_cells, strict=True)
+            for purchase, cells in zip(page_purchases, kept_cells, strict=True)
         ],
         "column_picker": picker,
     }
@@ -245,22 +210,13 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         request=request,
         page_size=find.per_page,
     )
-    from common.components import (
-        QuickFilterBar,
-        parse_filter_dict,
-    )
-    from games.filters import LegacyPurchaseFilter
-    from games.views.filtering import builder_url_for
-
-    builder_url = builder_url_for(
-        "purchases", filter_json, find.sort, find.per_page_override
-    )
-    parsed_filter = parse_filter_dict(filter_json, LegacyPurchaseFilter)
     quick_bar = QuickFilterBar(
         presentation=presentation,
         mode="purchases",
-        existing=parsed_filter,
-        builder_url=builder_url,
+        existing=parse_filter_dict(filter_json, PurchaseFilter),
+        builder_url=builder_url_for(
+            "purchases", filter_json, find.sort, find.per_page_override
+        ),
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )

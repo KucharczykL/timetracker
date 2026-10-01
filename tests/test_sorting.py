@@ -4,6 +4,7 @@ import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -13,7 +14,10 @@ from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row, timed_row, tracked_run
 
 from common.criteria import filter_to_json
@@ -21,7 +25,6 @@ from games.filters import FindFilter, GameFilter, PlayerSessionFilter
 from games.models import (
     Device,
     Game,
-    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
@@ -857,32 +860,23 @@ class TestListPurchasesSort:
     @pytest.fixture
     def two_purchases(self, db, two_games):
         alpha, beta = two_games
-        # cheap (Alpha, price=10) purchased LATER so default -purchased order would show Alpha first
-        # dear (Beta, price=90) purchased EARLIER — so -price must override default order to pass
-        dear = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            library=beta.library,
-            date_purchased=datetime(2022, 1, 1, tzinfo=ZONEINFO),
-            price=90,
-            converted_price=90,
-            platform=beta.platform,
+        #: Cheap Alpha bought later, so -amount must override.
+        dear = record_purchase(
+            record_entry(beta.library, default_graph(beta, beta.library).release),
+            amount=Decimal(90),
+            purchased=TemporalValue.parse("2022-01-01"),
         )
-        dear.games.add(beta)
-        cheap = LegacyPurchase.objects.create(
-            price_currency="CZK",
-            library=alpha.library,
-            date_purchased=datetime(2022, 1, 2, tzinfo=ZONEINFO),
-            price=10,
-            converted_price=10,
-            platform=alpha.platform,
+        cheap = record_purchase(
+            record_entry(alpha.library, default_graph(alpha, alpha.library).release),
+            amount=Decimal(10),
+            purchased=TemporalValue.parse("2022-01-02"),
         )
-        cheap.games.add(alpha)
         return cheap, dear
 
-    def test_sort_by_price_descending(self, logged_client, two_purchases):
-        # default -purchased puts Alpha (later date) first; -price must override to show Beta (90) first
+    def test_sort_by_amount_descending(self, logged_client, two_purchases):
+        # default -purchased puts Alpha first; -amount shows Beta (90) first
         response = logged_client.get(
-            reverse("games:list_purchases"), {"sort": "-price"}
+            reverse("games:list_purchases"), {"sort": "-amount"}
         )
         assert response.status_code == 200
         body = response.content.decode()
@@ -891,19 +885,11 @@ class TestListPurchasesSort:
         tbody = tbody_match.group(1)
         assert tbody.index("Beta") < tbody.index("Alpha")  # 90 before 10
 
-    def test_name_aggregate_sort_no_duplicate_rows(self, logged_client, two_purchases):
-        # a multi-game purchase must still render exactly one row
-        cheap, _ = two_purchases
-        extra = Game.objects.create(
-            library=cheap.library,
-            name="Aaa",
-            sort_name="Aaa",
-            platform=cheap.platform,
-        )
-        cheap.games.add(extra)
+    def test_name_sort_orders_by_the_game(self, logged_client, two_purchases):
         response = logged_client.get(reverse("games:list_purchases"), {"sort": "name"})
         body = response.content.decode()
-        assert body.count("purchase-row-") == 2  # exactly two purchase rows
+        assert body.count("purchase-row-") == 2
+        assert body.index("Alpha") < body.index("Beta")
 
     def test_unknown_sort_emits_warning(
         self, logged_client, two_purchases, capture_games_logger

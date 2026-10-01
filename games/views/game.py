@@ -7,7 +7,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import Count, F, Max, Min, QuerySet, Sum
+from django.db.models import Count, F, Max, Min, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
@@ -36,7 +36,6 @@ from common.components import (
     GameStatusSelector,
     Icon,
     Link,
-    LinkedPurchase,
     ModuleScript,
     NameWithIcon,
     Node,
@@ -44,7 +43,6 @@ from common.components import (
     PageHeading,
     PlaytimeHalves,
     Popover,
-    PurchasePrice,
     QuickFilterBar,
     Safe,
     SelectionDeclaration,
@@ -96,7 +94,6 @@ from games.filters import (
     FindFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
-    LegacyPurchaseFilter,
     LibraryEntryFilter,
     NarrowingClauses,
     PlayerSessionFilter,
@@ -114,7 +111,6 @@ from games.models import (
     ExternalReference,
     Game,
     GameKind,
-    LegacyPurchase,
     PlayerGameStatus,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
@@ -1195,61 +1191,6 @@ def _addons_section(game: Game, library: UserLibrary, origin: OriginUrl | None) 
     ]
 
 
-def _purchases_section(
-    game: Game,
-    purchases: QuerySet[LegacyPurchase],
-    presentation: DateTimePresentation,
-    origin: OriginUrl | None,
-) -> Node:
-    purchases = purchases.order_by("date_purchased")
-    rows = [
-        make_row(
-            LinkedPurchase(purchase),
-            purchase.get_type_display(),
-            presentation.format(purchase.date_purchased, "date"),
-            PurchasePrice(purchase),
-            ButtonGroup(
-                [
-                    {
-                        "href": action_url(
-                            "games:edit_purchase", purchase.pk, origin=origin
-                        ),
-                        "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                        "color": "gray",
-                    },
-                    {
-                        "href": action_url(
-                            "games:remove_purchase", purchase.pk, origin=origin
-                        ),
-                        "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                        "color": "red",
-                    },
-                ]
-            ),
-        )
-        for purchase in purchases
-    ]
-    table = StyledTable(
-        columns=[
-            Column("Name", shrinkable=True),
-            Column("Type"),
-            Column("Date", priority=2),
-            Column("Price", priority=2),
-            Column("Actions", align="right", priority=3),
-        ],
-        rows=rows,
-        data_table=True,
-        caption="Purchases of this game",
-    )
-    return _game_section(
-        "Purchases",
-        purchases.count(),
-        table,
-        "No purchases yet.",
-        view_all_url=filter_url(LegacyPurchaseFilter.where(games=[game.id])),
-    )
-
-
 def _sessions_section(
     game: Game,
     sessions: PlayerSessionQuerySet,
@@ -1470,7 +1411,6 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
     sessions = game_sessions(library, game)
-    purchases = LegacyPurchase.objects.for_library(library).filter(games=game)
     tracked = tracked_game(library, game)
     #: A run may name another library's PlayerGame.
     runs = list(
@@ -1509,7 +1449,6 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             _addons_section(game, library, origin),
             _library_section(game, library, presentation, origin, get_token(request)),
         ],
-        _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(
             game, library, presentation, durations, origin, request

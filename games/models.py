@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable, Mapping
-from datetime import date, timedelta
+from datetime import timedelta
 from operator import attrgetter
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
 from uuid import UUID
@@ -54,7 +54,6 @@ from timetracker.temporal import (
     TemporalStartPrecision,
     TemporalStartQualifier,
     TemporalUpperBound,
-    TemporalValue,
     TemporalValueField,
 )
 from timetracker.uuidv7 import UUIDv7Field
@@ -1052,39 +1051,8 @@ class LegacyPurchaseQueryset(RemovableLibraryQuerySet):
             .filter(~Exists(linked) | Exists(linked.alive()))
         )
 
-    def refunded(self):
-        return self.filter(date_refunded__isnull=False)
-
-    def not_refunded(self):
-        return self.filter(date_refunded__isnull=True)
-
-    def games_only(self):
-        return self.filter(type=LegacyPurchase.GAME)
-
-    def finished(self, library):
-        #: Local: the reads module imports models.
-        from games.reads.playthrough_completions import completion_exists
-
-        #: A done status, or a completed run.
-        return self.filter(
-            Q(
-                games__in=Game.objects.tracked_by(
-                    library, tracked__status__in=DONE_STATUSES
-                )
-            )
-            | Q(completion_exists(library, None))
-        ).distinct()
-
 
 class LegacyPurchase(models.Model):
-    if TYPE_CHECKING:
-        #: Annotations, not columns: the Finished cell reads
-        #: the act from one and the value from the other, and
-        #: only the list view's queryset carries them.
-        has_completion: bool
-        completed_value: TemporalValue | None
-        completed_day: date | None
-
     PHYSICAL = "ph"
     DIGITAL = "di"
     DIGITALUPGRADE = "du"
@@ -2374,6 +2342,24 @@ class PurchaseKind(models.TextChoices):
     UPGRADE = "upgrade", "Upgrade"
 
 
+class PriceState(models.TextChoices):
+    """What a stated price says."""
+
+    PAID = "paid", "Paid"
+    FREE = "free", "Free"
+    UNKNOWN = "unknown", "Unknown"
+
+
+def price_state_expression() -> models.Case:
+    """The amount, read as a PriceState word."""
+    return models.Case(
+        models.When(amount__isnull=True, then=models.Value(PriceState.UNKNOWN)),
+        models.When(amount=0, then=models.Value(PriceState.FREE)),
+        default=models.Value(PriceState.PAID),
+        output_field=models.CharField(),
+    )
+
+
 PURCHASE_DAY_COLUMNS = OpeningEndpointColumns(
     name="purchase",
     model_label="games.Purchase",
@@ -2431,8 +2417,12 @@ class PurchaseQuerySet(RemovableMixin, models.QuerySet["Purchase"]):
             return self
         rate_year, valuation = valuation_annotations(library)
         if library is None:
-            return self.alias(**rate_year).alias(**valuation)
-        queryset = self.annotate(**rate_year).annotate(**valuation)
+            return self.alias(price_state=price_state_expression(), **rate_year).alias(
+                **valuation
+            )
+        queryset = self.annotate(
+            price_state=price_state_expression(), **rate_year
+        ).annotate(**valuation)
         queryset._valuation_library = library
         return queryset
 
@@ -2485,6 +2475,14 @@ class Purchase(ProjectionModel):
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    #: The bound columns a comparison may name.
+    comparable_temporal_bounds: ClassVar[Mapping[str, str]] = {
+        "purchased_lower": "Purchased (earliest)",
+        "purchased_upper": "Purchased (latest)",
+        "refunded_lower": "Refunded (earliest)",
+        "refunded_upper": "Refunded (latest)",
+    }
 
     class Meta:
         verbose_name = "purchase"

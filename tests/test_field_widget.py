@@ -26,16 +26,16 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
-    LegacyPurchaseFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
+    PurchaseFilter,
 )
 
 _ALL_FILTERS = [
     GameFilter,
     PlayerSessionFilter,
-    LegacyPurchaseFilter,
+    PurchaseFilter,
     DeviceFilter,
     PlatformFilter,
     PlaythroughFilter,
@@ -89,14 +89,6 @@ class TestFieldWidgetKindDispatch:
         assert "<date-range-picker" in html
         assert 'name="filter-created_at-min"' in html
         assert 'name="filter-created_at-max"' in html
-
-    def test_games_set_surfaces_all_and_only(self):
-        # games is many-to-many on LegacyPurchase → field_widget derives is_m2m and
-        # surfaces the (All)/(Only) modifiers, the one set field that needs them.
-        html = str(field_widget(LegacyPurchaseFilter, "games"))
-        assert 'data-kind="set"' in html
-        assert "INCLUDES_ALL" in html
-        assert "INCLUDES_ONLY" in html
 
     def test_aggregate_field_renders_number(self):
         # Aggregates (session_count) have no `fields` entry, so field_metadata
@@ -216,9 +208,9 @@ class TestFieldWidgetPathAndOverride:
     def test_path_overrides_serialized_chain(self):
         html = str(
             field_widget(
-                LegacyPurchaseFilter,
-                "type",
-                path=["purchase_filter", "type"],
+                PurchaseFilter,
+                "kind",
+                path=["purchase_filter", "kind"],
                 field_name_override="purchase_type",
             )
         )

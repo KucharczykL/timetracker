@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from importlib.util import find_spec
 from threading import Event, Thread
 from unittest.mock import Mock
@@ -12,13 +13,19 @@ from django.contrib.auth import get_user_model
 from django.db import close_old_connections, connection, transaction
 from django.test import Client
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, request_run
 
 from games.models import (
+    ExchangeRate,
+    Game,
     LegacyPurchase,
     PurchaseConversionState,
     UserLibrary,
     UserPreferences,
 )
+from timetracker.temporal import TemporalValue
 
 
 @pytest.fixture
@@ -511,17 +518,39 @@ def test_daily_recovery_also_repairs_a_missed_pending_job(owner, monkeypatch):
     )
 
 
+def _bought_in_dollars(owner):
+    """A ten-dollar purchase, bought in 2025."""
+    library = owner.library
+    graph = default_graph(Game(library=library, name="Priced"), library)
+    return record_purchase(
+        record_entry(library, graph.release),
+        amount=Decimal(10),
+        currency="USD",
+        purchased=TemporalValue.parse("2025-01-01"),
+    )
+
+
+def _publish(owner, monkeypatch, target: str, rate: Decimal) -> None:
+    """One run that values it in `target`."""
+    from games import tasks
+
+    ExchangeRate.objects.update_or_create(
+        currency_from="USD", currency_to=target, year=2025, defaults={"rate": rate}
+    )
+    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: rate)
+    tasks.convert_library_prices(
+        str(owner.library.pk), request_run(owner.library, target)
+    )
+
+
 @pytest.mark.django_db
-def test_statistics_label_previous_published_currency_while_new_request_failed(owner):
+def test_statistics_label_previous_published_currency_while_new_request_failed(
+    owner, monkeypatch
+):
     from games.views.stats_data import compute_stats
 
-    _purchase(
-        owner,
-        price=10,
-        currency="USD",
-        converted=9,
-        converted_currency="EUR",
-    )
+    _bought_in_dollars(owner)
+    _publish(owner, monkeypatch, "EUR", Decimal("0.9"))
     _state(
         owner,
         requested_version=2,
@@ -860,25 +889,12 @@ def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeyp
 
 
 @pytest.mark.django_db(transaction=True)
-def test_statistics_never_pair_new_total_with_previous_currency(owner):
+def test_statistics_never_pair_new_total_with_previous_currency(owner, monkeypatch):
     """One rendered total must come from one complete publication snapshot."""
     from games.views.stats_data import compute_stats
 
-    purchase = _purchase(
-        owner,
-        price=10,
-        currency="USD",
-        converted=9,
-        converted_currency="EUR",
-    )
-    _state(
-        owner,
-        requested_version=2,
-        requested_currency="CZK",
-        published_version=1,
-        published_currency="EUR",
-        status=PurchaseConversionState.Status.RUNNING,
-    )
+    _bought_in_dollars(owner)
+    _publish(owner, monkeypatch, "EUR", Decimal("0.9"))
     state_read = Event()
     publication_done = Event()
     errors: list[BaseException] = []
@@ -911,25 +927,7 @@ def test_statistics_never_pair_new_total_with_previous_currency(owner):
     reader.start()
     assert state_read.wait(10)
     try:
-        with transaction.atomic():
-            state = PurchaseConversionState.objects.select_for_update().get(
-                library=owner.library
-            )
-            LegacyPurchase.objects.filter(pk=purchase.pk).update(
-                converted_price=18,
-                converted_currency="CZK",
-                needs_price_update=False,
-            )
-            state.published_version = 2
-            state.published_currency = "CZK"
-            state.status = PurchaseConversionState.Status.COMPLETE
-            state.save(
-                update_fields=[
-                    "published_version",
-                    "published_currency",
-                    "status",
-                ]
-            )
+        _publish(owner, monkeypatch, "CZK", Decimal("1.8"))
     finally:
         publication_done.set()
     reader.join(10)

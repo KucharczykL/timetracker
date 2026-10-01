@@ -344,20 +344,18 @@ def test_within_sits_beside_between_in_the_vocabulary():
 
 
 def test_within_is_offered_on_an_interval_field_alone():
-    from games.filters import LegacyPurchaseFilter
+    from games.filters import PlayerSessionFilter
 
     when = next(
         entry
         for entry in field_metadata(HistoricalPlaytimeFilter)
         if entry["name"] == "when"
     )
-    purchased = next(
-        entry
-        for entry in field_metadata(LegacyPurchaseFilter)
-        if entry["name"] == "date_purchased"
+    day = next(
+        entry for entry in field_metadata(PlayerSessionFilter) if entry["name"] == "day"
     )
     assert Modifier.WITHIN.value in when["modifiers"]
-    assert Modifier.WITHIN.value not in purchased["modifiers"]
+    assert Modifier.WITHIN.value not in day["modifiers"]
 
 
 def test_within_on_a_scalar_date_is_between():

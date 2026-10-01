@@ -1,17 +1,20 @@
 import json
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from devices import create_device
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, request_run
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
 from common.criteria import (
     AggregateCriterion,
-    ChoiceCriterion,
     FieldComparisonCriterion,
     FilterQueryContext,
     Modifier,
@@ -19,22 +22,23 @@ from common.criteria import (
     StringCriterion,
 )
 from common.filter_execution import execute_filter
+from games import tasks
 from games.filters import (
     GameFilter,
-    LegacyPurchaseFilter,
     PlatformFilter,
     PlayerSessionFilter,
+    PurchaseFilter,
     filter_query_context_for_library,
 )
 from games.models import (
     FilterPreset,
     Game,
-    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
     Playthrough,
 )
+from games.reads.purchases import library_purchases
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
 
@@ -127,26 +131,20 @@ def two_libraries(db):
             completion_recorded_at=timezone.now(),
         )
 
-    purchase_a = LegacyPurchase.objects.create(
-        library=library_a,
-        price=30,
-        price_currency="CZK",
-        converted_price=30,
-        converted_currency="CZK",
-        date_purchased=date(YEAR, 3, 1),
-        type=LegacyPurchase.GAME,
+    purchase_a, purchase_b = (
+        record_purchase(
+            record_entry(library, default_graph(game, library).release),
+            amount=Decimal(amount),
+            currency="CZK",
+            purchased=TemporalValue.from_day(day),
+        )
+        for library, game, amount, day in (
+            (library_a, game_a, 30, date(YEAR, 3, 1)),
+            (library_b, game_b, 100, date(YEAR, 3, 2)),
+        )
     )
-    purchase_a.games.set([game_a])
-    purchase_b = LegacyPurchase.objects.create(
-        library=library_b,
-        price=100,
-        price_currency="CZK",
-        converted_price=100,
-        converted_currency="CZK",
-        date_purchased=date(YEAR, 3, 2),
-        type=LegacyPurchase.GAME,
-    )
-    purchase_b.games.set([game_b])
+    for library in (library_a, library_b):
+        tasks.convert_library_prices(str(library.pk), request_run(library, "CZK"))
 
     return {
         "user_a": user_a,
@@ -356,11 +354,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
             {"game_filter": {"name": {"value": "Library A", "modifier": "INCLUDES"}}},
             1,
         ),
-        (
-            "legacypurchase",
-            {"converted_price": {"value": 0, "modifier": "GREATER_THAN"}},
-            1,
-        ),
+        ("purchase", {"amount": {"value": 0, "modifier": "GREATER_THAN"}}, 1),
         ("playthrough", {"note": {"value": "event", "modifier": "INCLUDES"}}, 1),
         ("device", {"name": {"value": "Device", "modifier": "INCLUDES"}}, 1),
         ("platform", {"name": {"value": "Platform", "modifier": "INCLUDES"}}, 1),
@@ -476,22 +470,21 @@ def test_multivalued_comparison_subquery_is_library_scoped(two_libraries):
     assert str(queryset.query).count("library_id") >= 3
 
 
-def test_purchase_games_filter_is_scoped_and_lazy(
+def test_purchase_game_filter_is_scoped_and_lazy(
     two_libraries,
     django_assert_num_queries,
 ):
     world = two_libraries
-    filter_object = LegacyPurchaseFilter(
-        games=ChoiceCriterion(
-            value=[world["game_a"].id],
-            modifier=Modifier.INCLUDES_ONLY,
+    filter_object = PurchaseFilter(
+        game_filter=GameFilter(
+            name=StringCriterion(value="Library", modifier=Modifier.INCLUDES)
         )
     )
 
     with django_assert_num_queries(0):
         queryset = execute_filter(
             filter_object,
-            LegacyPurchase.objects.for_library(world["library_a"]),
+            library_purchases(world["library_a"]),
             filter_query_context_for_library(world["library_a"]),
         )
 
@@ -521,8 +514,6 @@ def test_filter_execution_rejects_validation_only_context(two_libraries):
 
 @pytest.mark.django_db(transaction=True)
 def test_entry_crud_is_library_scoped(two_libraries, stated_graph):
-    from entries import record_entry
-
     world = two_libraries
     library_a, library_b = world["library_a"], world["library_b"]
     shared = stated_graph(Game(name="Shared Copy", library=library_a), library_a)
@@ -532,7 +523,10 @@ def test_entry_crud_is_library_scoped(two_libraries, stated_graph):
     client = world["client_a"]
 
     listed = client.get("/api/entries/?limit=0").json()
-    assert [row["id"] for row in listed] == [str(own.id)]
+    assert {row["id"] for row in listed} == {
+        str(own.id),
+        str(world["purchase_a"].entry_id),
+    }
     assert client.get(f"/api/entries/{foreign.id}").status_code == 404
     assert (
         _patch(client, f"/api/entries/{foreign.id}", {"note": "theirs"}).status_code
@@ -546,9 +540,6 @@ def test_entry_crud_is_library_scoped(two_libraries, stated_graph):
 
 @pytest.mark.django_db(transaction=True)
 def test_purchase_crud_is_library_scoped(two_libraries, stated_graph):
-    from entries import record_entry
-    from purchases import record_purchase
-
     world = two_libraries
     library_a, library_b = world["library_a"], world["library_b"]
     shared = stated_graph(Game(name="Shared Buy", library=library_a), library_a)
@@ -559,7 +550,7 @@ def test_purchase_crud_is_library_scoped(two_libraries, stated_graph):
     client = world["client_a"]
 
     listed = client.get("/api/purchases/?limit=0").json()
-    assert [row["id"] for row in listed] == [str(own.id)]
+    assert {row["id"] for row in listed} == {str(own.id), str(world["purchase_a"].id)}
     assert client.get(f"/api/purchases/{foreign.id}").status_code == 404
     assert (
         _patch(client, f"/api/purchases/{foreign.id}", {"note": "theirs"}).status_code

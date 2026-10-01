@@ -2,18 +2,19 @@
 
 import json
 import uuid
-from datetime import date
 
 import pytest
 from bulk_posts import act_url, posted, selection
 from django.http import Http404
 from django.urls import reverse
+from entries import record_entry
+from purchases import record_purchase
 
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_parts import LedgerRows
 from games.bulk_platforms import PLATFORM_GONE
 from games.bulk_removal import REMOVE_PLATFORM
-from games.models import Game, LegacyPurchase, Platform, UserLibrary
+from games.models import Game, Platform, UserLibrary
 from games.reads.platform_departures import platform_departures_of
 from games.removal import remove, restore
 from games.views.bulk import STATEMENT_FIELD, TOKEN_FIELD, _act_of
@@ -93,7 +94,7 @@ def test_a_key_the_library_does_not_hold_comes_out_lost(owned_library, amiga):
 def test_the_counts_are_the_live_rows_naming_each(
     owned_library, stated_graph, amiga, dos
 ):
-    stated_graph(
+    lemmings = stated_graph(
         Game(library=owned_library, name="Lemmings", platform=amiga),
         owned_library,
         platform=amiga,
@@ -104,14 +105,8 @@ def test_the_counts_are_the_live_rows_naming_each(
         platform=amiga,
     )
     remove(gone.game)
-    LegacyPurchase.objects.create(
-        library=owned_library,
-        name="Lemmings",
-        platform=amiga,
-        date_purchased=date(2026, 1, 1),
-        price=5,
-        price_currency="USD",
-    )
+    #: Through the copy's Release.
+    record_purchase(record_entry(owned_library, lemmings.release))
 
     rows = REMOVE_PLATFORM.resolve(owned_library, [amiga.pk, dos.pk]).rows
 

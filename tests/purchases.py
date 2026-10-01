@@ -8,6 +8,7 @@ from django.db import transaction
 from games.commands.endpoint import ActStatement
 from games.commands.purchase import (
     RecordPurchase,
+    RefundPurchase,
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
@@ -87,3 +88,14 @@ def request_run(library: UserLibrary, currency: str = "CZK") -> int:
     state.status = PurchaseConversionState.Status.PENDING
     state.save()
     return state.requested_version
+
+
+def refund_purchase(
+    purchase: Purchase, refunded: TemporalValue | None, note: str = ""
+) -> Purchase:
+    _state(
+        purchase.library,
+        RefundPurchase(purchase_id=purchase.pk, statement=ActStatement(refunded, note)),
+    )
+    purchase.refresh_from_db()
+    return purchase

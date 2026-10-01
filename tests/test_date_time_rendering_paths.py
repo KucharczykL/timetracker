@@ -8,7 +8,10 @@ from column_choice import show_every_column
 from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase, refund_purchase
 from session_rows import session_row
 
 import common.layout
@@ -22,6 +25,7 @@ from games.models import (
     Platform,
     PlayerSession,
     Playthrough,
+    Purchase,
 )
 from timetracker.settings_commands import change_user_setting
 from timetracker.temporal import TemporalValue
@@ -110,6 +114,14 @@ def test_non_default_presentation_reaches_every_server_display_path(
         num_purchases=1,
     )
     purchase.games.add(game)
+    listed = refund_purchase(
+        record_purchase(
+            record_entry(user.library, default_graph(game, user.library).release),
+            name="Deluxe",
+            purchased=TemporalValue.from_day(date(2022, 9, 26)),
+        ),
+        TemporalValue.from_day(date(2022, 9, 27)),
+    )
     row = session_row(
         game,
         device=device,
@@ -133,7 +145,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
         (Game, game.pk, datetime(2022, 10, 1, tzinfo=UTC)),
         (Platform, platform.pk, datetime(2022, 10, 2, tzinfo=UTC)),
         (Device, device.pk, datetime(2022, 10, 3, tzinfo=UTC)),
-        (LegacyPurchase, purchase.pk, datetime(2022, 10, 4, tzinfo=UTC)),
+        (Purchase, listed.pk, datetime(2022, 10, 4, tzinfo=UTC)),
         (PlayerSession, row.pk, datetime(2022, 10, 5, tzinfo=UTC)),
         (HistoricalPlaytime, record.pk, datetime(2022, 10, 7, tzinfo=UTC)),
     )

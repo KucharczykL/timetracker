@@ -11,15 +11,17 @@ from datetime import date, timedelta
 
 import pytest
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, remove_purchase
 from session_rows import duration_only_row
 
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_games import GAME_GONE
 from games.bulk_parts import RowOutcome
-from games.models import Game, LegacyPurchase, Platform, PlayerGame
+from games.models import Game, Platform, PlayerGame
 from games.reads.events import batch_aggregate_ids
 from games.reads.game_departures import game_departures
-from games.removal import remove
 from games.views.game_menu import game_row_menu
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import (
@@ -132,20 +134,10 @@ def test_a_key_the_library_does_not_track_comes_out_lost(
 
 
 def test_what_leaves_counts_live_rows_of_the_library(owned_library, owned):
-    """As Game detail counts them: a removed purchase has left already."""
-    kept, gone = (
-        LegacyPurchase.objects.create(
-            library=owned_library,
-            name=name,
-            date_purchased=date(2026, 1, 1),
-            price=10,
-            price_currency="USD",
-        )
-        for name in ("Kept", "Gone")
-    )
-    kept.games.add(owned)
-    gone.games.add(owned)
-    remove(gone)
+    """A removed purchase has left already."""
+    entry = record_entry(owned_library, default_graph(owned, owned_library).release)
+    record_purchase(entry, name="Kept")
+    remove_purchase(record_purchase(entry, name="Gone"))
 
     departing = game_departures(owned_library, owned)
 
@@ -502,14 +494,9 @@ def test_the_counts_do_not_multiply_one_source_by_another(
     owned_library, owned_user, owned, platform
 ):
     """A join over sessions and purchases would report six of each."""
+    entry = record_entry(owned_library, default_graph(owned, owned_library).release)
     for index in range(2):
-        LegacyPurchase.objects.create(
-            library=owned_library,
-            name=f"Order {index}",
-            date_purchased=date(2026, 1, index + 1),
-            price=10,
-            price_currency="USD",
-        ).games.add(owned)
+        record_purchase(entry, name=f"Order {index}")
     run = _tracked(owned_library, owned).playthroughs.get()
     for index in range(3):
         duration_only_row(run, date(2026, 2, index + 1), timedelta(hours=1))

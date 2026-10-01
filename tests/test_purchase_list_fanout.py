@@ -1,39 +1,37 @@
 """One purchase, one row, whatever joined."""
 
 import json
-from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
+from entries import record_entry
+from purchases import record_purchase
 
 from common.criteria import Modifier, StringCriterion
-from games.filters import GameFilter, LegacyPurchaseFilter
-from games.models import Game, LegacyPurchase
+from games.filters import GameFilter, PurchaseFilter
+from games.models import Game
+from timetracker.temporal import TemporalValue
+
+pytestmark = pytest.mark.untracked_games
 
 
 @pytest.fixture
-def bundle(owned_library):
-    """One purchase naming two games."""
-    purchase = LegacyPurchase.objects.create(
-        library=owned_library,
-        name="Bundle",
-        date_purchased=datetime(2020, 1, 1, tzinfo=UTC),
-        price=0,
-        price_currency="USD",
-    )
-    purchase.games.set(
-        [
-            Game.objects.create(library=owned_library, name="Early"),
-            Game.objects.create(library=owned_library, name="Late"),
-        ]
-    )
-    return purchase
+def two_copies(owned_library, stated_graph):
+    """One game, two copies, a purchase each."""
+    graph = stated_graph(Game(library=owned_library, name="Tunic"), owned_library)
+    return [
+        record_purchase(
+            record_entry(owned_library, graph.release),
+            purchased=TemporalValue.parse("2020-01-01"),
+        )
+        for _ in range(2)
+    ]
 
 
 def every_game_filter():
-    """A `game_filter` matching both games."""
+    """A `game_filter` matching the game."""
     return json.dumps(
-        LegacyPurchaseFilter(
+        PurchaseFilter(
             game_filter=GameFilter(
                 name=StringCriterion(modifier=Modifier.NOT_EQUALS, value="zzz")
             )
@@ -42,8 +40,8 @@ def every_game_filter():
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("sort", ["purchased", "finished", "name"])
-def test_a_game_filter_answers_one_row_per_purchase(client, owned_user, bundle, sort):
+@pytest.mark.parametrize("sort", ["purchased", "finished", "name", "amount"])
+def test_each_purchase_answers_one_row(client, owned_user, two_copies, sort):
     client.force_login(owned_user)
 
     response = client.get(
@@ -53,4 +51,5 @@ def test_a_game_filter_answers_one_row_per_purchase(client, owned_user, bundle, 
 
     assert response.status_code == 200
     body = response.content.decode()
-    assert body.count(f'id="purchase-row-{bundle.pk}"') == 1
+    for purchase in two_copies:
+        assert body.count(f'id="purchase-row-{purchase.pk}"') == 1

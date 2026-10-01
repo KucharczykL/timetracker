@@ -31,7 +31,7 @@ from common.date_time_presentation import (
     date_time_format_profile,
     date_time_presentation_for_request,
 )
-from games.filters import LegacyPurchaseFilter
+from games.filters import PurchaseFilter
 
 
 def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
@@ -42,16 +42,16 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
     # facets use the static-calendar panel variant.
     existing = parse_filter_dict(filter_json)
     purchased = field_widget(
-        LegacyPurchaseFilter,
-        "date_purchased",
-        value=existing.get("date_purchased"),
+        PurchaseFilter,
+        "purchased",
+        value=existing.get("purchased"),
         name_prefix="filter-date-purchased",
         presentation=presentation,
     )
     refunded = field_widget(
-        LegacyPurchaseFilter,
-        "date_refunded",
-        value=existing.get("date_refunded"),
+        PurchaseFilter,
+        "refunded",
+        value=existing.get("refunded"),
         name_prefix="filter-date-refunded",
         presentation=presentation,
     )
@@ -98,7 +98,7 @@ def empty_bar_view(request):
 def prefilled_bar_view(request):
     filter_json = json.dumps(
         {
-            "date_purchased": {
+            "purchased": {
                 "value": "2024-03-15",
                 "value2": "2024-09-20",
                 "modifier": "BETWEEN",
@@ -194,7 +194,7 @@ def test_typing_fills_parts_and_serializes_between(live_server, page):
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
     assert parsed == {
-        "date_purchased": {
+        "purchased": {
             "value": "2024-03-15",
             "value2": "2024-09-20",
             "modifier": "BETWEEN",
@@ -223,9 +223,7 @@ def test_min_side_only_serializes_greater_than(live_server, page):
     page.keyboard.type("15062024")
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
-    assert parsed == {
-        "date_purchased": {"value": "2024-06-15", "modifier": "GREATER_THAN"}
-    }
+    assert parsed == {"purchased": {"value": "2024-06-15", "modifier": "GREATER_THAN"}}
 
 
 @pytest.mark.django_db
@@ -236,9 +234,7 @@ def test_max_side_only_serializes_less_than(live_server, page):
     page.keyboard.type("30062025")
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
-    assert parsed == {
-        "date_purchased": {"value": "2025-06-30", "modifier": "LESS_THAN"}
-    }
+    assert parsed == {"purchased": {"value": "2025-06-30", "modifier": "LESS_THAN"}}
 
 
 @pytest.mark.django_db
@@ -249,8 +245,8 @@ def test_empty_picker_omits_date_criterion(live_server, page):
     page.goto(live_server.url + "/test-date-range-picker/")
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
-    assert "date_purchased" not in parsed
-    assert "date_refunded" not in parsed
+    assert "purchased" not in parsed
+    assert "refunded" not in parsed
 
 
 @pytest.mark.django_db
@@ -370,7 +366,7 @@ def test_calendar_pick_range_then_select(live_server, page):
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
     assert parsed == {
-        "date_purchased": {
+        "purchased": {
             "value": first_pick,
             "value2": second_pick,
             "modifier": "BETWEEN",
@@ -462,7 +458,7 @@ def test_prefilled_picker_round_trips_unchanged(live_server, page):
     assert page.locator(HIDDEN_MAX).input_value() == "2024-09-20"
     _submit_filter_bar(page)
     parsed = _filter_from_url(page.url)
-    assert parsed["date_purchased"] == {
+    assert parsed["purchased"] == {
         "value": "2024-03-15",
         "value2": "2024-09-20",
         "modifier": "BETWEEN",
@@ -502,7 +498,7 @@ def test_alternate_presentation_localizes_calendar_but_serializes_iso(
     assert page.locator(HIDDEN_MAX).input_value() == "2024-09-20"
     page.locator(PICKER + " [data-date-range-select]").click()
     _submit_filter_bar(page)
-    assert _filter_from_url(page.url)["date_purchased"] == {
+    assert _filter_from_url(page.url)["purchased"] == {
         "value": "2024-03-15",
         "value2": "2024-09-20",
         "modifier": "BETWEEN",

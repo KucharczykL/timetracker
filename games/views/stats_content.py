@@ -7,7 +7,6 @@ like the old `{% if key %}` blocks: a missing or empty value hides the section.
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
-from django.utils.html import conditional_escape
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
@@ -25,7 +24,6 @@ from common.components import (
     PageHeading,
     PlainH2,
     PlaytimeSplit,
-    Safe,
     StyledTable,
     YearPicker,
     make_row,
@@ -33,6 +31,7 @@ from common.components import (
 from common.date_time_presentation import DateTimePresentation
 from common.duration_presentation import DurationPresentation
 from games.filters import filter_url
+from games.models import LibraryEntry
 from games.views import stats_links
 from games.views.stats_data import LIST_CAP, StatsData
 
@@ -111,15 +110,10 @@ def _card(title: str, body: Node) -> Node:
     return Div(class_="min-w-0")[_card_title(title), body]
 
 
-def _purchase_name(purchase) -> Node:
-    """One name per Purchase, no joined annotation."""
-    first_game = purchase.first_game
-    if purchase.type != "game":
-        #: DLC prints its parent game and type.
-        link = GameLink(first_game, purchase.standardized_name)
-        suffix = f" ({first_game.name} {purchase.get_type_display()})"
-        return Safe(str(link) + conditional_escape(suffix))
-    return GameLink(first_game, first_game.name)
+def _copy_name(entry: LibraryEntry) -> Node:
+    """A copy, by its game."""
+    game = entry.player_game.game
+    return GameLink(game, game.name)
 
 
 def _year_nav(year, year_range, url_template) -> Node:
@@ -280,31 +274,56 @@ def _purchases_table(ctx) -> Node:
             ),
         ),
         make_row(
-            "Dropped",
+            f"Spendings ({ctx.get('total_spent_currency')})",
+            f"{floatformat(ctx.get('total_spent'))} "
+            f"({floatformat(ctx.get('spent_per_game'))}/game)",
+        ),
+        make_row(
+            "No known price",
             _count_link(
-                f"{ctx.get('dropped_count')} ({ctx.get('dropped_percentage')}%)",
-                filter_url(stats_links.purchases_dropped(year)),
+                ctx.get("total_spent_unpriced"),
+                filter_url(stats_links.purchases_unpriced(year)),
             ),
         ),
+    ]
+    unvalued = ctx.get("total_spent_unvalued")
+    if unvalued:
+        rows.append(
+            make_row(
+                "Not valued yet",
+                _count_link(
+                    unvalued,
+                    filter_url(stats_links.purchases_unvalued(year)),
+                ),
+            )
+        )
+    return _kv_table(rows)
+
+
+def _backlog_table(ctx) -> Node:
+    year = ctx.get("year")
+    rows = [
         make_row(
             "Unfinished",
             _count_link(
                 f"{ctx.get('purchased_unfinished_count')} "
                 f"({ctx.get('unfinished_purchases_percent')}%)",
-                filter_url(stats_links.purchases_unfinished(year)),
+                filter_url(stats_links.copies_unfinished(year)),
+            ),
+        ),
+        make_row(
+            "Dropped",
+            _count_link(
+                f"{ctx.get('dropped_count')} ({ctx.get('dropped_percentage')}%)",
+                filter_url(stats_links.copies_dropped(year)),
             ),
         ),
         make_row(
             "Backlog Decrease",
             _count_link(
                 ctx.get("backlog_decrease_count"),
-                filter_url(stats_links.purchases_backlog_decrease(year)),
+                filter_url(stats_links.copies_backlog_decrease(year)),
             ),
-        ),
-        make_row(
-            f"Spendings ({ctx.get('total_spent_currency')})",
-            f"{floatformat(ctx.get('total_spent'))} "
-            f"({floatformat(ctx.get('spent_per_game'))}/game)",
         ),
     ]
     return _kv_table(rows)
@@ -332,41 +351,44 @@ def _two_col_table(
 
 
 def _finished_table(
-    purchases,
+    copies,
     presentation: DateTimePresentation,
     view_all_url=None,
     total=None,
 ) -> Node:
-    purchases = list(purchases)
-    display = purchases[:LIST_CAP] if view_all_url else purchases
+    copies = list(copies)
+    display = copies[:LIST_CAP] if view_all_url else copies
     rows = [
         #: An open lower bound reports no day.
         make_row(
-            _purchase_name(p),
-            presentation.format(p.date_finished, "date") if p.date_finished else "-",
+            _copy_name(copy),
+            presentation.format(copy.date_finished, "date")
+            if copy.date_finished
+            else "-",
         )
-        for p in display
+        for copy in display
     ]
     table = StyledTable(
         columns=[Column("Name"), Column("Date", align="right")], rows=rows
     )
-    total = total if total is not None else len(purchases)
+    total = total if total is not None else len(copies)
     if view_all_url and total > LIST_CAP:
         return Fragment(table, _view_all_button(total, view_all_url))
     return table
 
 
-def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
-    purchases = list(purchases)
-    display = purchases[:LIST_CAP] if view_all_url else purchases
+def _paid_table(copies, currency, view_all_url=None, total=None) -> Node:
+    copies = list(copies)
+    display = copies[:LIST_CAP] if view_all_url else copies
     rows = [
-        make_row(_purchase_name(p), floatformat(p.converted_price)) for p in display
+        make_row(_copy_name(copy), "-" if copy.paid is None else floatformat(copy.paid))
+        for copy in display
     ]
     table = StyledTable(
-        columns=[Column("Name"), Column(f"Price ({currency})", align="right")],
+        columns=[Column("Name"), Column(f"Paid ({currency})", align="right")],
         rows=rows,
     )
-    total = total if total is not None else len(purchases)
+    total = total if total is not None else len(copies)
     if view_all_url and total > LIST_CAP:
         return Fragment(table, _view_all_button(total, view_all_url))
     return table
@@ -411,6 +433,7 @@ def stats_content(
 
     cards += [
         _card("Purchases", _purchases_table(ctx)),
+        _card("Backlog", _backlog_table(ctx)),
         _card(
             "Games by playtime",
             _two_col_table(
@@ -459,9 +482,7 @@ def stats_content(
                 _finished_table(
                     all_finished,
                     presentation,
-                    view_all_url=filter_url(
-                        stats_links.purchases_finished(year), sort="-finished"
-                    ),
+                    view_all_url=filter_url(stats_links.copies_finished(year)),
                     total=ctx.get("all_finished_this_year_count"),
                 ),
             )
@@ -475,9 +496,7 @@ def stats_content(
                 _finished_table(
                     year_finished,
                     presentation,
-                    view_all_url=filter_url(
-                        stats_links.purchases_finished_released(year), sort="finished"
-                    ),
+                    view_all_url=filter_url(stats_links.copies_finished_released(year)),
                     total=ctx.get("this_year_finished_this_year_count"),
                 ),
             )
@@ -492,7 +511,7 @@ def stats_content(
                     bought_finished,
                     presentation,
                     view_all_url=filter_url(
-                        stats_links.purchases_bought_and_finished(year), sort="finished"
+                        stats_links.copies_bought_and_finished(year)
                     ),
                 ),
             )
@@ -502,11 +521,11 @@ def stats_content(
     if unfinished:
         cards.append(
             _card(
-                "Unfinished Purchases",
-                _priced_table(
+                "Unfinished",
+                _paid_table(
                     unfinished,
                     currency,
-                    view_all_url=filter_url(stats_links.purchases_unfinished(year)),
+                    view_all_url=filter_url(stats_links.copies_unfinished(year)),
                     total=ctx.get("purchased_unfinished_count"),
                 ),
             )

@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
-from django.db.models import F, Q
+from django.db.models import F, OuterRef, Q, Subquery
 from django.db.models.expressions import Combinable
 from django.db.models.functions import ExtractYear, TruncDate
 from django.db.models.lookups import (
@@ -1387,6 +1387,7 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
 type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
 type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
 type RelationAccessor = str  # a relation accessor on the parent model, e.g. "sessions"
+type RelationPath = str  # related row to parent, e.g. "entry__player_game__game"
 
 
 @dataclass(frozen=True)
@@ -1412,6 +1413,8 @@ class AggregateSpec:
     unit: DurationUnit | None = None
     # A scope the spec states itself, always applied.
     base_scope: OperatorFilter | None = None
+    #: Related row back to parent; reduce correlated.
+    correlated: RelationPath | None = None
 
     def __post_init__(self) -> None:
         # The reducer/source/unit dependencies are cross-field invariants the
@@ -1423,6 +1426,8 @@ class AggregateSpec:
                 raise TypeError("a count aggregate takes no source field")
             if self.unit is not None:
                 raise TypeError("a count aggregate takes no unit")
+            if self.correlated is not None:
+                raise TypeError("a count aggregate reads no correlated path")
         elif self.source is None:
             raise TypeError(f"a {self.reducer} aggregate requires a source field")
         if self.base_scope is not None and not isinstance(
@@ -3629,9 +3634,19 @@ def aggregate_to_q(
         if spec.source is None:
             raise RuntimeError(f"{spec.reducer!r} aggregate requires a source field")
         reduce = Sum if spec.reducer == "sum" else Avg
-        aggregate_expression = reduce(
-            f"{spec.accessor}__{spec.source}", filter=scope_condition
-        )
+        if spec.correlated is not None:
+            #: The source is an alias no join reaches.
+            aggregate_expression = Subquery(
+                matching.filter(**{spec.correlated: OuterRef("pk")})
+                .order_by()
+                .values(spec.correlated)
+                .annotate(_reduced=reduce(spec.source))
+                .values("_reduced")
+            )
+        else:
+            aggregate_expression = reduce(
+                f"{spec.accessor}__{spec.source}", filter=scope_condition
+            )
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 

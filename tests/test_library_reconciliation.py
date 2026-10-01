@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from io import StringIO
 from types import SimpleNamespace
 
@@ -13,6 +14,9 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, request_run
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
@@ -33,11 +37,13 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     PlayerSession,
+    Purchase,
     PurchaseConversionState,
 )
 from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
+from timetracker.temporal import TemporalValue
 
 YEAR = 2025
 pytestmark = pytest.mark.django_db
@@ -140,16 +146,17 @@ def parity_world(monkeypatch):
     LegacyPurchase.objects.filter(pk__in=[purchase_a.pk, purchase_b.pk]).update(
         needs_price_update=False
     )
-    for state in PurchaseConversionState.objects.filter(
-        library__in=[library_a, library_b]
+    for library, game, amount, day in (
+        (library_a, game_a, 100, 1),
+        (library_b, game_b, 200, 2),
     ):
-        state.requested_currency = "CZK"
-        state.published_version = state.requested_version
-        state.published_currency = "CZK"
-        state.status = PurchaseConversionState.Status.COMPLETE
-        state.retry_at = None
-        state.last_error = ""
-        state.save()
+        record_purchase(
+            record_entry(library, default_graph(game, library).release),
+            amount=Decimal(amount),
+            currency="CZK",
+            purchased=TemporalValue.from_day(date(YEAR, 3, day)),
+        )
+        tasks.convert_library_prices(str(library.pk), request_run(library, "CZK"))
 
     client_a = _client_for(user_a)
     client_b = _client_for(user_b)
@@ -317,7 +324,7 @@ def test_statistics_and_exact_links_reconcile_per_library(parity_world):
             (stats_links.games_played(YEAR), Game, stats["total_games"]),
             (
                 stats_links.purchases_total(YEAR),
-                LegacyPurchase,
+                Purchase,
                 stats["all_purchased_this_year_count"],
             ),
             (

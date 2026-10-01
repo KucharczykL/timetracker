@@ -42,7 +42,7 @@ from common.date_time_presentation import (
 from games.filters import (
     MODE_PARSERS,
     GameFilter,
-    LegacyPurchaseFilter,
+    PurchaseFilter,
     filter_for_model,
 )
 from games.views.filtering import BUILDER_MODES, builder_url_for
@@ -235,13 +235,13 @@ class IsQuickEditableTest(SimpleTestCase):
     def test_a_set_facet_keeps_the_modifiers_its_widget_pins(self):
         # A set widget renders more than its metadata names.
         #
-        # It pins (Any)/(None) and, for a many-to-many, (All)/(Only), so a check
-        # against the metadata would degrade a filter the bar can hold.
+        # It pins (Any)/(None), so a check against the metadata would
+        # degrade a filter the bar can hold.
         self.assertTrue(
             is_quick_editable(
-                {"games": {"value": ["1"], "modifier": "INCLUDES_ALL"}},
-                {"games"},
-                filter_cls=LegacyPurchaseFilter,
+                {"kind": {"modifier": "IS_NULL"}},
+                {"kind"},
+                filter_cls=PurchaseFilter,
             )
         )
 
@@ -594,13 +594,11 @@ class AppliedFacetMarkTest(TestCase):
         cases = {
             "games": {"status": {"value": [{"id": "f", "label": "Finished"}]}},
             "sessions": {"duration_hours": {"value": 2, "modifier": "GREATER_THAN"}},
-            "purchases": {
-                "date_purchased": {"value": "2026-01-01", "modifier": "EQUALS"}
-            },
+            "purchases": {"purchased": {"value": "2026-01-01", "modifier": "EQUALS"}},
             "devices": {"name": {"value": "Deck", "modifier": "INCLUDES"}},
             "playthroughs": {"note": {"value": "", "modifier": "EQUALS"}},
         }
-        cases_bool = {"purchases": {"infinite": {"value": True}}}
+        cases_bool = {"purchases": {"is_refunded": {"value": True}}}
         for mode, stated in [*cases.items(), *cases_bool.items()]:
             with self.subTest(mode=mode, field=next(iter(stated))):
                 html = str(QuickFilterBar(mode=mode, filter_json=json.dumps(stated)))
@@ -632,12 +630,13 @@ class FacetOrderTest(SimpleTestCase):
             "duration_hours",
         ],
         "purchases": [
-            "type",
-            "date_purchased",
+            "kind",
+            "price_state",
+            "amount",
+            "purchased",
             "is_refunded",
-            "ownership_type",
-            "converted_price",
-            "infinite",
+            "access",
+            "platform",
             "created_at",
             "name",
         ],

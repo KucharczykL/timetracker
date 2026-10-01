@@ -85,7 +85,6 @@ from games.models import (
     Game,
     GameKind,
     HistoricalPlaytime,
-    LegacyPurchase,
     LibraryEntry,
     Platform,
     PlayerGameStatus,
@@ -104,7 +103,11 @@ from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
-from games.reads.purchases import ValuedPurchase, readable_purchases
+from games.reads.purchases import (
+    ValuedPurchase,
+    library_purchases,
+    readable_purchases,
+)
 from games.reads.releases import game_releases, matching_releases, release_label
 from games.removal import remove
 from games.sorting import (
@@ -682,11 +685,12 @@ def search_platforms(request, q: str = "", limit: int = 10):
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
                 ),
+                #: Through the copy's Release.
                 last_purchase_use=Subquery(
-                    LegacyPurchase.objects.for_library(library)
-                    .filter(platform=OuterRef("pk"))
-                    .order_by("-updated_at")
-                    .values("updated_at")[:1],
+                    library_purchases(library)
+                    .filter(entry__release__platform=OuterRef("pk"))
+                    .order_by("-created_at")
+                    .values("created_at")[:1],
                     output_field=DateTimeField(),
                 ),
             )

@@ -4,7 +4,6 @@ import json
 from datetime import date
 
 import pytest
-from completed_runs import make_purchase
 from django.db.models import F
 
 from common.criteria import DateCriterion, FilterError, Modifier
@@ -14,6 +13,15 @@ from games.models import LegacyPurchase
 pytestmark = pytest.mark.django_db
 
 DAYS = (date(2026, 3, 4), date(2026, 3, 5), date(2026, 3, 6))
+
+
+def make_purchase(library, name):
+    return LegacyPurchase.objects.create(
+        library=library,
+        name=name,
+        date_purchased=date(2020, 1, 1),
+        price_currency="CZK",
+    )
 
 
 @pytest.fixture

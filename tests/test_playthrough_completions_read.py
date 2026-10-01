@@ -5,9 +5,14 @@ from datetime import date
 
 import pytest
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
 
-from games.models import Game, LegacyPurchase, Playthrough, PlaythroughKind
+from games.models import Game, LibraryEntry, Playthrough, PlaythroughKind, Purchase
 from games.reads.playthrough_completions import (
+    ENTRY_RUNS,
+    PURCHASE_RUNS,
     completed_runs,
     completion_day,
     completion_exists,
@@ -48,15 +53,10 @@ def _second_run(run: Playthrough) -> Playthrough:
     )
 
 
-def _purchase_of(library, game) -> LegacyPurchase:
-    purchase = LegacyPurchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        type=LegacyPurchase.GAME,
-        date_purchased=date(YEAR, 1, 5),
-    )
-    purchase.games.set([game])
-    return purchase
+def _purchase_of(library, game) -> Purchase:
+    """A copy of the game, bought."""
+    entry = record_entry(library, default_graph(game, library).release)
+    return record_purchase(entry, purchased=TemporalValue.from_day(date(YEAR, 1, 5)))
 
 
 @pytest.mark.django_db(transaction=True)
@@ -154,10 +154,18 @@ def test_a_purchase_answers_the_completion_of_its_game(owned_user, owned_library
     )
     purchase = _purchase_of(owned_library, run.player_game.game)
 
-    answered = LegacyPurchase.objects.filter(completion_exists(owned_library, YEAR))
+    answered = Purchase.objects.filter(
+        completion_exists(owned_library, YEAR, PURCHASE_RUNS)
+    )
+    copies = LibraryEntry.objects.filter(
+        completion_exists(owned_library, YEAR, ENTRY_RUNS)
+    )
 
     assert list(answered) == [purchase]
-    assert not LegacyPurchase.objects.filter(completion_exists(owned_library, YEAR + 1))
+    assert list(copies) == [purchase.entry]
+    assert not Purchase.objects.filter(
+        completion_exists(owned_library, YEAR + 1, PURCHASE_RUNS)
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -171,11 +179,11 @@ def test_a_year_reports_the_earliest_day_and_all_time_the_latest(
     _complete(_second_run(run), TemporalValue.from_day(date(YEAR, 11, 1)))
     _purchase_of(owned_library, run.player_game.game)
 
-    in_year = LegacyPurchase.objects.annotate(
-        day=completion_day(owned_library, YEAR)
+    in_year = Purchase.objects.annotate(
+        day=completion_day(owned_library, YEAR, PURCHASE_RUNS)
     ).get()
-    all_time = LegacyPurchase.objects.annotate(
-        day=completion_day(owned_library, None)
+    all_time = Purchase.objects.annotate(
+        day=completion_day(owned_library, None, PURCHASE_RUNS)
     ).get()
 
     assert in_year.day == date(YEAR, 2, 1)
@@ -188,7 +196,9 @@ def test_a_purchase_with_no_completion_reports_no_day(owned_user, owned_library)
     _purchase_of(owned_library, run.player_game.game)
 
     assert (
-        LegacyPurchase.objects.annotate(day=completion_day(owned_library, YEAR))
+        Purchase.objects.annotate(
+            day=completion_day(owned_library, YEAR, PURCHASE_RUNS)
+        )
         .get()
         .day
         is None

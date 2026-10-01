@@ -14,10 +14,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row, session_row, tracked_run
 
-from games.models import Game, LegacyPurchase, Platform, PlayerSession
+from games.models import Game, Platform, PlayerSession
 from games.reads import playtime as playtime_reads
 from games.reads.playtime import (
     MonthPlaytime,
@@ -237,7 +239,7 @@ SESSIONS_ONLY_KEYS = (
 )
 
 #: A record in scope counts here too.
-PLAYED_KEYS = ("total_games", "total_year_games")
+PLAYED_KEYS = ("total_games",)
 
 DAY_KEYS = (
     "unique_days",
@@ -252,6 +254,8 @@ DAY_KEYS = (
 def test_the_day_figures_read_both_sources():
     for key in DAY_KEYS + PLAYED_KEYS:
         assert STATS_SOURCES[key] is StatsSource.BOTH, key
+    #: Copies a session or record reaches.
+    assert STATS_SOURCES["total_year_games"] is StatsSource.ENTRIES
     for key in SESSIONS_ONLY_KEYS:
         assert STATS_SOURCES[key] is not StatsSource.BOTH, key
 
@@ -273,13 +277,8 @@ def played_and_recorded(owned_library):
     )
     start = datetime(2022, 3, 1, 10, tzinfo=TZ)
     session_row(played, started_at=start, ended_at=start + HOUR)
-    #: The recorded game's purchase, for the count.
-    LegacyPurchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        date_purchased=start,
-        type=LegacyPurchase.GAME,
-    ).games.set([recorded])
+    #: The recorded game's copy, for the count.
+    record_entry(owned_library, default_graph(recorded, owned_library).release)
     return played, recorded, platform
 
 
@@ -347,17 +346,11 @@ def test_a_day_precision_record_moves_the_day_figures_too(
 
 
 @pytest.mark.django_db
-def test_a_bundle_two_records_reach_counts_once(owned_library):
-    first = Game.objects.create(library=owned_library, name="First")
-    second = Game.objects.create(library=owned_library, name="Second")
-    LegacyPurchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        date_purchased=datetime(2022, 1, 1, tzinfo=TZ),
-        type=LegacyPurchase.GAME,
-    ).games.set([first, second])
-    record_row([tracked_run(owned_library, first)], when="2022-03")
-    record_row([tracked_run(owned_library, second)], when="2022-04")
+def test_a_copy_two_records_reach_counts_once(owned_library):
+    game = Game.objects.create(library=owned_library, name="First")
+    record_entry(owned_library, default_graph(game, owned_library).release)
+    record_row([tracked_run(owned_library, game)], when="2022-03")
+    record_row([tracked_run(owned_library, game)], when="2022-04")
 
     assert compute_stats(owned_library, None)["total_year_games"] == 1
 

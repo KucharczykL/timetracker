@@ -103,7 +103,7 @@ type ModelKey = str  # singular root-model key as filter_for_model takes it, e.g
 FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "games": "game",
     "sessions": "playersession",
-    "purchases": "legacypurchase",
+    "purchases": "purchase",
     "playthroughs": "playthrough",
     "historical_playtime": "historicalplaytime",
     "devices": "device",

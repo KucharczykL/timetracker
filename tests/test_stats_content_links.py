@@ -1,13 +1,17 @@
 """Rendering tests: stats page wires rows/counts to filtered-list links (#65)."""
 
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.html import escape
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase, refund_purchase
 from session_rows import session_row, tracked_run
 from tracked_games import create_tracked_game
 
@@ -21,7 +25,7 @@ from common.duration_presentation import (
 )
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library, filter_url
-from games.models import Game, LegacyPurchase, Platform, PlayerGameStatus, Playthrough
+from games.models import Game, Platform, PlayerGameStatus, Playthrough
 from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
@@ -39,6 +43,14 @@ _DURATIONS = DurationPresentation(DEFAULT_DURATION_FORMAT_PROFILE, "en-us")
 
 def stats_content(ctx):
     return _stats_content(ctx, _PRESENTATION, _DURATIONS)
+
+
+def _bought(library, game, month, **purchase):
+    """A copy and its purchase, on the fifth."""
+    day = TemporalValue.from_day(date(YEAR, month, 5))
+    entry = record_entry(library, default_graph(game, library).release, acquired=day)
+    purchase.setdefault("amount", None)
+    return record_purchase(entry, purchased=day, **purchase)
 
 
 def _dt(month, day, hour=12):
@@ -66,31 +78,10 @@ def rendered(db):
     abandoned = create_tracked_game(
         library, "Abandoned", status=PlayerGameStatus.ABANDONED, platform=pc
     )
-    LegacyPurchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        date_purchased=_dt(1, 5),
-        type=LegacyPurchase.GAME,
-    ).games.set([games[0]])
-    LegacyPurchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        date_purchased=_dt(2, 5),
-        type=LegacyPurchase.GAME,
-    ).games.set([abandoned])  # dropped
-    LegacyPurchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        date_purchased=_dt(3, 5),
-        date_refunded=_dt(4, 5),
-        type=LegacyPurchase.GAME,
-    ).games.set([games[1]])  # refunded
-    LegacyPurchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        date_purchased=_dt(5, 5),
-        type=LegacyPurchase.GAME,
-    ).games.set([games[2]])  # unfinished
+    _bought(library, games[0], 1)
+    _bought(library, abandoned, 2)  # dropped
+    refund_purchase(_bought(library, games[1], 3), TemporalValue.parse(f"{YEAR}-04-05"))
+    _bought(library, games[2], 5)  # unfinished
 
     finished_game = games[0]
     #: The run a conversion leaves, day-precision.
@@ -120,12 +111,42 @@ def test_refunded_count_links_to_refunded_purchases(rendered):
     assert _href(stats_links.purchases_refunded(YEAR)) in rendered["html"]
 
 
-def test_dropped_count_links_to_dropped_purchases(rendered):
-    assert _href(stats_links.purchases_dropped(YEAR)) in rendered["html"]
+def test_dropped_count_links_to_dropped_copies(rendered):
+    assert _href(stats_links.copies_dropped(YEAR)) in rendered["html"]
 
 
-def test_unfinished_count_links_to_unfinished_purchases(rendered):
-    assert _href(stats_links.purchases_unfinished(YEAR)) in rendered["html"]
+def test_unfinished_count_links_to_unfinished_copies(rendered):
+    assert _href(stats_links.copies_unfinished(YEAR)) in rendered["html"]
+
+
+def test_backlog_decrease_links_to_copies(rendered):
+    assert _href(stats_links.copies_backlog_decrease(YEAR)) in rendered["html"]
+
+
+def test_two_cards_and_the_unfinished_table(rendered):
+    html = rendered["html"]
+    assert ">Purchases<" in html
+    assert ">Backlog<" in html
+    assert ">Unfinished<" in html
+    assert "Unfinished Purchases" not in html
+    assert "Paid (" in html
+
+
+def test_an_unknown_price_line_links_to_its_purchases(rendered):
+    assert "No known price" in rendered["html"]
+    assert _href(stats_links.purchases_unpriced(YEAR)) in rendered["html"]
+
+
+def test_the_unvalued_line_shows_only_when_nonzero(rendered, db):
+    assert "Not valued yet" not in rendered["html"]
+    library = get_user_model().objects.create_user(username="unvalued").library
+    game = create_tracked_game(library, "Priced", status=PlayerGameStatus.PLAYED)
+    _bought(library, game, 3, amount=Decimal(10))
+
+    html = str(stats_content(compute_stats(library, YEAR)))
+
+    assert "Not valued yet" in html
+    assert _href(stats_links.purchases_unvalued(YEAR)) in html
 
 
 def test_platform_row_links_to_platform_sessions(rendered):
@@ -201,7 +222,7 @@ def test_generated_links_resolve_to_200(rendered, client):
     client.force_login(rendered["user"])
     for builder in (
         stats_links.purchases_total(YEAR),
-        stats_links.purchases_dropped(YEAR),
+        stats_links.copies_dropped(YEAR),
         stats_links.sessions_for_platform(rendered["pc"].id, YEAR),
     ):
         response = client.get(filter_url(builder), follow=True)
