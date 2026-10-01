@@ -113,21 +113,21 @@ class PriceFields(forms.Form):
         else:
             self._clean_amount(cleaned)
         self._clean_currency(cleaned)
-        if choice == PriceChoice.PAID and not self.errors.keys() & {
-            "amount",
-            "currency",
-        }:
+        if choice == PriceChoice.PAID and self._amount_and_currency_parsed():
             self._check_price(cleaned)
+
+    def _amount_and_currency_parsed(self) -> bool:
+        return "amount" not in self.errors and "currency" not in self.errors
 
     def _check_price(self, cleaned: dict[str, Any]) -> None:
         """The command's rules, shown on the field."""
         try:
             check_price(StatedPrice(cleaned["amount"], cleaned["currency"]))
         except CommandRejected as refusal:
-            field = (
-                "currency" if refusal.sentence == AMOUNT_WITHOUT_CURRENCY else "amount"
-            )
-            self.add_error(field, refusal.sentence or NOT_AN_AMOUNT)
+            if refusal.sentence == AMOUNT_WITHOUT_CURRENCY:
+                self.add_error("currency", refusal.sentence)
+            else:
+                self.add_error("amount", refusal.sentence or NOT_AN_AMOUNT)
 
     def _clean_amount(self, cleaned: dict[str, Any]) -> None:
         text = (cleaned.get("amount") or "").strip()

@@ -254,5 +254,4 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         )
 
     def refund_statement(self) -> Restated[ActStatement]:
-        """Set by clean; unset before it."""
         return self._refund
