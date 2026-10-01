@@ -193,7 +193,7 @@ stack stays one merge, so `main` never holds both.
 | Column | Meaning |
 |---|---|
 | `id`, `library` | as today |
-| `entry` | the LibraryEntry, `RESTRICT`, required, registered; a pass or an upgrade names a base game's copy: a live, held, Owned one, the one on the pass's platform first, then earliest acquired, then key |
+| `entry` | the LibraryEntry, `RESTRICT`, required, registered; a pass or an upgrade names a base game's copy: a live, Owned, unended one, the one on the pass's platform first, then earliest acquired, then key |
 | `kind` | `game`, `season_pass`, `battle_pass`, `upgrade` |
 | `name` | the product name; blank for a game |
 | `amount` | `DecimalField(12, 2)`; null is a price nobody knows; 0 is free |
@@ -483,7 +483,8 @@ nothing. In order:
    The seeded valuation splits by the same rule. Day, refund and words are
    copied.
 2. **Add-ons (35 DLC).** A private Game of kind `dlc`, named from the
-   purchase, parent the base game, with a default Edition and a Release on
+   purchase with `sort_name = name` (a blank one leads every order),
+   parent the base game, with a default Edition and a Release on
    the base's platform, tracked as a PlayerGame with default facts. No
    add-on is among the 15 mismatched-platform rows. The 6 passes and the
    upgrade stay purchases of their kind on the base entry.
@@ -599,10 +600,15 @@ copies; the preflight lists such games as a category. A "Hide this
 review" checkbox on `UserLibraryPreferences` closes the section; it is
 its own toggle, read from nothing else.
 
-The sample fixture is regenerated after the cutover. The anonymizer
-shifts an entry's and a purchase's days as it shifts a purchase's today,
-by the row's own jitter, and randomises which entry a purchase names as it
-randomises the through table today.
+The sample fixture is regenerated inside the stack, by P5, from the
+day's dump after the rehearsal: `load_sample_data` runs no conversion
+pass (one would refuse the loader tests' synthetic legacy rows and add
+thousands of appends to every load), P4 leaves the fixture legacy since
+every reader still reads legacy rows, and P5, which drops the legacy
+table, ships the regenerated fixture with its loader tests rewritten to
+the new shape. The anonymizer shifts an entry's and a purchase's days as
+it shifts a purchase's today, by the row's own jitter, and randomises
+which entry a purchase names as it randomises the through table today.
 
 ## Screens and reads
 
@@ -901,7 +907,7 @@ NAME"` (committed, reconciliation printed); `make migrate`, which appends
 nothing, proving idempotency on real data; then `make
 verify-replay-parity`, `make verify-dump`, `make verify-baseline
 ARGS="--migrate"`. After it: the review surface, the first valuation
-refresh and its printed totals, then the fixture PR. The valuation
+refresh and its printed totals; the fixture already shipped with P5. The valuation
 task's daily schedule row must exist in production, since the recovery
 runs on it.
 
