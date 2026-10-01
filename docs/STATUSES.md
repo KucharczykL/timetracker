@@ -45,98 +45,90 @@ everywhere the other five are, because no letter has to hold it any more.
 
 ---
 
-## Purchase-Level Status Concepts
+## Copy-Level Status Concepts
 
-These concepts determine whether a purchase appears in the "unfinished" or "dropped" lists in stats views.
+The backlog figures on the stats page count **copies**: live `LibraryEntry`
+rows on a `full` Edition. Each figure is one `LibraryEntryFilter` in
+`games/reads/copy_figures.py`, and the link beside it carries the same filter.
+A copy reaches its game's status through `player_game`. See
+[Every purchase read on the projections](superpowers/specs/2026-10-01-issue-735-purchase-reads-design.md).
 
 ### Finished
 
-A purchase is considered **finished** when:
+A copy's game is **finished** when:
 
 ```
-PlayerGame.status in DONE_STATUSES OR Purchase.games.* has a Playthrough that states a completion
+PlayerGame.status in DONE_STATUSES OR a Playthrough states a completion in scope
 ```
 
 `DONE_STATUSES` is `("completed", "retired")`. It lives in `games/models.py`
-beside `PlayerGameStatus`, and both `games/views/stats_data.py` and
-`games/views/stats_links.py` read that one name, so a stats link cannot select a
-different set than the number it links from.
-
-Either signal indicates the player is done with the game:
-- **Explicit**: The row says `completed` or `retired`
-- **Implicit**: A run states a completion, which `completion_exists` reads (data-driven)
-
-This uses **OR** logic during a transition period. Later, these signals should be kept in sync so only one source of truth is needed.
+beside `PlayerGameStatus`. For a year, only a completion in that year counts;
+all-time, a done status counts too.
 
 ### Dropped
 
-A purchase is considered **dropped** when it is not finished, and:
+A copy is **dropped** when its game is not finished, and:
 
 ```
-PlayerGame.status == "abandoned" OR Purchase.date_refunded IS NOT NULL
+PlayerGame.status == "abandoned" OR the copy's access ended with way "refunded"
 ```
 
-Either signal indicates the user no longer has an active interest in the game:
-- **Explicit**: The row says `abandoned`
-- **Implicit**: User refunded the purchase (which automatically sets games to abandoned)
-
-Note: Refunding a purchase always marks its games as abandoned. There is no
-option to refund without abandoning. So a purchase that is both refunded and
-retired should not arise; if one does, it counts as finished, not dropped.
+A refund of a `game` purchase ends its copy with way `refunded`, so a refund
+reaches the figure through the copy.
 
 ---
 
 ## Unfinished vs. Dropped
 
-The stats views categorize purchases into **unfinished** and **dropped** lists.
-
 ### Unfinished
 
-A purchase is **unfinished** when:
-1. It was purchased in the relevant time period (this year for yearly stats, all time for all-time stats)
-2. It was NOT refunded (only counts toward unfinished/backlog)
-3. It is NOT finished (per the finished definition above)
-4. It is NOT dropped (per the dropped definition above)
-5. It is NOT infinite (subscription, etc.)
-6. None of its games is excluded from unfinished lists
-7. It IS a game or DLC (not season passes or battle passes)
+A copy is **unfinished** when:
+1. It is Owned, and its access has not ended
+2. It was acquired in scope (both bounds inside the year; all-time takes every copy)
+3. Its game is not finished and not abandoned
+4. Its game does not state `excluded_from_unfinished`
 
-**Unfinished = Active backlog** — games the user may still play.
+The percent divides by the Owned, held copies acquired in scope.
 
 ### Dropped
 
-A purchase is **dropped** when:
-1. It was purchased in the relevant time period
-2. It is NOT finished (per the finished definition above)
-3. It matches at least one dropped signal (per the dropped definition above)
-4. It is NOT infinite
-5. None of its games is excluded from dropped figures
-6. It IS a game or DLC
+A copy is **dropped** when:
+1. It is Owned, and acquired in scope
+2. Its game is not finished
+3. Its game is abandoned, or the copy ended by refund
+4. Its game does not state `excluded_from_dropped`
 
-**Dropped = Terminal state** — games the user has given up on or refunded.
+The percent divides by the Owned copies acquired in scope.
+
+### Backlog decrease
+
+Owned copies whose game was finished: for a year, acquired before it, at a
+done status, with a completion in it; all-time, at a done status or with any
+completion.
 
 ### Summary Table
 
-| Category | Includes Refunded? | Key Condition |
-|----------|-------------------|---------------|
-| **Unfinished** | No | NOT finished, NOT dropped |
-| **Dropped** | Yes | NOT finished, AND (abandoned OR refunded) |
-| **Refunded** | Yes | `date_refunded IS NOT NULL` |
-| **Infinite** | Yes | `infinite = True` |
-| **Excluded from unfinished** | Yes | a game states `excluded_from_unfinished` |
-| **Excluded from dropped** | Yes | a game states `excluded_from_dropped` |
+| Category | Counts | Key Condition |
+|----------|--------|---------------|
+| **Unfinished** | Owned, held | NOT finished, NOT abandoned |
+| **Dropped** | Owned | NOT finished, AND (abandoned OR ended by refund) |
+| **Excluded from unfinished** | — | the game states `excluded_from_unfinished` |
+| **Excluded from dropped** | — | the game states `excluded_from_dropped` |
+
+A season pass, battle pass or upgrade rides its base copy and holds no backlog
+place of its own. A DLC is its own Game, with its own copy and status.
 
 ---
 
 ## Query Patterns
 
 A status is on the library's own row, so every query naming one takes the
-library. There are two shapes.
+library.
 
-### Getting finished purchases
+### Getting the copies behind a figure
 
 ```python
-Purchase.objects.for_library(library).finished(library)
+copies_matching(library, unfinished_copies(year))
 ```
 
 ### Getting the games at a status
@@ -150,34 +142,15 @@ the join, so a second condition does not read the row twice.
 
 ---
 
-## Transition State
-
-The system uses **OR logic** for both finished and dropped to catch any mismatch between explicit user actions and data signals:
-
-- **Finished**: `status in DONE_STATUSES OR completion_exists`
-- **Dropped**: `status == "abandoned" OR date_refunded`
-
-This bridges the gap between the old model (where `date_finished` and `date_dropped` were on the Purchase model) and the new model (where the `PlayerGame` status and the `Playthrough` projection are the sources of truth).
-
-**Future:** These signals should be kept in sync. For example:
-- Stating `completed` should state a completion on the game's run
-- When the sync is reliable, the OR can be simplified to a single check
-
-Note: Refunding a purchase always automatically sets its games' status to Abandoned. This is not optional — there is no way to refund without abandoning.
-
----
-
 ## Edge Cases
 
 ### Unplayed games
-- Unplayed games (`status="unplayed"`) are considered **unfinished**, not dropped
-- They appear in the unfinished/backlog list since they are still games the user may play
-- Unplayed games that are refunded DO count as **dropped** (refund signal overrides)
+- A copy of an unplayed game (`status="unplayed"`) is **unfinished**, not dropped
+- A copy ended by refund counts as **dropped** whatever the status
 
-### Multiple games per purchase
-- A purchase can have multiple games via `Purchase.games` (many-to-many)
-- A purchase is finished if ANY of its games is finished
-- A purchase is dropped if ANY of its games is abandoned OR the purchase itself is refunded
+### Several copies of one game
+- Each copy counts once; two copies of one game count twice
+- Both read the same game status, so they are finished or dropped together
 
 ### Runs that state no completion
 - A run whose completion nobody recorded does NOT count as finished

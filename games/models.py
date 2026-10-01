@@ -1088,10 +1088,10 @@ class LegacyPurchase(models.Model):
     objects = LegacyPurchaseQueryset().as_manager()
 
     id = UUIDv7Field(primary_key=True, editable=False, serialize=False)
+    #: No reverse accessors: every read walks forward.
     library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="purchases"
+        "UserLibrary", on_delete=models.CASCADE, related_name="+"
     )
-    #: No reverse accessor: every read walks forward.
     games = models.ManyToManyField(Game, related_name="+")
 
     platform = models.ForeignKey(

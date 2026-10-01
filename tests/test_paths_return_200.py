@@ -1,12 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 
-from games.models import Game, LegacyPurchase, Platform, Playthrough
+from games.models import Game, Platform, Playthrough
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 
@@ -32,31 +37,15 @@ class PathWorksTest(TestCase):
         self.game = Game.objects.create(
             library=library, name="Test Game", platform=self.platform
         )
-        self.purchase = LegacyPurchase.objects.create(
-            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
-            library=library,
-            price=43,
-            price_currency="CZK",
-            converted_price=14.5,
-            converted_currency="CNY",
-        )
-        self.purchase.games.add(self.game)
-        # A second purchase with identical prices: PurchasePrice's popover used
-        # to hash its id from its own rendered content, so this row collided with
-        # the one above and both the purchase list and the game detail page (which
-        # lists a game's purchases) 500'd under DEBUG. Linked to the same game so
-        # one fixture covers both.
-        self.same_price_purchase = LegacyPurchase.objects.create(
-            date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
-            library=library,
-            price=43,
-            price_currency="CZK",
-            converted_price=14.5,
-            converted_currency="CNY",
-        )
-        self.same_price_purchase.games.add(self.game)
+        copy = record_entry(library, default_graph(self.game, library).release)
+        #: Two equal prices: their popovers must not collide.
+        for day in ("2022-09-26", "2022-09-27"):
+            record_purchase(
+                copy,
+                amount=Decimal(43),
+                currency="CZK",
+                purchased=TemporalValue.parse(day),
+            )
 
     def test_index_redirects_to_tracker(self):
         response = self.client.get("/")

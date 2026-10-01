@@ -73,7 +73,7 @@ def _both(*members: GameFilter) -> GameFilter:
 
 
 def _not_finished_game(year: YearScope, *statuses: PlayerGameStatus) -> GameFilter:
-    """No done status, no completion in scope."""
+    """Not done, not these, no completion."""
     return _both(
         GameFilter.where(status__exclude=[*DONE_STATUSES, *statuses]),
         GameFilter(
@@ -119,7 +119,10 @@ def dropped_copies(year: YearScope) -> LibraryEntryFilter:
 
 
 def backlog_decrease_copies(year: YearScope) -> LibraryEntryFilter:
-    """Owned copies whose game was finished."""
+    """Owned copies whose game was finished.
+
+    For a year: acquired before it, done, completed in it.
+    """
     if year is None:
         copies = owned(None)
         copies.game_filter = _finished_game(None)
@@ -156,7 +159,7 @@ def bought_and_finished_copies(year: YearScope) -> LibraryEntryFilter:
 
 
 def played_copies(year: YearScope) -> LibraryEntryFilter:
-    """A session or record in scope."""
+    """Played in scope; for a year, released then."""
     sessions = PlayerSessionFilter.where(
         **({} if year is None else {"day__between": year_range(year)})
     )

@@ -3086,8 +3086,7 @@ class TestComparableColumnsCrossModel:
         # Own + to-one-FK columns stay single-valued.
         assert game_columns["name"]["multivalued"] is False
 
-        # The #282 headline path (Session → game → editions) is a to-one-prefixed
-        # multi-valued operand.
+        # Session → game → editions: to-one, then multi-valued.
         session_columns = {c["value"]: c for c in comparable_columns(PlayerSession)}
         assert MULTI_EDITION_REMOVED in session_columns
         assert session_columns[MULTI_EDITION_REMOVED]["multivalued"] is True
@@ -6018,7 +6017,7 @@ class TestComparisonOperandPaths:
         assert info.relation_path == "sessions"
 
     def test_to_one_then_multi_hop_is_multivalued(self):
-        # The #282 headline path: Session → game (to-one) → editions (multi).
+        # Session → game (to-one) → editions (multi).
         from games.models import PlayerSession
 
         info = _comparison_operand_info(

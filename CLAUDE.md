@@ -141,7 +141,7 @@ path**, so verify against `make check` before pushing when possible.
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
 | Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; **not** in `make check`) |
-| Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a moved figure no reason explains; **not** in `make check`) |
+| Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a figure or row set no reason explains; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -190,9 +190,10 @@ docs/           — Additional documentation
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
 - **LegacyPurchase** — the old purchase row, on `games_legacypurchase`
   until P5 deletes it; `verbose_name` "purchase", so screens still say so.
-  Only the legacy write routes and `view_purchase` still use it; no
-  read, filter or statistic does, and the builder refuses
-  `legacypurchase`. Ownership type, prices,
+  No list, filter or statistic reads it, and the builder refuses
+  `legacypurchase`. The legacy write routes (linked from no list),
+  `view_purchase`, the currency task, the signals, the sample tools
+  and the two verify commands still do. Ownership type, prices,
   currency conversion (`converted_price`, `price_per_game` is a
   `GeneratedField`), M2M to Game. `num_purchases` counts linked games.
   DLC/SeasonPass/BattlePass must have `related_game`. Its relations
@@ -331,7 +332,7 @@ docs/           — Additional documentation
   `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the
   link beside each number, so stat and link compile one predicate. A year reads
   the interval the two generated bound columns state, all-time reads the marker;
-  a purchase reports one row, dated `completed_lower` of its earliest run in a
+  a copy reports one row, dated `completed_lower` of its earliest run in a
   year (its latest all-time, which no table prints today), and a row that
   reports no day sorts last and prints `-`. #1033 gives the projection a
   queryset holding `annotated_for_filtering` alone — no `alive()` and no
@@ -641,7 +642,7 @@ docs/           — Additional documentation
   compile), the statistics (`games/reads/purchase_figures.py`, and the
   copy figures in `games/reads/copy_figures.py`, `StatsSource.ENTRIES`),
   and their links. `GameFilter.purchase_price_total` sums valuations
-  through `AggregateSpec.correlated`. Migration 0032 rewrote saved
+  through `AggregateSpec.correlated` (`games.E016` walks the path). Migration 0032 rewrote saved
   presets. `make verify-purchase-statistics` judges every figure
   against a legacy snapshot (`games/purchase_parity.py`)
   ([reads](docs/superpowers/specs/2026-10-01-issue-735-purchase-reads-design.md)).
@@ -798,13 +799,11 @@ carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
 imports no act, and `FactChange` is `games/reads/fact_change.py`.
 
-**Multi-game LegacyPurchase is *unsplittable* bundle** (until P5) — one price, whole-purchase
-refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
-Steam cart) modeled as **separate single-game purchases**: add-purchase form's
-"separate price per game" mode (≥2 games) creates them, and row's **Split** action
-breaks existing bundle into per-game purchases (price split evenly as starting
-point). That why per-game refund/price need no through-model — each refundable
-unit is its own LegacyPurchase.
+**A purchase buys one copy** — the conversion split every legacy bundle
+into one purchase per game, cents split, so each refundable unit is its own
+row and needs no through-model. The legacy add form's "separate price per
+game" mode and the **Split** route still write `LegacyPurchase` rows until
+P5b; no list links to Split any more.
 
 **Unset platform/device is NULL**: `Game.platform`, `LegacyPurchase.platform`,
 `PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
@@ -896,8 +895,9 @@ Submodules re-exported via `common/components/__init__.py`:
   `paginated_table_content()`, `AddForm()`, `YearPicker()`,
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
 - **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
-  (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
-  `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
+  (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto),
+  `NameWithIcon()`, `PriceConverted()`, `PurchaseName()`, `PurchaseAmount()`
+  (refuses a row without its valuation alias)
 - **`filters.py`** — filter widget layer: criterion-blob parse helpers
   (`_*_from_field`, `_choice_from_raw`, `parse_filter_dict`), widget builders
   (`StringFilter`, `NumberFilter`, `_bool_control`, the `FilterSelect` adapters),

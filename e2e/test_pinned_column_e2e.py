@@ -354,7 +354,7 @@ def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
     """The defect this phase had to solve: a panel nested in a sticky cell is
     scoped to that cell's stacking context, so later rows paint over it.
 
-    Purchases renders its first cell through `LinkedPurchase` → `TruncatedText`
+    Purchases renders its first cell through `PurchaseName` → `TruncatedText`
     with `reveal="auto"`, so the tooltip exists only while the name is actually
     clipped — which the long fixture name guarantees at this width.
     """

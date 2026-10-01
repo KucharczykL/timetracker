@@ -242,7 +242,7 @@ class GameFilter(OperatorFilter):
     # on `timing_mode` narrows it to one mode's share.
     session_playtime_hours: AggregateCriterion | None = None
 
-    # Cross-entity: sum of the game's purchase prices (converted)
+    # Cross-entity: sum of the game's purchase valuations
     purchase_price_total: AggregateCriterion | None = None  # sum of valuations
 
     # Free-text search (combines name + sort_name + platform name)
@@ -1294,7 +1294,7 @@ def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
 
     The nested filter builder element carries ``model = Model._meta.model_name``;
     every filter in this module is named ``{Model.__name__}Filter``. So
-    ``"game" → Game → GameFilter``. Raises ``LookupError`` for an unknown model and
+    ``"game" → Game → GameFilter``. Raises ``LookupError`` for an unknown or retired model and
     ``KeyError`` if a model has no matching filter class.
     """
     from django.apps import apps
