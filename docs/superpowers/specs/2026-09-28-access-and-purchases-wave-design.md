@@ -166,9 +166,21 @@ its game's, and the swap's refusal sentence can name either.
 
 ### Purchase
 
-`Purchase` becomes an aggregate, stream `library.purchase`, on the same
-table and the same UUIDs; the projection is swapped in place, never
-re-minted.
+`Purchase` becomes an aggregate, stream `library.purchase`, keeping the
+same UUIDs. The legacy row cannot become the projection in place: a
+`ProjectionModel` fails `games.E001`/`E002`/`E005`/`E009` on the legacy
+columns, its mark is `remove()`'s rather than a projector's, the M2M
+through table points into it, and its rows hold no events, so a rebuild
+would drop them. So P1 renames the incumbent: the legacy class becomes
+`LegacyPurchase` on `games_legacypurchase` (`AlterModelTable`, the
+through table following, the sample fixture relabelled mechanically),
+and the new `Purchase` is born on `games_purchase` in its final shape.
+Every reader keeps reading `LegacyPurchase` until P5 switches it; P4's
+pass writes one `purchase.created` per (legacy row, game), under the
+legacy UUID for the first game in key order and uuid5 over (legacy id,
+game id) for the rest of a bundle; P5 drops `LegacyPurchase`, its
+tables and every legacy reader, with no rename at the cutover. The
+stack stays one merge, so `main` never holds both.
 
 | Column | Meaning |
 |---|---|
@@ -690,11 +702,11 @@ backlog reads M7's edition word.
 | M3 (merged, stack #1379: PRs #1377, #1378, #1380, 2026-09-30) | #1352 | the Library screens: Add to library, Game detail's Library section with its inline acts, the end and resume pages with one-click Undo; the Library tab, `LibraryEntryFilter`, presets, bulk Edit and Remove; the Games tab's Access column and facets |
 | M7 (merged, PR #1390, 2026-09-30) | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, `<game-addon>`, `state_addon`, Game detail's Add-ons section and "Add-on of" row, the Games list's main-only base, Kind facet and column, the every-kind clause on links |
 | M8 (merged, PR #1397, 2026-09-30) | #1334 | `excluded_from_dropped` and its bulk Edit field, the Visibility group |
-| P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
+| P1 | #725, #726, #828 | the incumbent renamed `LegacyPurchase`; the Purchase aggregate born on `games_purchase`: projection, creation with an entry, description, day correction, removal, API; no reader switched |
 | P2 | #727 | refund endpoints and the coupled entry end |
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
-| P4 | #723, #730, #731, #732, #733 | the conversion pass, `verify-purchase-conversion`, the reconciliation |
-| P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface, the legacy columns and the float writer dropped |
+| P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, ids kept, `verify-purchase-conversion`, the reconciliation |
+| P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface; `LegacyPurchase`, its tables, every legacy route and reader and the float writer dropped |
 
 Each member passes the full gate on its own against a fresh database.
 Each gets its own specification and plan before code. An issue delivered
