@@ -200,8 +200,8 @@ def test_personal_settings_persist_and_drive_consumers(
     )
     expect(page.locator('select[name="default_page_size"]')).to_have_value("50")
 
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    expect(page.locator('input[name="price_currency"]')).to_have_value("EUR")
+    page.goto(f"{live_server.url}{reverse('games:add_to_library')}")
+    expect(page.locator('input[name="currency"]')).to_have_value("EUR")
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     expect(page.locator('input[name="device"][type="hidden"]')).to_have_value(
         str(preferred.pk)

@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
-from django.contrib.auth.models import User
 from django.db.models import Q, QuerySet
 from django.forms.models import ModelChoiceIterator
 from django.http import QueryDict
@@ -82,7 +81,6 @@ from games.models import (
     GameKind,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
-    LegacyPurchase,
     Platform,
     PlayerGame,
     PlayerGameStatus,
@@ -97,7 +95,6 @@ from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
 from games.writes.playersession import latest_ordinary_run
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
-from timetracker.settings_resolver import resolve_str_for_user
 from timetracker.temporal import (
     EMPTY_TEMPORAL_DRAFT_DATA,
     TemporalDraft,
@@ -381,19 +378,11 @@ def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
-def _platform_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
-    return [
-        {"value": p.id, "label": p.name, "data": {}}
-        for p in Platform.objects.visible_to(library).filter(pk__in=values)
-    ]
-
-
 #: Where a picker searches a library's devices.
 DEVICE_SEARCH_URL = "/api/devices/search"
 
 #: Where a picker makes the row a person typed.
 DEVICE_CREATE_URL = "/api/devices/"
-PLATFORM_CREATE_URL = "/api/platforms/"
 PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
@@ -1959,150 +1948,6 @@ def _record_initial(
         "emulated": record.emulated,
         "note": record.note,
     }
-
-
-class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(
-        self,
-        *args,
-        library: UserLibrary,
-        user: User,
-        presentation: DateTimePresentation,
-        **kwargs,
-    ):
-        self.library = library
-        self.default_currency = resolve_str_for_user(user, "DEFAULT_PURCHASE_CURRENCY")
-        super().__init__(*args, **kwargs)
-        self.instance.library = library
-        games = Game.objects.for_library(library).in_display_order()
-        visible_platforms = Platform.objects.visible_to(library).order_by("name")
-        cast(forms.ModelMultipleChoiceField, self.fields["games"]).queryset = games
-        self.fields["games"].widget.options_resolver = partial(
-            _game_options, library=library
-        )
-        cast(forms.ModelChoiceField, self.fields["related_game"]).queryset = games
-        self.fields["related_game"].widget.options_resolver = partial(
-            _game_options, library=library
-        )
-        platform_field = cast(forms.ModelChoiceField, self.fields["platform"])
-        platform_field.queryset = visible_platforms
-        platform_field.widget.options_resolver = partial(
-            _platform_options, library=library
-        )
-        # The bundle Price is optional: in price-per-game mode it is hidden and
-        # the per-game inputs carry the prices instead. Empty falls back to 0.
-        self.fields["price"].required = False
-        # A new row already carries a key, so adding is what tells the two
-        # apart. The model default renders as a literal "0", and typing at
-        # the autofocused caret would append to it.
-        if self.instance._state.adding:
-            self.initial["price"] = None
-        if not self.initial.get("price_currency"):
-            self.initial["price_currency"] = self.default_currency
-        self.fields["price_currency"].widget.attrs["placeholder"] = (
-            self.default_currency
-        )
-        for field_name in ("date_purchased", "date_refunded"):
-            self.fields[field_name].widget = DatePickerWidget(
-                presentation=presentation,
-                label=str(self.fields[field_name].label or field_name),
-            )
-
-    games = MultipleGameChoiceField(
-        queryset=Game.objects.in_display_order(),
-        widget=SearchSelectMultiple(
-            search_url="/api/games/search",
-            options_resolver=_game_options,
-            multi_select=True,
-            autofocus=True,
-        ),
-    )
-    platform = forms.ModelChoiceField(
-        queryset=Platform.objects.order_by("name"),
-        required=False,
-        widget=SearchSelectWidget(
-            search_url="/api/platforms/search",
-            options_resolver=_platform_options,
-            create=PostCreate(PLATFORM_CREATE_URL),
-            none_label="Unspecified",
-        ),
-    )
-    related_game = forms.ModelChoiceField(
-        queryset=Game.objects.in_display_order(),
-        required=False,
-        widget=SearchSelectWidget(
-            search_url="/api/games/search", options_resolver=_game_options
-        ),
-        label="Base game",
-    )
-
-    price_currency = forms.CharField(
-        required=False,
-        widget=forms.TextInput(
-            attrs={
-                "x-mask": "aaa",
-                # placeholder is set in __init__ from the caller's user context.
-                "x-data": "",
-                "class": "uppercase",
-            }
-        ),
-        label="Currency",
-    )
-
-    class Meta:
-        # date_purchased/date_refunded get DatePickerWidget in __init__
-        # (needs the per-request presentation, unavailable to a class body).
-        model = LegacyPurchase
-        fields = (
-            "games",
-            "platform",
-            "date_purchased",
-            "date_refunded",
-            "infinite",
-            "price",
-            "price_currency",
-            "ownership_type",
-            "type",
-            "related_game",
-            "name",
-        )
-
-    def clean(self):
-        cleaned_data = super().clean()
-        purchase_type = cleaned_data.get("type")
-        related_game = cleaned_data.get("related_game")
-        name = cleaned_data.get("name")
-
-        # Set the type on the instance to use get_type_display()
-        # This is safe because we're not saving the instance.
-        self.instance.type = purchase_type
-
-        if purchase_type != LegacyPurchase.GAME:
-            type_display = self.instance.get_type_display()
-            if not related_game:
-                self.add_error(
-                    "related_game",
-                    f"{type_display} must have a related game.",
-                )
-            if not name:
-                self.add_error("name", f"{type_display} must have a name.")
-
-        # An empty bundle Price (price-per-game mode) saves as 0, not NULL.
-        if cleaned_data.get("price") is None:
-            cleaned_data["price"] = 0
-        if not cleaned_data.get("price_currency"):
-            cleaned_data["price_currency"] = self.default_currency
-
-        return cleaned_data
-
-
-class IncludeNameSelect(forms.Select):
-    def create_option(self, name, value, *args, **kwargs):
-        option = super().create_option(name, value, *args, **kwargs)
-        if value:
-            option["attrs"]["data-name"] = value.instance.name
-            option["attrs"]["data-year"] = value.instance.year_released
-        return option
 
 
 class _LibraryBoundConstraintValidationMixin:

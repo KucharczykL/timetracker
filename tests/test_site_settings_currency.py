@@ -12,6 +12,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.models import Game, LegacyPurchase, Platform, UserPreferences
+from games.purchase_forms import PurchaseAddForm
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_site_setting
@@ -51,45 +52,35 @@ def _set_currency(callbacks, key, value):
         change_site_setting(key, value)
 
 
+def _purchase_form(user) -> PurchaseAddForm:
+    return PurchaseAddForm(
+        library=user.library, presentation=_PRESENTATION, today=date(2025, 1, 1)
+    )
+
+
 def test_purchase_form_preselection_tracks_live_entry_currency(
     user, clean_currency_env, django_capture_on_commit_callbacks
 ):
-    from games.forms import PurchaseForm
-
     _set_currency(
         django_capture_on_commit_callbacks,
         "DEFAULT_PURCHASE_CURRENCY",
         "EUR",
     )
-    form = PurchaseForm(
-        library=user.library,
-        user=user,
-        presentation=_PRESENTATION,
-    )
-    assert form.initial["price_currency"] == "EUR"
-    assert form.fields["price_currency"].widget.attrs["placeholder"] == "EUR"
+    form = _purchase_form(user)
+    assert form.initial["currency"] == "EUR"
+    assert form.fields["currency"].widget.attrs["placeholder"] == "EUR"
 
 
 def test_purchase_form_uses_personal_entry_currency(user, clean_currency_env):
-    from games.forms import PurchaseForm
-
     UserPreferences.objects.filter(user=user).update(default_purchase_currency="GBP")
     settings_resolver.clear_cache()
 
-    form = PurchaseForm(
-        library=user.library,
-        user=user,
-        presentation=_PRESENTATION,
-    )
-
-    assert form.initial["price_currency"] == "GBP"
+    assert _purchase_form(user).initial["currency"] == "GBP"
 
 
-def test_purchase_form_requires_explicit_library_and_user_context(db):
-    from games.forms import PurchaseForm
-
+def test_purchase_form_requires_explicit_library_context(db):
     with pytest.raises(TypeError):
-        PurchaseForm(presentation=_PRESENTATION)
+        PurchaseAddForm(presentation=_PRESENTATION, today=date(2025, 1, 1))
 
 
 def test_purchase_model_never_resolves_a_hidden_currency(user):
@@ -132,12 +123,3 @@ def test_convert_prices_targets_display_currency(
     purchase.refresh_from_db()
     assert purchase.converted_currency == "EUR"
     assert purchase.converted_price == 50
-
-
-def test_the_purchase_platform_offers_to_make_a_platform(user, clean_currency_env):
-    """A platform the library lacks is made from the picker."""
-    from games.forms import PurchaseForm
-
-    form = PurchaseForm(library=user.library, user=user, presentation=_PRESENTATION)
-
-    assert 'create-url="/api/platforms/"' in str(form["platform"])

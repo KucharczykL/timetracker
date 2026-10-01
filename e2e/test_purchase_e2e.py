@@ -1,105 +1,15 @@
-"""Browser tests for the purchase pricing UX and the split action.
+"""The purchase segment, the copy's refund, and name tooltips."""
 
-- A synthetic page isolates the general ``selection-fields`` element (no API,
-  deterministic option values), mirroring ``test_search_select_e2e.py``.
-- The real-app tests drive the actual add-purchase form and the split and
-  refund confirmation pages against pytest-django's ``live_server``.
-"""
+from decimal import Decimal
 
 import pytest
-from django.http import HttpResponse
-from django.test import override_settings
-from django.urls import path, reverse
+from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from playwright.sync_api import Page, expect
+from purchases import record_purchase
 
-from common.components import SearchSelect, SelectionFields
-from games.models import Game, Platform
-
-
-def selection_fields_view(request):
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script type="module" src="/static/js/dist/elements/search-select.js"></script>
-        <script type="module" src="/static/js/dist/elements/selection-fields.js"></script>
-    </head>
-    <body>
-        <div style="padding: 50px;">
-            {
-        SearchSelect(
-            name="games",
-            selected=[],
-            options=[
-                {"value": "7", "label": "Game A", "data": {}},
-                {"value": "8", "label": "Game B", "data": {}},
-            ],
-            multi_select=True,
-        )
-    }
-            {
-        SelectionFields(
-            source="games",
-            name_prefix="price_for_game_",
-            field_type="number",
-            min_items=2,
-            active=True,
-        )
-    }
-        </div>
-    </body>
-    </html>
-    """
-    return HttpResponse(html)
-
-
-urlpatterns = [
-    path("sf-test/", selection_fields_view),
-]
-
-
-@pytest.mark.django_db
-@override_settings(ROOT_URLCONF="e2e.test_purchase_e2e")
-def test_selection_fields_syncs_with_source(live_server, page: Page):
-    page.goto(live_server.url + "/sf-test/")
-
-    games = page.locator('search-select[name="games"]')
-    rows = page.locator("selection-fields [data-selection-fields-rows] input")
-
-    # Below min_items (2): nothing rendered.
-    expect(rows).to_have_count(0)
-
-    games.locator("[data-search-select-search]").click()
-    games.locator('[data-search-select-option][data-value="7"]').click()
-    expect(rows).to_have_count(0)  # only one selected, still below min_items
-
-    games.locator("[data-search-select-search]").click()
-    games.locator('[data-search-select-option][data-value="8"]').click()
-    expect(rows).to_have_count(2)
-
-    # One input per item, named by the prefix + item id.
-    expect(
-        page.locator('selection-fields input[name="price_for_game_7"]')
-    ).to_have_count(1)
-    expect(
-        page.locator('selection-fields input[name="price_for_game_8"]')
-    ).to_have_count(1)
-
-    # Typed values survive removing and re-adding another item.
-    page.locator('selection-fields input[name="price_for_game_7"]').fill("12")
-    games.locator('[data-pill][data-value="8"] [data-pill-remove]').click()
-    expect(rows).to_have_count(0)
-    games.locator("[data-search-select-search]").click()
-    games.locator('[data-search-select-option][data-value="8"]').click()
-    expect(rows).to_have_count(2)
-    expect(
-        page.locator('selection-fields input[name="price_for_game_7"]')
-    ).to_have_value("12")
-
-    # The × empties every pill at once; no row outlives them.
-    games.get_by_role("button", name="Clear").click()
-    expect(games.locator("[data-pill]")).to_have_count(0)
-    expect(rows).to_have_count(0)
+from games.models import Game, Platform, Purchase
 
 
 @pytest.fixture
@@ -112,124 +22,63 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     return page
 
 
-def _select_two_games(page: Page) -> None:
-    games = page.locator('search-select[name="games"]')
-    games.locator("[data-search-select-search]").click()
-    options = games.locator("[data-search-select-option]")
-    expect(options).to_have_count(2)  # prefetched on focus
-    options.nth(0).click()
-    options.nth(1).click()
-
-
-def test_add_purchase_per_game_toggle_reveals_inputs(
+def test_the_price_segment_shows_only_the_rows_it_reads(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """The combined/per-game toggle appears only at 2+ games; turning it on
-    hides the bundle Price and shows one price input per selected game.
-    (Server-side creation of N purchases is covered by the unit tests.)"""
+    game = default_graph(Game(library=e2e_library, name="Tunic"), e2e_library).game
     page = authenticated_page
-    platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="steam", group="PC"
+    page.goto(f"{live_server.url}{reverse('games:add_library_entry', args=[game.pk])}")
+    amount = page.locator('[data-field-row="amount"]')
+    currency = page.locator('[data-field-row="currency"]')
+
+    expect(amount).to_be_visible()
+    expect(currency).to_be_visible()
+    page.get_by_label("Free", exact=True).check()
+    expect(amount).to_be_hidden()
+    expect(currency).to_be_visible()
+    page.get_by_label("No purchase", exact=True).check()
+    expect(amount).to_be_hidden()
+    expect(currency).to_be_hidden()
+
+    page.get_by_label("Paid", exact=True).check()
+    page.locator('input[name="amount"]').fill("24.50")
+    page.locator('input[name="currency"]').fill("EUR")
+    with page.expect_navigation():
+        page.get_by_role("button", name="Add to library", exact=True).click()
+
+    purchase = Purchase.objects.get(entry__player_game__game=game)
+    assert (purchase.amount, purchase.currency) == (Decimal("24.50"), "EUR")
+
+
+def test_the_copy_menu_refunds_and_undo_takes_it_back(
+    authenticated_page: Page, live_server, e2e_library
+):
+    ps5 = Platform.objects.create(name="PS5", group="Sony")
+    graph = default_graph(
+        Game(library=e2e_library, name="Tunic"), e2e_library, platform=ps5
     )
-    Game.objects.create(library=e2e_library, name="Alpha Game", platform=platform)
-    Game.objects.create(library=e2e_library, name="Beta Game", platform=platform)
+    purchase = record_purchase(record_entry(e2e_library, graph.release))
+    page = authenticated_page
+    page.goto(f"{live_server.url}{graph.game.get_absolute_url()}")
+    page.wait_for_function("() => !!customElements.get('drop-down')")
 
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    page.get_by_role("button", name="Tunic (PS5) actions").click()
+    page.get_by_role("menuitem", name="Bought · 19.99 EUR").hover()
+    with page.expect_navigation():
+        page.get_by_role("menuitem", name="Refund").click()
 
-    checkbox_row = page.locator("#separate-prices-row")
-    expect(checkbox_row).to_be_hidden()
-
-    _select_two_games(page)
-    expect(checkbox_row).to_be_visible()
-
-    page.locator("#id_separate_prices").check()
-    expect(page.locator("#id_price")).to_be_hidden()
-    per_game_inputs = page.locator(
-        "selection-fields [data-selection-fields-rows] input"
-    )
-    expect(per_game_inputs).to_have_count(2)
-
-
-def _platform_autofill_page(page: Page, live_server, library):
-    personal_computer = Platform.objects.create(
-        library=library, name="PC", icon="steam", group="PC"
-    )
-    switch = Platform.objects.create(
-        library=library, name="Switch", icon="gog", group="Nintendo"
-    )
-    Game.objects.create(library=library, name="Alpha Game", platform=personal_computer)
-    Game.objects.create(library=library, name="Beta Game", platform=switch)
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    # Leaving Games early aborts its prefetch.
     expect(
-        page.locator('search-select[name="games"] [data-search-select-option]')
-    ).to_have_count(2)
-    platform = page.locator('search-select[name="platform"]')
-    return platform, platform.locator("[data-search-select-search]")
+        page.locator("#library").get_by_text("Nothing in your library")
+    ).to_be_visible()
+    purchase.refresh_from_db()
+    assert purchase.refund_recorded_at is not None
 
+    with page.expect_navigation():
+        page.locator("toast-stack").get_by_role("button", name="Undo").click()
 
-def _pick_game(page: Page, name: str) -> None:
-    games = page.locator('search-select[name="games"]')
-    # A click into a focused box opens nothing.
-    page.locator("#id_price").focus()
-    games.locator("[data-search-select-search]").click()
-    games.locator("[data-search-select-option]", has_text=name).click()
-
-
-def test_platform_follows_the_games_until_the_person_picks(
-    authenticated_page: Page, live_server, e2e_library
-):
-    page = authenticated_page
-    platform, platform_search = _platform_autofill_page(page, live_server, e2e_library)
-    expect(platform_search).to_have_value("Unspecified")
-
-    _pick_game(page, "Alpha Game")
-    expect(platform_search).to_have_value("PC")
-    _pick_game(page, "Beta Game")
-    expect(platform_search).to_have_value("Switch")
-
-    platform_search.click()
-    platform.get_by_role("option", name="Unspecified").click()
-    expect(platform_search).to_have_value("Unspecified")
-    games = page.locator('search-select[name="games"]')
-    games.locator("[data-pill-remove]").first.click()
-    _pick_game(page, "Alpha Game")
-    expect(platform_search).to_have_value("Unspecified")
-
-
-def test_clearing_the_platform_keeps_it_unspecified(
-    authenticated_page: Page, live_server, e2e_library
-):
-    page = authenticated_page
-    platform, platform_search = _platform_autofill_page(page, live_server, e2e_library)
-    _pick_game(page, "Alpha Game")
-    expect(platform_search).to_have_value("PC")
-    platform.get_by_role("button", name="Clear").click()
-    expect(platform_search).to_have_value("Unspecified")
-    _pick_game(page, "Beta Game")
-    expect(platform_search).to_have_value("Unspecified")
-
-
-def test_a_hand_picked_platform_stays(
-    authenticated_page: Page, live_server, e2e_library
-):
-    page = authenticated_page
-    platform, platform_search = _platform_autofill_page(page, live_server, e2e_library)
-    platform_search.click()
-    platform.locator("[data-search-select-option]", has_text="Switch").click()
-    _pick_game(page, "Alpha Game")
-    expect(platform_search).to_have_value("Switch")
-
-
-def test_a_keystroke_leaves_the_platform_to_autofill(
-    authenticated_page: Page, live_server, e2e_library
-):
-    page = authenticated_page
-    _platform, platform_search = _platform_autofill_page(page, live_server, e2e_library)
-    platform_search.click()
-    page.keyboard.type("P")
-    _pick_game(page, "Alpha Game")
-    expect(platform_search).to_have_value("PC")
+    expect(page.locator("#library [data-summary-detail]")).to_contain_text("Bought")
+    purchase.refresh_from_db()
+    assert purchase.refund_recorded_at is None
 
 
 @pytest.fixture

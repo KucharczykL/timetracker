@@ -9,7 +9,6 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.forms import PurchaseForm
 from games.models import Game, LegacyPurchase
 
 #: A stated day; nothing counts by day.
@@ -130,45 +129,6 @@ def test_database_rejects_a_purchase_naming_a_game_uuid_no_game_owns(owned_libra
     orphan.related_game_id = uuid.uuid4()
     with pytest.raises(IntegrityError), transaction.atomic():
         LegacyPurchase.objects.bulk_create([orphan])
-
-
-# --- Form identity ------------------------------------------------------------
-
-
-def test_purchaseform_preselects_the_base_game_by_integer_id(
-    owned_user, owned_library, base_game, dlc_purchase
-):
-    form = PurchaseForm(
-        instance=dlc_purchase,
-        library=owned_library,
-        user=owned_user,
-        presentation=PRESENTATION,
-    )
-    assert form["related_game"].value() == base_game.id
-
-
-def test_purchaseform_posting_an_identity_saves_the_right_base_game(
-    owned_user, owned_library, base_game, other_game, dlc_purchase
-):
-    form = PurchaseForm(
-        {
-            "games": [other_game.id],
-            "date_purchased": "2026-01-01",
-            "price": "1",
-            "price_currency": "USD",
-            "ownership_type": LegacyPurchase.DIGITAL,
-            "type": LegacyPurchase.DLC,
-            "related_game": str(base_game.id),
-            "name": "Expansion",
-        },
-        instance=dlc_purchase,
-        library=owned_library,
-        user=owned_user,
-        presentation=PRESENTATION,
-    )
-    assert form.is_valid(), form.errors
-    saved = form.save()
-    assert saved.related_game_id == base_game.pk
 
 
 # --- Deferred many-to-many ----------------------------------------------------

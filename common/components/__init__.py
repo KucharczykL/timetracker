@@ -51,7 +51,6 @@ from common.components.custom_elements import (
     ListboxPanel,
     RowActionMenu,
     SelectDropdown,
-    SelectionFields,
     SplitButtonDropdown,
     register_element,
 )
@@ -499,7 +498,6 @@ __all__ = [
     "SelectTyped",
     "SelectionAction",
     "SelectionDeclaration",
-    "SelectionFields",
     "SelectionLine",
     "SessionDeviceSelector",
     "SettingFieldState",

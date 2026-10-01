@@ -7,7 +7,6 @@ from model_schema_scan import models_covered
 from ninja import ModelSchema
 
 from games import api as api_module
-from games.forms import PurchaseForm
 from games.models import LegacyPurchase
 from timetracker.uuidv7 import UUIDv7Field
 
@@ -89,13 +88,6 @@ def test_database_rejects_a_duplicate_purchase_uuid(owned_library):
 def test_database_rejects_a_non_v7_purchase_uuid(owned_library):
     with pytest.raises(IntegrityError), transaction.atomic():
         make_purchase(owned_library, name="Bad", id=uuid.uuid4())
-
-
-# --- Invisibility ------------------------------------------------------------
-
-
-def test_uuid_is_absent_from_purchase_form_fields():
-    assert "uuid" not in PurchaseForm.base_fields
 
 
 def test_no_model_schema_generates_fields_from_purchase():

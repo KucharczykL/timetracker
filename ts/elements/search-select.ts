@@ -49,7 +49,7 @@ const NAVIGABLE_ROWS =
 const HELD_VALUE_INPUTS = 'input[type="hidden"]:not([data-search-select-none])';
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
-// Consumers (e.g. add_purchase.ts) import these types — never redefine them.
+// Consumers import these types — never redefine them.
 export interface SearchSelectOption {
   value: string;
   label: string;

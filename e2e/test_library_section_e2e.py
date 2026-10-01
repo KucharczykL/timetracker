@@ -86,6 +86,7 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     assert response_info.value.status == 201
     created = Release.objects.get(edition__game=game, platform=switch)
     page.get_by_label("Physical").check()
+    page.get_by_label("No purchase").check()
     _submit(page, "Add to library")
 
     expect(page.get_by_text("Added to your library.")).to_be_visible()
@@ -187,6 +188,7 @@ def test_the_add_page_searches_releases_again_when_the_game_changes(
     held = releases.locator('[data-search-select-pills] input[type="hidden"]')
     expect(held).to_have_value(str(Release.objects.get(edition__game=hades).pk))
 
+    page.get_by_label("No purchase").check()
     _submit(page, "Add to library")
 
     expect(page.get_by_text("Added to your library.")).to_be_visible()

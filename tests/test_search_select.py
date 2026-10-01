@@ -1421,12 +1421,11 @@ class NoneLabelWidgetTest(unittest.TestCase):
     """Optional pickers hold none."""
 
     def test_each_optional_picker_holds_none(self):
-        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+        from games.forms import HistoricalPlaytimeForm, SessionForm
 
         cases = [
             (SessionForm, "device", "No device"),
             (HistoricalPlaytimeForm, "device", "No device"),
-            (PurchaseForm, "platform", "Unspecified"),
         ]
         for form_class, name, label in cases:
             with self.subTest(form=form_class.__name__, field=name):
@@ -1454,12 +1453,11 @@ class NoneLabelWidgetTest(unittest.TestCase):
             str(DeviceForm()["device"])
 
     def test_none_and_nothing_picked_both_clean_to_none(self):
-        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+        from games.forms import HistoricalPlaytimeForm, SessionForm
 
         for form_class, name in (
             (SessionForm, "device"),
             (HistoricalPlaytimeForm, "device"),
-            (PurchaseForm, "platform"),
         ):
             field = form_class.base_fields[name]
             for data in ({name: ""}, {}):
