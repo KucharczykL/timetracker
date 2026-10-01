@@ -1,5 +1,6 @@
 """The legacy rename, forward and back."""
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -77,4 +78,27 @@ def test_the_rate_copy_runs_both_ways():
     finally:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM games_exchangerate WHERE year = 1999")
+        _migrate(latest)
+
+
+@pytest.mark.untracked_games
+def test_the_purchase_conversion_runs_over_legacy_rows(owned_library, stated_graph):
+    from games.models import Game, LegacyPurchase, Purchase
+
+    (latest,) = MigrationExecutor(connection).loader.graph.leaf_nodes("games")
+    try:
+        _migrate(("games", "0030_purchasevaluation"))
+        game = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+        row = LegacyPurchase.objects.create(
+            library=owned_library,
+            date_purchased=date(2021, 5, 3),
+            price=10.0,
+            price_currency="EUR",
+        )
+        row.games.add(game.game)
+
+        _migrate(("games", "0031_purchase_conversion"))
+
+        assert Purchase.objects.get(pk=row.pk).amount == Decimal("10.00")
+    finally:
         _migrate(latest)
