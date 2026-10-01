@@ -1,4 +1,4 @@
-"""The purchase segment, the copy's refund, and name tooltips."""
+"""Price segment, copy refund, name tooltips."""
 
 from decimal import Decimal
 

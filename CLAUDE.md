@@ -191,9 +191,8 @@ docs/           — Additional documentation
 - **LegacyPurchase** — the old purchase row, on `games_legacypurchase`
   until P5 deletes it; `verbose_name` "purchase", so screens still say so.
   No list, filter or statistic reads it, and the builder refuses
-  `legacypurchase`. The legacy write routes (linked from no list),
-  `view_purchase`, the currency task, the signals, the sample tools
-  and the two verify commands still do. Ownership type, prices,
+  `legacypurchase`; no route writes it. The currency task, the
+  signals, the sample tools and the two verify commands still read it. Ownership type, prices,
   currency conversion (`converted_price`, `price_per_game` is a
   `GeneratedField`), M2M to Game. `num_purchases` counts linked games.
   DLC/SeasonPass/BattlePass must have `related_game`. Its relations
@@ -574,8 +573,11 @@ docs/           — Additional documentation
   Release alone, derives the game, tracks an untracked one in the same
   dispatch through `tracking_events`), `DescribeEntry`,
   `CorrectEntryAcquisition`, `RemoveEntry` (asks `blocking_referrer` and
-  `foreign_referrer`; a live `Purchase` blocks it), `RestoreEntry`
-  (refuses under a removed Release) in `games/commands/libraryentry.py`;
+  `foreign_referrer`; it removes the copy's purchases in the same
+  dispatch, since `Purchase.entry` is a `cascades=True` referrer),
+  `RestoreEntry` (refuses under a removed Release; restores the
+  purchases whose latest removal shares the copy's key,
+  `cascaded_purchase_ids`) in `games/commands/libraryentry.py`;
   request-free half `games/writes/libraryentry.py`, whose `record_entry`
   reads the entry id off `dispatched_events` because the creation may
   follow the tracking pair, and whose `restate_entry` describes first,
@@ -672,6 +674,15 @@ docs/           — Additional documentation
   else the legacy converted share) beside the standing ones. `purchase_creation_events`
   and `release_on` are the extracted halves. Contract is
   [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
+  #724 (P5b) moves every purchase write onto the projection. Add to
+  library states the game's purchase with the copy (`PriceFields`,
+  `games/price_fields.py`: Paid, Free, Unknown, No purchase); Add and
+  Edit purchase live in `games/purchase_forms.py`; Refund is one click
+  through `refund_purchase`, its Undo checked by `latest_refund_act`.
+  Game detail lists each held copy's live, unrefunded purchases
+  (`held_purchases`), and the copy's menu carries their acts
+  (`games/views/purchase_menu.py`). Contract is
+  [Every purchase write](docs/superpowers/specs/2026-10-01-issue-724-purchase-writes-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
 `games/endpoints.py` names its columns and three events (stated,
@@ -801,9 +812,7 @@ imports no act, and `FactChange` is `games/reads/fact_change.py`.
 
 **A purchase buys one copy** — the conversion split every legacy bundle
 into one purchase per game, cents split, so each refundable unit is its own
-row and needs no through-model. The legacy add form's "separate price per
-game" mode and the **Split** route still write `LegacyPurchase` rows until
-P5b; no list links to Split any more.
+row and needs no through-model.
 
 **Unset platform/device is NULL**: `Game.platform`, `LegacyPurchase.platform`,
 `PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
@@ -1192,7 +1201,7 @@ No template renders at runtime; UI is Python components.
 
 ### Frontend stack
 
-- **Alpine.js** (vendored) — three `x-mask` inputs in the session, purchase and
+- **Alpine.js** (vendored) — three `x-mask` inputs in the session, price and
   settings forms, nothing else; the toasts and both domain selectors are custom elements
 - **Flowbite** — its CSS theme and semantic tokens still in use; legacy
   `flowbite.min.js` bundle is vendored static asset only
@@ -1354,7 +1363,7 @@ artifact absent; `make check`/`make test` order `test-ts` first.
 Chrome/Chromium (see env section); otherwise `uv run playwright install
 chromium` once. All JS vendored, so tests run fully offline. Bare `make test`
 collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.py`
-(onReady lifecycle, FilterSelect/RangeSlider/add-purchase),
+(onReady lifecycle, FilterSelect/RangeSlider),
 `test_search_select_e2e.py` (single-select edge cases on synthetic page).
 
 ## Conventions for AI assistants
@@ -1505,6 +1514,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   (`games/forms.py`, which stamps `INPUT/SELECT/TEXTAREA_CLASS` incl. `disabled:`
   variants by widget type, skipping SearchSelect + checkbox). Every form on this
   path, including login. `extras` appends node into named field's row.
+  A row shown by a choice states it in CSS: `FormFieldGroup.class_` names a
+  Tailwind group, `FormFieldPresentation.row_class` reads it, as literals.
 - **Disabled form controls share one look** via constants in `primitives.py` —
   `DISABLED_CONTROL_CLASS` (`disabled:opacity-50 disabled:cursor-not-allowed`, on
   control itself) and `DISABLED_WITHIN_CLASS` (the `has-[:disabled]:` wrapper
@@ -1526,7 +1537,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   one fails unless marked `draws_unknown_icon` (`tests/icon_names.py`). Never
   edit `icons_generated.py` by hand.
 - **Inline Alpine.js** remains only as three `x-mask` inputs
-  (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
+  (`games/forms.py`, `games/price_fields.py`, `games/settings_forms.py`), each with the empty `x-data`
   scope the plugin needs. New
   behavior goes in custom element.
 - **Nothing destroys a record** — call `remove()`/`restore()` from

@@ -305,8 +305,7 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("autofocus", self._element_with_id(html, "id_game"))
 
     def test_cold_add_forms_keep_game_autofocus(self):
-        """Opened from the main menu (no game_id), the Game field keeps focus
-        and the chained target does not steal it."""
+        """Opened cold, the Game field keeps focus."""
         session_html = self.get("games:add_session").content.decode()
         self.assertIn("autofocus", self._element_with_id(session_html, "id_game"))
         self.assertNotIn("autofocus", self._element_with_id(session_html, "id_device"))

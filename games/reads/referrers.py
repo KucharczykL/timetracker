@@ -160,7 +160,7 @@ def blocking_referrer(row: ProjectionModel) -> BlockingReferrer | None:
     Scoped on the library, as `_other_live_ordinary_runs` is: a
     person cannot act on advice about rows their library does not
     hold, so a foreign row is `foreign_referrer`'s to refuse.
-    A cascading member is the removal's to take.
+    The removal takes a cascading member.
     """
     for referrer in referrers_of(type(row)):
         if referrer.cascades:

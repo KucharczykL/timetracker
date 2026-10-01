@@ -253,11 +253,7 @@ def unremoved_purchase_ids(
 
 
 def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uuid.UUID]:
-    """Purchases the copy's latest removal took.
-
-    One dispatch stamps one key on every event,
-    so a purchase removed alone keeps another.
-    """
+    """Purchases the copy's latest removal took."""
     library = require_library(library)
     removal = (
         LibraryEvent.objects.filter(

@@ -219,7 +219,7 @@ def refund_purchase(
         )
     if result.sequences is None:
         return RefundedPurchase(sequence=None, copy_end=None)
-    #: A game refund appends the copy's end after.
+    #: The copy's end may follow.
     events = list(dispatched_events(result))
     refunded = next(
         event

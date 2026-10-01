@@ -472,7 +472,7 @@ class RestoreEntry(Command):
             return Unchanged(f"Entry {entry.pk} is already in this library.")
         _refuse_under_a_removed_game(entry)
         _refuse_a_removed_release(entry.release)
-        #: Built directly: RestorePurchase refuses under a removed copy.
+        #: RestorePurchase refuses under removed copies.
         return [
             libraryentry_restored(entry.pk),
             *(

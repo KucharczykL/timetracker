@@ -19,7 +19,7 @@ ROUTE_UUID = UUID("018f5e66-e800-7000-8000-000000000001")
 UUID4 = UUID("018f5e66-e800-4000-8000-000000000001")
 SUBMISSION = "01928e5e-4f6b-7c3a-8e9d-000000000001"
 
-#: Each route and its arguments beside the key.
+#: Each route, and arguments beside the key.
 PURCHASE_IDENTITY_ROUTES = [
     ("games:edit_purchase", {}),
     ("games:remove_purchase", {}),

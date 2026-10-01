@@ -1,4 +1,4 @@
-"""A purchase's price, as a form states it."""
+"""A purchase's price, as forms state it."""
 
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum

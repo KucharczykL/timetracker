@@ -1,5 +1,4 @@
-"""Browser tests for widget JavaScript (search_select.js, quick-filter-bar.js)
-and their onReady() initialization lifecycle.
+"""Widget scripts and their onReady() lifecycle.
 
 These run a real Chromium via pytest-playwright against pytest-django's
 ``live_server``. All JavaScript under test is served locally from
@@ -135,7 +134,7 @@ def test_widgets_initialize_inside_inserted_content(
 
 
 def _open_add_to_library(page: Page, live_server, library) -> None:
-    """A page holding a picker and native inputs."""
+    """A picker beside native inputs."""
     game = default_graph(Game(library=library, name="Tunic"), library).game
     page.goto(f"{live_server.url}{reverse('games:add_library_entry', args=[game.pk])}")
 
@@ -306,7 +305,7 @@ def test_add_game_sync_stops_once_sort_name_edited(
 def test_add_game_submit_and_add_to_library_redirects(
     authenticated_page: Page, live_server
 ):
-    """Submit & Add to library saves the game, then opens its Add to library."""
+    """Saves, then opens Add to library."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_game')}")
     page.fill("#id_name", "E2E Library Game")

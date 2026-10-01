@@ -1,4 +1,4 @@
-"""A refund under the caller's key, and its latest act."""
+"""A keyed refund and its latest act."""
 
 import uuid
 

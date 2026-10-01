@@ -95,10 +95,7 @@ def _copy_title(act: str, entry: LibraryEntry) -> str:
 
 
 def _record_copy(user: User, form: EntryAddForm) -> object:
-    """The copy, through its purchase where stated.
-
-    One key for both, so a repeat makes one copy.
-    """
+    """The copy, through its purchase if stated."""
     purchase = form.purchase_draft()
     if purchase is None:
         return record_entry(

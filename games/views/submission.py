@@ -10,5 +10,5 @@ SUBMISSION_FIELD = "submission"
 
 
 def submission_input() -> Node:
-    """A fresh key: a double press records once."""
+    """A fresh key; a repeat records once."""
     return Input(type="hidden", name=SUBMISSION_FIELD, value=str(uuid.uuid7()))

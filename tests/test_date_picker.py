@@ -277,7 +277,7 @@ class DatePickerTest(SimpleTestCase):
 
 
 class _DaysForm(forms.Form):
-    """A required day, an optional one, a name."""
+    """Two days and a name."""
 
     date_purchased = forms.DateField()
     date_refunded = forms.DateField(required=False)
@@ -292,9 +292,7 @@ class _DaysForm(forms.Form):
 
 
 class DatePickerWidgetFormTest(SimpleTestCase):
-    """Form-level integration: value_from_datadict, three profiles round-trip
-    identically to the cleaned date, blank-optional vs required validation,
-    and invalid-POST redisplay behavior."""
+    """Form round trip, validation, redisplay."""
 
     def _form(self, presentation=DEFAULT_PRESENTATION, **kwargs):
         return _DaysForm(presentation=presentation, **kwargs)
@@ -334,7 +332,7 @@ class DatePickerWidgetFormTest(SimpleTestCase):
         self.assertIn("date_purchased", form.errors)
 
     def test_invalid_post_redisplays_error_and_preserves_hidden_value(self):
-        """An out-of-range date fails; redisplay keeps the submitted value."""
+        """A bad date fails, and stays shown."""
         form = self._form(data=self._valid_data(date_purchased="2024-99-99"))
         self.assertFalse(form.is_valid())
         self.assertIn("date_purchased", form.errors)
@@ -342,7 +340,7 @@ class DatePickerWidgetFormTest(SimpleTestCase):
         self.assertIn("2024-99-99", html)
 
     def test_unrelated_field_error_preserves_the_full_valid_date(self):
-        """Another field's error keeps a complete date on redisplay."""
+        """Another field's error keeps the date."""
         form = self._form(data=self._valid_data(name=""))
         self.assertFalse(form.is_valid())
         self.assertIn("name", form.errors)

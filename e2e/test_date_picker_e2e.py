@@ -58,7 +58,7 @@ def _part_names(page, field: str) -> list[str]:
 def test_an_mdy_account_types_month_first_and_persists_the_same_day(
     authenticated_page, live_server
 ):
-    """Display order changes; the stored day does not."""
+    """Display order moves; the day stays."""
     from games.models import Playthrough
 
     page, user = authenticated_page
@@ -102,7 +102,7 @@ def test_edit_playthrough_date_field_prefills_from_the_run(
 def test_changing_datetime_format_updates_the_segment_order(
     authenticated_page, live_server
 ):
-    """A reload after a format change reorders the segments."""
+    """A format change reorders the segments."""
     page, user = authenticated_page
 
     page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
