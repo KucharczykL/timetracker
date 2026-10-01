@@ -418,7 +418,7 @@ restates in two dispatches (`restate_entry`, `Keep`/`KEEP` in
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the fourth act of `ResumableEndpoint` over `ResumableEndpointEvents`, its own type beside the three-act `Endpoint`, in the end's family, projected as a void is, through `resume_endpoint`; a resume of a non-resumable endpoint and a void of an opening one fail in mypy |
-| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose removal shares the entry removal's idempotency key, so Undo restores both and a purchase removed on its own stays removed; restore refuses under a removed PlayerGame or Release. `Purchase.entry` is registered with `BlockingReferrer.on(..., cascades=True)`, which `blocking_referrer` skips and `foreign_referrer` still reads (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy); `RestoreEntry` builds the `purchase.restored` events itself, since `RestorePurchase` refuses under a removed copy |
+| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose latest `purchase.removed` carries the key of the copy's latest `libraryentry.removed` (`cascaded_purchase_ids`), so Undo restores both and a purchase removed on its own stays removed, with no new event type; restore refuses under a removed PlayerGame or Release. `Purchase.entry` is registered with `BlockingReferrer.on(..., cascades=True)`, which `blocking_referrer` skips and `foreign_referrer` still reads (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy); `RestoreEntry` builds the `purchase.restored` events itself, since `RestorePurchase` refuses under a removed copy |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
 takes `target`, and `referrers_of(target)` reads the tuple at each call;
@@ -695,6 +695,12 @@ and Note; the Library page's "Add purchase" summary action goes. The
 & Create Session" go with the bundle; Add Game's second submit reads
 "Submit & Add to library".
 
+Add to library defaults to Paid, so an e2e test that adds a copy through
+the form picks "No purchase". A form's shown and hidden rows come from
+CSS alone: `FormFieldGroup.class_` names a Tailwind group and
+`FormFieldPresentation.row_class` reads it, the strings literal, since an
+f-string never reaches Tailwind's scan.
+
 **Edit copy**: access, format, release, acquired, note. The end of
 access has its own pages: "I no longer have it" and "I have it again"
 each one click or "With details…", and "Edit how it left…" on an ended
@@ -711,7 +717,12 @@ correction made since the page opened is refused; the device form
 lacks one (#1387). **Edit purchase**: kind, name, amount with Free,
 currency, purchased, refund (day, note; "Not refunded" voids), note. The
 row Refund act is one click in that pattern, the calendar's day and a
-sequence-keyed Undo, corrected on the edit page.
+sequence-keyed Undo, corrected on the edit page; the Undo keys on the
+`purchase.refunded` event's own sequence, not the dispatch's last, since
+the copy's end is appended after it (`refund_purchase` answers it,
+`latest_refund_act` checks it). One-click and Undo routes are
+`ORIGIN_AWARE`, as the copy's are. The new refund sets no status: the
+legacy one set Abandoned, and Dropped now reads the refund end instead.
 
 ### Lists
 
@@ -897,6 +908,7 @@ inside a member says so in its body and closes with it.
 
 ## What this design forecloses
 
+- **Moving a purchase to another copy** is #1437, after P5b.
 - **Moving an entry or a purchase to another game.** `release_changed`
   and `entry_changed` stay inside one game. A row recorded on the wrong
   game is removed and recorded again, and the removed purchase's money
@@ -1052,6 +1064,7 @@ runs on it.
 - #1361, a toggle that hides prerelease play (after #1354)
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
+- #1437, move a purchase to another copy (after P5b)
 - #1432, the Library page as the one place for purchase data gaps, later
   a library-wide audit screen that absorbs P5b's review surface and
   #1418's report; after P5b, outside the stack, mockup first
