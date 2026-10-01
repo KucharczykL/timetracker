@@ -373,12 +373,13 @@ def test_one_failing_enqueue_leaves_the_others(
             status=PurchaseConversionState.Status.PENDING,
         )
 
+    enqueued: list[str] = []
+
     def fail_for_the_owner(name, library_id, version):
         if library_id == str(owned_library.pk):
             raise RuntimeError("broker down")
         enqueued.append(library_id)
 
-    enqueued: list[str] = []
     monkeypatch.setattr(tasks, "async_task", fail_for_the_owner)
 
     tasks.recover_library_price_conversions()

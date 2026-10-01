@@ -51,13 +51,8 @@ def exchange_rate(
         )
         return None
     answered = rates.get(target.lower())
-    raw = (
-        Decimal(answered)
-        if isinstance(answered, Decimal | int) and not isinstance(answered, bool)
-        else None
-    )
-    rate = raw.quantize(QUANTUM) if raw is not None and _usable(raw) else None
-    if rate is None or not _usable(rate):
+    rate = _usable_rate(answered)
+    if rate is None:
         logger.warning(
             "[exchange_rate]: %s answered no usable %s->%s rate for %s: %r",
             url,
@@ -77,9 +72,16 @@ def exchange_rate(
     return stored.rate
 
 
-def _usable(rate: Decimal) -> bool:
-    """Positive and storable."""
-    if 0 < rate < CEILING:
-        return True
-    logger.warning("[exchange_rate]: unusable rate %s", rate)
-    return False
+def _is_storable(rate: Decimal) -> bool:
+    return 0 < rate < CEILING
+
+
+def _usable_rate(answered: object) -> Decimal | None:
+    """The quantized rate, if positive and storable."""
+    if isinstance(answered, bool) or not isinstance(answered, Decimal | int):
+        return None
+    # Quantizing a too-wide number raises.
+    if not _is_storable(Decimal(answered)):
+        return None
+    rate = Decimal(answered).quantize(QUANTUM)
+    return rate if _is_storable(rate) else None

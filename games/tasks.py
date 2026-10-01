@@ -1,6 +1,6 @@
 import contextlib
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -37,6 +37,9 @@ logger = logging.getLogger("games")
 RETRY_DELAY = timedelta(minutes=15)
 MAX_ERROR_LENGTH = 240
 
+#: pk, price, price_currency, date_purchased.
+type LegacySnapshotRow = tuple[UUID, float, str, date]
+
 
 class MissingExchangeRate(RuntimeError):
     pass
@@ -56,18 +59,11 @@ def _rates_for(
     snapshot: list[ValuationInput], target: CurrencyCode
 ) -> dict[RateKey, Decimal]:
     """The rates available; a missing key is absent."""
-    rates: dict[RateKey, Decimal] = {}
-    missing: set[RateKey] = set()
-    for facts in snapshot:
-        key = facts.rate_key
-        if not needs_rate(facts, target) or key in rates or key in missing:
-            continue
-        rate = exchange_rate(key.currency, target, key.year)
-        if rate is None:
-            missing.add(key)
-        else:
-            rates[key] = rate
-    return rates
+    needed = dict.fromkeys(
+        facts.rate_key for facts in snapshot if needs_rate(facts, target)
+    )
+    fetched = {key: exchange_rate(key.currency, target, key.year) for key in needed}
+    return {key: rate for key, rate in fetched.items() if rate is not None}
 
 
 def _warn_skipped(
@@ -92,6 +88,24 @@ def _not_published(library_id: str, version: ConversionVersion, reason: str) -> 
         version,
         reason,
     )
+
+
+def _changed_since(
+    library: UserLibrary,
+    legacy_snapshot: list[LegacySnapshotRow],
+    valuation_snapshot: list[ValuationInput],
+) -> str | None:
+    """What changed since the snapshots, if anything."""
+    current_legacy = list(
+        LegacyPurchase.objects.filter(library_id=library.pk)
+        .order_by("pk")
+        .values_list("pk", "price", "price_currency", "date_purchased")
+    )
+    if current_legacy != legacy_snapshot:
+        return "legacy rows changed"
+    if valuation_inputs(library) != valuation_snapshot:
+        return "purchases changed"
+    return None
 
 
 def _concise_error(error: Exception) -> str:
@@ -122,13 +136,13 @@ def _mark_failed(
             or state.published_version >= requested_version
         ):
             return
-        should_schedule = retry and schedule_retry and state.retry_at is None
+        should_schedule = schedule_retry and state.retry_at is None
         state.status = PurchaseConversionState.Status.FAILED
         state.retry_at = retry_at
         state.last_error = _concise_error(error)
         state.save(update_fields=["status", "retry_at", "last_error"])
 
-    if should_schedule and retry_at is not None:
+    if retry_at is not None and should_schedule:
         schedule(
             "games.tasks.convert_library_prices",
             library_id,
@@ -163,7 +177,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
     purchases = list(
         LegacyPurchase.objects.filter(library_id=library_pk).order_by("pk")
     )
-    snapshot = [
+    snapshot: list[LegacySnapshotRow] = [
         (
             purchase.pk,
             purchase.price,
@@ -203,20 +217,9 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
             ):
                 _not_published(library_id, requested_version, "superseded")
                 return
-            current_snapshot = list(
-                LegacyPurchase.objects.filter(library_id=library_pk)
-                .order_by("pk")
-                .values_list("pk", "price", "price_currency", "date_purchased")
-            )
-            changed = (
-                "legacy rows changed"
-                if current_snapshot != snapshot
-                else "purchases changed"
-                if valuation_inputs(library) != valuation_snapshot
-                else None
-            )
+            changed = _changed_since(library, snapshot, valuation_snapshot)
             if changed is not None:
-                #: A removal requests nothing; request here.
+                # A removal requests nothing; request here.
                 _request_conversion_for_locked_state(state, state.requested_currency)
                 _not_published(library_id, requested_version, changed)
                 return
@@ -283,7 +286,7 @@ def recover_library_price_conversions() -> None:
         | Q(status=PurchaseConversionState.Status.FAILED, retry_at__lte=now())
     )
     for state in stale:
-        #: One library's failure must not skip the rest.
+        # Isolate each library's failure.
         try:
             async_task(
                 "games.tasks.convert_library_prices",

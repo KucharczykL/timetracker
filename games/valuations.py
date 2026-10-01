@@ -101,9 +101,12 @@ def value_all(
     rows: list[PurchaseValuation] = []
     skipped: list[ValuationInput] = []
     for facts in snapshot:
-        rate_needed = needs_rate(facts, target)
-        rate = rates.get(facts.rate_key) if rate_needed else None
-        if rate_needed and rate is None:
+        rate: Decimal | None
+        if not needs_rate(facts, target):
+            rate = None
+        elif facts.rate_key in rates:
+            rate = rates[facts.rate_key]
+        else:
             skipped.append(facts)
             continue
         rows.append(
