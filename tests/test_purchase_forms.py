@@ -1,6 +1,7 @@
 """The forms a purchase is stated with."""
 
 import datetime
+import uuid
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -24,6 +25,7 @@ from games.purchase_forms import (
     refund_seen,
 )
 from games.writes.endpoint import KEEP
+from games.writes.purchase import restate_purchase
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -33,6 +35,7 @@ PRESENTATION = DateTimePresentation(
 )
 TODAY = datetime.date(2026, 9, 29)
 JUNE = TemporalValue.parse("2021-06-03")
+JULY = TemporalValue.parse("2021-07-01")
 SUBMISSION = "01928e5e-4f6b-7c3a-8e9d-000000000001"
 
 
@@ -240,6 +243,17 @@ def _edit_data(purchase: Purchase, **data) -> dict[str, str]:
     return initial | data
 
 
+def refund_purchase_correction(purchase: Purchase, when) -> Purchase:
+    restate_purchase(
+        purchase.library.user,
+        purchase,
+        refund=ActStatement(when, ""),
+        correlation_id=uuid.uuid7(),
+    )
+    purchase.refresh_from_db()
+    return purchase
+
+
 def _edit(purchase: Purchase, **data) -> PurchaseEditForm:
     return PurchaseEditForm(
         _edit_data(purchase, **data), purchase=purchase, presentation=PRESENTATION
@@ -305,3 +319,25 @@ def test_a_refund_moved_since_refuses_only_a_changed_block(entry):
     assert untouched.is_valid(), untouched.errors
     assert not touched.is_valid()
     assert touched.non_field_errors() == [REFUND_CHANGED_SINCE_OPENED]
+
+
+def test_an_untouched_stale_block_keeps_the_newer_refund(entry):
+    purchase = record_purchase(entry)
+    stale = _edit_data(purchase, name="Renamed")
+    purchase = refund_purchase(purchase, JUNE)
+
+    form = PurchaseEditForm(stale, purchase=purchase, presentation=PRESENTATION)
+
+    assert form.is_valid(), form.errors
+    assert form.refund_statement() is KEEP
+
+
+def test_an_untouched_stale_block_keeps_a_newer_correction(entry):
+    purchase = refund_purchase(record_purchase(entry), JUNE)
+    stale = _edit_data(purchase, **_day("refunded", datetime.date(2021, 6, 3)))
+    purchase = refund_purchase_correction(purchase, JULY)
+
+    form = PurchaseEditForm(stale, purchase=purchase, presentation=PRESENTATION)
+
+    assert form.is_valid(), form.errors
+    assert form.refund_statement() is KEEP

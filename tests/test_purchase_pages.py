@@ -8,22 +8,25 @@ from zoneinfo import ZoneInfo
 import pytest
 from calendar_days import displace_calendar
 from django.urls import reverse
-from entries import record_entry
+from entries import end_entry_access, record_entry, remove_entry
 from purchases import record_purchase, refund_purchase, remove_purchase
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.models import Game, LibraryEvent, Purchase
+from games.commands.purchase import REFUND_OVERTAKEN
+from games.end_ways import EndWay
+from games.models import Game, LibraryEvent, Purchase, UserPreferences
 from games.purchase_forms import PurchaseAddForm, PurchaseEditForm
 from games.reads.calendar import calendar_today
-from games.views.purchase import UNDO_OVERTAKEN
+from games.views.purchase import ALREADY_REFUNDED
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
 SUBMISSION = "01928e5e-4f6b-7c3a-8e9d-000000000001"
+OTHER_SUBMISSION = "01928e5e-4f6b-7c3a-8e9d-000000000002"
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
@@ -271,7 +274,7 @@ def test_an_overtaken_undo_changes_nothing(logged_in, purchase):
     response = logged_in.post(undo)
 
     assert _types(purchase.pk) == events
-    assert UNDO_OVERTAKEN in _page(logged_in, response)
+    assert REFUND_OVERTAKEN in _page(logged_in, response)
 
 
 def test_a_refunded_purchase_refuses_another_press(logged_in, purchase):
@@ -349,3 +352,175 @@ def test_the_library_tab_names_each_copys_purchase(logged_in, purchase, entry):
 
     assert f'id="entry-menu-{entry.pk}-purchase-{purchase.pk}"' in html
     assert f"{reverse('games:add_purchase', args=[entry.pk])}?" in html
+
+
+# --- Review follow-ups ----------------------------------------------------------
+
+
+def test_a_stale_edit_keeps_a_refund_made_meanwhile(logged_in, purchase, entry):
+    stale = _edit_post(purchase, name="Renamed")
+    _refund_now(logged_in, purchase)
+
+    response = logged_in.post(reverse("games:edit_purchase", args=[purchase.pk]), stale)
+
+    assert response.status_code == 302
+    purchase.refresh_from_db()
+    entry.refresh_from_db()
+    assert purchase.name == "Renamed"
+    assert purchase.refund_recorded_at is not None
+    assert entry.access_end_way == "refunded"
+    assert "library.purchase.refund_voided" not in _types(purchase.pk)
+
+
+def test_the_refund_toast_names_the_copys_end(logged_in, purchase):
+    page = _page(logged_in, _refund_now(logged_in, purchase))
+
+    assert "Refunded; the copy is marked as no longer yours." in page
+
+
+def test_a_second_undo_changes_nothing(logged_in, purchase):
+    undo = _offered_undo(logged_in, _refund_now(logged_in, purchase))
+    logged_in.post(undo)
+    events = _types(purchase.pk)
+
+    response = logged_in.post(undo)
+
+    assert _types(purchase.pk) == events
+    assert REFUND_OVERTAKEN in _page(logged_in, response)
+
+
+def test_a_season_pass_refund_leaves_the_copy(logged_in, entry):
+    pass_purchase = record_purchase(entry, kind="season_pass", name="Pass")
+
+    undo = _offered_undo(logged_in, _refund_now(logged_in, pass_purchase))
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is None
+    logged_in.post(undo)
+
+    pass_purchase.refresh_from_db()
+    assert pass_purchase.refund_recorded_at is None
+
+
+def test_undo_on_an_ended_copy_leaves_its_end(logged_in, purchase, entry):
+    end_entry_access(entry, way=EndWay.SOLD)
+
+    undo = _offered_undo(logged_in, _refund_now(logged_in, purchase))
+    logged_in.post(undo)
+
+    entry.refresh_from_db()
+    purchase.refresh_from_db()
+    assert purchase.refund_recorded_at is None
+    assert entry.access_end_way == "sold"
+
+
+def test_an_identical_refund_press_says_already_refunded(
+    logged_in, owned_library, purchase
+):
+    refund_purchase(purchase, TemporalValue.from_day(calendar_today(owned_library)))
+
+    response = _refund_now(logged_in, purchase, token=OTHER_SUBMISSION)
+
+    assert ALREADY_REFUNDED in _page(logged_in, response)
+
+
+def test_add_purchase_on_a_foreign_or_removed_copy_is_absent(
+    logged_in, django_user_model, stated_graph, entry
+):
+    stranger = django_user_model.objects.create_user(username="stranger").library
+    graph = stated_graph(Game(name="Hades", library=stranger), stranger)
+    foreign = record_entry(stranger, graph.release)
+    removed = remove_entry(record_entry(entry.library, entry.release))
+    before = LibraryEvent.objects.count()
+
+    for copy in (foreign, removed):
+        url = reverse("games:add_purchase", args=[copy.pk])
+        assert logged_in.get(url).status_code == 404
+        assert logged_in.post(url, _add_post()).status_code == 404
+
+    assert LibraryEvent.objects.count() == before
+
+
+def test_add_purchase_refuses_no_purchase(logged_in, entry):
+    response = logged_in.post(
+        reverse("games:add_purchase", args=[entry.pk]), _add_post(price="none")
+    )
+
+    assert response.status_code == 200
+    assert not Purchase.objects.exists()
+
+
+def test_edit_shows_the_stored_currency_not_the_default(owned_library, entry):
+    UserPreferences.objects.filter(user=owned_library.user).update(
+        default_purchase_currency="CZK"
+    )
+    paid = record_purchase(entry, amount=Decimal("19.99"), currency="EUR")
+    unknown = record_purchase(entry, amount=None)
+
+    assert (
+        PurchaseEditForm(purchase=paid, presentation=PRESENTATION)["currency"].value()
+        == "EUR"
+    )
+    assert (
+        PurchaseEditForm(purchase=unknown, presentation=PRESENTATION)[
+            "currency"
+        ].value()
+        == "CZK"
+    )
+
+
+def test_an_unchanged_edit_appends_nothing(logged_in, purchase):
+    events = _types(purchase.pk)
+
+    logged_in.post(
+        reverse("games:edit_purchase", args=[purchase.pk]), _edit_post(purchase)
+    )
+
+    assert _types(purchase.pk) == events
+
+
+def test_paid_to_unknown_clears_amount_and_currency(logged_in, purchase):
+    response = logged_in.post(
+        reverse("games:edit_purchase", args=[purchase.pk]),
+        _edit_post(purchase, price="unknown"),
+    )
+
+    assert response.status_code == 302
+    purchase.refresh_from_db()
+    assert (purchase.amount, purchase.currency) == (None, "")
+
+
+def test_edit_answers_a_command_refusal_on_the_page(logged_in, purchase):
+    events = _types(purchase.pk)
+
+    response = logged_in.post(
+        reverse("games:edit_purchase", args=[purchase.pk]),
+        _edit_post(
+            purchase, refund="refunded", **_day("refunded", datetime.date(2020, 1, 1))
+        ),
+    )
+
+    assert response.status_code == 409
+    assert _types(purchase.pk) == events
+
+
+def test_a_copy_removed_alone_and_undone_brings_its_purchase(
+    logged_in, purchase, entry
+):
+    logged_in.post(reverse("games:remove_library_entry", args=[entry.pk]))
+    purchase.refresh_from_db()
+    assert purchase.removed_at is not None
+
+    logged_in.post(reverse("games:restore_library_entry", args=[entry.pk]))
+
+    purchase.refresh_from_db()
+    assert purchase.removed_at is None
+
+
+def test_the_library_tab_omits_refunded_purchases(logged_in, entry):
+    refunded = refund_purchase(
+        record_purchase(entry, kind="upgrade", name="Deluxe"), JUNE
+    )
+
+    html = logged_in.get(reverse("games:list_library")).content.decode()
+
+    assert f"purchase-{refunded.pk}" not in html

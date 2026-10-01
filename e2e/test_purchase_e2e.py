@@ -50,6 +50,29 @@ def test_the_price_segment_shows_only_the_rows_it_reads(
     assert (purchase.amount, purchase.currency) == (Decimal("24.50"), "EUR")
 
 
+def test_edit_purchase_reveals_the_refund_rows(
+    authenticated_page: Page, live_server, e2e_library
+):
+    graph = default_graph(Game(library=e2e_library, name="Tunic"), e2e_library)
+    purchase = record_purchase(
+        record_entry(e2e_library, graph.release), kind="upgrade", name="Deluxe"
+    )
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:edit_purchase', args=[purchase.pk])}")
+    refunded = page.locator('[data-field-row="refunded"]')
+
+    expect(refunded).to_be_hidden()
+    page.get_by_label("Refunded", exact=True).check()
+    expect(refunded).to_be_visible()
+    page.locator('[data-field-row="refund_note"] textarea').fill("store")
+    with page.expect_navigation():
+        page.get_by_role("button", name="Save", exact=True).click()
+
+    purchase.refresh_from_db()
+    assert purchase.refund_recorded_at is not None
+    assert purchase.refund_note == "store"
+
+
 def test_the_copy_menu_refunds_and_undo_takes_it_back(
     authenticated_page: Page, live_server, e2e_library
 ):

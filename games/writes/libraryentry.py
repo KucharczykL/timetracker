@@ -42,6 +42,7 @@ from games.writes.endpoint import (
     Correct,
     Keep,
     Nothing,
+    Restated,
     Void,
     endpoint_move,
 )
@@ -120,7 +121,7 @@ def restate_entry(
     note: str | None = None,
     release_id: uuid.UUID | None = None,
     acquired: ActStatement | Keep = KEEP,
-    access_end: WayActStatement | None | Keep = KEEP,
+    access_end: Restated[WayActStatement] = KEEP,
     correlation_id: uuid.UUID,
 ) -> bool:
     """Describe, then move both endpoints; one correlation.
@@ -178,7 +179,7 @@ def _refuse_a_reversed_draft(
     entry: LibraryEntry,
     *,
     acquired: ActStatement | Keep,
-    access_end: WayActStatement | None | Keep,
+    access_end: Restated[WayActStatement],
 ) -> None:
     """Refuse up front: a committed act stays.
 
@@ -217,7 +218,7 @@ def _endpoint_commands(
     entry: LibraryEntry,
     *,
     acquired: ActStatement | Keep,
-    access_end: WayActStatement | None | Keep,
+    access_end: Restated[WayActStatement],
 ) -> list[Command]:
     """Both endpoints, in the order that never reverses them.
 

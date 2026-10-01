@@ -38,7 +38,6 @@ from common.temporal_presentation import TemporalText
 from common.utils import paginate
 from games.commands.endpoint import ActStatement
 from games.endpoints import PURCHASE_REFUND
-from games.events.purchase import PURCHASE_REFUND_EVENTS
 from games.filters import (
     PurchaseFilter,
     filter_query_context_for_library,
@@ -70,7 +69,7 @@ from games.reads.playthrough_completions import (
     reported_completion,
     reported_completion_day,
 )
-from games.reads.purchases import ValuedPurchase, latest_refund_act, library_purchases
+from games.reads.purchases import ValuedPurchase, library_purchases
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
@@ -93,9 +92,13 @@ from games.views.removal import (
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.purchase import (
+    CopyEnd,
+    RefundedPurchase,
+    RestatedPurchase,
     record_purchase,
     refund_purchase,
     restate_purchase,
+    undo_refund,
 )
 from games.writes.purchase import remove_purchase as remove_purchase_write
 from games.writes.purchase import restore_purchase as restore_purchase_write
@@ -239,8 +242,18 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     )
 
 
-UNDO_OVERTAKEN = "This purchase changed since; nothing was undone."
 ALREADY_REFUNDED = "This purchase is already refunded."
+#: What a refund act did to the copy.
+COPY_END_WORDS: dict[CopyEnd, str] = {
+    CopyEnd.ENDED: "the copy is marked as no longer yours",
+    CopyEnd.MOVED: "the copy's end moved with it",
+    CopyEnd.TAKEN_BACK: "the copy is yours again",
+}
+
+
+def _with_copy_end(sentence: str, copy_end: CopyEnd | None) -> str:
+    words = None if copy_end is None else COPY_END_WORDS.get(copy_end)
+    return sentence if words is None else f"{sentence.removesuffix('.')}; {words}."
 
 
 def _held_purchase(request: HttpRequest, purchase_id: UUID) -> Purchase:
@@ -311,18 +324,22 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         presentation=date_time_presentation_for_request(request),
     )
 
-    def restate() -> object:
+    restated: list[RestatedPurchase] = []
+
+    def restate() -> None:
         cleaned = form.cleaned_data
-        return restate_purchase(
-            user,
-            purchase,
-            kind=cleaned["kind"],
-            name=cleaned["name"],
-            price=form.stated_price(),
-            note=cleaned["note"],
-            purchased=form.purchased(),
-            refund=form.refund_statement(),
-            correlation_id=new_correlation_id(),
+        restated.append(
+            restate_purchase(
+                user,
+                purchase,
+                kind=cleaned["kind"],
+                name=cleaned["name"],
+                price=form.stated_price(),
+                note=cleaned["note"],
+                purchased=form.purchased(),
+                refund=form.refund_statement(),
+                correlation_id=new_correlation_id(),
+            )
         )
 
     return form_page(
@@ -330,7 +347,7 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         form,
         title=_title("Edit purchase", purchase.entry),
         write=restate,
-        done="Purchase saved.",
+        done=lambda: _with_copy_end("Purchase saved.", restated[0].copy_end),
         game=lambda: purchase.entry.player_game.game,
         groups=edit_groups(),
         presentations=edit_presentations(),
@@ -370,6 +387,7 @@ def restore_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
             restore_purchase_write, user, purchase, correlation_id=new_correlation_id()
         ),
         restored="Purchase restored.",
+        unchanged="This purchase is already in your library.",
         **_game_fallback(purchase.entry.player_game.game),
     )
 
@@ -383,6 +401,8 @@ def refund_purchase_now(request: HttpRequest, purchase_id: UUID) -> HttpResponse
     key = press_key(request, "purchase", "refund")
     today = TemporalValue.from_day(request_calendar_today(request, user.library))
 
+    refunds: list[RefundedPurchase] = []
+
     def refund() -> str:
         refunded = refund_purchase(
             user,
@@ -393,12 +413,16 @@ def refund_purchase_now(request: HttpRequest, purchase_id: UUID) -> HttpResponse
         )
         if refunded.sequence is None:
             raise CommandFailed(ALREADY_REFUNDED, CONFLICT_STATUS)
+        refunds.append(refunded)
         return reverse(
             "games:undo_purchase_refund", args=[purchase.pk, refunded.sequence]
         )
 
     return one_click(
-        request, purchase.entry.player_game.game, write=refund, done="Refunded."
+        request,
+        purchase.entry.player_game.game,
+        write=refund,
+        done=lambda: _with_copy_end("Refunded.", refunds[0].copy_end),
     )
 
 
@@ -411,21 +435,21 @@ def undo_purchase_refund(
     user = cast(User, request.user)
     purchase = _held_purchase(request, purchase_id)
 
+    undone: list[RestatedPurchase] = []
+
     def void() -> None:
-        latest = latest_refund_act(user.library, purchase.pk)
-        if (
-            latest is None
-            or latest.sequence != sequence
-            or latest.event_type != PURCHASE_REFUND_EVENTS.stated.event_type
-        ):
-            raise CommandFailed(UNDO_OVERTAKEN, CONFLICT_STATUS)
-        restate_purchase(
-            user, purchase, refund=None, correlation_id=new_correlation_id()
+        undone.append(
+            undo_refund(
+                user,
+                purchase,
+                refunded_at=sequence,
+                correlation_id=new_correlation_id(),
+            )
         )
 
     return restore_and_return(
         request,
         action=void,
-        restored="Refund undone.",
+        restored=lambda: _with_copy_end("Refund undone.", undone[0].copy_end),
         **_game_fallback(purchase.entry.player_game.game),
     )

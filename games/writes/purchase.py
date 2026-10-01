@@ -17,6 +17,7 @@ from games.commands.purchase import (
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    VoidPurchaseRefund,
 )
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
@@ -32,7 +33,7 @@ from games.models import Purchase
 from games.reads.entries import EventSequence
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
-from games.writes.endpoint import KEEP, Keep
+from games.writes.endpoint import KEEP, Keep, Restated
 from games.writes.revaluation import appended_types, revalue_after
 
 SUBJECT: SubjectNoun = "purchase"
@@ -157,7 +158,7 @@ def restate_purchase(
     note: str | None = None,
     entry_id: uuid.UUID | None = None,
     purchased: ActStatement | None = None,
-    refund: ActStatement | None | Keep = KEEP,
+    refund: Restated[ActStatement] = KEEP,
     correlation_id: uuid.UUID,
 ) -> RestatedPurchase:
     """One dispatch; KEEP keeps, None voids."""
@@ -232,13 +233,34 @@ def refund_purchase(
     )
 
 
-def _refund_statement(refund: ActStatement | None | Keep) -> RefundStatement | None:
+def _refund_statement(refund: Restated[ActStatement]) -> RefundStatement | None:
     """The command's spelling of the write's."""
     if isinstance(refund, Keep):
         return None
     if refund is None:
         return TAKE_REFUND_BACK
     return refund
+
+
+def undo_refund(
+    actor: User,
+    purchase: Purchase,
+    *,
+    refunded_at: EventSequence,
+    correlation_id: uuid.UUID,
+) -> RestatedPurchase:
+    """Void a refund still standing as latest."""
+    with answered(SUBJECT):
+        result = _dispatch(
+            VoidPurchaseRefund(purchase_id=purchase.pk, refunded_at=refunded_at),
+            actor=actor,
+            correlation_id=correlation_id,
+        )
+    if result.outcome is not CommandOutcome.APPENDED:
+        return RestatedPurchase(appended=False, copy_end=None)
+    return RestatedPurchase(
+        appended=True, copy_end=_copy_end_of(appended_types(result))
+    )
 
 
 def remove_purchase(

@@ -15,6 +15,9 @@ class Keep(Enum):
 
 KEEP: Final = Keep.KEEP
 
+#: KEEP keeps, None voids, else states.
+type Restated[StatementT] = StatementT | None | Keep
+
 
 @dataclass(frozen=True, slots=True)
 class Act[StatementT]:

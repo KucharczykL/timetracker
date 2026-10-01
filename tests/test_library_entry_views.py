@@ -375,7 +375,12 @@ def test_the_add_page_records_a_copy_on_the_picked_game(logged_in, graph):
     assert LibraryEntry.objects.filter(release=graph.release).count() == 1
 
 
-def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
+@pytest.mark.parametrize(
+    "price",
+    [{"price": "none"}, {"price": "paid", "amount": "5"}, {"price": "free"}],
+    ids=["none", "paid", "free"],
+)
+def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library, price):
     shared = Game.objects.create(name="Celeste")
     edition = Edition.objects.create(game=shared, is_default=True)
     release = Release.objects.create(edition=edition, is_default=True)
@@ -385,13 +390,15 @@ def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
         "access": "owned",
         "format": "physical",
         "submission": SUBMISSION,
-        "price": "none",
+        "currency": "EUR",
+        **price,
     }
 
     response = logged_in.post(reverse("games:add_to_library"), posted)
 
     assert response.status_code == 302
     assert PlayerGame.objects.filter(library=owned_library, game=shared).exists()
+    assert Purchase.objects.exists() is (price["price"] != "none")
 
 
 @pytest.mark.parametrize(

@@ -124,7 +124,7 @@ from games.toast_middleware import RELOAD_HEADER
 from games.valuations import CurrencyCode
 from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
-from games.writes.endpoint import KEEP, Keep
+from games.writes.endpoint import KEEP, Restated
 from games.writes.libraryentry import (
     record_entry,
     restate_entry,
@@ -1346,7 +1346,7 @@ class EntryUpdate(Schema):
                 raise ValueError(f"{key} states a value, or is left out.")
         return self
 
-    def access_end_statement(self) -> WayActStatement | None | Keep:
+    def access_end_statement(self) -> Restated[WayActStatement]:
         """The end stated, a void, or nothing."""
         if "access_end" not in self.model_fields_set:
             return KEEP
@@ -1626,7 +1626,7 @@ class PurchaseUpdate(Schema):
             return None
         return ActStatement(self.purchased, cast(str, self.purchase_note))
 
-    def refund_statement(self) -> ActStatement | None | Keep:
+    def refund_statement(self) -> Restated[ActStatement]:
         """The refund stated, a void, or nothing."""
         if "refund" not in self.model_fields_set:
             return KEEP

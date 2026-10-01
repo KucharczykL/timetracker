@@ -33,7 +33,7 @@ from games.price_fields import (
     price_presentations,
 )
 from games.reads.endpoints import stated
-from games.writes.endpoint import KEEP, Keep
+from games.writes.endpoint import KEEP, Restated
 from games.writes.purchase import PurchaseDraft
 from timetracker.temporal import TemporalValue
 
@@ -141,24 +141,31 @@ class PurchaseAddForm(PrimitiveWidgetsMixin, _Submission, PriceFields):
         )
 
 
-def _refund_block(when: TemporalValue | None, note: str, *, refunded: bool) -> str:
+#: A refund block's hash.
+type RefundFingerprint = str
+
+
+def _refund_block(refund: ActStatement | None) -> RefundFingerprint:
     """One refund block, hashed."""
-    words = "\x1f".join((str(when), note)) if refunded else ""
+    words = "" if refund is None else "\x1f".join((str(refund.when), refund.note))
     return hashlib.sha256(words.encode()).hexdigest()
 
 
-def refund_seen(purchase: Purchase) -> str:
-    """The refund block this purchase renders."""
+def _standing_refund(purchase: Purchase) -> ActStatement | None:
     standing = stated(purchase, PURCHASE_REFUND)
-    if standing is None:
-        return _refund_block(None, "", refunded=False)
-    return _refund_block(standing.when, standing.note, refunded=True)
+    return None if standing is None else ActStatement(standing.when, standing.note)
+
+
+def refund_seen(purchase: Purchase) -> RefundFingerprint:
+    """The refund block this purchase renders."""
+    return _refund_block(_standing_refund(purchase))
 
 
 class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
     """A purchase's facts and refund restated."""
 
-    refund = forms.ChoiceField(
+    refund = forms.TypedChoiceField(
+        coerce=RefundChoice,
         choices=[
             (RefundChoice.NOT_REFUNDED.value, "Not refunded"),
             (RefundChoice.REFUNDED.value, "Refunded"),
@@ -179,7 +186,7 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         presentation: DateTimePresentation,
         **kwargs,
     ):
-        standing = stated(purchase, PURCHASE_REFUND)
+        standing = _standing_refund(purchase)
         initial: dict[str, Any] = {
             "kind": purchase.kind,
             "name": purchase.name,
@@ -197,8 +204,11 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         }
         kwargs["initial"] = initial | dict(kwargs.get("initial") or {})
         super().__init__(*args, **kwargs)
-        self.purchase = purchase
-        self.standing = standing
+        self._purchase = purchase
+        self._standing = standing
+        #: Set by clean; the posted block.
+        self._submitted_refund: ActStatement | None = None
+        self._refund_untouched = False
         _purchase_fields(self, presentation)
         self.fields["refunded"] = TemporalFormField(
             presentation=presentation, label="Refunded on"
@@ -230,32 +240,26 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         if cleaned is None:
             return cleaned
         self._clean_price(cleaned)
-        if cleaned.get("refund") != RefundChoice.REFUNDED:
+        if cleaned.get("refund") is RefundChoice.REFUNDED:
+            self._submitted_refund = ActStatement(
+                cleaned.get("refunded"), cleaned.get("refund_note", "")
+            )
+        else:
             ignore_fields(self, "refunded", "refund_note")
         seen = cleaned.get("refund_seen") or ""
-        submitted = _refund_block(
-            cleaned.get("refunded"),
-            cleaned.get("refund_note", ""),
-            refunded=cleaned.get("refund") == RefundChoice.REFUNDED,
-        )
-        #: Only a refund this page changed.
-        if seen != refund_seen(self.purchase) and submitted != seen:
+        self._refund_untouched = _refund_block(self._submitted_refund) == seen
+        #: Moved since opened, and changed here.
+        if seen != refund_seen(self._purchase) and not self._refund_untouched:
             self.add_error(None, REFUND_CHANGED_SINCE_OPENED)
         return cleaned
 
     def purchased(self) -> ActStatement:
-        return ActStatement(self.cleaned_data["purchased"], self.purchase.purchase_note)
-
-    def refund_statement(self) -> ActStatement | None | Keep:
-        """KEEP keeps; None voids."""
-        cleaned = self.cleaned_data
-        if cleaned["refund"] != RefundChoice.REFUNDED:
-            return KEEP if self.standing is None else None
-        statement = ActStatement(
-            cleaned.get("refunded"), cleaned.get("refund_note", "")
+        return ActStatement(
+            self.cleaned_data["purchased"], self._purchase.purchase_note
         )
-        if self.standing is not None and statement == ActStatement(
-            self.standing.when, self.standing.note
-        ):
+
+    def refund_statement(self) -> Restated[ActStatement]:
+        """An untouched block states nothing."""
+        if self._refund_untouched or self._submitted_refund == self._standing:
             return KEEP
-        return statement
+        return self._submitted_refund

@@ -33,6 +33,7 @@ from games.events.libraryentry import (
 )
 from games.events.purchase import (
     NAME_LENGTH,
+    PURCHASE_REFUND_EVENTS,
     PurchaseKindValue,
     purchase_created,
     purchase_entry_changed,
@@ -54,7 +55,8 @@ from games.models import (
     Release,
 )
 from games.reads.endpoints import stated
-from games.reads.purchases import refund_owns_the_end
+from games.reads.entries import EventSequence
+from games.reads.purchases import latest_refund_act, refund_owns_the_end
 from timetracker.temporal import TemporalValue
 
 UNKNOWN_KIND = "Choose one of the listed purchase kinds."
@@ -93,6 +95,7 @@ PURCHASE_AFTER_REFUND = (
 REFUNDED_BEFORE_BOUGHT = (
     "This purchase was refunded before it was bought. Check the days."
 )
+REFUND_OVERTAKEN = "This refund changed since; nothing was undone."
 MOVE_A_REFUNDED_PURCHASE = (
     "This purchase was refunded. Take the refund back before moving it to another copy."
 )
@@ -761,6 +764,27 @@ class VoidPurchaseRefund(Command):
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_VOID_REFUND
     purchase_id: uuid.UUID
+    #: Only while this refund is latest.
+    refunded_at: EventSequence | None = None
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        return _refund_void(context, library_purchase_row(context, self.purchase_id))
+        purchase = library_purchase_row(context, self.purchase_id)
+        if self.refunded_at is not None:
+            _refuse_an_overtaken_refund(context, purchase, self.refunded_at)
+        return _refund_void(context, purchase)
+
+
+def _refuse_an_overtaken_refund(
+    context: CommandContext, purchase: Purchase, refunded_at: EventSequence
+) -> None:
+    latest = latest_refund_act(context.library, purchase.pk)
+    if (
+        latest is None
+        or latest.sequence != refunded_at
+        or latest.event_type != PURCHASE_REFUND_EVENTS.stated.event_type
+    ):
+        raise CommandRejected(
+            f"Purchase {purchase.pk}'s latest refund act is not the refund "
+            f"at sequence {refunded_at}.",
+            sentence=REFUND_OVERTAKEN,
+        )

@@ -25,6 +25,7 @@ from games.events.idempotency import IdempotencyKey
 from games.models import Game, LibraryEntry
 from games.ownership import owned_or_404
 from games.reads.entries import library_entries
+from games.views.removal import AfterAct, said
 from games.views.returns import return_url
 from games.views.submission import SUBMISSION_FIELD
 from games.writes.answers import CommandFailed
@@ -62,7 +63,7 @@ def form_page(
     *,
     title: str,
     write: Callable[[], object],
-    done: str,
+    done: AfterAct,
     game: Callable[[], Game | None],
     groups: Sequence[FormFieldGroup] | None = None,
     presentations: Mapping[str, FormFieldPresentation] | None = None,
@@ -77,7 +78,7 @@ def form_page(
             messages.error(request, failure.message)
             status = failure.status_code
         else:
-            messages.success(request, done)
+            messages.success(request, said(done))
             return redirect(cancel_url(request, game))
     return render_page(
         request,
@@ -110,7 +111,7 @@ def one_click(
     game: Game,
     *,
     write: Callable[[], str],
-    done: str,
+    done: AfterAct,
 ) -> HttpResponse:
     """Write, offer Undo, return; refusals show."""
     try:
@@ -118,5 +119,5 @@ def one_click(
     except CommandFailed as failure:
         messages.error(request, failure.message)
     else:
-        notify(request, done, level=messages.SUCCESS, action=Undo(undo_url))
+        notify(request, said(done), level=messages.SUCCESS, action=Undo(undo_url))
     return redirect(game_page(request, game))
