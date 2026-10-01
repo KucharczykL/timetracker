@@ -46,8 +46,10 @@ class PurchaseRelatedGameTest(TestCase):
         purchase.games.add(self.dlc_game)
 
         self.assertEqual(purchase.related_game, self.base_game)
-        # Reverse accessor: the base game lists its add-on purchases.
-        self.assertIn(purchase, self.base_game.addon_purchases.all())
+        #: No reverse accessor; the forward key reads it.
+        self.assertIn(
+            purchase, LegacyPurchase.objects.filter(related_game=self.base_game)
+        )
 
     def test_plain_game_purchase_needs_no_related_game(self):
         purchase = LegacyPurchase(

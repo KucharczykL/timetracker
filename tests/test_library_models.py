@@ -146,7 +146,7 @@ def test_purchase_allows_shared_platform(libraries):
     )
 
 
-def test_purchase_games_reject_cross_library_add_in_both_directions(libraries):
+def test_purchase_games_reject_a_cross_library_add(libraries):
     library_a, library_b = libraries
     purchase_a = LegacyPurchase.objects.create(
         library=library_a,
@@ -159,8 +159,6 @@ def test_purchase_games_reject_cross_library_add_in_both_directions(libraries):
     purchase_a.games.add(game_a)
     with pytest.raises(ValidationError), transaction.atomic():
         purchase_a.games.add(game_b)
-    with pytest.raises(ValidationError), transaction.atomic():
-        game_b.purchases.add(purchase_a)
     assert list(purchase_a.games.all()) == [game_a]
 
 

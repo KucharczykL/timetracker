@@ -35,7 +35,7 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
 
 def _recount_purchases(game: Game, previous_mark: datetime | None) -> None:
     """A count of the live games only."""
-    for purchase in game.purchases.all():
+    for purchase in LegacyPurchase.objects.filter(games=game):
         purchase.num_purchases = purchase.games.alive().count()
         purchase.updated_at = now()
         purchase.save(update_fields=["num_purchases", "updated_at"])

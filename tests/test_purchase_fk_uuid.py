@@ -107,10 +107,6 @@ def test_purchase_filters_by_related_instance_and_by_integer_id(
     assert LegacyPurchase.objects.filter(related_game__id=base_game.id).count() == 1
 
 
-def test_addon_purchases_reverse_accessor_reaches_the_purchase(base_game, dlc_purchase):
-    assert list(base_game.addon_purchases.all()) == [dlc_purchase]
-
-
 @pytest.mark.untracked_games
 def test_deleting_the_base_game_clears_the_link_without_deleting_the_purchase(
     base_game, dlc_purchase

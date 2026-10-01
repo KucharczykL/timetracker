@@ -1044,11 +1044,14 @@ class LegacyPurchaseQueryset(RemovableLibraryQuerySet):
         #: One live game keeps a bundle.
         #: A purchase that names no game
         #: is untouched by removal, so it stays.
-        linked = Game.objects.filter(purchases=OuterRef("pk"))
+        links = self.model._meta.get_field("games").remote_field.through
+        linked = links.objects.filter(legacypurchase=OuterRef("pk"))
         return (
             super()
             .for_library(library)
-            .filter(~Exists(linked) | Exists(linked.alive()))
+            .filter(
+                ~Exists(linked) | Exists(linked.filter(game__removed_at__isnull=True))
+            )
         )
 
 
@@ -1088,7 +1091,8 @@ class LegacyPurchase(models.Model):
     library = models.ForeignKey(
         "UserLibrary", on_delete=models.CASCADE, related_name="purchases"
     )
-    games = models.ManyToManyField(Game, related_name="purchases")
+    #: No reverse accessor: every read walks forward.
+    games = models.ManyToManyField(Game, related_name="+")
 
     platform = models.ForeignKey(
         Platform,
@@ -1096,6 +1100,7 @@ class LegacyPurchase(models.Model):
         default=None,
         null=True,
         blank=True,
+        related_name="+",
     )
     date_purchased = models.DateField(verbose_name="Purchased")
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
@@ -1125,7 +1130,7 @@ class LegacyPurchase(models.Model):
         default=None,
         null=True,
         blank=True,
-        related_name="addon_purchases",
+        related_name="+",
         verbose_name="Base game",
     )
     created_at = models.DateTimeField(auto_now_add=True)

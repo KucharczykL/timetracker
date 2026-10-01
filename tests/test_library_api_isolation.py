@@ -453,8 +453,8 @@ def test_multivalued_comparison_subquery_is_library_scoped(two_libraries):
     filter_object = GameFilter(
         field_comparisons=[
             FieldComparisonCriterion(
-                left="purchases__date_refunded",
-                right="purchases__date_purchased",
+                left="player_games__removed_at",
+                right="player_games__tracked_at",
                 modifier=Modifier.GREATER_THAN,
                 quantifier=RelationMatch.ANY,
             )

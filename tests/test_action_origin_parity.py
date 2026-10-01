@@ -92,7 +92,11 @@ def test_list_pages_stamp_their_own_path(client, owned_user, world, url_name):
 @pytest.mark.parametrize("url_name", ["games:view_game", "games:view_purchase"])
 def test_detail_pages_stamp_their_own_path(client, owned_user, world, url_name):
     client.force_login(owned_user)
-    target = world if url_name == "games:view_game" else world.purchases.first()
+    target = (
+        world
+        if url_name == "games:view_game"
+        else LegacyPurchase.objects.filter(games=world).first()
+    )
     page_path = (
         target.get_absolute_url()
         if url_name == "games:view_game"

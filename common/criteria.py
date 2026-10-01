@@ -1717,7 +1717,7 @@ class OperatorFilter:
                     )
                 # The relation paths whose fan-out the quantifier ranges over: one
                 # per multi-valued operand (deduped, so two operands on the SAME
-                # relation — purchases__date_purchased vs purchases__date_refunded,
+                # relation — player_games__tracked_at vs player_games__removed_at,
                 # say — share a
                 # single join and compare same-row, while two DIFFERENT relations
                 # form a cross product). Empty when both operands are single-valued.
@@ -2360,7 +2360,7 @@ class ComparisonOperandInfo(NamedTuple):
     """A resolved comparison operand: its terminal comparison group, whether the
     path crosses a multi-valued relation (#282), and — when it does — the
     ``relation_path`` (the operand minus its terminal column, e.g.
-    ``game__purchases``) that the ALL quantifier's relation-existence guard
+    ``game__editions``) that the ALL quantifier's relation-existence guard
     filters on."""
 
     group: ComparisonGroup
@@ -2594,8 +2594,7 @@ def _multivalued_relation_label(model_field: Any) -> str:
     explicit ``verbose_name`` (a forward M2M carries one); otherwise title-cases
     the relation's accessor name. The accessor (not the related model's plural
     name) keeps the label unique when a model reaches the same target through two
-    relations — e.g. Game → Purchase via both ``purchases`` (M2M) and
-    ``addon_purchases`` (the ``related_game`` FK reverse)."""
+    relations."""
     verbose = getattr(model_field, "verbose_name", None)
     if verbose:
         return str(verbose).title()
@@ -3533,7 +3532,7 @@ def _multivalued_comparison_to_q(
     ``predicate_q`` is the row predicate from ``_field_comparison_to_q``: the
     comparison **plus** explicit ``__isnull=False`` guards on both operand paths.
     ``relation_paths`` are the multi operands minus their terminal column (e.g.
-    ``[game__purchases]``, or ``[sessions, purchases]`` when both sides are
+    ``[game__editions]``, or ``[editions, player_games]`` when both sides are
     multi-valued). One entry → the quantifier ranges over that relation's rows;
     two entries → over the cross product Django's double join produces (two
     operands on the *same* relation dedupe to one entry, comparing same-row).

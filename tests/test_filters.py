@@ -3086,19 +3086,11 @@ class TestComparableColumnsCrossModel:
         # Own + to-one-FK columns stay single-valued.
         assert game_columns["name"]["multivalued"] is False
 
-        # The #282 headline path (Session → game → purchases) is a to-one-prefixed
+        # The #282 headline path (Session → game → editions) is a to-one-prefixed
         # multi-valued operand.
         session_columns = {c["value"]: c for c in comparable_columns(PlayerSession)}
-        assert (
-            "playthrough__player_game__game__purchases__date_refunded"
-            in session_columns
-        )
-        assert (
-            session_columns["playthrough__player_game__game__purchases__date_refunded"][
-                "multivalued"
-            ]
-            is True
-        )
+        assert MULTI_EDITION_REMOVED in session_columns
+        assert session_columns[MULTI_EDITION_REMOVED]["multivalued"] is True
 
     def test_self_including_loops_not_enumerated(self):
         # #282 review: a fk__reverse-of-fk path (e.g. Session → game → sessions)
@@ -3115,20 +3107,16 @@ class TestComparableColumnsCrossModel:
         assert not any(
             v.startswith("device__player_sessions__") for v in session_values
         )
-        # Game → related_game-reverse (addon_purchases) is a self-including loop too.
         game_values = {c["value"] for c in comparable_columns(Game)}
         assert not any(v.startswith("platform__game__") for v in game_values)
         purchase_values = {c["value"] for c in comparable_columns(LegacyPurchase)}
         assert not any(v.startswith("platform__purchase__") for v in purchase_values)
-        assert not any(
-            v.startswith("related_game__addon_purchases__") for v in purchase_values
-        )
         # But a cross-model path through the same FK prefix is still offered.
         assert any(
-            v.startswith("playthrough__player_game__game__purchases__")
+            v.startswith("playthrough__player_game__game__editions__")
             for v in session_values
         )
-        assert any(v.startswith("related_game__purchases__") for v in purchase_values)
+        assert any(v.startswith("related_game__editions__") for v in purchase_values)
 
     def test_platform_columns_classify_library_owner_relation(self):
         # Platform declares the ownership FK. Its columns are a Library
@@ -3200,10 +3188,10 @@ class TestComparableColumnsCrossModel:
         columns = {
             column["value"]: column for column in comparable_columns(PlayerSession)
         }
-        purchased = columns["playthrough__player_game__game__purchases__date_purchased"]
+        removed = columns[MULTI_EDITION_REMOVED]
 
-        assert purchased["multivalued"] is True
-        assert purchased["source"] == "Game › Purchases"
+        assert removed["multivalued"] is True
+        assert removed["source"] == "Game › Editions"
 
     def test_an_undeclared_two_hop_path_is_still_not_offered(self):
         from games.models import PlayerSession
@@ -6030,17 +6018,15 @@ class TestComparisonOperandPaths:
         assert info.relation_path == "sessions"
 
     def test_to_one_then_multi_hop_is_multivalued(self):
-        # The #282 headline path: Session → game (to-one) → purchases (multi).
+        # The #282 headline path: Session → game (to-one) → editions (multi).
         from games.models import PlayerSession
 
         info = _comparison_operand_info(
-            PlayerSession,
-            "playthrough__player_game__game__purchases__date_refunded",
-            side="right",
+            PlayerSession, MULTI_EDITION_REMOVED, side="right"
         )
-        assert info.group == "date"
+        assert info.group == "datetime"
         assert info.multivalued is True
-        assert info.relation_path == "playthrough__player_game__game__purchases"
+        assert info.relation_path == "playthrough__player_game__game__editions"
 
     def test_two_to_one_hops_rejected(self):
         # Two to-one hops (Session → game → platform) stay rejected: no
@@ -6060,7 +6046,7 @@ class TestComparisonOperandPaths:
         with pytest.raises(FilterError, match="too many relations"):
             _comparison_operand_info(
                 PlayerSession,
-                "playthrough__player_game__game__purchases__games__name",
+                "playthrough__player_game__game__editions__game__name",
                 side="left",
             )
 
@@ -6079,14 +6065,12 @@ class TestComparisonOperandPaths:
         from games.models import PlayerSession
 
         info = _comparison_operand_info(
-            PlayerSession,
-            "playthrough__player_game__game__purchases__date_purchased",
-            side="right",
+            PlayerSession, MULTI_EDITION_REMOVED, side="right"
         )
 
-        assert info.group == "date"
+        assert info.group == "datetime"
         assert info.multivalued is True
-        assert info.relation_path == "playthrough__player_game__game__purchases"
+        assert info.relation_path == "playthrough__player_game__game__editions"
 
     def test_a_to_one_hop_past_a_declared_path_is_rejected(self):
         from games.models import PlayerSession
@@ -6167,6 +6151,10 @@ class TestComparisonOperandPaths:
         assert joins[0].table_name == "games_platform"
 
 
+#: A session's game's editions: multi-valued, datetime.
+MULTI_EDITION_REMOVED = "playthrough__player_game__game__editions__removed_at"
+
+
 class TestMultivaluedComparison:
     """#282: field comparison across a multi-valued relation, quantified ANY/ALL/NONE."""
 
@@ -6177,33 +6165,30 @@ class TestMultivaluedComparison:
         return dt.datetime(year, month, day, 12, 0, tzinfo=dt.UTC)
 
     def _seed(self):
-        import datetime as dt
-
-        from games.models import Game, LegacyPurchase
+        from games.models import Edition, Game
 
         def session(game, end):
             return session_row(game, started_at=self._dt(2000), ended_at=end)
 
-        def refund(game, refunded_on):
-            purchase = LegacyPurchase.objects.create(
-                price_currency="CZK",
-                name=f"{game.name} purchase",
-                date_purchased=dt.date(2019, 1, 1),
-                date_refunded=refunded_on,
+        def edition(game, removed_at):
+            #: A multi-valued datetime to compare against.
+            Edition.objects.create(
+                game=game,
+                name=f"{game.name} {Edition.objects.count()}",
+                removed_at=removed_at,
             )
-            purchase.games.add(game)
 
         rows = {}
         game_a = Game.objects.create(name="MV-A")
-        refund(game_a, dt.date(2020, 1, 1))
-        refund(game_a, dt.date(2020, 6, 1))
+        edition(game_a, self._dt(2020, 1, 1))
+        edition(game_a, self._dt(2020, 6, 1))
         rows["after_all"] = session(game_a, self._dt(2021))
         rows["after_some"] = session(game_a, self._dt(2020, 3, 1))
         rows["after_none"] = session(game_a, self._dt(2019))
         rows["null_end"] = session(game_a, None)
 
         game_b = Game.objects.create(name="MV-B")
-        refund(game_b, None)  # null terminal column
+        edition(game_b, None)  # null terminal column
         rows["null_terminal"] = session(game_b, self._dt(2021))
 
         rows["no_refunds"] = session(Game.objects.create(name="MV-C"), self._dt(2021))
@@ -6230,7 +6215,7 @@ class TestMultivaluedComparison:
         matched = self._matched(
             RelationMatch.ANY,
             left="ended_at",
-            right="playthrough__player_game__game__purchases__date_refunded",
+            right=MULTI_EDITION_REMOVED,
         )
         expected = {"after_all", "after_some"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
@@ -6240,9 +6225,9 @@ class TestMultivaluedComparison:
         matched = self._matched(
             RelationMatch.ALL,
             left="ended_at",
-            right="playthrough__player_game__game__purchases__date_refunded",
+            right=MULTI_EDITION_REMOVED,
         )
-        # after_all is after both refunds; no_refunds is vacuously true.
+        # after_all is after both marks; no_refunds is vacuously true.
         expected = {"after_all", "no_refunds"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
 
@@ -6251,7 +6236,7 @@ class TestMultivaluedComparison:
         matched = self._matched(
             RelationMatch.NONE,
             left="ended_at",
-            right="playthrough__player_game__game__purchases__date_refunded",
+            right=MULTI_EDITION_REMOVED,
         )
         # Complement of ANY.
         expected = {
@@ -6268,17 +6253,17 @@ class TestMultivaluedComparison:
         rows = self._seed()
         matched = self._matched(
             RelationMatch.ANY,
-            left="playthrough__player_game__game__purchases__date_refunded",
+            left=MULTI_EDITION_REMOVED,
             right="ended_at",
         )
-        # ANY refund before the session end (date): after_all + after_some.
+        # ANY mark before the session end (date): after_all + after_some.
         # We use LESS_THAN via a separate query since _matched hardcodes GREATER_THAN.
         from games.models import PlayerSession
 
         query = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="playthrough__player_game__game__purchases__date_refunded",
+                    left=MULTI_EDITION_REMOVED,
                     right="ended_at",
                     modifier=Modifier.LESS_THAN,
                     granularity="date",
@@ -6294,32 +6279,24 @@ class TestMultivaluedComparison:
 
     def test_both_multivalued_same_relation_is_same_row(self, db):
         # #282 follow-up: two operands on the SAME multi-valued relation dedupe to
-        # one join and compare same-row — e.g. a purchase refunded before it was
-        # bought.
-        import datetime as dt
+        # one join and compare same-row — e.g. a row removed before it was
+        # tracked.
+        from games.models import Game, PlayerGame
 
-        from games.models import Game, LegacyPurchase
-
-        def purchase(game, *, purchased_on, refunded_on):
-            row = LegacyPurchase.objects.create(
-                price_currency="CZK",
-                name=f"{game.name} purchase",
-                date_purchased=purchased_on,
-                date_refunded=refunded_on,
+        def tracked(game, *, tracked_at, removed_at):
+            PlayerGame.objects.filter(game=game).update(
+                tracked_at=tracked_at, removed_at=removed_at
             )
-            row.games.add(game)
 
-        bad = Game.objects.create(name="bad-purchase")
-        purchase(bad, purchased_on=dt.date(2021, 1, 1), refunded_on=dt.date(2020, 1, 1))
-        clean = Game.objects.create(name="clean-purchase")
-        purchase(
-            clean, purchased_on=dt.date(2020, 1, 1), refunded_on=dt.date(2021, 1, 1)
-        )
+        bad = Game.objects.create(name="bad-row")
+        tracked(bad, tracked_at=self._dt(2021), removed_at=self._dt(2020))
+        clean = Game.objects.create(name="clean-row")
+        tracked(clean, tracked_at=self._dt(2020), removed_at=self._dt(2021))
         query = GameFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="purchases__date_purchased",
-                    right="purchases__date_refunded",
+                    left="player_games__tracked_at",
+                    right="player_games__removed_at",
                     modifier=Modifier.GREATER_THAN,
                     quantifier=RelationMatch.ANY,
                 )
@@ -6331,43 +6308,22 @@ class TestMultivaluedComparison:
 
     def test_both_multivalued_different_relations_cross_product(self, db):
         # #282 follow-up: two DIFFERENT multi-valued relations form a cross product;
-        # ANY = ∃ (addon purchase, purchase) pair satisfying the predicate.
-        import datetime as dt
+        # ANY = ∃ (edition, tracked row) pair satisfying the predicate.
+        from games.models import Edition, Game, PlayerGame
 
-        from games.models import Game, LegacyPurchase
-
-        def game_with(name, refunded_on, session_end):
+        def game_with(name, tracked_at, removed_at):
             game = Game.objects.create(name=name)
-            purchase = LegacyPurchase.objects.create(
-                price_currency="CZK",
-                name=f"{name} purchase",
-                date_purchased=dt.date(2019, 1, 1),
-                date_refunded=refunded_on,
-            )
-            purchase.games.add(game)
-            LegacyPurchase.objects.create(
-                price_currency="CZK",
-                name=f"{name} addon",
-                date_purchased=session_end.date(),
-                related_game=game,
-            )
+            PlayerGame.objects.filter(game=game).update(tracked_at=tracked_at)
+            Edition.objects.create(game=game, name="Old", removed_at=removed_at)
             return game
 
-        hit = game_with(
-            "later-session",
-            dt.date(2020, 1, 1),
-            dt.datetime(2021, 1, 1, tzinfo=dt.UTC),
-        )
-        miss = game_with(
-            "earlier-session",
-            dt.date(2022, 1, 1),
-            dt.datetime(2021, 1, 1, tzinfo=dt.UTC),
-        )
+        hit = game_with("later-removal", self._dt(2020), self._dt(2021))
+        miss = game_with("earlier-removal", self._dt(2022), self._dt(2021))
         query = GameFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="addon_purchases__date_purchased",
-                    right="purchases__date_refunded",
+                    left="editions__removed_at",
+                    right="player_games__tracked_at",
                     modifier=Modifier.GREATER_THAN,
                     granularity="date",
                     quantifier=RelationMatch.ANY,
@@ -6395,7 +6351,7 @@ class TestMultivaluedComparison:
     def test_quantifier_json_roundtrip(self):
         criterion = FieldComparisonCriterion(
             left="ended_at",
-            right="playthrough__player_game__game__purchases__date_refunded",
+            right=MULTI_EDITION_REMOVED,
             modifier=Modifier.GREATER_THAN,
             granularity="date",
             quantifier=RelationMatch.ALL,

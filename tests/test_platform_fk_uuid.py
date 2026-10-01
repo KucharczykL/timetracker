@@ -62,12 +62,12 @@ def test_filters_platformless_rows_by_isnull(owned_library, platform):
     assert list(Game.objects.filter(platform__isnull=True)) == [platformless]
 
 
-def test_platform_reverse_accessors_expose_games_and_purchases(
+def test_platform_reverse_accessor_exposes_games_and_the_key_purchases(
     game, owned_library, platform
 ):
     purchase = make_purchase(owned_library, platform)
     assert list(platform.game_set.all()) == [game]
-    assert list(platform.legacypurchase_set.all()) == [purchase]
+    assert list(LegacyPurchase.objects.filter(platform=platform)) == [purchase]
 
 
 def test_deleting_a_platform_nulls_both_relations(game, owned_library, platform):

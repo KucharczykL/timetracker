@@ -263,7 +263,7 @@ def test_a_multivalued_comparison_reads_the_context_scope(owned_library, varied)
     comparison = HistoricalPlaytimeFilter(
         field_comparisons=[
             FieldComparisonCriterion(
-                left="player_game__game__purchases__created_at",
+                left="player_game__game__editions__removed_at",
                 right="created_at",
                 modifier=Modifier.GREATER_THAN,
                 quantifier=RelationMatch.ANY,
