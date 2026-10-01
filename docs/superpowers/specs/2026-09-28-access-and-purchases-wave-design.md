@@ -231,9 +231,11 @@ Conventional, per the charter. One row per `(purchase, target_currency)`,
 holding the purchase's **key**, never a foreign key: nothing outside the
 projections may point at a projection row, and a foreign key would block
 or empty the swap. Columns: `library` (CASCADE, for the purge),
-`purchase_id` a bare UUID, `target_currency`, `amount` Decimal(18,2)
-rounded half up to cents, `rate` Decimal(24,12) null where none was read
-(same currency, or 0), the three inputs it read (`source_amount`,
+`purchase_id` a bare UUID, `target_currency`, `amount` Decimal(26,2)
+(the product computed in a 60-digit context and quantized once, half
+up), `rate` Decimal(24,12) null exactly where the purchase needs none
+(same currency, or amount 0) and otherwise equal to the stored
+`ExchangeRate`, so a stray same-currency rate row makes nothing stale, the three inputs it read (`source_amount`,
 `source_currency`, `rate_year`, the rate's identity being the two
 currencies and the year), `version`, `calculated_at`. The currency task is
 its sole writer: it values the whole live set per version, and
@@ -255,23 +257,30 @@ points at valuations. Its trigger moves: `Purchase.save()` bumps the
 requested version today, and a projector never calls `save()`, so the
 write path in `games/writes/purchase.py` calls `request_revaluation(library)`,
 which locks the state row and reuses its own `requested_currency`, after any
-dispatch that states an amount or moves the day (`created`,
-`amount_changed`, `purchase_corrected`, `restored`), after the dispatch
+dispatch that states an amount or moves the day (`VALUATION_EVENTS`:
+`created`, `price_changed`, `purchase_corrected`, `restored`), after the dispatch
 returns, lossy by design. The task's trigger is `requested > published`
 **or** a live purchase with an amount and no valuation at the published
 target whose three stored inputs equal the purchase's and whose `rate`
 equals the stored `ExchangeRate` (so a corrected rate, #493, invalidates),
-the year computed in SQL alone as `Coalesce(year(purchased_lower),
-year(purchased_upper), ExtractYear(purchase_recorded_at,
-tzinfo=calendar_day_zone(library)))`, never UTC: a lost bump of any kind costs one day, and a row no
+the year computed in SQL alone (`valuation_year(zone)`, read by the
+task's snapshot and by `stale_purchases` alike) as
+`Coalesce(year(purchased_lower), year(purchased_upper),
+ExtractYear(purchase_recorded_at, tzinfo=calendar_day_zone(library)))`,
+never UTC: a lost bump of any kind costs one day, and a row no
 write path saw (P4's pass, any direct appender) is valued by the same
-check, so
+check: the recovery requests every library at rest whose
+`stale_purchases` is not empty, and `load_sample_data` requests after
+its replay; so
 `needs_price_update` has no successor and `dispatch` gains no hook. The
 float cache and its writer go at the cutover.
 
 The legacy converter rounds `converted_price` to a whole unit. P4 seeds
-valuations from `converted_price` through P3's writer, carrying that
-rounding with inputs that read current, then requests one run, so the
+valuations from `converted_price` through `publish_valuations(library,
+rows)` in `games/valuations.py`, each row built with `value(...)`, under
+the pass's transaction and the state lock (it deletes and inserts the
+library's whole set), carrying that rounding with inputs that read
+current, then calls `request_revaluation(library)` once, so the
 first refresh after the cutover moves every total to the decimal rate,
 and the reconciliation prints both.
 
@@ -417,7 +426,7 @@ until P1.
 | Command | Event | Rule |
 |---|---|---|
 | `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
-| `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game; `entry_id` is refused while a refund stands, so the coupled end always lies on `purchase.entry` |
+| `DescribePurchase` | `kind_changed`, `name_changed`, `price_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game; `entry_id` is refused while a refund stands, so the coupled end always lies on `purchase.entry` |
 | `CorrectPurchaseDay` | `purchase_corrected` | the opening endpoint's correction; the endpoint's noun is "purchase" (`purchased`, `purchase_recorded_at`, `purchase_note`), as the entry's is "acquisition" |
 | `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund`, and `DescribePurchase`'s `refund` for a PATCH | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund of a purchase of kind `game` also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch (a pass or an upgrade names the base game's entry, so its refund leaves the copy held), as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped, only where that coupled end is due, since on a non-owned or ended copy no end is stated and nothing is ordered; a refund before the purchase day is always refused, and a purchase-day correction certainly after a standing refund too; `CorrectPurchaseRefund` appends `access_end_corrected` on the copy under the same rule as the void; "the refund's own" is `refund_owns_the_end(library, purchase)` in `games/reads/purchases.py`: the copy's latest end-family event is a stated or corrected end, and the event directly before it in the stream (sequence − 1), under the same `LibraryEvent.idempotency_key`, is a `refunded` or `refund_corrected` of this purchase; adjacency, because a direct appender that reuses one key across appends (the benchmark seeder does) could otherwise lend a hand end to a refund; P5's one-click Refund Undo reads it, widening the answer to the event where it needs one; which one dispatch stamps on every event it appends, an invariant every writer of the column keeps: P2 makes the anonymizer rewrite one key per dispatch rather than per event, and P4's pass and #740 state one key per dispatch too; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
 | `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
@@ -847,7 +856,9 @@ pass; the pre-deploy dump is the rollback. Before the deploy, on that
 day's dump: `make verify-purchase-conversion ARGS="--confirm NAME"`,
 `make verify-replay-parity`, `make verify-dump`, `make verify-baseline
 ARGS="--migrate"`. After it: the review surface, the first valuation
-refresh and its printed totals, then the fixture PR.
+refresh and its printed totals, then the fixture PR. The valuation
+task's daily schedule row must exist in production, since the recovery
+runs on it.
 
 ## Verification contract
 
