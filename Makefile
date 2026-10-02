@@ -316,15 +316,16 @@ dumpgames: ensure-postgres
 # guarding — a restore never lands in the development database, and a copy is
 # dropped only after its migration succeeded.
 #
-#   make fetch-dump                 -> .dumps/timetracker-<today>.dump
-#   make restore-dump               -> newest dump into $(DUMP_DB), prints its URL
+#   make fetch-dump                 -> .dumps/timetracker-<UTC now>.dump, never replacing one
+#   make restore-dump               -> last written dump into $(DUMP_DB), prints its URL
 #   make verify-dump                -> restore, migrate, drop
 #   make verify-dump KEEP=1         -> ... and keep the copy to look at
 #   make drop-dump                  -> drop $(DUMP_DB) once you are done with it
 #
-# DUMP=<path> names a dump other than the newest; DUMP_DB=<name> names the
-# scratch database. Rehearse anything else against the copy by passing the URL
-# restore-dump printed: make migrate DATABASE_URL=<url>
+# OUT=<path> names the fetched file; DUMP=<path> names a dump other than the
+# last written; DUMP_DB=<name> names the scratch database. Rehearse anything
+# else against the copy by passing the URL restore-dump printed:
+# make migrate DATABASE_URL=<url>
 DUMP ?=
 DUMP_DB ?= timetracker_restore_verify
 

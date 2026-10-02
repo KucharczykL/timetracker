@@ -13,15 +13,17 @@ nothing restores into a database this checkout develops against.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO
+from typing import IO, NoReturn
 from urllib.parse import urlsplit, urlunsplit
 
 from django.core.exceptions import ImproperlyConfigured
@@ -176,19 +178,21 @@ def fetch_command(source: ProductionSource) -> list[str]:
     return ["ssh", source.ssh_host, remote]
 
 
-def dump_path(directory: Path, day: date) -> Path:
-    return directory / f"timetracker-{day.isoformat()}.dump"
+def dump_path(directory: Path, moment: datetime) -> Path:
+    """Name a dump for its UTC second."""
+    utc = moment.astimezone(UTC)
+    return directory / f"timetracker-{utc:%Y-%m-%dT%H%M%SZ}.dump"
 
 
 def newest_dump(directory: Path) -> Path:
-    dumps = sorted(directory.glob("*.dump"))
+    dumps = list(directory.glob("*.dump"))
     if not dumps:
         raise DumpError(
             f"No dump is in {directory}. Run `make fetch-dump` first, or name "
             "one with DUMP=<path>."
         )
-    #: Sorted by name, which the date in it makes the same as by age.
-    return dumps[-1]
+    #: A name chosen by hand says nothing of age.
+    return max(dumps, key=lambda dump: (dump.stat().st_mtime, dump.name))
 
 
 def _fetch_hint(error: Exception) -> str:
@@ -207,21 +211,67 @@ def _fetch_hint(error: Exception) -> str:
 
 
 def fetch(source: ProductionSource, destination: Path) -> Path:
-    """Stream the deployed database into `destination`, whole or not at all."""
+    """Stream the deployed database into a new file, whole or not at all."""
+    if os.path.lexists(destination):
+        raise DumpError(f"{destination} already exists; a fetch never replaces a dump.")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    #: A dump written under its final name is a dump the next restore trusts,
-    #: so an interrupted transfer must never hold that name.
-    partial = destination.with_name(destination.name + ".part")
+    #: Its own partial, so fetches never share one.
+    descriptor, partial_name = tempfile.mkstemp(
+        dir=destination.parent, prefix=f"{destination.name}.", suffix=".part"
+    )
+    partial = Path(partial_name)
     try:
-        with partial.open("wb") as sink:
+        with os.fdopen(descriptor, "wb") as sink:
             run(fetch_command(source), stdout=sink)
     except (subprocess.CalledProcessError, OSError) as error:
         partial.unlink(missing_ok=True)
         raise DumpError(
             f"Could not read the deployed database: {error}{_fetch_hint(error)}"
         ) from error
-    partial.replace(destination)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    _publish(partial, destination)
+    try:
+        partial.unlink()
+    except OSError as error:
+        print(f"==> Could not remove {partial}: {error}", file=sys.stderr)
     return destination
+
+
+def _publish(partial: Path, destination: Path) -> None:
+    """Give the finished partial its name, never replacing one."""
+    try:
+        os.link(partial, destination)
+        return
+    except FileExistsError as error:
+        _discard_raced(partial, destination, error)
+    except OSError:
+        pass
+    #: No hard links here: an exclusive copy.
+    created = False
+    try:
+        with partial.open("rb") as source, destination.open("xb") as target:
+            created = True
+            shutil.copyfileobj(source, target)
+    except FileExistsError as error:
+        _discard_raced(partial, destination, error)
+    except OSError as error:
+        if created:
+            destination.unlink(missing_ok=True)
+        raise DumpError(
+            f"Could not write {destination}: {error}. The fetched dump is kept "
+            f"at {partial}."
+        ) from error
+
+
+def _discard_raced(partial: Path, destination: Path, error: OSError) -> NoReturn:
+    with contextlib.suppress(OSError):
+        partial.unlink()
+    raise DumpError(
+        f"{destination} appeared during the fetch, and a fetch never replaces "
+        "a dump; the fetched copy was discarded."
+    ) from error
 
 
 def with_database(database_url: str, database: str) -> str:
@@ -378,9 +428,9 @@ def main() -> None:
 
     try:
         if arguments.operation == "fetch":
-            #: This machine's date, which is the one naming a file by day means.
-            today = datetime.now().astimezone().date()
-            destination = arguments.output or dump_path(dump_directory(), today)
+            destination = arguments.output or dump_path(
+                dump_directory(), datetime.now(UTC)
+            )
             written = fetch(production_source(), destination)
             print(f"==> Dump written to {written}", file=sys.stderr)
             return
