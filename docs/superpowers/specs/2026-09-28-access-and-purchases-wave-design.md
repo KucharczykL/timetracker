@@ -448,7 +448,7 @@ copy's purchases rather than refusing on them.
 
 Declared in `games/bulk_actions.py`, Undo through `EventRows`:
 `entry.edit` (access, format, note; an empty field keeps), `entry.remove`,
-`purchase.edit` (amount with Free, currency, kind, name, note; keep),
+`purchase.edit` (Kind, Price as Keep, Paid with amount and currency, Free or Unknown, Purchased, Note; an empty field keeps),
 `purchase.remove`. The Edit acts live beside the others and share
 `games/bulk_edit.py`; their Undo reads the one fact-change reader in
 `games/reads/fact_change.py`, which `playergame.edit` and `entry.edit`
@@ -631,8 +631,11 @@ deploy. The pre-deploy dump is the rollback.
 
 ### Review surface
 
-A "Conversion review" section on the Library page, one row per category
-with its count, each linking to the list holding exactly those rows.
+The Conversion review rows sit inside the Library page's Purchases
+section, a `SummaryList` after its statistics and no section of their
+own: one row per category holding the category, a one-line reason, its
+count and Review, each linking to the list holding exactly those rows;
+a category with zero rows is left out.
 Every pass append carries `source_metadata = {"origin": "conversion",
 "issue": 723, "legacy_purchase": id, "review": [categories]}`, the
 categories being `Category` in `games/backfill/purchase_plan.py`
@@ -656,8 +659,8 @@ sessions were the demo. A copy recorded by hand between M3 and the
 cutover beside a legacy purchase of the same copy becomes two entries,
 since no rule tells one copy stated twice from two copies; the preflight
 lists such games as a category. A "Hide this review" checkbox on
-`UserLibraryPreferences` closes the section; it is its own toggle, read
-from nothing else.
+`UserLibraryPreferences`, a live one, hides the rows and keeps itself;
+it is its own toggle, read from nothing else.
 
 The sample fixture is regenerated inside the stack, by P5, from the
 day's dump after the rehearsal: `load_sample_data` runs no conversion
@@ -736,7 +739,9 @@ legacy one set Abandoned, and Dropped now reads the refund end instead.
 
 **Entries** (`entries` mode, its own filter and presets, selectable, the
 Library tab beside Games): Game, Platform, Access, Format, Acquired,
-Access ended (way · day), Note, Created; P5 adds Purchases. Facets
+Access ended (way · day), Note, Created, and from P5b2 Purchases, one
+short line per live purchase showing its price, labelled only for a
+non-game kind or a named purchase. Facets
 access, format, ended, way, platform, acquired, game. Tray Edit and
 Remove; one row menu (`entry_row_menu`, `games/views/entry_menu.py`,
 a `DropdownSubmenuItem` holding "Just mark it gone" or "Just add it
