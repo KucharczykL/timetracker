@@ -1,6 +1,5 @@
-from datetime import date
 from functools import partial
-from typing import Any, Protocol, cast
+from typing import Any, cast
 from uuid import UUID
 
 from django.contrib import messages
@@ -51,8 +50,6 @@ from games.models import (
     LibraryEntry,
     Purchase,
     PurchaseKind,
-    PurchaseQuerySet,
-    UserLibrary,
 )
 from games.ownership import owned_or_404
 from games.price_fields import price_presentations
@@ -65,13 +62,12 @@ from games.purchase_forms import (
 )
 from games.reads.endpoints import stated
 from games.reads.entries import EventSequence
-from games.reads.playthrough_completions import (
-    PURCHASE_RUNS,
-    completion_exists,
-    reported_completion,
-    reported_completion_day,
+from games.reads.purchases import (
+    PURCHASE_PATHS,
+    ListedPurchase,
+    library_purchases,
+    purchase_list_rows,
 )
-from games.reads.purchases import ValuedPurchase, library_purchases
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
@@ -116,31 +112,6 @@ PURCHASE_COLUMNS: list[Column] = [
     Column("Finished", "finished", key="finished"),
     Column("Created", "created", key="created", hidden_by_default=True),
 ]
-
-#: What every purchase page reads.
-_PURCHASE_PATHS = ("entry__player_game__game", "entry__release__platform")
-
-
-def purchase_list_rows(library: UserLibrary) -> PurchaseQuerySet:
-    """The list's rows, carrying the Finished facts."""
-    return (
-        library_purchases(library)
-        .annotated_for_filtering(library)
-        .select_related(*_PURCHASE_PATHS)
-        .annotate(
-            has_completion=completion_exists(library, None, PURCHASE_RUNS),
-            completed_value=reported_completion(library, PURCHASE_RUNS),
-            completed_day=reported_completion_day(library, PURCHASE_RUNS),
-        )
-    )
-
-
-class ListedPurchase(ValuedPurchase, Protocol):
-    """A row `purchase_list_rows` annotated."""
-
-    has_completion: bool
-    completed_value: TemporalValue | None
-    completed_day: date | None
 
 
 def _purchase_cells(
@@ -266,7 +237,7 @@ def _with_copy_end(sentence: str, copy_end: CopyEnd | None) -> str:
 def _held_purchase(request: HttpRequest, purchase_id: UUID) -> Purchase:
     library = cast(User, request.user).library
     return owned_or_404(
-        library_purchases(library).select_related(*_PURCHASE_PATHS),
+        library_purchases(library).select_related(*PURCHASE_PATHS),
         library,
         id=purchase_id,
     )
@@ -276,7 +247,7 @@ def _any_purchase(request: HttpRequest, purchase_id: UUID) -> Purchase:
     """Removed or not, for remove and restore."""
     library = cast(User, request.user).library
     return owned_or_404(
-        Purchase.objects.filter(library=library).select_related(*_PURCHASE_PATHS),
+        Purchase.objects.filter(library=library).select_related(*PURCHASE_PATHS),
         library,
         id=purchase_id,
     )

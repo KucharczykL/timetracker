@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import date
 from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -36,8 +37,15 @@ from games.models import (
 )
 from games.reads.calendar import calendar_day_zone
 from games.reads.entries import END_STATEMENTS, EntryId, latest_end_act
+from games.reads.playthrough_completions import (
+    PURCHASE_RUNS,
+    completion_exists,
+    reported_completion,
+    reported_completion_day,
+)
 from games.reads.unscoped import require_library
 from games.valuations import CurrencyCode, ValuationInput
+from timetracker.temporal import TemporalValue
 
 _REFUND_STATEMENTS = (
     PURCHASE_REFUND_EVENTS.stated.event_type,
@@ -305,3 +313,29 @@ def held_purchases(library: UserLibrary, entry_ids: Iterable[EntryId]) -> HeldPu
     for purchase in purchases:
         grouped.setdefault(purchase.entry_id, []).append(purchase)
     return grouped
+
+
+#: What every purchase page reads.
+PURCHASE_PATHS = ("entry__player_game__game", "entry__release__platform")
+
+
+def purchase_list_rows(library: UserLibrary) -> PurchaseQuerySet:
+    """The list's rows, carrying the Finished facts."""
+    return (
+        library_purchases(library)
+        .annotated_for_filtering(library)
+        .select_related(*PURCHASE_PATHS)
+        .annotate(
+            has_completion=completion_exists(library, None, PURCHASE_RUNS),
+            completed_value=reported_completion(library, PURCHASE_RUNS),
+            completed_day=reported_completion_day(library, PURCHASE_RUNS),
+        )
+    )
+
+
+class ListedPurchase(ValuedPurchase, Protocol):
+    """A row `purchase_list_rows` annotated."""
+
+    has_completion: bool
+    completed_value: TemporalValue | None
+    completed_day: date | None

@@ -19,6 +19,7 @@ from games.commands.purchase import (
     StatedPrice,
     UndoPurchaseRefund,
 )
+from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS, LIBRARYENTRY_CREATED
@@ -70,6 +71,7 @@ def _dispatch(
     actor: User,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     return dispatch(
         command,
@@ -80,6 +82,7 @@ def _dispatch(
             str(uuid.uuid7()) if idempotency_key is None else idempotency_key
         ),
         correlation_id=correlation_id,
+        source_metadata=source_metadata,
     )
 
 
@@ -277,6 +280,7 @@ def remove_purchase(
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     """Take a purchase out of the library."""
     with answered(SUBJECT):
@@ -285,6 +289,7 @@ def remove_purchase(
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
@@ -294,6 +299,7 @@ def restore_purchase(
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     """Put a removed purchase back."""
     with answered(SUBJECT):
@@ -302,6 +308,7 @@ def restore_purchase(
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
     revalue_after(actor, appended_types(result))
     return result

@@ -30,6 +30,7 @@ from games.reads.playtime import (
     total_playtime,
 )
 from games.reads.purchase_figures import purchase_figures
+from games.reads.purchases import purchase_list_rows
 from games.reads.session_figures import (
     highest_average_game,
     longest_session,
@@ -38,7 +39,6 @@ from games.reads.session_figures import (
 )
 from games.sorting import PURCHASE_DEFAULT_SORT, PURCHASE_SORTS, apply_sort
 from games.views.game import games_for_list
-from games.views.purchase import purchase_list_rows
 
 type ReadName = str
 
