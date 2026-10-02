@@ -1050,16 +1050,22 @@ verify-replay-parity`, `make verify-dump`, `make verify-baseline
 ARGS="--migrate"`. Rehearsed under P5c on the 2026-10-01 dump: steps 1
 to 7 green (808 legacy rows, 758 purchases, 221 of 221 refunds, every
 figure attributed), replay parity and `verify-dump` clean;
-`verify-baseline --migrate` reports 14 rows from seven `CHECK`
-constraints that deparse differently, pre-existing on `main` and filed
-as #1451, which blocks a green step 8 until resolved. #1450, also
+`verify-baseline --migrate` reported 14 rows from seven `CHECK`
+constraints, a spelling difference and no drift: `pg_dump`/`pg_restore`
+rewrite a varchar `CHECK`'s text once and it is then a fixed point, and
+a constraint `--migrate` added to the restored copy kept the pre-trip
+spelling. #1451 (PR #1460) makes `verify-baseline` round-trip both
+databases after their last write, and step 8 is green on that dump. The
+rule: a tool comparing catalogs reads both sides after the same number
+of dump and restore trips, since a write after a restore reopens the
+gap. #1450, also
 pre-existing: `purge-library` fails for a library holding an add-on Game
 with a parent and events, the shape every converted library has after
 the deploy; its fix (the stream key made deferrable) is the stack's last
 member, P6, its migration the next number after P5c's, never ahead of
 the stack, since the stack's ten migrations are named by number in
 specs, the rehearsal and the tooling; one image then carries the pass
-and the deferral. #1451 carries no migration and may land first. After it: the review surface, the first valuation
+and the deferral. After it: the review surface, the first valuation
 refresh and its printed totals; the fixture already shipped with P5. The valuation
 task's daily schedule row must exist in production, since the recovery
 runs on it.
@@ -1127,7 +1133,8 @@ runs on it.
   `conversion_review` and `Category`
 - #1448, remove the conversion pass and its gates at the squash
 - #1450, `purge-library` fails on an add-on Game with a parent and events
-- #1451, `verify-baseline` deparses seven `CHECK` constraints differently
+- #1451, `verify-baseline` round-trips both databases (PR #1460, with
+  #1454: the anonymizer re-mints the stream head at its first event)
 - #1432, the Library page as the one place for purchase data gaps, later
   a library-wide audit screen that absorbs P5b's review surface and
   #1418's report; after P5b, outside the stack, mockup first
