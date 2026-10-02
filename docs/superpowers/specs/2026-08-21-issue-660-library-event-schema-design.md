@@ -71,10 +71,10 @@ events *and* to the head, which events restrict — and resolves mechanically:
 - `Collector.collect(..., fail_on_restricted=True)` clears restricted objects
   that are *also* collected for deletion; a library delete collects both the
   head and its events by CASCADE, so the RESTRICT is cleared.
-- `RESTRICT` calls `collector.add_dependency(head_model, event_model)`, so
-  `Collector.sort()` orders events before the head. The raw composite FK is
-  plain `NO ACTION` and not deferrable, and this ordering keeps it satisfied
-  during the cascade.
+- `RESTRICT` calls `collector.add_dependency(head_model, event_model)`, but
+  `Collector.sort()` gives up on any cycle, such as `Game.parent`, and then
+  keeps collection order. The raw composite FK is therefore
+  `DEFERRABLE INITIALLY DEFERRED` since `0026` (#1450), like Django's own.
 
 So: deleting a library removes its events and its head, including a populated
 head; deleting a populated head directly raises `RestrictedError`. Both are

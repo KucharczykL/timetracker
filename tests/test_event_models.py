@@ -189,6 +189,19 @@ def test_same_sequence_in_another_stream_is_allowed(head, second_head):
 def test_event_cannot_use_another_librarys_stream(head, second_head):
     with pytest.raises(IntegrityError), transaction.atomic():
         make_event(second_head, library=head.library)
+        #: The key is deferred; check it now.
+        connection.check_constraints()
+
+
+def test_every_foreign_key_is_checked_at_commit():
+    """A purge's delete order must not matter."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT conname FROM pg_constraint WHERE contype = 'f'"
+            " AND connamespace = current_schema()::regnamespace"
+            " AND NOT condeferred"
+        )
+        assert cursor.fetchall() == []
 
 
 def test_deleting_library_removes_its_events_and_head(head, second_head):

@@ -752,18 +752,7 @@ class Command(BaseCommand):
                 subject=f"Reference {reference.pk}",
             )
         LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
-        #: LibraryEventStreamHead.id is deliberately left alone.
-        #: games_libraryevent's composite FK to it
-        #: (library_event_stream_matches_library) is a plain RunSQL
-        #: constraint with no DEFERRABLE -- unlike every other FK this
-        #: command remaps, Postgres checks it immediately on each UPDATE, so
-        #: LibraryEvent.stream_id and LibraryEventStreamHead.id cannot be
-        #: swapped to new values in separate statements without one side
-        #: transiently naming a row the other doesn't have yet. The residual
-        #: leak (the stream head's own uuid still encodes its real creation
-        #: millisecond) is far smaller than what this command's jitter
-        #: actually targets -- play dates, prices, notes -- so it is accepted
-        #: rather than worked around.
+        #: TODO(#1454): re-mint LibraryEventStreamHead.id too.
 
         event_moment_by_old_id = {event.pk: event.recorded_at for event in events}
         event_id_replacements = {}

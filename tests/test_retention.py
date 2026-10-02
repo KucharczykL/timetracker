@@ -37,6 +37,7 @@ from games.models import (
     Device,
     Edition,
     Game,
+    GameKind,
     LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
@@ -564,6 +565,28 @@ def test_purging_a_library_takes_its_projection_rows_with_it(owned_library):
 
     assert not PlayerGame.objects.filter(library=owned_library).exists()
     assert not Game.objects.filter(pk=game.pk).exists()
+
+
+def test_purging_a_library_takes_an_addon_and_its_events(owned_library):
+    """A parent key leaves the delete unordered."""
+    #: Needs untracked_games, or TrackGame writes nothing.
+    user = owned_library.user
+    main = Game.objects.create(library=owned_library, name="Main")
+    Game.objects.create(
+        library=owned_library, name="DLC", kind=GameKind.DLC, parent=main
+    )
+    dispatch(
+        TrackGame(game_id=main.pk),
+        actor=user,
+        library=owned_library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+    with transaction.atomic(), purging_library():
+        user.delete()
+
+    assert not LibraryEvent.objects.filter(library=owned_library).exists()
+    assert not Game.objects.filter(library=owned_library).exists()
 
 
 def test_the_exemption_does_not_outlive_the_purge(owned_library, game):
