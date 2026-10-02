@@ -295,8 +295,8 @@ entrenching the old names in the baseline would have been permanent.
 
 **Round-trip both builds before comparing.** Dump and restore rewrite a
 CHECK's `(ARRAY[...])::text[]` into per-element casts once; a second trip
-changes nothing. A restore has taken that trip, but whatever `--migrate`
-or `--normalize` adds afterwards has not. `verify_baseline.py` sends both
+changes nothing. A restore has taken that trip, but whatever `--migrate`,
+`--normalize` or `--record` adds afterwards has not. `verify_baseline.py` sends both
 databases through pg_dump and pg_restore after their last write, so a
 difference is a difference in schema and never in spelling.
 

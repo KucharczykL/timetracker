@@ -16,11 +16,13 @@ the stream head of the library a new id. A library that never appended
 has no head, and the step does nothing:
 
 - The id is minted with `_mint` at the earliest rewritten `recorded_at`
-  of the library's events, so the head comes no later than its first
-  event in id order. A dated event takes the midnight of its jittered
-  day, and that day can be before `FIXED_EPOCH`: the 2026-10-01 fixture
-  held 622 such events. A library whose stream holds no event mints at
-  `FIXED_EPOCH`.
+  of the events in its stream, so the head shares the millisecond of
+  its first event. A dated event takes the midnight of its jittered
+  day, and that day can be before `FIXED_EPOCH`. A head whose stream
+  holds no event mints at `FIXED_EPOCH`.
+- The head and the events are read by `library_id` and `stream_id`, not
+  from the whole table, so the step does not depend on the prune that
+  runs before it.
 - The entropy comes from the seeded random generator. The call comes
   after every other draw, so the ids before it do not move.
 - A queryset `update` writes the primary key, because `bulk_update`
@@ -50,17 +52,20 @@ change while it runs.
   so that moment is before `FIXED_EPOCH` and differs from the fallback.
 - Each output event names that head as its `stream`.
 - The head id differs from the source head id.
-- The prune test asserts one head in the output. Its old assertion, that
-  no outsider stream id is in the output, passes whatever the prune does
-  once the head is re-minted.
+- The prune test asserts one head in the output, the target library's.
+  Its old assertion, that no outsider stream id is in the output, passes
+  whatever the prune does once the head is re-minted.
+- A head without events mints at `FIXED_EPOCH`; a library without a head
+  is left alone.
+- The reload test appends one dispatch to the loaded library, so the new
+  head id and its `current_sequence` take appends.
 
 The `TODO(#1454)` in `anonymize_sample.py` goes.
 
 ## The fixture
 
-`games/fixtures/sample.yaml.gz` comes from the 2026-10-02 post-deploy
+The fixture regenerated on 2026-10-02 comes from that day's post-deploy
 dump, at migration 0036, through `make anonymize-sample USER=<owner>`:
-seed 42, no `--scrub-devices`, no name overrides. Its head mints at
-2001-01-03, the day of its first event. The tests that read the fixture
-are `tests/test_library_commands.py`, `tests/test_uuid_identity_audit.py`
-and `tests/test_external_references.py`.
+seed 42, no `--scrub-devices`, no name overrides. The tests that read
+the fixture are `tests/test_library_commands.py`,
+`tests/test_uuid_identity_audit.py` and `tests/test_external_references.py`.

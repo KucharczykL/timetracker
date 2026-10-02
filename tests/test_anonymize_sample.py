@@ -67,6 +67,7 @@ from games.models import (
     LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
+    LibraryEventStreamHead,
     Platform,
     PlayerSession,
     Playthrough,
@@ -731,6 +732,22 @@ class AnonymizeSampleTest(TransactionTestCase):
         calendar = LibraryCalendar.objects.get(library=target.library)
         self.assertEqual(calendar.pk, target.library.pk)
         self.assertEqual(calendar.day_zone, SOURCE_ZONE)
+        #: The re-minted head takes appends.
+        head = target.library.event_stream_head
+        dispatch(
+            TrackGame(
+                game_id=Game.objects.create(library=target.library, name="New").pk
+            ),
+            actor=target,
+            library=target.library,
+            idempotency_key="after-reload",
+        )
+        head.refresh_from_db()
+        self.assertEqual(
+            LibraryEvent.objects.filter(library=target.library).count(),
+            dumped_events + 2,
+        )
+        self.assertEqual(head.current_sequence, dumped_events + 2)
 
     def test_scrub_devices_uses_stable_primary_key_ordinals(self):
         game_purchase = _build_dataset()
@@ -885,7 +902,8 @@ class AnonymizeSampleTest(TransactionTestCase):
             item["fields"]["name"] for item in objects if item["model"] == "games.game"
         }
         self.assertNotIn("FOREIGN SECRET GAME", game_names)
-        self.assertEqual(len(_by_model(objects)["games.libraryeventstreamhead"]), 1)
+        (head,) = _by_model(objects)["games.libraryeventstreamhead"]
+        self.assertEqual(head["fields"]["library"], "__target_library__")
         for item in objects:
             if item["model"] in {
                 "games.device",
@@ -968,6 +986,25 @@ class ReassignedIdentityTest(TransactionTestCase):
                 for event in by_model["games.libraryevent"]
             },
             {str(head["pk"])},
+        )
+
+    def test_a_head_without_events_mints_at_the_epoch(self):
+        owner = get_user_model().objects.create_user(username="empty-stream")
+        source = LibraryEventStreamHead.objects.create(library=owner.library)
+
+        AnonymizeCommand._reassign_stream_head(owner.library.pk)
+
+        head = LibraryEventStreamHead.objects.get(library=owner.library)
+        self.assertNotEqual(head.pk, source.pk)
+        self.assertEqual(_uuid_moment(head.pk), FIXED_EPOCH)
+
+    def test_a_library_without_a_head_is_left_alone(self):
+        owner = get_user_model().objects.create_user(username="no-stream")
+
+        AnonymizeCommand._reassign_stream_head(owner.library.pk)
+
+        self.assertFalse(
+            LibraryEventStreamHead.objects.filter(library=owner.library).exists()
         )
 
     def test_output_preserves_uuid_ordering(self):

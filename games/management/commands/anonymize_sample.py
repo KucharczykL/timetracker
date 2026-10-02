@@ -531,7 +531,7 @@ class Command(BaseCommand):
             device_offsets=device_offsets,
             library_id=library_id,
         )
-        self._reassign_stream_head()
+        self._reassign_stream_head(library_id)
 
         return {
             "games": len(all_game_ids),
@@ -841,12 +841,15 @@ class Command(BaseCommand):
         return len(events), sessions_recorded
 
     @classmethod
-    def _reassign_stream_head(cls):
+    def _reassign_stream_head(cls, library_id) -> None:
         """Mint the head at its first event."""
-        head = LibraryEventStreamHead.objects.first()
+        head = LibraryEventStreamHead.objects.filter(library_id=library_id).first()
+        #: No head means no events.
         if head is None:
             return
-        first = LibraryEvent.objects.aggregate(first=Min("recorded_at"))["first"]
+        first = LibraryEvent.objects.filter(stream_id=head.pk).aggregate(
+            first=Min("recorded_at")
+        )["first"]
         new_id = _mint(first or FIXED_EPOCH, {"ms": None, "sequence": None})
         LibraryEventStreamHead.objects.filter(pk=head.pk).update(id=new_id)
         cls._remap_referrers(LibraryEventStreamHead, {head.pk: new_id})

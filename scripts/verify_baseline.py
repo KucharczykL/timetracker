@@ -5,8 +5,7 @@ replayed again, so nothing else checks that the end it states is the end that
 ran. This does: it restores a dump of the deployment, optionally carries the
 copy over the way an operator would, builds a second database from the
 migrations alone, sends each database through one dump and restore, and reads
-both catalogs. The trip rewrites a CHECK's text once, so both sides take it
-after their last write.
+both catalogs.
 
 Any row only one of them holds is drift, and drift here is a future migration
 generated against a baseline the deployment does not have. Nothing is compared
@@ -182,7 +181,7 @@ class Drift:
 def round_trip(url: str, *, database: str, database_url: str) -> str:
     """Dump and restore the database over itself.
 
-    A full dump: the history catalog reads rows.
+    Full dump: history compare reads rows.
     """
     with tempfile.TemporaryDirectory() as directory:
         dump = Path(directory) / f"{database}.dump"
@@ -301,6 +300,7 @@ def verify(
     #: applied it. This proves that, rather than assuming it -- and it is what
     #: fails first when a dump predates a squash that was never carried over.
     manage("migrate", "--check", database_url=deployed_url)
+    #: A failed restore loses the copy.
     deployed_url = round_trip(
         deployed_url, database=DEPLOYED_DATABASE, database_url=database_url
     )

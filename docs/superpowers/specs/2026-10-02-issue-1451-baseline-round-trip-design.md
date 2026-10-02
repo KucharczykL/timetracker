@@ -33,8 +33,8 @@ each public function that has none. A function that `--migrate` or
 it to the copy as it gives it to the fresh build.
 
 The restore in the trip drops the database first. If it fails, the copy
-that `--migrate` built is gone, and `--keep` has nothing to show. The
-dump file in the temporary directory is named after the database.
+that `--migrate` built is gone, and `--keep` has nothing to show. A
+comment at the call says so.
 
 The trip is a full dump, not `--schema-only`. The history catalog reads
 the rows of `django_migrations`, which a schema-only dump leaves out.
