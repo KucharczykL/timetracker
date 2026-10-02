@@ -3,7 +3,7 @@
 import importlib.util
 import subprocess
 import sys
-from datetime import date
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -95,10 +95,42 @@ def test_a_missing_ssh_host_names_the_setting_to_add(tooling, isolated_configura
         tooling.production_source()
 
 
-def test_a_dump_is_named_for_the_day_it_was_fetched(tooling, tmp_path):
-    assert tooling.dump_path(tmp_path, date(2026, 8, 28)) == (
-        tmp_path / "timetracker-2026-08-28.dump"
+def test_a_dump_is_named_for_the_second_it_was_fetched(tooling, tmp_path):
+    assert tooling.dump_path(tmp_path, datetime(2026, 8, 28, 17, 4, 9, tzinfo=UTC)) == (
+        tmp_path / "timetracker-2026-08-28T170409.dump"
     )
+
+
+def test_an_existing_dump_is_refused_before_the_transfer(
+    tooling, monkeypatch, tmp_path
+):
+    destination = tmp_path / "timetracker-2026-08-28.dump"
+    destination.write_bytes(b"BACKUP")
+    monkeypatch.setattr(
+        tooling, "run", lambda *args, **kwargs: pytest.fail("transferred")
+    )
+
+    with pytest.raises(tooling.DumpError, match="already exists"):
+        tooling.fetch(_source(tooling), destination)
+
+    assert destination.read_bytes() == b"BACKUP"
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_a_dump_written_during_the_transfer_is_kept(tooling, monkeypatch, tmp_path):
+    destination = tmp_path / "timetracker-2026-08-28.dump"
+
+    def race(command, **kwargs):
+        destination.write_bytes(b"BACKUP")
+        kwargs["stdout"].write(b"PGDMP")
+
+    monkeypatch.setattr(tooling, "run", race)
+
+    with pytest.raises(tooling.DumpError, match="already exists"):
+        tooling.fetch(_source(tooling), destination)
+
+    assert destination.read_bytes() == b"BACKUP"
+    assert list(tmp_path.iterdir()) == [destination]
 
 
 def test_a_finished_transfer_replaces_the_partial_file(tooling, monkeypatch, tmp_path):
@@ -147,8 +179,10 @@ def test_a_container_without_pg_dump_names_the_likely_mistake(
 
 def test_the_newest_dump_is_used_when_none_is_named(tooling, tmp_path):
     older = tmp_path / "timetracker-2026-08-01.dump"
-    newer = tmp_path / "timetracker-2026-08-28.dump"
-    for dump in (older, newer):
+    renamed = tmp_path / "timetracker-2026-08-28-pre-deploy.dump"
+    same_day = tmp_path / "timetracker-2026-08-28.dump"
+    newer = tmp_path / "timetracker-2026-08-28T090000.dump"
+    for dump in (older, renamed, same_day, newer):
         dump.write_bytes(b"PGDMP")
 
     assert tooling.newest_dump(tmp_path) == newer

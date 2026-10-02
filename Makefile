@@ -316,7 +316,7 @@ dumpgames: ensure-postgres
 # guarding — a restore never lands in the development database, and a copy is
 # dropped only after its migration succeeded.
 #
-#   make fetch-dump                 -> .dumps/timetracker-<today>.dump
+#   make fetch-dump                 -> .dumps/timetracker-<now>.dump, never replacing one
 #   make restore-dump               -> newest dump into $(DUMP_DB), prints its URL
 #   make verify-dump                -> restore, migrate, drop
 #   make verify-dump KEEP=1         -> ... and keep the copy to look at

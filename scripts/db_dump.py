@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import IO
 from urllib.parse import urlsplit, urlunsplit
@@ -176,8 +176,8 @@ def fetch_command(source: ProductionSource) -> list[str]:
     return ["ssh", source.ssh_host, remote]
 
 
-def dump_path(directory: Path, day: date) -> Path:
-    return directory / f"timetracker-{day.isoformat()}.dump"
+def dump_path(directory: Path, moment: datetime) -> Path:
+    return directory / f"timetracker-{moment:%Y-%m-%dT%H%M%S}.dump"
 
 
 def newest_dump(directory: Path) -> Path:
@@ -187,7 +187,7 @@ def newest_dump(directory: Path) -> Path:
             f"No dump is in {directory}. Run `make fetch-dump` first, or name "
             "one with DUMP=<path>."
         )
-    #: Sorted by name, which the date in it makes the same as by age.
+    #: By name; the timestamp sorts after a same-day suffix.
     return dumps[-1]
 
 
@@ -208,6 +208,8 @@ def _fetch_hint(error: Exception) -> str:
 
 def fetch(source: ProductionSource, destination: Path) -> Path:
     """Stream the deployed database into `destination`, whole or not at all."""
+    if destination.exists():
+        raise DumpError(_exists(destination))
     destination.parent.mkdir(parents=True, exist_ok=True)
     #: A dump written under its final name is a dump the next restore trusts,
     #: so an interrupted transfer must never hold that name.
@@ -220,8 +222,18 @@ def fetch(source: ProductionSource, destination: Path) -> Path:
         raise DumpError(
             f"Could not read the deployed database: {error}{_fetch_hint(error)}"
         ) from error
-    partial.replace(destination)
+    #: A link refuses an existing name; a rename replaces it.
+    try:
+        os.link(partial, destination)
+    except FileExistsError as error:
+        raise DumpError(_exists(destination)) from error
+    finally:
+        partial.unlink(missing_ok=True)
     return destination
+
+
+def _exists(destination: Path) -> str:
+    return f"{destination} already exists; a fetch never replaces a dump."
 
 
 def with_database(database_url: str, database: str) -> str:
@@ -378,9 +390,9 @@ def main() -> None:
 
     try:
         if arguments.operation == "fetch":
-            #: This machine's date, which is the one naming a file by day means.
-            today = datetime.now().astimezone().date()
-            destination = arguments.output or dump_path(dump_directory(), today)
+            #: This machine's clock names the file.
+            now = datetime.now().astimezone()
+            destination = arguments.output or dump_path(dump_directory(), now)
             written = fetch(production_source(), destination)
             print(f"==> Dump written to {written}", file=sys.stderr)
             return
