@@ -10,6 +10,7 @@ from django.db import IntegrityError, connection, transaction
 from entries import record_entry
 from purchases import _state, record_purchase
 
+from common.criteria import ChoiceCriterion, Modifier
 from games.backfill import purchase as conversion
 from games.backfill.purchase import (
     PurchaseConversion,
@@ -29,6 +30,7 @@ from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.purchase import VoidPurchaseRefund
 from games.conversion_review import Category
 from games.events.purchase import PURCHASE_CREATED
+from games.filters import LibraryEntryFilter, PurchaseFilter
 from games.models import (
     Edition,
     EditionKind,
@@ -48,6 +50,7 @@ from games.models import (
 from games.reads.purchases import refund_owns_the_end, stale_purchases
 from games.reads.sums import PlaytimeBreakdown
 from games.removal import remove
+from games.views.conversion_review import conversion_review_rows
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 
@@ -1274,3 +1277,34 @@ def test_a_seeded_valuation_that_drifts_is_a_failure(owned_library, game_on):
     assert reconcile(rows, done).failures() == [
         "CZK: seeded 255.00, legacy shares 250.00"
     ]
+
+
+def test_the_review_reads_what_the_conversion_tags(owned_library, game_on):
+    """The review's field against the pass's own metadata."""
+    rented = game_on("Tunic")
+    bundled = in_key_order(game_on("Hades"), game_on("Celeste"))
+    legacy(owned_library, rented, ownership_type=LegacyPurchase.RENTED, price=3.0)
+    legacy(owned_library, *bundled, price=10.0)
+    legacy(owned_library, game_on("Outer Wilds"), price=0.0)
+    convert()
+
+    rows = {row.label: row.count for row in conversion_review_rows(owned_library)}
+    rentals = LibraryEntryFilter(
+        conversion_review=ChoiceCriterion(
+            value=[str(Category.RENTAL)], modifier=Modifier.INCLUDES
+        )
+    )
+    split = PurchaseFilter(
+        conversion_review=ChoiceCriterion(
+            value=[str(Category.BUNDLE_SPLIT)], modifier=Modifier.INCLUDES
+        )
+    )
+
+    assert rows == {"Rentals": 1, "Split bundles": 2, "Unknown price": 1}
+    assert [
+        entry.player_game.game for entry in LibraryEntry.objects.filter(rentals.to_q())
+    ] == [rented]
+    assert {
+        purchase.entry.player_game.game
+        for purchase in Purchase.objects.filter(split.to_q())
+    } == set(bundled)

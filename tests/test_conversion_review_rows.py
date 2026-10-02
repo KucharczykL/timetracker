@@ -188,3 +188,57 @@ def test_the_route_touches_only_the_viewers_library(
 
     stranger.preferences.refresh_from_db()
     assert stranger.preferences.conversion_review_hidden is False
+
+
+def test_another_librarys_conversion_shows_no_review(
+    client, owned_library, release, django_user_model, stated_graph
+):
+    stranger = django_user_model.objects.create_user(username="stranger").library
+    graph = stated_graph(Game(name="Hades", library=stranger), stranger)
+    record_entry(
+        stranger,
+        graph.release,
+        access="rented",
+        source_metadata=tagged(Category.RENTAL),
+    )
+    client.force_login(owned_library.user)
+
+    body = client.get(reverse("games:library")).text
+
+    assert conversion_review_rows(owned_library) == ()
+    assert "Conversion review" not in body
+
+
+def test_a_converted_library_with_no_rows_shows_the_control_alone(
+    client, owned_library, release
+):
+    record_entry(owned_library, release("Tunic"), source_metadata=tagged())
+    client.force_login(owned_library.user)
+
+    body = client.get(reverse("games:library")).text
+
+    assert "Conversion review" in body
+    assert "Hide this review" in body
+    assert REVIEW_WORDS[Category.RENTAL].label not in body
+
+
+def test_the_review_reads_a_bounded_number_of_queries(
+    client, owned_library, converted, django_assert_max_num_queries
+):
+    client.force_login(owned_library.user)
+
+    #: 25 bare, one count per category and Repurchased.
+    with django_assert_max_num_queries(25 + len(REVIEW_WORDS) + 1):
+        client.get(reverse("games:library"))
+
+
+@pytest.mark.parametrize(
+    ("hidden", "sentence"),
+    [(True, "Conversion review hidden"), (False, "Conversion review shown")],
+)
+def test_the_route_says_what_it_did(client, owned_library, hidden, sentence):
+    client.force_login(owned_library.user)
+
+    client.patch(HIDDEN_URL, data={"value": hidden}, content_type="application/json")
+
+    assert sentence in client.get(reverse("games:library")).text

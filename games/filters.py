@@ -186,7 +186,7 @@ _REVIEW_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
 _REVIEW_VALUES: Final[frozenset[str]] = frozenset(str(word) for word in REVIEWED)
 
 
-def own_events(events: QuerySet[LibraryEvent]) -> Exists:
+def own_events(events: QuerySet[LibraryEvent, LibraryEvent]) -> Exists:
     """Events of the outer row itself."""
     return Exists(
         events.filter(library=OuterRef("library"), aggregate_id=OuterRef("pk"))
@@ -225,6 +225,9 @@ def conversion_review_field(tagged: TaggedRows) -> FilterField:
             q = Q()
             for word in words:
                 q &= any_of([word])
+        elif modifier == Modifier.INCLUDES_ONLY:
+            others = sorted(_REVIEW_VALUES - set(words))
+            q = any_of(words) & (~any_of(others) if others else Q())
         else:
             raise FilterError(f"Unsupported modifier {modifier} for conversion_review")
         if criterion.excludes:
@@ -239,15 +242,15 @@ def conversion_review_field(tagged: TaggedRows) -> FilterField:
     )
 
 
-def _purchase_tagged(events: QuerySet[LibraryEvent]) -> Q:
+def _purchase_tagged(events: QuerySet[LibraryEvent, LibraryEvent]) -> Q:
     return Q(own_events(events))
 
 
-def _entry_tagged(events: QuerySet[LibraryEvent]) -> Q:
+def _entry_tagged(events: QuerySet[LibraryEvent, LibraryEvent]) -> Q:
     """The copy's events, or its purchases'."""
     from games.models import Purchase
 
-    #: Removed purchases keep their tags.
+    #: A removed purchase still tags its copy.
     purchases = Purchase.objects.filter(entry=OuterRef("pk"))
     return Q(own_events(events)) | Q(Exists(purchases.filter(own_events(events))))
 

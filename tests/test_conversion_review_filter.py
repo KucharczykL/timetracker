@@ -4,10 +4,16 @@ import json
 
 import pytest
 from entries import record_entry
-from purchases import record_purchase
+from purchases import record_purchase, remove_purchase
 
 from common.criteria import ChoiceCriterion, FilterError, Modifier
-from games.conversion_review import ORIGIN, REVIEWED, Category
+from games.conversion_review import (
+    ORIGIN,
+    RECONCILIATION_ONLY,
+    REVIEW_WORDS,
+    REVIEWED,
+    Category,
+)
 from games.filters import (
     LibraryEntryFilter,
     PurchaseFilter,
@@ -58,12 +64,14 @@ def three(copies):
     return unknown, both, plain
 
 
-def test_includes_selects_any_tagged_purchase(owned_library, three):
+@pytest.mark.parametrize("modifier", [Modifier.INCLUDES, Modifier.EQUALS])
+def test_includes_selects_any_tagged_purchase(owned_library, three, modifier):
     unknown, both, _ = three
 
-    assert _purchases(
-        owned_library, _review(Modifier.INCLUDES, Category.UNKNOWN_PRICE)
-    ) == {unknown, both}
+    assert _purchases(owned_library, _review(modifier, Category.UNKNOWN_PRICE)) == {
+        unknown,
+        both,
+    }
 
 
 def test_includes_all_needs_every_word(owned_library, three):
@@ -75,11 +83,22 @@ def test_includes_all_needs_every_word(owned_library, three):
     ) == {both}
 
 
-def test_excludes_leaves_the_tagged_out(owned_library, three):
+@pytest.mark.parametrize("modifier", [Modifier.EXCLUDES, Modifier.NOT_EQUALS])
+def test_excludes_leaves_the_tagged_out(owned_library, three, modifier):
+    unknown, _, plain = three
+
+    assert _purchases(owned_library, _review(modifier, Category.BUNDLE_SPLIT)) == {
+        unknown,
+        plain,
+    }
+
+
+def test_no_word_with_an_exclusion_leaves_only_that_out(owned_library, three):
     unknown, _, plain = three
 
     assert _purchases(
-        owned_library, _review(Modifier.EXCLUDES, Category.BUNDLE_SPLIT)
+        owned_library,
+        _review(Modifier.INCLUDES, excludes=[Category.BUNDLE_SPLIT]),
     ) == {unknown, plain}
 
 
@@ -112,11 +131,12 @@ def test_another_origin_is_no_tag(owned_library, copies):
     assert _purchases(owned_library, _review(Modifier.NOT_NULL)) == set()
 
 
-def test_includes_only_is_refused(owned_library, three):
-    with pytest.raises(FilterError):
-        _purchases(
-            owned_library, _review(Modifier.INCLUDES_ONLY, Category.UNKNOWN_PRICE)
-        )
+def test_includes_only_needs_no_other_word(owned_library, three):
+    unknown, _, _ = three
+
+    assert _purchases(
+        owned_library, _review(Modifier.INCLUDES_ONLY, Category.UNKNOWN_PRICE)
+    ) == {unknown}
 
 
 def test_an_unknown_word_is_refused(owned_library, three):
@@ -125,6 +145,24 @@ def test_an_unknown_word_is_refused(owned_library, three):
             owned_library,
             ChoiceCriterion(value=["no_such_word"], modifier=Modifier.INCLUDES),
         )
+
+
+def test_every_word_an_event_carries_has_review_words():
+    assert set(REVIEWED) == set(Category) - RECONCILIATION_ONLY
+    assert set(REVIEW_WORDS) == set(REVIEWED)
+
+
+def test_a_removed_purchase_still_tags_its_copy(owned_library, copies):
+    base = copies("Tunic")
+    remove_purchase(
+        record_purchase(
+            base, kind="season_pass", source_metadata=tagged(Category.OWN_COPY_FALLBACK)
+        )
+    )
+
+    assert _entries(
+        owned_library, _review(Modifier.INCLUDES, Category.OWN_COPY_FALLBACK)
+    ) == {base}
 
 
 def test_a_skipped_word_is_no_choice():

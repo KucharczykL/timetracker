@@ -5,10 +5,12 @@ from enum import StrEnum
 from typing import Final, NamedTuple
 
 ORIGIN: Final = "conversion"
+#: The Hide preference's key and route.
+CONVERSION_REVIEW_HIDDEN: Final = "conversion-review-hidden"
 
 
 class Category(StrEnum):
-    """A review list a planned copy joins."""
+    """The conversion's review words."""
 
     UNKNOWN_PRICE = "unknown_price"
     EPIC_FREE = "epic_free"
@@ -100,6 +102,11 @@ REVIEW_WORDS: Final[Mapping[Category, ReviewWords]] = {
         ReviewTarget.ENTRIES,
     ),
 }
+
+#: Listed by the reconciliation, never tagged.
+RECONCILIATION_ONLY: Final[frozenset[Category]] = frozenset(
+    {Category.SKIPPED_REMOVED_GAME}
+)
 
 #: The words an event can carry.
 REVIEWED: Final[tuple[Category, ...]] = tuple(REVIEW_WORDS)

@@ -3,6 +3,7 @@
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from typing import Final
 
 from games.commands.endpoint import ActStatement
 from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
@@ -14,7 +15,13 @@ from games.events.purchase import (
     PURCHASE_PRICE_CHANGED,
 )
 from games.models import LibraryEvent, PurchaseKind, UserLibrary
-from games.reads.fact_change import Fact, FactChange, fact_change, payload_fact
+from games.reads.fact_change import (
+    Fact,
+    FactChange,
+    PayloadKey,
+    fact_change,
+    payload_fact,
+)
 
 
 def _kind(value: object) -> PurchaseKind | None:
@@ -40,10 +47,15 @@ def _price(value: object) -> StatedPrice | None:
         return None
 
 
+#: Where each event spells the day's note.
+_CREATED_NOTE: Final[PayloadKey] = "purchase_note"
+_CORRECTED_NOTE: Final[PayloadKey] = "note"
+
+
 def _purchased(event: LibraryEvent) -> ActStatement | None:
     """The day is the envelope's."""
-    key = "purchase_note" if event.event_type == PURCHASE_CREATED.event_type else "note"
-    note = _note(event.payload.get(key))
+    created = event.event_type == PURCHASE_CREATED.event_type
+    note = _note(event.payload.get(_CREATED_NOTE if created else _CORRECTED_NOTE))
     return None if note is None else ActStatement(event.effective_time, note)
 
 

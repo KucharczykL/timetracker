@@ -417,6 +417,48 @@ def test_a_kind_changes_beside_the_refunds_void(owned_library, entry, purchase):
     assert _fresh(entry).access_end_recorded_at is None
 
 
+def test_a_refunded_purchase_restates_its_own_kind(owned_library, purchase):
+    _dispatch(owned_library, _refund(purchase))
+
+    result = _dispatch(owned_library, DescribePurchase(purchase.pk, kind="game"))
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+
+
+def test_a_kind_change_beside_a_refund_correction_is_refused(owned_library, purchase):
+    _dispatch(owned_library, _refund(purchase))
+
+    refused = _refused(
+        owned_library,
+        DescribePurchase(purchase.pk, kind="upgrade", refund=ActStatement(JULY)),
+    )
+
+    assert refused.sentence == KIND_UNDER_A_REFUND
+
+
+def test_a_kind_changes_once_the_refund_is_void(owned_library, purchase):
+    _dispatch(owned_library, _refund(purchase))
+    _dispatch(owned_library, _void(purchase))
+
+    _dispatch(owned_library, DescribePurchase(purchase.pk, kind="upgrade"))
+
+    assert _fresh(purchase).kind == "upgrade"
+
+
+def test_a_pass_becoming_a_game_leaves_a_stated_end(owned_library, entry):
+    season_pass = record_purchase(entry, kind="season_pass", purchased=MAY)
+    end_entry_access(entry, way=EndWay.SOLD, ended=JULY)
+    _dispatch(owned_library, _refund(season_pass))
+
+    _dispatch(
+        owned_library,
+        DescribePurchase(season_pass.pk, kind="game", refund=TAKE_REFUND_BACK),
+    )
+
+    assert _fresh(season_pass).kind == "game"
+    assert _fresh(entry).access_end_way == "sold"
+
+
 def test_a_purchase_day_after_the_refund_is_refused(owned_library, purchase):
     _dispatch(owned_library, _refund(purchase))
 

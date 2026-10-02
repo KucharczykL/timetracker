@@ -632,7 +632,7 @@ class DescribePurchase(Command):
         )
         events: list[NewEvent] = []
         if kind is not None and kind != purchase.kind:
-            #: A game refund ends its copy.
+            #: A refund's copy end reads the kind.
             if stated(purchase, PURCHASE_REFUND) is not None and not isinstance(
                 self.refund, RefundTakenBack
             ):

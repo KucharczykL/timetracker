@@ -48,8 +48,8 @@ def _value[T](fact: Fact[T], event: LibraryEvent) -> T:
     if value is None:
         raise RowUnreadable(
             f"event {event.pk} ({event.event_type}) at sequence {event.sequence} "
-            f"of library {event.library_id} states no readable fact: "
-            f"{event.payload!r}"
+            f"of library {event.library_id} states no readable fact; "
+            f"its payload keys are {sorted(event.payload)}"
         )
     return value
 

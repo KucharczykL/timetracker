@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar, TypedDict, cast
@@ -47,12 +47,12 @@ from games.bulk_purchases import (
     removed_purchase,
 )
 from games.commands.endpoint import ActStatement
-from games.commands.purchase import StatedPrice
+from games.commands.purchase import UNKNOWN_PRICE, StatedPrice, check_price
 from games.entry_forms import normalised_note
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected
 from games.events.idempotency import IdempotencyKey
-from games.events.purchase import PurchaseKindValue
+from games.events.purchase import PricePayload, PurchaseKindValue, price_payload
 from games.forms import (
     KEEP,
     ChoiceSearchSelectWidget,
@@ -76,23 +76,18 @@ from games.writes.purchase import SUBJECT, restate_purchase
 from timetracker.temporal import TemporalValue
 
 
-class PriceJson(TypedDict):
-    """Null amount is unknown."""
-
-    amount: str | None
-    currency: str
-
-
 class PurchaseEditJson(TypedDict, total=False):
     """The wire statement; absent is unstated."""
 
-    kind: str
-    price: PriceJson
-    purchased: str
+    kind: PurchaseKindValue
+    #: Null is an unknown price.
+    price: PricePayload | None
+    #: Null is an unknown day.
+    purchased: str | None
     note: str
 
 
-_KEYS = frozenset(PurchaseEditJson.__annotations__)
+_KEYS = frozenset(PurchaseEditJson.__optional_keys__)
 
 NOTHING_STATED = "Choose a kind, a price, a day or a note."
 NOT_EDITED_BY_THIS_BATCH = (
@@ -106,7 +101,12 @@ _KEPT_NOTE_LENGTH = 40
 
 @dataclass(frozen=True, slots=True)
 class PurchaseEditStatement:
-    """What one batch states; None leaves alone."""
+    """What one batch states; None leaves alone.
+
+    An unknown `purchased` restates no day.
+    Never collapse it through `stated_date`:
+    None here keeps the row's day.
+    """
 
     kind: PurchaseKind | None
     price: StatedPrice | None
@@ -114,17 +114,8 @@ class PurchaseEditStatement:
     note: str | None
 
     def __post_init__(self) -> None:
-        if self.stated_nothing:
+        if _nothing(self.kind, self.price, self.purchased, self.note):
             raise ValueError("An edit states a kind, a price, a day or a note.")
-
-    @property
-    def stated_nothing(self) -> bool:
-        return (
-            self.kind is None
-            and self.price is None
-            and self.purchased is None
-            and self.note is None
-        )
 
     @classmethod
     def of(
@@ -135,21 +126,18 @@ class PurchaseEditStatement:
         note: str | None,
     ) -> PurchaseEditStatement | None:
         """None where nothing is stated."""
-        if kind is None and price is None and purchased is None and note is None:
+        if _nothing(kind, price, purchased, note):
             return None
         return cls(kind, price, purchased, note)
 
     def encode(self) -> ChoiceValue:
         stated: PurchaseEditJson = {}
         if self.kind is not None:
-            stated["kind"] = self.kind.value
+            stated["kind"] = cast(PurchaseKindValue, self.kind.value)
         if self.price is not None:
-            stated["price"] = {
-                "amount": None if self.price.amount is None else str(self.price.amount),
-                "currency": self.price.currency,
-            }
+            stated["price"] = price_payload(self.price.amount, self.price.currency)
         if self.purchased is not None:
-            stated["purchased"] = cast(str, self.purchased.canonical)
+            stated["purchased"] = self.purchased.canonical
         if self.note is not None:
             stated["note"] = self.note
         return json.dumps(stated, sort_keys=True)
@@ -170,25 +158,38 @@ class PurchaseEditStatement:
             raise statement_unreadable(f"{raw!r} states a note that is no text")
         try:
             return cls(
-                None if kind is None else PurchaseKind(kind), price, purchased, note
+                None if kind is None else PurchaseKind(kind),
+                price,
+                purchased,
+                None if note is None else normalised_note(note),
             )
         except ValueError as empty:
             raise statement_unreadable(f"{raw!r} states nothing") from empty
 
 
+def _nothing(*facts: object) -> bool:
+    return all(fact is None for fact in facts)
+
+
 def _price(raw: ChoiceValue, value: object) -> StatedPrice:
+    """The command's rules, refused once."""
+    if value is None:
+        return UNKNOWN_PRICE
     if not isinstance(value, dict) or set(value) != {"amount", "currency"}:
         raise statement_unreadable(f"{raw!r} states a price that is no price")
     amount, currency = value["amount"], value["currency"]
-    if not isinstance(currency, str) or not (amount is None or isinstance(amount, str)):
+    if not isinstance(amount, str) or not isinstance(currency, str):
         raise statement_unreadable(f"{raw!r} states a price that is no price")
     try:
-        return StatedPrice(None if amount is None else Decimal(amount), currency)
-    except InvalidOperation as malformed:
-        raise statement_unreadable(f"{raw!r} states no amount") from malformed
+        return check_price(StatedPrice(Decimal(amount), currency).normalized())
+    except (InvalidOperation, CommandRejected) as refused:
+        raise statement_unreadable(f"{raw!r} states no price") from refused
 
 
 def _purchased(raw: ChoiceValue, value: object) -> TemporalValue:
+    """Null is an unknown day."""
+    if value is None:
+        return TemporalValue.unknown()
     if not isinstance(value, str):
         raise statement_unreadable(f"{raw!r} states a day that is no text")
     try:
@@ -196,7 +197,7 @@ def _purchased(raw: ChoiceValue, value: object) -> TemporalValue:
     except ValueError as malformed:
         raise statement_unreadable(f"{raw!r} states no day") from malformed
     if day.canonical is None:
-        raise statement_unreadable(f"{raw!r} states an unknown day")
+        raise statement_unreadable(f"{raw!r} states an unknown day as text")
     return day
 
 
@@ -246,20 +247,22 @@ class BulkPurchaseEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm, PriceFields):
             presentation=presentation, label="Bought on"
         )
         self.order_fields(["kind", "price", "amount", "currency", "purchased", "note"])
-        #: Field name to its "Keep:" line.
-        self.keep_hints: dict[FieldName, str] = {}
+        #: Kind and note hint as placeholders.
+        self.keep_hints: Mapping[FieldName, str] = {}
         if rows:
             cast(
                 ChoiceSearchSelectWidget, self.fields["kind"].widget
             ).placeholder = keeping(
                 rows, lambda row: row.kind, lambda word: PurchaseKind(word).label
             )
-            self.keep_hints["price"] = keeping(rows, price_words, str)
-            self.keep_hints["purchased"] = keeping(
-                rows,
-                lambda row: row.purchased,
-                lambda day: present_temporal_value(day, presentation),
-            )
+            self.keep_hints = {
+                "price": keeping(rows, price_words, str),
+                "purchased": keeping(
+                    rows,
+                    lambda row: row.purchased,
+                    lambda day: present_temporal_value(day, presentation),
+                ),
+            }
             note = cast(UnsetWidget, self.fields["note"].widget).widget
             note.attrs["placeholder"] = keeping(rows, lambda row: row.note, _note_shown)
 

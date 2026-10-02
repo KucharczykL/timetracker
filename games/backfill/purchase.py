@@ -50,7 +50,7 @@ from games.commands.purchase import (
     purchase_creation_events,
 )
 from games.conversion import request_revaluation
-from games.conversion_review import ORIGIN, Category
+from games.conversion_review import ORIGIN, RECONCILIATION_ONLY, Category
 from games.end_ways import EndWay
 from games.events.append import LockedStream
 from games.events.conflicts import CommandConflict
@@ -1101,6 +1101,9 @@ def _act_input(copy: PlannedCopy) -> CommandInput:
 def _metadata(
     legacy_ids: Sequence[LegacyId], categories: Sequence[Category]
 ) -> ConversionMetadata:
+    untaggable = RECONCILIATION_ONLY.intersection(categories)
+    if untaggable:
+        raise ConversionDefect(f"{sorted(untaggable)} are never tagged on an event.")
     return {
         "origin": ORIGIN,
         "issue": ISSUE,

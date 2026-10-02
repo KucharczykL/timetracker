@@ -14,8 +14,9 @@ through `EventRows(Purchase)`.
   revaluation.
 - `purchase.edit` lives in `games/bulk_purchase_edit.py`. It states kind,
   price, purchase day and note. An empty field keeps the row's value.
-  Price offers Keep, Paid, Free and Unknown. The day keeps the row's own
-  `purchase_note`. One `DescribePurchase` dispatch writes each row.
+  Price offers Keep, Paid, Free and Unknown. The note's ⊘ states no note.
+  The day keeps the row's own `purchase_note`. One `DescribePurchase`
+  dispatch writes each row.
 
 `games/bulk_purchases.py` holds what the two acts share. It imports no
 act. The list's read, `purchase_list_rows`, is in
@@ -30,23 +31,25 @@ because the purchase day is the envelope's `effective_time`.
 ## The kind rule
 
 `DescribePurchase` refuses a kind change on a refunded purchase. The same
-statement can take the refund back; then the change passes. A `game`
-refund ends its copy, and a refund of another kind does not.
+statement can take the refund back; then the change passes. The rule
+exists because a `game` refund ends an owned, unended copy, and a refund
+of another kind does not. A kind change would leave that end misread.
 
 ## The conversion review
 
 `conversion_review` is a choice field on `PurchaseFilter` and
 `LibraryEntryFilter`. Its words are `Category`
-(`games/conversion_review.py`). It compiles one `Exists` over
-`LibraryEvent`: the row's key, origin `conversion`, and the word in
-`review`. An entry also matches through its purchases' events. The field
-refuses an unknown word and `INCLUDES_ONLY`.
+(`games/conversion_review.py`), less the words only the reconciliation
+lists. It reads `LibraryEvent` through `Exists`: the row's key, origin
+`conversion`, and the word in
+`review`. An entry also matches through its purchases' events, removed
+purchases included. The field refuses an unknown word.
 
 The Library page's Purchases section lists one row per category: label,
 reason, count and a link to its rows. A category with no rows is left
 out. "Repurchased games" counts games with two copies or more. The count
-is the target list's own read, so it records what the conversion did,
-not what remains.
+is the target list's own read. An edit does not take a row out of its
+category; a removal does.
 
 "Hide this review" is `UserLibraryPreferences.conversion_review_hidden`,
 set through `PATCH /api/library/conversion-review-hidden`. The page
@@ -57,5 +60,5 @@ The review serves one conversion. #1443 removes it, and keeps the field.
 ## The Library tab
 
 The Purchases column lists one line per live, unrefunded purchase of the
-copy, from `held_purchases`. A line is the price. A pass or a named
-purchase puts its label first.
+copy, from `held_purchases`. A line is the price. A purchase of another
+kind than `game`, or a named one, puts its label first.

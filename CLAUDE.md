@@ -697,9 +697,10 @@ docs/           — Additional documentation
   the statement takes the refund back. `conversion_review`, a choice
   field on `PurchaseFilter` and `LibraryEntryFilter` over `Category`
   (`games/conversion_review.py`), reads the conversion's tags from
-  events; the Library page lists each category's count and link until
-  `UserLibraryPreferences.conversion_review_hidden` hides them (one-time,
-  #1443 removes it). The Library tab's Purchases column prints each held
+  events; the Library page lists each category's count and link, and
+  Repurchased games, until `UserLibraryPreferences.conversion_review_hidden`
+  hides them (one-time; #1443 removes the review and its preference, and
+  keeps the field). The Library tab's Purchases column prints each held
   purchase's price. Contract is
   [Purchases selectable, conversion reviewed](docs/superpowers/specs/2026-10-02-issue-1266-purchases-selectable-design.md)
 
@@ -779,7 +780,7 @@ defect never reached included. `<continuing-batch>` posts the waypoint's form
 on connect, so only Stop is pressed. The Undo reads the act's name out of the
 batch's `source_metadata` and its rows through `undo_rows` -- for
 `EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the
-three reads that answer from events rather than a projection
+reads that answer from events rather than a projection
 (`conversion_review` is another) -- and runs as a
 batch of its own. An act's scope is its own
 base narrowed by the statement's filter, never the filter alone, and an

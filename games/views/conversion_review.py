@@ -17,7 +17,13 @@ from common.components import (
 )
 from common.criteria import AggregateCriterion, ChoiceCriterion, Modifier
 from common.filter_execution import execute_filter
-from games.conversion_review import ORIGIN, REVIEW_WORDS, REVIEWED, ReviewTarget
+from games.conversion_review import (
+    CONVERSION_REVIEW_HIDDEN,
+    ORIGIN,
+    REVIEW_WORDS,
+    REVIEWED,
+    ReviewTarget,
+)
 from games.filters import (
     GameFilter,
     LibraryEntryFilter,
@@ -53,7 +59,7 @@ def converted(library: UserLibrary) -> bool:
 
 
 def conversion_review_rows(library: UserLibrary) -> tuple[ReviewRow, ...]:
-    """Each category's rows; empty ones left out."""
+    """One row per non-empty category, and Repurchased."""
     context = filter_query_context_for_library(library)
     rows: list[ReviewRow] = []
     for word in REVIEWED:
@@ -93,7 +99,7 @@ def ConversionReview(request: HttpRequest, library: UserLibrary) -> Node | None:
         ConversionReviewForm(hidden=hidden),
         states={
             "hidden": SettingFieldState(
-                key="conversion-review-hidden",
+                key=CONVERSION_REVIEW_HIDDEN,
                 source="library",
                 show_source=False,
             )

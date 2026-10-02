@@ -54,6 +54,7 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.commands.purchase import StatedPrice
+from games.conversion_review import CONVERSION_REVIEW_HIDDEN
 from games.end_ways import EndWay
 from games.events.dispatch import (
     IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -2041,12 +2042,17 @@ class DefaultDeviceIn(Schema):
     value: UUIDv7 | None = None
 
 
-class DefaultDeviceOut(Schema):
+class LibraryPreferenceOut(Schema):
+    """What a library preference's route answers."""
+
     key: str
-    value: UUIDv7 | None
     source: SettingSource
     locked: bool
     namespace: SettingNamespace
+
+
+class DefaultDeviceOut(LibraryPreferenceOut):
+    value: UUIDv7 | None
 
 
 class ConversionReviewHiddenIn(Schema):
@@ -2055,12 +2061,8 @@ class ConversionReviewHiddenIn(Schema):
     value: StrictBool
 
 
-class ConversionReviewHiddenOut(Schema):
-    key: str
+class ConversionReviewHiddenOut(LibraryPreferenceOut):
     value: bool
-    source: SettingSource
-    locked: bool
-    namespace: SettingNamespace
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
@@ -2179,12 +2181,7 @@ ENDED_DEFAULT_DEVICE = (
 
 @library_router.patch("/default-device", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
-    """Set the library's default Device; null clears.
-
-    The live-settings client fills its field key into
-    ``/api/library/__key__``, so each library preference is one literal
-    route named by its key.
-    """
+    """Set the library's default Device; null clears."""
     library = request.user.library
     device = None
     if payload.value is not None:
@@ -2210,10 +2207,13 @@ def update_conversion_review_hidden(
 ):
     """Hide or show the conversion review."""
     change_library_conversion_review_hidden(request.user.library, payload.value)
-    messages.success(request, "Hide this review saved")
+    messages.success(
+        request,
+        "Conversion review hidden" if payload.value else "Conversion review shown",
+    )
     response[RELOAD_HEADER] = "true"
     return {
-        "key": "conversion-review-hidden",
+        "key": CONVERSION_REVIEW_HIDDEN,
         "value": payload.value,
         "source": SettingSource.LIBRARY,
         "locked": False,
