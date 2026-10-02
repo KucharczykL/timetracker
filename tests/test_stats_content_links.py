@@ -265,3 +265,22 @@ def test_a_play_a_record_alone_answers_prints_no_session_link(db):
         _href(stats_links.records_for_game(game.id, YEAR, game.name)) in first_play_row
     )
     assert sessions in html
+
+
+def test_money_keeps_both_decimal_places(db):
+    library = get_user_model().objects.create_user(username="cents").library
+    game = create_tracked_game(library, "Tunic", status=PlayerGameStatus.PLAYED)
+    copy = _bought(library, game, 1).entry
+    copy.paid = Decimal("8.74")
+    ctx = compute_stats(library, YEAR)
+    ctx.update(
+        total_spent=Decimal("8.74"),
+        spent_per_game=Decimal("4.37"),
+        purchased_unfinished=[copy],
+        purchased_unfinished_count=1,
+    )
+
+    html = str(stats_content(ctx))
+
+    assert "8.74 (4.37/game)" in html
+    assert ">8.74<" in html

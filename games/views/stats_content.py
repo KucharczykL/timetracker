@@ -110,6 +110,11 @@ def _card(title: str, body: Node) -> Node:
     return Div(class_="min-w-0")[_card_title(title), body]
 
 
+def _money(amount: object) -> str:
+    """Two decimal places, as stored."""
+    return floatformat(amount, 2)
+
+
 def _copy_name(entry: LibraryEntry) -> Node:
     """A copy, by its game."""
     game = entry.player_game.game
@@ -275,8 +280,8 @@ def _purchases_table(ctx) -> Node:
         ),
         make_row(
             f"Spendings ({ctx.get('total_spent_currency')})",
-            f"{floatformat(ctx.get('total_spent'))} "
-            f"({floatformat(ctx.get('spent_per_game'))}/game)",
+            f"{_money(ctx.get('total_spent'))} "
+            f"({_money(ctx.get('spent_per_game'))}/game)",
         ),
         make_row(
             "No known price",
@@ -381,7 +386,7 @@ def _paid_table(copies, currency, view_all_url=None, total=None) -> Node:
     copies = list(copies)
     display = copies[:LIST_CAP] if view_all_url else copies
     rows = [
-        make_row(_copy_name(copy), "-" if copy.paid is None else floatformat(copy.paid))
+        make_row(_copy_name(copy), "-" if copy.paid is None else _money(copy.paid))
         for copy in display
     ]
     table = StyledTable(
