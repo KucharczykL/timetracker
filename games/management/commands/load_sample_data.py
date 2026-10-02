@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
+from django.db.models import Model
 
 from common.platform_icons import canonical_icon
 from games.conversion import _request_conversion_for_locked_state
@@ -37,26 +38,25 @@ from games.models import (
     PurchaseConversionState,
     Release,
 )
+from games.projections import FieldName, ModelLabel
 from games.reads.purchases import stale_purchases
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
 TARGET_LIBRARY_MARKER = "__target_library__"
 
-PRIVATE_MODELS = {
+PRIVATE_MODELS: dict[ModelLabel, type[Model]] = {
     "games.game": Game,
     "games.filterpreset": FilterPreset,
     "games.libraryeventstreamhead": LibraryEventStreamHead,
     "games.libraryevent": LibraryEvent,
     "games.libraryeventreference": LibraryEventReference,
 }
-#: Catalog rows a Game carries.
-LOADABLE_MODELS = {
+#: Every model the loader deserializes.
+LOADABLE_MODELS: dict[ModelLabel, type[Model]] = {
     **PRIVATE_MODELS,
     "games.edition": Edition,
     "games.release": Release,
 }
-#: Fixture rows naming a Platform.
-PLATFORM_HOLDERS = frozenset({"games.game", "games.release"})
 
 
 class FixtureRelationship(NamedTuple):
@@ -68,18 +68,16 @@ class FixtureRelationship(NamedTuple):
     only when the database FK deliberately targets a secondary identity.
     """
 
-    field: str
-    target_model: str
+    field: FieldName
+    target_model: ModelLabel
     many: bool
     required: bool
-    reference_field: str = "pk"
+    reference_field: FieldName = "pk"
 
 
-FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
+FIXTURE_RELATIONSHIPS: dict[ModelLabel, tuple[FixtureRelationship, ...]] = {
     "games.game": (
-        FixtureRelationship(
-            "platform", "games.platform", False, False, reference_field="pk"
-        ),
+        FixtureRelationship("platform", "games.platform", False, False),
         FixtureRelationship("parent", "games.game", False, False),
     ),
     "games.edition": (FixtureRelationship("game", "games.game", False, True),),
@@ -94,6 +92,16 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
         FixtureRelationship("event", "games.libraryevent", False, True),
     ),
 }
+
+
+#: Fixture rows naming a Platform, remapped on load.
+PLATFORM_HOLDERS: frozenset[ModelLabel] = frozenset(
+    label
+    for label, relationships in FIXTURE_RELATIONSHIPS.items()
+    if any(
+        relationship.target_model == "games.platform" for relationship in relationships
+    )
+)
 
 
 class Command(BaseCommand):

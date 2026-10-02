@@ -194,7 +194,7 @@ docs/           — Additional documentation
   (`games/backfill/legacy_model.py`) and refuses once the table is gone;
   tests build rows on that model through the `legacy_purchase` fixture
   (`tests/legacy_purchases.py`), which refuses a `transaction=True` test.
-  Each module #1448 removes at the squash says `conversion-tooling`.
+  Each module and test #1448 removes at the squash says `conversion-tooling`.
   `RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`. Contract is
   [The legacy purchase is gone](docs/superpowers/specs/2026-10-02-issue-736-legacy-purchase-drop-design.md)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
@@ -728,9 +728,10 @@ each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
 `games/removal.py`; a projection's mark (session, run, record, device,
 entry, purchase) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
-`post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
-Game marks its external references. Playtime is no stored total, so a removed
-Session needs nothing beyond its mark.
+`post_save`. What signal would have done, `_AFTER_STAMP` does by hand: every
+catalog row marks its external references, and a restored Game mirrors its
+wikidata column. Playtime is no stored total, so a removed Session needs
+nothing beyond its mark.
 `for_library()`/`visible_to()` call `.alive()`, so removed row leaves every list,
 form, filter and API response at once; plain manager still sees it. Edition and Release read
 ancestors' marks as well as own, so removed Game hides both and restoring it
@@ -843,8 +844,9 @@ only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
 unique among platformless games.
 
 **GeneratedField constraint**: the projection's `effective_day`,
-`effective_duration` and `sort_instant`, and every temporal bound column, are
-computed by the database and cannot be written from application code.
+`effective_duration` and `sort_instant`, and every temporal column's generated
+columns, are computed by the database and cannot be written from application
+code.
 
 ### Key patterns
 
@@ -1125,7 +1127,9 @@ delete of a row an event references is refused.
 broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
 `cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and valuing purchases in the
 resolved `DEFAULT_DISPLAY_CURRENCY`. One run values every `PurchaseValuation`
-and publishes the set; a `DatabaseError` fails it and schedules one retry.
+and publishes the set; a purchase whose rate the source lacks is skipped, and a
+`DatabaseError` or a source that does not answer (`RateFetchFailed`) fails the
+run and schedules one retry.
 A purchase write that moves a
 value calls `request_revaluation`; the daily recovery requests a library at
 rest with `stale_purchases`.
@@ -1355,8 +1359,11 @@ production PostgreSQL database (then `make migrate`). It dumps Platform, Game,
 Edition, Release, the event store and ExchangeRate; shifts dates (per-game
 offset), clears free-text notes/names and `source_metadata`, and sanitizes
 audit timestamps; in event payloads it clears every `NoteText`/`NameText` path
-and redraws every `AmountText`, lists included. Edition and Release mint at the
-epoch; a projected reference (an entry) takes its aggregate's new id. All
+and redraws every `AmountText`, lists included; `--name-overrides` reaches
+edition names too. Edition and Release mint at the epoch; a projected reference
+(an entry) takes its aggregate's new id, and a bare id no aggregate holds is
+re-minted; a reference or payload that does not resolve or validate refuses
+with the event's key. All
 inside rolled-back transaction, so source DB untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 
@@ -1390,7 +1397,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 ## Conventions for AI assistants
 
 - **Never write to `GeneratedField`s** (`effective_day`, `effective_duration`,
-  `sort_instant`, the temporal bound columns).
+  `sort_instant`, every temporal column's generated columns).
 - **One act, one verb** — event type, its command and its projection column share
   one verb, and column is `<act>_at`: nullable `DateTimeField` whose null is live
   state. See [Naming](docs/event-retention.md#naming).

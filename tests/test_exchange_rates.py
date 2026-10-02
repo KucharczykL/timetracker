@@ -79,14 +79,29 @@ def test_a_currency_the_answer_lacks_is_none(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_a_failed_request_is_none(monkeypatch):
+def test_a_failed_request_raises_for_a_retry(monkeypatch):
     monkeypatch.setattr(
         exchange_rates.requests,
         "get",
         Mock(side_effect=requests.ConnectionError("offline")),
     )
 
-    assert exchange_rates.exchange_rate("USD", "CZK", 2023) is None
+    with pytest.raises(exchange_rates.RateFetchFailed, match="offline"):
+        exchange_rates.exchange_rate("USD", "CZK", 2023)
+    assert not ExchangeRate.objects.exists()
+
+
+@pytest.mark.django_db
+def test_an_absent_year_is_none(monkeypatch):
+    response = requests.Response()
+    response.status_code = 404
+    monkeypatch.setattr(
+        exchange_rates.requests,
+        "get",
+        Mock(side_effect=requests.HTTPError("not found", response=response)),
+    )
+
+    assert exchange_rates.exchange_rate("USD", "CZK", 1990) is None
 
 
 @pytest.mark.django_db

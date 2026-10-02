@@ -2725,7 +2725,7 @@ class TestComparisonGroupResolver:
         assert _comparison_group_for(PlayerSession, "started_at") == "datetime"
 
     def test_generated_field_duration(self):
-        """GeneratedField (duration_total) resolves via output_field to 'duration'."""
+        """GeneratedField (effective_duration) resolves via output_field to 'duration'."""
         from games.models import PlayerSession
 
         assert _comparison_group_for(PlayerSession, "effective_duration") == "duration"
@@ -3378,7 +3378,7 @@ class TestFieldComparisonWiring:
                 )
             ]
         )
-        with pytest.raises(FilterError):
+        with pytest.raises(FilterError, match="not allowed for bool"):
             stub.to_q()
 
     def test_self_compare_raises(self):
@@ -3419,7 +3419,7 @@ class TestFieldComparisonWiring:
                 )
             ]
         )
-        with pytest.raises(FilterError):
+        with pytest.raises(FilterError, match="not allowed for number"):
             stub.to_q()
 
     def test_relation_column_raises(self):

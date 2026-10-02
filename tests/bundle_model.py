@@ -1,4 +1,4 @@
-"""A model holding a forward many-to-many."""
+"""An unmigrated model for comparison-group tests."""
 
 from django.db import models
 from django.db.models import F
@@ -28,6 +28,9 @@ def _declare() -> type[models.Model]:
             date_refunded = models.DateField(null=True)
             name = models.CharField(max_length=255, blank=True, default="")
             price = models.FloatField(default=0)
+            converted_price = models.FloatField(null=True)
+            infinite = models.BooleanField(default=False)
+            needs_price_update = models.BooleanField(default=True)
             price_currency = models.CharField(max_length=3, blank=True, default="")
             converted_currency = models.CharField(max_length=3, blank=True, default="")
             num_purchases = models.IntegerField(default=0)

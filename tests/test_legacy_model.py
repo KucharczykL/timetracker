@@ -37,8 +37,20 @@ def test_the_fixture_answers_the_model(legacy_purchase):
     assert require_legacy_table(connection) is legacy_purchase
 
 
+def test_a_squashed_state_is_gone_too(monkeypatch):
+    from games.backfill import legacy_model
+
+    monkeypatch.setattr(legacy_model, "LEGACY_STATE", ("games", "9999_squashed"))
+    legacy_model.legacy_purchase_model.cache_clear()
+    try:
+        with pytest.raises(LegacyTableGone, match="9999_squashed"):
+            legacy_model.legacy_purchase_model()
+    finally:
+        legacy_model.legacy_purchase_model.cache_clear()
+
+
 def test_the_command_refuses_once_the_table_is_gone(owned_user):
-    with pytest.raises(CommandError, match="legacy purchase table is gone"):
+    with pytest.raises(CommandError, match="legacy purchase is gone"):
         call_command(
             "verify_purchase_conversion",
             "--user",

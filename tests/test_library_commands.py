@@ -221,6 +221,9 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert PlayerSession.objects.filter(library=owner.library).exists()
     assert not PlayerSession.objects.exclude(library=owner.library).exists()
     assert LibraryCalendar.objects.filter(library=owner.library).exists()
+    #: The fixture carries no valuation.
+    state = PurchaseConversionState.objects.get(library=owner.library)
+    assert state.requested_version > state.published_version
 
 
 @pytest.mark.django_db(transaction=True)
@@ -453,6 +456,40 @@ def test_sample_load_rejects_relationships_outside_the_fixture_graph(
     with pytest.raises(
         CommandError, match=rf"references {target_model} .*not included"
     ):
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+
+@pytest.mark.django_db
+def test_sample_load_rejects_a_release_platform_outside_the_fixture_graph(
+    owner, monkeypatch, tmp_path
+):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "model": "games.game",
+                    "pk": PRESENT_GAME_UUID,
+                    "fields": {"library": "__target_library__", "name": "Held"},
+                },
+                {
+                    "model": "games.edition",
+                    "pk": 302,
+                    "fields": {"game": PRESENT_GAME_UUID},
+                },
+                {
+                    "model": "games.release",
+                    "pk": 303,
+                    "fields": {"edition": 302, "platform": ABSENT_PLATFORM_UUID},
+                },
+            ]
+        )
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(CommandError, match=r"references Platform .*not included"):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
 

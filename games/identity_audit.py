@@ -117,7 +117,7 @@ class IdentityModel(NamedTuple):
 def audited_models() -> list[type[Model]]:
     """Every table this project owns, auto-created through tables included.
 
-    `include_auto_created` keeps a through table's integer key visible.
+    `include_auto_created`: without it, a through table hides.
     """
     #: `managed` is what excludes the manufactured twins.
     return [

@@ -13,7 +13,7 @@ from games.conversion import (
     _request_conversion_for_locked_state,
     request_revaluation,
 )
-from games.exchange_rates import exchange_rate
+from games.exchange_rates import RateFetchFailed, exchange_rate
 from games.models import (
     PurchaseConversionState,
     UserLibrary,
@@ -191,7 +191,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                     "last_error",
                 ]
             )
-    except DatabaseError as error:
+    except (DatabaseError, RateFetchFailed) as error:
         logger.exception(
             "[convert_library_prices]: conversion failed for library %s version %s",
             library_id,

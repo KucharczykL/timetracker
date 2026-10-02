@@ -14,7 +14,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 from graphs import default_graph
-from legacy_purchases import LegacyCodes, legacy_row, link_game
+from legacy_purchases import LegacyOwnershipCode, LegacyTypeCode, legacy_row, link_game
 from purchases import record_purchase, remove_purchase, void_refund
 from session_rows import session_row
 from tracked_games import create_tracked_game
@@ -118,7 +118,7 @@ def legacy_library(owned_library):
             library,
             playing,
             date(YEAR, 5, 3),
-            type=LegacyCodes.SEASONPASS,
+            type=LegacyTypeCode.SEASONPASS,
             name="Pass",
             related_game=playing,
         ),
@@ -467,7 +467,7 @@ def test_a_held_reason_that_cannot_move_the_set_explains_nothing(
         owned_library,
         game_on("Rented"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyCodes.RENTED,
+        ownership_type=LegacyOwnershipCode.RENTED,
         price=5,
     )
     snapshot = _snapshot(owned_library)
@@ -530,7 +530,7 @@ def test_a_free_rental_is_a_copy_and_no_purchase(owned_library, euro, game_on):
         owned_library,
         game_on("Inside"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyCodes.RENTED,
+        ownership_type=LegacyOwnershipCode.RENTED,
         price=0,
     )
 
@@ -549,7 +549,7 @@ def test_a_rental_is_not_owned(owned_library, euro, game_on):
         owned_library,
         game_on("Rented"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyCodes.RENTED,
+        ownership_type=LegacyOwnershipCode.RENTED,
         price=5,
     )
 
@@ -561,7 +561,7 @@ def test_a_demo_is_a_prerelease_copy(owned_library, euro, game_on):
         owned_library,
         game_on("Demo"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyCodes.DEMO,
+        ownership_type=LegacyOwnershipCode.DEMO,
         price=0,
     )
 
@@ -574,7 +574,7 @@ def test_a_dlc_counts_through_its_own_game(owned_library, euro, game_on):
         owned_library,
         base,
         date(YEAR, 3, 1),
-        type=LegacyCodes.DLC,
+        type=LegacyTypeCode.DLC,
         name="Expansion",
         related_game=base,
         price=5,
@@ -598,7 +598,7 @@ def test_a_pass_rides_the_base_copy(owned_library, euro, game_on):
         owned_library,
         game,
         date(YEAR, 4, 1),
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
         price=5,
@@ -613,7 +613,7 @@ def test_a_pass_without_a_base_records_its_own_copy(owned_library, euro, game_on
         owned_library,
         game,
         date(YEAR, 4, 1),
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
         price=5,

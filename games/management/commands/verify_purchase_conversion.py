@@ -10,9 +10,12 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
-from django.db.models import Model
 
-from games.backfill.legacy_model import LegacyTableGone, require_legacy_table
+from games.backfill.legacy_model import (
+    HistoricalModel,
+    LegacyTableGone,
+    require_legacy_table,
+)
 from games.backfill.purchase import (
     LibraryConversion,
     PurchaseConversionDrift,
@@ -73,7 +76,7 @@ class Command(BaseCommand):
             model = require_legacy_table(connection)
         except LegacyTableGone as gone:
             raise CommandError(
-                "The legacy purchase table is gone; nothing to convert."
+                f"The legacy purchase is gone ({gone}); nothing to convert."
             ) from gone
         library = self._library(username)
         rows = legacy_rows(model, library.pk)
@@ -99,7 +102,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Converted and committed."))
 
     def _convert(
-        self, model: type[Model], library: UserLibrary, rows: list[LegacyRow]
+        self, model: HistoricalModel, library: UserLibrary, rows: list[LegacyRow]
     ) -> bool:
         """Whether the pass had anything to state."""
         legacy = legacy_figures(model, library, None).values

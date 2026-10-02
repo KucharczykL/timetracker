@@ -10,9 +10,10 @@ Migration `0035_delete_legacypurchase` deletes `LegacyPurchase` and its
 through table. It also deletes the schedule row of the retired task
 `calculate_price_per_game`. The reverse creates the tables again, empty.
 
-The currency task values purchases only. A purchase without a rate is
-skipped with a warning. A `DatabaseError` fails the run and schedules
-one retry.
+The currency task values purchases only. A purchase whose rate the
+source does not have is skipped with a warning. A `DatabaseError`, or a
+source that does not answer (`RateFetchFailed`), fails the run and
+schedules one retry.
 
 `RETIRED_FILTER_MODELS` keeps `legacypurchase`. A stored filter that
 names it is refused with its sentence.
@@ -27,7 +28,8 @@ They read the model from migration state `0034_conversion_review_hidden`
 through `legacy_purchase_model()` (`games/backfill/legacy_model.py`).
 The historical model takes keys, not instances. It has no `save()` rules
 and no signals. `require_legacy_table` raises `LegacyTableGone` when the
-table is absent, and the command then refuses with one sentence.
+table or the migration state is absent. The command then refuses with
+one sentence.
 
 Tests make legacy rows with the `legacy_purchase` fixture. It creates
 both tables inside the test's transaction, and the rollback removes them.
@@ -63,7 +65,11 @@ A refund ends that copy, and a pass uses the copy of its base game.
   `FIXED_EPOCH`, in key order.
 - A reference to an entry gets the new id of the entry's aggregate, in
   the payload and in `LibraryEventReference`.
-- A path rewrite goes into each item of a list.
+- A path rewrite goes into each item of a list. A bare id that no
+  aggregate holds, such as a join id, gets a new id at the epoch.
+- Each rewritten payload is sorted and validated again. A reference or a
+  payload that fails stops the command with the key of the event.
+- `--name-overrides` also changes the names of editions.
 - The prune deletes the projection rows of the other libraries first,
   because their keys are `RESTRICT`.
 
@@ -73,7 +79,6 @@ valuation run when the state is behind or a purchase is stale.
 
 ## Residuals
 
-- A join id of a historical playtime record keeps its real timestamp.
 - #1450: a purge of a library that has an add-on fails.
 - #1451: `verify-baseline` finds seven CHECK constraints that have a
   different text.

@@ -18,9 +18,11 @@ from django.db import transaction
 from django.test import TransactionTestCase
 from entries import record_entry
 from graphs import default_graph
-from purchases import record_purchase, refund_purchase
+from purchases import record_purchase, refund_purchase, request_run
 
+from games import tasks
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
+from games.commands.endpoint import ActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -33,15 +35,19 @@ from games.commands.playersession import (
 )
 from games.commands.playthrough import (
     CompletePlaythrough,
+    CreatePlaythrough,
     DescribePlaythrough,
     StartPlaythrough,
 )
 from games.events.dispatch import dispatch
+from games.events.historical_playtime import sorted_runs
 from games.events.playersession import day_from_text, instant_from_text
 from games.events.vocabulary import DEFAULT_EVENT_TYPES
 from games.management.commands.anonymize_sample import (
     FIXED_EPOCH,
+    GENERATED_FIELDS,
     JITTER_DAYS,
+    rewrite_path,
     shift_dated,
     shift_instant,
 )
@@ -50,6 +56,7 @@ from games.management.commands.anonymize_sample import (
 )
 from games.models import (
     Device,
+    Edition,
     Game,
     GameKind,
     HistoricalPlaytime,
@@ -57,10 +64,12 @@ from games.models import (
     LibraryCalendar,
     LibraryEntry,
     LibraryEvent,
+    LibraryEventReference,
     Platform,
     PlayerSession,
     Playthrough,
     Purchase,
+    PurchaseValuation,
     Release,
 )
 from games.removal import remove
@@ -357,6 +366,37 @@ def test_an_end_stated_alone_moves_in_its_own_zone():
     assert (local.date(), local.hour) == (date(2021, 4, 3), 20)
 
 
+def test_a_rewrite_reaches_into_lists_and_skips_nulls():
+    payload = {
+        "runs": [{"id": "a"}, {"id": None}, {"other": "b"}],
+        "ids": ["c", None],
+        "absent": None,
+    }
+
+    for path in (("runs", "id"), ("ids",), ("absent", "id"), ("missing",)):
+        rewrite_path(payload, path, str.upper)
+
+    assert payload == {
+        "runs": [{"id": "A"}, {"id": None}, {"other": "b"}],
+        "ids": ["C", None],
+        "absent": None,
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "path"),
+    [({"note": "x"}, ("note", "text")), ({"amount": 12}, ("amount",))],
+    ids=["scalar mid-path", "non-text leaf"],
+)
+def test_a_rewrite_refuses_a_shape_no_vocabulary_states(payload, path):
+    with pytest.raises(CommandError):
+        rewrite_path(payload, path, str.upper)
+
+
+def test_the_pinned_generated_keys_are_derived():
+    assert GENERATED_KEYS <= GENERATED_FIELDS["games.release"]
+
+
 # --- the command -------------------------------------------------------------
 
 
@@ -634,6 +674,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             call_command(
                 "anonymize_sample", user="sample-source", seed=5, output=output
             )
+            dumped_events = len(_by_model(_load_output(output))["games.libraryevent"])
             with purging_library():
                 source_user.delete()
             target = get_user_model().objects.create_user(username="sample-target")
@@ -659,8 +700,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             4,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Sixteen, then eight for two copies.
-        self.assertEqual(events.count(), 24)
+        self.assertEqual(events.count(), dumped_events)
         record = HistoricalPlaytime.objects.get(library=target.library)
         self.assertEqual(record.runs.get().playthrough.player_game, record.player_game)
         self.assertTrue(all(event.pk.version == 7 for event in events))
@@ -709,6 +749,8 @@ class AnonymizeSampleTest(TransactionTestCase):
             library=game_purchase.library,
             name="Real Secret Title",
         )
+        default_graph(secret, game_purchase.library)
+        Edition.objects.filter(game=secret).update(name="Real Secret Title Deluxe")
         with TemporaryDirectory() as tempdir:
             overrides = Path(tempdir) / "name_overrides.yaml"
             overrides.write_text("Real Secret Title: Placeholder Title\n")
@@ -723,10 +765,14 @@ class AnonymizeSampleTest(TransactionTestCase):
             objects = _load_output(output)
 
         names = {
-            item["fields"]["name"] for item in objects if item["model"] == "games.game"
+            item["fields"]["name"]
+            for item in objects
+            if item["model"] in {"games.game", "games.edition"}
         }
         self.assertIn("Placeholder Title", names)
+        self.assertIn("Placeholder Title Deluxe", names)
         self.assertNotIn("Real Secret Title", names)
+        self.assertNotIn("Real Secret Title Deluxe", names)
         # Rename keeps the row (and its pk), it is not dropped.
         secret.refresh_from_db()
         self.assertEqual(secret.name, "Real Secret Title")  # source DB untouched
@@ -770,10 +816,44 @@ class AnonymizeSampleTest(TransactionTestCase):
         _build_dataset()
         outsider = get_user_model().objects.create_user(username="sample-outsider")
         foreign = Game(library=outsider.library, name="FOREIGN SECRET GAME")
-        #: Projection rows hold RESTRICT keys.
+        #: Every projection, each holding RESTRICT keys.
         record_purchase(
             record_entry(
                 outsider.library, default_graph(foreign, outsider.library).release
+            )
+        )
+        foreign_run = Playthrough.objects.get(player_game__game=foreign)
+        _record(
+            outsider,
+            foreign_run,
+            DurationOnlyTiming(day=date(2021, 8, 1), duration=timedelta(hours=1)),
+            device=create_device(outsider.library, "Outsider's deck"),
+        )
+        dispatch(
+            RecordHistoricalPlaytime(
+                statement=HistoricalPlaytimeStatement(
+                    duration=timedelta(hours=2),
+                    when=None,
+                    provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                    playthrough_ids=(foreign_run.pk,),
+                    device_id=None,
+                    emulated=False,
+                    note="",
+                )
+            ),
+            actor=outsider,
+            library=outsider.library,
+            idempotency_key="outsider-record",
+        )
+        tasks.convert_library_prices(
+            str(outsider.library.pk), request_run(outsider.library, "EUR")
+        )
+        self.assertTrue(
+            PurchaseValuation.objects.filter(library=outsider.library).exists()
+        )
+        outsider_streams = set(
+            LibraryEvent.objects.filter(library=outsider.library).values_list(
+                "stream_id", flat=True
             )
         )
 
@@ -791,6 +871,13 @@ class AnonymizeSampleTest(TransactionTestCase):
             item["fields"]["name"] for item in objects if item["model"] == "games.game"
         }
         self.assertNotIn("FOREIGN SECRET GAME", game_names)
+        self.assertFalse(
+            {str(stream) for stream in outsider_streams}
+            & {
+                str(item["pk"])
+                for item in _by_model(objects)["games.libraryeventstreamhead"]
+            }
+        )
         for item in objects:
             if item["model"] in {
                 "games.device",
@@ -863,12 +950,33 @@ class ReassignedIdentityTest(TransactionTestCase):
             self.assertEqual(by_uuid, by_date, model_label)
 
     def test_catalog_rows_mint_at_the_epoch(self):
-        by_model = self._dump()
+        _build_dataset()
+        #: A removed row an event names.
+        named = Release.objects.get(edition__game__name="Game 3")
+        remove(named)
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=11, output=output
+            )
+            by_model = _by_model(_load_output(output))
 
         for label in ("games.edition", "games.release"):
             for item in by_model[label]:
                 self.assertEqual(UUID(str(item["pk"])).version, 7)
                 self.assertEqual(_uuid_moment(item["pk"]), FIXED_EPOCH)
+        removed = {
+            str(item["pk"])
+            for item in by_model["games.release"]
+            if item["fields"]["removed_at"] is not None
+        }
+        self.assertEqual(len(removed), 1)
+        named_by_entries = {
+            event["fields"]["payload"]["release"]["id"]
+            for event in _events_of(by_model, "library.libraryentry.created")
+        }
+        self.assertLessEqual(removed, named_by_entries)
+        self.assertNotIn(str(named.pk), named_by_entries)
 
     def test_catalog_keys_follow_the_new_uuid(self):
         _build_dataset()
@@ -897,11 +1005,87 @@ class ReassignedIdentityTest(TransactionTestCase):
         for release in by_model["games.release"]:
             self.assertIn(str(release["fields"]["edition"]), editions)
 
+    def test_two_runs_keep_the_recorded_order(self):
+        _build_dataset()
+        owner = get_user_model().objects.get(username="sample-source")
+        game = Game.objects.get(name="Game 1")
+        dispatch(
+            CreatePlaythrough(
+                game_id=game.pk,
+                started=ActStatement(TemporalValue.from_day(date(2020, 1, 1)), ""),
+            ),
+            actor=owner,
+            library=owner.library,
+            idempotency_key="second-run",
+        )
+        runs = tuple(
+            Playthrough.objects.filter(player_game__game=game).values_list(
+                "pk", flat=True
+            )
+        )
+        dispatch(
+            RecordHistoricalPlaytime(
+                statement=HistoricalPlaytimeStatement(
+                    duration=timedelta(hours=4),
+                    when="2021-07-01",
+                    provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                    playthrough_ids=runs,
+                    device_id=None,
+                    emulated=False,
+                    note="",
+                )
+            ),
+            actor=owner,
+            library=owner.library,
+            idempotency_key="record-both",
+        )
+        for seed in (1, 2, 3):
+            with TemporaryDirectory() as tempdir:
+                output = Path(tempdir) / "out.yaml.gz"
+                call_command(
+                    "anonymize_sample", user="sample-source", seed=seed, output=output
+                )
+                by_model = _by_model(_load_output(output))
+            [both] = [
+                event["fields"]["payload"]["playthroughs"]
+                for event in _events_of(by_model, "library.historicalplaytime.created")
+                if len(event["fields"]["payload"]["playthroughs"]) == 2
+            ]
+            self.assertEqual(both, sorted_runs(both))
+
+    def test_a_reference_no_event_creates_is_named(self):
+        _build_dataset()
+        event = LibraryEvent.objects.filter(
+            event_type="library.purchase.created"
+        ).first()
+        stray = uuid.uuid7()
+        LibraryEventReference.objects.create(
+            library=event.library,
+            event=event,
+            kind="libraryentry",
+            payload_key="stray",
+            referenced_id=stray,
+        )
+
+        with (
+            TemporaryDirectory() as tempdir,
+            self.assertRaisesMessage(CommandError, f"libraryentry {stray}"),
+        ):
+            call_command(
+                "anonymize_sample",
+                user="sample-source",
+                seed=1,
+                output=Path(tempdir) / "out.yaml.gz",
+            )
+
     def test_every_reference_follows_the_new_uuid(self):
         by_model = self._dump()
 
         rows_by_kind = {
             "catalog.game": {str(identity(item)) for item in by_model["games.game"]},
+            "catalog.platform": {
+                str(item["pk"]) for item in by_model["games.platform"]
+            },
             "catalog.release": {str(item["pk"]) for item in by_model["games.release"]},
             "device": set(_device_names(by_model)),
             "libraryentry": {
@@ -909,6 +1093,11 @@ class ReassignedIdentityTest(TransactionTestCase):
                 for event in _events_of(by_model, "library.libraryentry.created")
             },
         }
+        #: Every kind a payload may name.
+        self.assertEqual(
+            set(rows_by_kind),
+            {kind.name for kind in DEFAULT_EVENT_TYPES.reference_kinds},
+        )
         for event in by_model["games.libraryevent"]:
             fields = event["fields"]
             for found in DEFAULT_EVENT_TYPES.references_in(

@@ -15,12 +15,21 @@ QUANTUM = Decimal(1).scaleb(-RATE_PLACES)
 CEILING = Decimal(10) ** 12
 #: The API speaks lowercase codes.
 RATE_SOURCE = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency}.json"
+#: The source holds no such table.
+ABSENT_STATUS = 404
+
+
+class RateFetchFailed(RuntimeError):
+    """The source did not answer; retry later."""
 
 
 def exchange_rate(
     source: CurrencyCode, target: CurrencyCode, year: RateYear
 ) -> Decimal | None:
-    """The stored rate, else fetched; None when unavailable."""
+    """The stored rate, else fetched; None when the source has none.
+
+    A source that does not answer raises `RateFetchFailed`.
+    """
     stored = ExchangeRate.objects.filter(
         currency_from=source, currency_to=target, year=year
     ).first()
@@ -43,7 +52,15 @@ def exchange_rate(
             url,
             error,
         )
-        return None
+        if (
+            isinstance(error, requests.HTTPError)
+            and error.response is not None
+            and error.response.status_code == ABSENT_STATUS
+        ):
+            return None
+        raise RateFetchFailed(
+            f"Fetching {source}->{target} for {year} failed: {error}"
+        ) from error
     rates = data.get(source.lower()) if isinstance(data, dict) else None
     if not isinstance(rates, dict):
         logger.warning(

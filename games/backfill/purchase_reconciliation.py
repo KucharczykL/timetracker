@@ -22,6 +22,7 @@ from django.db.models import (
 )
 from django.utils import timezone
 
+from games.backfill.legacy_model import HistoricalModel
 from games.backfill.purchase import LibraryConversion
 from games.backfill.purchase_plan import (
     AccessAndFormat,
@@ -340,7 +341,7 @@ def _percent(part: int, whole: int) -> int:
 
 
 def legacy_figures(
-    model: type[Model], library: UserLibrary, year: int | None
+    model: HistoricalModel, library: UserLibrary, year: int | None
 ) -> LegacyFigures:
     """The legacy purchase figures of one scope.
 
@@ -566,7 +567,7 @@ class SnapshotScope(TypedDict):
 
 
 def legacy_scope(
-    model: type[Model], library: UserLibrary, year: int | None
+    model: HistoricalModel, library: UserLibrary, year: int | None
 ) -> SnapshotScope:
     """One snapshot scope: figures, rows, shares."""
     legacy = legacy_figures(model, library, year)
@@ -583,7 +584,7 @@ def legacy_scope(
 
 
 def legacy_statistics(
-    model: type[Model], library: UserLibrary, rows: Sequence[LegacyRow]
+    model: HistoricalModel, library: UserLibrary, rows: Sequence[LegacyRow]
 ) -> dict[str, Any]:
     """Every scope, before the cutover."""
     return {

@@ -17,6 +17,7 @@ from entries import record_entry
 from graphs import default_graph
 from purchases import record_purchase, request_run
 
+from games.exchange_rates import RateFetchFailed
 from games.models import (
     ExchangeRate,
     Game,
@@ -150,23 +151,31 @@ def test_old_job_cannot_publish_after_newer_request(owner, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_a_failed_publication_schedules_one_retry(owner, monkeypatch):
-    """A database failure exposes bounded recovery."""
+@pytest.mark.parametrize(
+    ("currency", "failing", "error"),
+    [
+        ("USD", "publish_valuations", DatabaseError("publication refused")),
+        ("CZK", "exchange_rate", RateFetchFailed("rate source offline")),
+    ],
+    ids=["database", "rate source"],
+)
+def test_a_failed_run_schedules_one_retry(owner, monkeypatch, currency, failing, error):
+    """A transient failure exposes bounded recovery."""
     from games import tasks
 
     _bought_in_dollars(owner)
     _state(
         owner,
         requested_version=1,
-        requested_currency="USD",
+        requested_currency=currency,
         published_version=0,
         status=PurchaseConversionState.Status.PENDING,
     )
 
-    def refuse(*_args):
-        raise DatabaseError("publication refused")
+    def refuse(*_args, **_kwargs):
+        raise error
 
-    monkeypatch.setattr(tasks, "publish_valuations", refuse)
+    monkeypatch.setattr(tasks, failing, refuse)
     scheduled = Mock()
     monkeypatch.setattr(tasks, "schedule", scheduled)
     before = timezone.now()
@@ -177,7 +186,7 @@ def test_a_failed_publication_schedules_one_retry(owner, monkeypatch):
     state = PurchaseConversionState.objects.get(library=owner.library)
     assert not PurchaseValuation.objects.filter(library=owner.library).exists()
     assert state.status == PurchaseConversionState.Status.FAILED
-    assert "publication refused" in state.last_error
+    assert str(error) in state.last_error
     assert (
         before + timedelta(minutes=14) < state.retry_at < before + timedelta(minutes=16)
     )

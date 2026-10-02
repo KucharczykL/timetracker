@@ -1,5 +1,7 @@
 """The legacy rename, forward and back."""
 
+# conversion-tooling
+
 from datetime import date
 from decimal import Decimal
 
@@ -106,4 +108,21 @@ def test_the_purchase_conversion_runs_over_legacy_rows(owned_library, stated_gra
 
         assert Purchase.objects.get(pk=row.pk).amount == Decimal("10.00")
     finally:
+        _migrate(latest)
+
+
+def test_the_drop_takes_the_retired_schedule_row_alone():
+    from django_q.models import Schedule
+
+    (latest,) = MigrationExecutor(connection).loader.graph.leaf_nodes("games")
+    try:
+        _migrate(("games", "0034_conversion_review_hidden"))
+        Schedule.objects.create(func="games.tasks.calculate_price_per_game")
+        kept = Schedule.objects.create(func="games.tasks.convert_prices")
+
+        _migrate(("games", "0035_delete_legacypurchase"))
+
+        assert list(Schedule.objects.values_list("pk", flat=True)) == [kept.pk]
+    finally:
+        Schedule.objects.all().delete()
         _migrate(latest)

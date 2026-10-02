@@ -10,7 +10,7 @@ from decimal import Decimal
 import pytest
 from django.db import IntegrityError, connection, transaction
 from entries import record_entry
-from legacy_purchases import LegacyCodes, legacy_row
+from legacy_purchases import LegacyOwnershipCode, LegacyTypeCode, legacy_row
 from purchases import _state, record_purchase
 
 from common.criteria import ChoiceCriterion, Modifier
@@ -90,7 +90,7 @@ def legacy(library, *games, **facts):
         "date_purchased": DAY,
         "price": 10.0,
         "price_currency": "EUR",
-        "ownership_type": LegacyCodes.DIGITAL,
+        "ownership_type": LegacyOwnershipCode.DIGITAL,
     }
     stated.update(facts)
     return legacy_row(library, *games, **stated)
@@ -192,7 +192,7 @@ def test_a_refunded_rental_ends_its_copy_by_hand(owned_library, game_on):
     row = legacy(
         owned_library,
         game,
-        ownership_type=LegacyCodes.RENTED,
+        ownership_type=LegacyOwnershipCode.RENTED,
         price=4.0,
         date_refunded=date(2021, 5, 4),
     )
@@ -208,7 +208,7 @@ def test_a_refunded_rental_ends_its_copy_by_hand(owned_library, game_on):
 
 def test_a_borrowed_copy_at_no_price_has_no_purchase(owned_library, game_on):
     game = game_on("Tunic")
-    legacy(owned_library, game, ownership_type=LegacyCodes.BORROWED, price=0.0)
+    legacy(owned_library, game, ownership_type=LegacyOwnershipCode.BORROWED, price=0.0)
 
     convert()
 
@@ -240,7 +240,7 @@ def test_a_dlc_row_states_its_own_game_under_the_base(owned_library, game_on, st
     legacy(
         owned_library,
         base,
-        type=LegacyCodes.DLC,
+        type=LegacyTypeCode.DLC,
         name="Blood Money",
         related_game=base,
         infinite=True,
@@ -266,7 +266,7 @@ def test_a_dlc_row_states_its_own_game_under_the_base(owned_library, game_on, st
 
 def test_a_demo_states_a_prerelease_edition(owned_library, game_on):
     game = game_on("Tunic")
-    legacy(owned_library, game, ownership_type=LegacyCodes.DEMO, price=0.0)
+    legacy(owned_library, game, ownership_type=LegacyOwnershipCode.DEMO, price=0.0)
 
     convert()
 
@@ -302,7 +302,7 @@ def test_a_pass_takes_the_live_base_copy(owned_library, game_on):
     season = legacy(
         owned_library,
         game,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
         date_purchased=date(2021, 4, 1),
@@ -323,12 +323,12 @@ def test_a_pass_without_a_base_copy_and_the_upgrade_get_their_own(
     season = legacy(
         owned_library,
         destiny,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=destiny,
     )
     upgrade = legacy(
-        owned_library, cyberpunk, ownership_type=LegacyCodes.DIGITALUPGRADE
+        owned_library, cyberpunk, ownership_type=LegacyOwnershipCode.DIGITALUPGRADE
     )
 
     convert()
@@ -418,7 +418,7 @@ def test_every_refusal_is_listed_and_nothing_written(owned_library, game_on):
     under_addon = legacy(
         owned_library,
         addon,
-        type=LegacyCodes.DLC,
+        type=LegacyTypeCode.DLC,
         name="Nested",
         related_game=addon,
     )
@@ -611,7 +611,7 @@ def test_the_reconciliation_explains_quantization_and_refunds(owned_library, gam
     legacy(
         owned_library,
         game_on("Inside"),
-        ownership_type=LegacyCodes.RENTED,
+        ownership_type=LegacyOwnershipCode.RENTED,
         price=3.0,
         date_refunded=date(2021, 5, 4),
     )
@@ -710,7 +710,7 @@ def test_a_full_rerun_replays_every_key(owned_library, game_on):
     legacy(
         owned_library,
         rental,
-        ownership_type=LegacyCodes.RENTED,
+        ownership_type=LegacyOwnershipCode.RENTED,
         price=3.0,
         date_refunded=date(2021, 5, 4),
     )
@@ -723,7 +723,7 @@ def test_a_full_rerun_replays_every_key(owned_library, game_on):
     legacy(
         owned_library,
         base,
-        type=LegacyCodes.DLC,
+        type=LegacyTypeCode.DLC,
         name="Blood Money",
         related_game=base,
         infinite=True,
@@ -790,12 +790,14 @@ def test_a_refunded_or_removed_pass_leaves_the_base_copy(owned_library, game_on)
     season = legacy(
         owned_library,
         game,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
         date_refunded=date(2021, 5, 4),
     )
-    upgrade = legacy(owned_library, game, ownership_type=LegacyCodes.DIGITALUPGRADE)
+    upgrade = legacy(
+        owned_library, game, ownership_type=LegacyOwnershipCode.DIGITALUPGRADE
+    )
     legacy_purchase_model().objects.filter(pk=upgrade.pk).update(removed_at=INSTANT)
 
     convert()
@@ -812,7 +814,7 @@ def test_a_refunded_upgrade_on_its_own_copy_ends_it(owned_library, game_on):
     row = legacy(
         owned_library,
         game,
-        ownership_type=LegacyCodes.DIGITALUPGRADE,
+        ownership_type=LegacyOwnershipCode.DIGITALUPGRADE,
         date_refunded=date(2021, 5, 4),
     )
 
@@ -829,7 +831,7 @@ def test_a_pass_never_rides_a_removed_rows_copy(owned_library, game_on):
     season = legacy(
         owned_library,
         game,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
     )
@@ -847,10 +849,10 @@ def test_a_free_pass_beside_an_owned_base_gets_its_own_copy(owned_library, game_
     legacy(
         owned_library,
         game,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Trial pass",
         related_game=game,
-        ownership_type=LegacyCodes.BORROWED,
+        ownership_type=LegacyOwnershipCode.BORROWED,
         price=0.0,
     )
 
@@ -872,7 +874,7 @@ def test_a_pass_prefers_the_base_copy_on_its_platform(owned_library, game_on, st
     season = legacy(
         owned_library,
         game,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
         platform=steam,
@@ -948,7 +950,7 @@ def test_demos_share_one_edition_across_platforms(owned_library, game_on, steam)
         legacy(
             owned_library,
             game,
-            ownership_type=LegacyCodes.DEMO,
+            ownership_type=LegacyOwnershipCode.DEMO,
             price=0.0,
             platform=platform,
         )
@@ -1089,7 +1091,7 @@ def _defect_after(row, change):
         ({"date_refunded": date(2021, 5, 4)}, {"date_refunded": None}, "its refund"),
         ({"removed_at": INSTANT}, {"removed_at": None}, "its removal"),
         (
-            {"ownership_type": LegacyCodes.BORROWED, "price": 0.0},
+            {"ownership_type": LegacyOwnershipCode.BORROWED, "price": 0.0},
             {"price": 4.0},
             "its price changed",
         ),
@@ -1132,7 +1134,9 @@ def test_a_free_row_removed_after_its_conversion_removes_its_copy(
     owned_library, game_on
 ):
     game = game_on("Tunic")
-    row = legacy(owned_library, game, ownership_type=LegacyCodes.BORROWED, price=0.0)
+    row = legacy(
+        owned_library, game, ownership_type=LegacyOwnershipCode.BORROWED, price=0.0
+    )
     convert()
     legacy_purchase_model().objects.filter(pk=row.pk).update(removed_at=INSTANT)
 
@@ -1195,7 +1199,7 @@ def test_a_pass_riding_a_hand_recorded_copy_is_not_tagged(owned_library, game_on
     season = legacy(
         owned_library,
         game,
-        type=LegacyCodes.SEASONPASS,
+        type=LegacyTypeCode.SEASONPASS,
         name="Year 1",
         related_game=game,
     )
@@ -1212,7 +1216,7 @@ def test_a_dlc_on_another_platform_has_one_release(owned_library, game_on):
     row = legacy(
         owned_library,
         base,
-        type=LegacyCodes.DLC,
+        type=LegacyTypeCode.DLC,
         name="Blood Money",
         related_game=base,
         platform=switch,
@@ -1233,7 +1237,7 @@ def test_same_named_dlcs_under_two_bases_both_convert(owned_library, game_on):
         legacy(
             owned_library,
             base,
-            type=LegacyCodes.DLC,
+            type=LegacyTypeCode.DLC,
             name="Soundtrack",
             related_game=base,
         )
@@ -1287,7 +1291,7 @@ def test_the_review_reads_what_the_conversion_tags(owned_library, game_on):
     """The review field against the pass's metadata."""
     rented = game_on("Tunic")
     bundled = in_key_order(game_on("Hades"), game_on("Celeste"))
-    legacy(owned_library, rented, ownership_type=LegacyCodes.RENTED, price=3.0)
+    legacy(owned_library, rented, ownership_type=LegacyOwnershipCode.RENTED, price=3.0)
     legacy(owned_library, *bundled, price=10.0)
     legacy(owned_library, game_on("Outer Wilds"), price=0.0)
     convert()

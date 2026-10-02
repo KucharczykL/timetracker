@@ -2,57 +2,72 @@
 
 # conversion-tooling
 
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from django.db import connection
-from django.db.models import Model
 
-from games.backfill.legacy_model import legacy_purchase_model
-
-
-class LegacyCodes:
-    """The historical model's stored words."""
-
-    PHYSICAL = "ph"
-    DIGITAL = "di"
-    DIGITALUPGRADE = "du"
-    RENTED = "re"
-    BORROWED = "bo"
-    TRIAL = "tr"
-    DEMO = "de"
-    PIRATED = "pi"
-    GAME = "game"
-    DLC = "dlc"
-    SEASONPASS = "season_pass"
-    BATTLEPASS = "battle_pass"
+from games.backfill.legacy_model import HistoricalModel, legacy_purchase_model
+from games.backfill.purchase_plan import LegacyOwnership, LegacyType
+from games.models import Game, UserLibrary
 
 
-#: Instances the historical model takes as keys.
-_RELATIONS = ("library", "platform", "related_game")
+class LegacyOwnershipCode:
+    """The stored ownership words."""
+
+    PHYSICAL: Final[LegacyOwnership] = "ph"
+    DIGITAL: Final[LegacyOwnership] = "di"
+    DIGITALUPGRADE: Final[LegacyOwnership] = "du"
+    RENTED: Final[LegacyOwnership] = "re"
+    BORROWED: Final[LegacyOwnership] = "bo"
+    TRIAL: Final[LegacyOwnership] = "tr"
+    DEMO: Final[LegacyOwnership] = "de"
+    PIRATED: Final[LegacyOwnership] = "pi"
 
 
-def legacy_row(library: Model, *games: Model, **facts: Any) -> Any:
-    """One row; `num_purchases` counts its games."""
-    stated: dict[str, Any] = {"library": library, **facts}
+class LegacyTypeCode:
+    """The stored purchase types."""
+
+    GAME: Final[LegacyType] = "game"
+    DLC: Final[LegacyType] = "dlc"
+    SEASONPASS: Final[LegacyType] = "season_pass"
+    BATTLEPASS: Final[LegacyType] = "battle_pass"
+
+
+#: An instance of `legacy_purchase_model()`.
+type LegacyPurchaseRow = Any
+
+#: Taken as instances, stored as keys.
+_RELATIONS: Final = ("platform", "related_game")
+
+
+def legacy_row(library: UserLibrary, *games: Game, **facts: Any) -> LegacyPurchaseRow:
+    """One row; `num_purchases` counts its games.
+
+    A stated `num_purchases` wins, for a drifted row.
+    """
+    if "library" in facts:
+        raise TypeError("The library is the first argument.")
+    stated: dict[str, Any] = {"library_id": library.pk, **facts}
     for relation in _RELATIONS:
         if relation in stated:
             target = stated.pop(relation)
             stated[f"{relation}_id"] = None if target is None else target.pk
     stated.setdefault("num_purchases", len(games))
-    row: Any = legacy_purchase_model()._default_manager.create(**stated)
+    row: LegacyPurchaseRow = legacy_purchase_model()._default_manager.create(**stated)
     row.games.add(*(game.pk for game in games))
     return row
 
 
-def link_game(row: Any, game: Model) -> None:
+def link_game(row: LegacyPurchaseRow, game: Game) -> None:
     """Link one more game; recount."""
     row.games.add(game.pk)
-    type(row)._default_manager.filter(pk=row.pk).update(num_purchases=row.games.count())
+    row.num_purchases = row.games.count()
+    row.save(update_fields=["num_purchases"])
 
 
 @pytest.fixture
-def legacy_purchase(db):
+def legacy_purchase(db: None) -> HistoricalModel:
     """The historical model, tables made per test."""
     if not connection.in_atomic_block:
         pytest.fail(

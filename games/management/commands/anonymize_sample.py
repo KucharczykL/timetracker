@@ -5,7 +5,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Final
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -14,16 +14,22 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
-from django.db.models import GeneratedField
+from django.db.models import GeneratedField, Model
 
+from games.events.historical_playtime import sorted_runs
 from games.events.playersession import (
     day_from_text,
     day_text,
     instant_from_text,
     instant_text,
 )
-from games.events.references import Resolution, capture_reference
-from games.events.vocabulary import DatedKeys, KeyPath
+from games.events.references import (
+    FoundReference,
+    Reference,
+    Resolution,
+    capture_reference,
+)
+from games.events.vocabulary import DatedKeys, KeyPath, PayloadInvalid
 from games.events.wiring import DEFAULT_WIRING
 from games.management.commands.load_sample_data import TARGET_LIBRARY_MARKER
 from games.models import (
@@ -46,7 +52,7 @@ from games.models import (
     Release,
     UserLibraryPreferences,
 )
-from games.projections import projection_models
+from games.projections import FieldName, ModelLabel, projection_models
 from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 
@@ -63,7 +69,7 @@ PORTABLE_LIBRARY_MODELS = frozenset(
 # Dumped models, dependencies first (Game before its FK referrers,
 # LibraryEventStreamHead before LibraryEvent before LibraryEventReference).
 # Omitted: FilterPreset (sample data does not ship personal saved searches).
-DUMPED_MODELS = (
+DUMPED_MODELS: Final[tuple[type[Model], ...]] = (
     Platform,
     Game,
     Edition,
@@ -73,15 +79,19 @@ DUMPED_MODELS = (
     LibraryEventReference,
     ExchangeRate,
 )
-DUMP_LABELS = [model._meta.label for model in DUMPED_MODELS]
+DUMP_LABELS: Final[tuple[ModelLabel, ...]] = tuple(
+    model._meta.label for model in DUMPED_MODELS
+)
 
 #: Serialized by dumpdata, discarded by loaddata.
-GENERATED_FIELDS = frozenset(
-    field.name
+GENERATED_FIELDS: Final[Mapping[ModelLabel, frozenset[FieldName]]] = {
+    model._meta.label_lower: frozenset(
+        field.name
+        for field in model._meta.concrete_fields
+        if isinstance(field, GeneratedField)
+    )
     for model in DUMPED_MODELS
-    for field in model._meta.concrete_fields
-    if isinstance(field, GeneratedField)
-)
+}
 
 # Deterministic stand-in for audit timestamps with no natural date to derive from.
 FIXED_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)
@@ -95,12 +105,19 @@ DEFAULT_NAME_OVERRIDES = (
 )
 
 
-# The dumped models carrying a uuid, parents first. FilterPreset is absent:
-# never dumped. The three event models are also absent: their identities
-# derive from recorded_at, not created_at, and from each other's grouping
-# (aggregate/correlation/stream), so they get their own dedicated pass in
-# _reassign_event_identities rather than this generic one.
+# The models whose uuid is re-minted, parents first: from created_at, or
+# the epoch where a model has none. Device is a projection, re-minted so
+# its events follow. FilterPreset is absent: never dumped. The three event
+# models are also absent: their identities derive from recorded_at and
+# from each other's grouping (aggregate/correlation/stream), so they get
+# their own dedicated pass in _reassign_event_identities.
 IDENTITY_MODELS = (Platform, Device, Game, Edition, Release)
+#: One payload value, as stored.
+type JsonValue = (
+    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+)
+#: Text in, text out.
+type LeafRewrite = Callable[[str], str]
 #: Old identity to new, per model.
 type Replacements = Mapping[UUID, UUID]
 type ReplacementsByModel = Mapping[type, Replacements]
@@ -144,6 +161,9 @@ def _read_path(payload: Mapping, path: KeyPath):
     """Value at path; None when absent."""
     value = payload
     for key in path:
+        #: Dates are never stated inside a list.
+        if isinstance(value, list):
+            raise CommandError(f"A dated path crosses a list: {path}.")
         if not isinstance(value, Mapping) or value.get(key) is None:
             return None
         value = value[key]
@@ -157,21 +177,57 @@ def _write_path(payload: dict, path: KeyPath, value) -> None:
     container[path[-1]] = value
 
 
-def rewrite_path(payload, path: KeyPath, rewrite: Callable[[Any], Any]) -> None:
-    """Rewrite every value at path, lists included."""
+def rewrite_path(payload: JsonValue, path: KeyPath, rewrite: LeafRewrite) -> None:
+    """Rewrite every value at path, lists included.
+
+    An absent or null value is skipped; a scalar
+    where the path goes on is a shape no vocabulary
+    states, and is refused rather than left unscrubbed.
+    """
+    if not path:
+        raise ValueError("An empty path names no value.")
     if isinstance(payload, list):
         for item in payload:
             rewrite_path(item, path, rewrite)
         return
-    if not isinstance(payload, dict) or payload.get(path[0]) is None:
+    if not isinstance(payload, dict):
+        raise CommandError(f"Path {path} meets {payload!r}, not an object.")
+    head, rest = path[0], path[1:]
+    value = payload.get(head)
+    if value is None:
         return
-    if len(path) > 1:
-        rewrite_path(payload[path[0]], path[1:], rewrite)
+    if rest:
+        rewrite_path(value, rest, rewrite)
         return
-    value = payload[path[0]]
-    payload[path[0]] = (
-        [rewrite(item) for item in value] if isinstance(value, list) else rewrite(value)
+    payload[head] = (
+        [None if item is None else _rewrite_text(item, path, rewrite) for item in value]
+        if isinstance(value, list)
+        else _rewrite_text(value, path, rewrite)
     )
+
+
+def _rewrite_text(value: JsonValue, path: KeyPath, rewrite: LeafRewrite) -> str:
+    """Every aliased leaf is text."""
+    if not isinstance(value, str):
+        raise CommandError(f"Path {path} holds {value!r}, not text.")
+    return rewrite(value)
+
+
+def replace_reference(payload: dict, found: FoundReference, value: Reference) -> None:
+    """Put `value` where `found` was, in a list too."""
+    held = payload[found.key]
+    payload[found.key] = (
+        [value if item is found.value else item for item in held]
+        if isinstance(held, list)
+        else value
+    )
+
+
+def renamed(text: str, overrides: Mapping[str, str]) -> str:
+    """Every overridden title inside `text`, replaced."""
+    for real, stand_in in overrides.items():
+        text = text.replace(real, stand_in)
+    return text
 
 
 def shift_instant(text: str, *, days: int, zone: str) -> str:
@@ -228,7 +284,8 @@ class Command(BaseCommand):
         "Regenerate games/fixtures/sample.yaml.gz from the currently-loaded database "
         "(a production copy), anonymizing the sensitive parts so the result is safe "
         "to commit. Randomizes prices and dates (per-game offset), clears "
-        "free-text notes, and sanitizes audit timestamps. All "
+        "free-text notes and names and source metadata, and sanitizes audit "
+        "timestamps. All "
         "mutation happens inside a rolled-back transaction, so the source database is "
         "never modified.\n\n"
         "Workflow: restore a production dump into a dedicated PostgreSQL database, "
@@ -346,10 +403,13 @@ class Command(BaseCommand):
     def _prune_other_libraries(library):
         """Hide every other library from dumpdata inside the rollback-only copy.
 
-        The three event-store models go before Game, Platform and Device:
-        while another library's LibraryEventReference rows still name those
-        rows, the pre_delete guard in games/signals.py refuses to delete them.
-        Projection rows go first, raw: their keys are RESTRICT.
+        Projection rows go first: Django enforces their RESTRICT keys
+        in Python, so a Game they name would refuse its delete. Raw SQL,
+        because a device or entry an event names has a pre_delete guard;
+        the database keys are deferred and the transaction rolls back.
+        The three event-store models go before Game and Platform: while
+        another library's LibraryEventReference rows still name those rows,
+        the pre_delete guard in games/signals.py refuses to delete them.
         """
         with connection.cursor() as cursor:
             for model in projection_models():
@@ -364,7 +424,6 @@ class Command(BaseCommand):
         LibraryEvent.objects.exclude(library=library).delete()
         LibraryEventStreamHead.objects.exclude(library=library).delete()
         Game.objects.exclude(library=library).delete()
-        Device.objects.exclude(library=library).delete()
         Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
 
     def _anonymize(
@@ -381,10 +440,14 @@ class Command(BaseCommand):
         }
 
         if name_overrides:
-            renamed = list(Game.objects.filter(name__in=name_overrides).order_by("pk"))
-            for game in renamed:
+            retitled = list(Game.objects.filter(name__in=name_overrides).order_by("pk"))
+            for game in retitled:
                 game.name = name_overrides[game.name]
-            Game.objects.bulk_update(renamed, ["name"])
+            Game.objects.bulk_update(retitled, ["name"])
+            editions = list(Edition.objects.exclude(name="").order_by("pk"))
+            for edition in editions:
+                edition.name = renamed(edition.name, name_overrides)
+            Edition.objects.bulk_update(editions, ["name"])
 
         Game.objects.update(created_at=FIXED_EPOCH, updated_at=FIXED_EPOCH)
         Platform.objects.update(created_at=FIXED_EPOCH)
@@ -551,8 +614,14 @@ class Command(BaseCommand):
                 kind = kinds.kind_for(found.value["kind"])
                 replacements = replacements_by_model.get(kind.model, {})
                 old_id = UUID(found.value["id"])
-                payload[found.key] = capture_reference(
-                    kind.model.objects.get(pk=replacements.get(old_id, old_id))
+                replace_reference(
+                    payload,
+                    found,
+                    capture_reference(
+                        kind.model._base_manager.get(
+                            pk=replacements.get(old_id, old_id)
+                        )
+                    ),
                 )
             event.payload = payload
             #: Source evidence holds real instants.
@@ -624,16 +693,27 @@ class Command(BaseCommand):
             events, lambda event: event.correlation_id
         )
 
-        def remapped(kind, old_id):
-            """A projected row takes its aggregate's id."""
+        def remapped(kind, old_id: UUID, *, subject: str) -> UUID:
+            """A projected row takes its aggregate's id.
+
+            A device is re-minted with IDENTITY_MODELS
+            and so already holds its new id.
+            """
             if kind.resolution is Resolution.PROJECTED and kind.model is not Device:
+                if old_id not in aggregate_replacements:
+                    raise CommandError(
+                        f"{subject} names {kind.name} {old_id}, which no event "
+                        "in this library creates."
+                    )
                 return aggregate_replacements[old_id]
             return replacements_by_model.get(kind.model, {}).get(old_id, old_id)
 
         references = list(LibraryEventReference.objects.order_by("pk"))
         for reference in references:
             reference.referenced_id = remapped(
-                kinds.kind_for(reference.kind), reference.referenced_id
+                kinds.kind_for(reference.kind),
+                reference.referenced_id,
+                subject=f"Reference {reference.pk}",
             )
         LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
         #: LibraryEventStreamHead.id is deliberately left alone.
@@ -658,6 +738,18 @@ class Command(BaseCommand):
         #: written first (while .pk still matches the pre-reassignment row),
         #: and each event's own id is swapped after via a per-row UPDATE --
         #: the same split _resequence_identity/_remap_referrers already use.
+        #: A bare id no aggregate holds, a join row's.
+        bare_id_replacements: dict[UUID, UUID] = {}
+        bare_id_state = {"ms": None, "sequence": -1}
+
+        def bare_id(named: str) -> str:
+            old_id = UUID(named)
+            if old_id in aggregate_replacements:
+                return str(aggregate_replacements[old_id])
+            if old_id not in bare_id_replacements:
+                bare_id_replacements[old_id] = _mint(FIXED_EPOCH, bare_id_state)
+            return str(bare_id_replacements[old_id])
+
         for event in events:
             event.aggregate_id = aggregate_replacements.get(
                 event.aggregate_id, event.aggregate_id
@@ -670,20 +762,20 @@ class Command(BaseCommand):
             #: Bare aggregate ids follow the re-minting.
             payload = copy.deepcopy(event.payload)
             for path in event_types.aggregate_id_keys(event.event_type):
-                rewrite_path(
-                    payload,
-                    path,
-                    lambda named: str(
-                        aggregate_replacements.get(UUID(named), UUID(named))
-                    ),
-                )
+                rewrite_path(payload, path, bare_id)
             for found in event_types.references_in(event.event_type, payload):
                 kind = kinds.kind_for(found.value["kind"])
-                if kind.resolution is Resolution.PROJECTED and kind.model is not Device:
-                    payload[found.key] = {
-                        **found.value,
-                        "id": str(aggregate_replacements[UUID(found.value["id"])]),
-                    }
+                new_id = remapped(
+                    kind, UUID(found.value["id"]), subject=f"Event {event.pk}"
+                )
+                replace_reference(payload, found, {**found.value, "id": str(new_id)})
+            #: New run ids keep the recorded order.
+            if isinstance(payload.get("playthroughs"), list):
+                payload["playthroughs"] = sorted_runs(payload["playthroughs"])
+            try:
+                event_types.validate(event.event_type, payload)
+            except PayloadInvalid as error:
+                raise CommandError(f"Event {event.pk}: {error}") from error
             event.payload = payload
         LibraryEvent.objects.bulk_update(
             events, ["aggregate_id", "correlation_id", "causation_id", "payload"]
@@ -719,7 +811,7 @@ class Command(BaseCommand):
 
     @classmethod
     def _resequence_identity(cls, model):
-        """Assign uuids encoding `created_at`, ordered and sequenced like 0005.
+        """Assign uuids encoding `created_at`, or the epoch, in order.
 
         Entropy comes from the seeded RNG rather than `secrets`, which is what
         keeps the output byte-identical for a given --seed.
@@ -817,7 +909,7 @@ class Command(BaseCommand):
             objects = yaml.safe_load(stream) or []
         for item in objects:
             fields = item.get("fields", {})
-            for key in GENERATED_FIELDS:
+            for key in GENERATED_FIELDS.get(item.get("model", ""), frozenset()):
                 fields.pop(key, None)
             if item.get("model") == "games.libraryevent":
                 if fields.get("effective_time") == "":

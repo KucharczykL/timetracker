@@ -20,6 +20,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from games.api_creation import RowRefused
+from games.backfill.legacy_model import HistoricalModel
 from games.backfill.purchase_plan import (
     ConvertedShare,
     CopyShape,
@@ -249,7 +250,7 @@ def _exclusion_key(game_id: GameId) -> IdempotencyKey:
 
 
 def legacy_rows(
-    model: type[models.Model], library_id: LibraryId | None = None
+    model: HistoricalModel, library_id: LibraryId | None = None
 ) -> list[LegacyRow]:
     """Legacy rows; the model may be historical."""
     rows = model._base_manager.all()

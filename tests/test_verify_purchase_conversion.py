@@ -8,7 +8,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import CommandError, call_command
-from legacy_purchases import LegacyCodes, legacy_row
+from legacy_purchases import LegacyTypeCode, legacy_row
 
 from games.backfill import purchase as conversion
 from games.backfill.legacy_model import legacy_purchase_model
@@ -116,7 +116,7 @@ def test_the_preflight_rolls_back_catalog_rows(owned_user, owned_library, row):
         date_purchased=date(2021, 6, 1),
         price=5.0,
         price_currency="EUR",
-        type=LegacyCodes.DLC,
+        type=LegacyTypeCode.DLC,
         name="Expansion",
         related_game=base,
     )
