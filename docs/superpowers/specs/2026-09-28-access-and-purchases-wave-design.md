@@ -938,6 +938,7 @@ edition word.
 | P5b | #724 | every write: the purchase segment on Add to library, Add purchase on a copy, Edit purchase, one-click Refund with sequence-keyed Undo, Remove and Restore through commands, the Purchases list's row menu, Game detail's purchases, and the legacy add, edit, view, Split and Refund routes, `PurchaseForm` and `add_purchase.ts` retired; inside the stack P5a still writes through the legacy form, so a purchase added there shows nowhere until P5b, a state `main` never holds |
 | P5b2 | the rest of #1266 | the Purchases list selectable, tray Edit and Remove (`purchase.edit`, `purchase.remove`, `EventRows`), the Conversion review section with its Hide toggle, and the Library tab's Purchases column |
 | P5c | #736 | `LegacyPurchase`, its tables, routes, signals and float cache dropped and the fixture regenerated; the pass, `verify-purchase-conversion` and its reconciliation **stay**, reading the historical model off migration state and refusing once the drop has run, since `0031` imports the pass and the deploy day needs the rolled-back preflight and a fresh snapshot of that day's dump; #1448 removes them at the squash; implemented ([contract](2026-10-02-issue-736-legacy-purchase-drop-design.md)): the tooling reads the model off the `0034` state through `legacy_purchase_model()` (`games/backfill/legacy_model.py`), everything #1448 removes carries the comment `conversion-tooling`, the `legacy_purchase` test fixture makes the tables inside the test's transaction and refuses `transaction=True`; the currency task keeps its failed status and one retry for `DatabaseError` alone, `MissingExchangeRate` gone; the fixture regenerated at 899 games, 933 editions, 947 releases, 833 copies, 758 purchases, 9530 events |
+| P6 | #1450 | the library event stream's key made deferrable, so `purge-library` works on a library holding a parented add-on with events, the shape every converted library has; a test refuses an immediate foreign key in the schema |
 
 Each member passes the full gate on its own against a fresh database.
 Each gets its own specification and plan before code. An issue delivered
@@ -1054,11 +1055,11 @@ constraints that deparse differently, pre-existing on `main` and filed
 as #1451, which blocks a green step 8 until resolved. #1450, also
 pre-existing: `purge-library` fails for a library holding an add-on Game
 with a parent and events, the shape every converted library has after
-the deploy; its fix (the stream key made deferrable) lands after the
-stack as the next migration, never before it, since the stack's ten
-migrations are named by number in specs, the rehearsal and the tooling
-and `purge-library` is no deploy step. #1451 carries no migration and
-may land first. After it: the review surface, the first valuation
+the deploy; its fix (the stream key made deferrable) is the stack's last
+member, P6, its migration the next number after P5c's, never ahead of
+the stack, since the stack's ten migrations are named by number in
+specs, the rehearsal and the tooling; one image then carries the pass
+and the deferral. #1451 carries no migration and may land first. After it: the review surface, the first valuation
 refresh and its printed totals; the fixture already shipped with P5. The valuation
 task's daily schedule row must exist in production, since the recovery
 runs on it.
