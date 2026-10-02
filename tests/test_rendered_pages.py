@@ -14,14 +14,17 @@ from zoneinfo import ZoneInfo
 import pytest
 from calendar_days import library_noon
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, refund_purchase
 from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
 from common.components.primitives import _FIELD_ERROR_CLASS, control_button_class
-from games.models import Game, Platform, PlayerSession, Purchase
+from games.models import Game, Platform, PlayerSession
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
@@ -116,13 +119,13 @@ class RenderedPagesTest(TestCase):
         self.game = Game.objects.create(
             library=self.user.library, name="Test Game", platform=self.platform
         )
-        self.purchase = Purchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
+        #: The projection reads this one.
+        record_purchase(
+            record_entry(
+                self.user.library,
+                default_graph(self.game, self.user.library).release,
+            )
         )
-        self.purchase.games.add(self.game)
         self.session = timed_row(
             tracked_run(self.user.library, self.game),
             datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
@@ -260,10 +263,9 @@ class RenderedPagesTest(TestCase):
     def test_add_game_form(self):
         html = self.get("games:add_game").content.decode()
         self.assertIn("dist/add_game.js", html)
-        self.assertIn("submit_and_redirect", html)
-        self.assertIn("Submit &amp; Create Purchase", html)  # & correctly escaped
-        self.assertIn("submit_and_create_session", html)
-        self.assertIn("Submit &amp; Create Session", html)  # & correctly escaped
+        self.assertIn("submit_and_add_to_library", html)
+        self.assertIn("Submit &amp; Add to library", html)  # & correctly escaped
+        self.assertNotIn("Create Purchase", html)
         # Fields self-style: label + control carry their own classes (no #add-form
         # / form CSS in input.css).
         self.assertIn("mb-2.5 text-type-label text-heading", html)  # _LABEL_CLASS
@@ -283,20 +285,6 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn('class="errorlist"', html)
         self.assertNoEscapedTags(html)
 
-    def test_add_purchase_form(self):
-        html = self.get("games:add_purchase").content.decode()
-        self.assertIn("dist/add_purchase.js", html)
-        self.assertIn("Submit &amp; Create Session", html)
-        self.assertIn('name="submit_and_redirect"', html)
-        self.assertNoEscapedTags(html)
-
-    @override_settings(DEBUG=True, INTERNAL_IPS=[])
-    def test_add_purchase_form_has_unique_ids_in_debug(self):
-        response = self.get("games:add_purchase")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content.decode().count('id="add-form"'), 1)
-
     def _element_with_id(self, html, element_id):
         """Return the single tag (e.g. an <input>) carrying ``id="<element_id>"``."""
         match = re.search(rf'<[^>]*\bid="{re.escape(element_id)}"[^>]*>', html)
@@ -304,24 +292,13 @@ class RenderedPagesTest(TestCase):
             self.fail(f"no element with id {element_id!r} in output")
         return match.group(0)
 
-    def test_add_purchase_for_game_autofocuses_price_not_games(self):
-        html = self.get("games:add_purchase_for_game", self.game.id).content.decode()
-        # Games/platform are pre-filled from the chain, so price gets focus.
-        self.assertIn("autofocus", self._element_with_id(html, "id_price"))
-        self.assertNotIn("autofocus", self._element_with_id(html, "id_games"))
-
     def test_add_session_for_game_autofocuses_device_not_game(self):
         html = self.get("games:add_session_for_game", self.game.id).content.decode()
         self.assertIn("autofocus", self._element_with_id(html, "id_device"))
         self.assertNotIn("autofocus", self._element_with_id(html, "id_game"))
 
     def test_cold_add_forms_keep_game_autofocus(self):
-        """Opened from the main menu (no game_id), the Game(s) field keeps focus
-        and the chained targets do not steal it."""
-        purchase_html = self.get("games:add_purchase").content.decode()
-        self.assertIn("autofocus", self._element_with_id(purchase_html, "id_games"))
-        self.assertNotIn("autofocus", self._element_with_id(purchase_html, "id_price"))
-
+        """Opened cold, the Game field keeps focus."""
         session_html = self.get("games:add_session").content.decode()
         self.assertIn("autofocus", self._element_with_id(session_html, "id_game"))
         self.assertNotIn("autofocus", self._element_with_id(session_html, "id_device"))
@@ -369,7 +346,6 @@ class RenderedPagesTest(TestCase):
             'event="status-changed"',
             'id="library"',
             "Add to library",
-            "Purchases",
             "Sessions",
             "Playthroughs",
             "History",
@@ -471,7 +447,6 @@ class RenderedPagesTest(TestCase):
         html = self.client.get(lonely.get_absolute_url()).content.decode()
         for marker in [
             "Nothing in your library yet.",
-            "No purchases yet.",
             "No sessions yet.",
         ]:
             self.assertIn(marker, html)
@@ -485,19 +460,6 @@ class RenderedPagesTest(TestCase):
         self.assertIn(self.game.name, html)
         self.assertIn("session(s)", html)  # seeded session
         self.assertIn("purchase(s)", html)  # seeded purchase
-        self.assertIn('method="post"', html)
-        self.assertNoEscapedTags(html)
-
-    def test_refund_confirmation_page(self):
-        html = self.get("games:refund_purchase", self.purchase.id).content.decode()
-        self.assertIn("Refund purchase", html)
-        self.assertIn("marked as abandoned", html)
-        self.assertIn('method="post"', html)
-        self.assertNoEscapedTags(html)
-
-    def test_split_confirmation_page(self):
-        html = self.get("games:split_purchase", self.purchase.id).content.decode()
-        self.assertIn("Split purchase", html)
         self.assertIn('method="post"', html)
         self.assertNoEscapedTags(html)
 
@@ -585,62 +547,6 @@ class RenderedPagesTest(TestCase):
         self.assertRegex(html, r"<thead[^>]*\btext-type-micro\b")
         self.assertRegex(html, r"<table[^>]*\btext-type-body\b")
 
-    def test_view_purchase(self):
-        html = self.get("games:view_purchase", self.purchase.id).content.decode()
-        for marker in [
-            # ContentContainer bakes the width classes; caller class appends.
-            "w-full max-w-7xl self-center dark:text-white",
-            "text-type-title font-serif",
-            "Owned on",
-            "Price per game:",
-            "decoration-dotted underline",
-            "Games included in this purchase:",
-            "<ul>",
-            "<li>",
-        ]:
-            self.assertIn(marker, html)
-        self.assertNoEscapedTags(html)
-        # The Python builder emits well-formed, balanced markup.
-        self.assertEqual(html.count("<div"), html.count("</div>"))
-
-    def test_view_purchase_lists_games_in_display_order(self):
-        switch = Platform.objects.create(
-            library=self.user.library, name="Switch", icon="nintendo-switch"
-        )
-        created = {}
-        for key, name, sort_name, platform in [
-            ("aardvark", "Aardvark", "zz", self.platform),
-            ("doom_first", "Doom", "doom", switch),
-            ("doom_second", "Doom", "doom", self.platform),
-            ("alpha", "alpha", "alpha", self.platform),
-            ("zeta", "Zeta Prime", "Beta", self.platform),
-        ]:
-            created[key] = Game.objects.create(
-                library=self.user.library,
-                name=name,
-                sort_name=sort_name,
-                platform=platform,
-            )
-            self.purchase.games.add(created[key])
-        html = self.get("games:view_purchase", self.purchase.id).content.decode()
-        included = html.split("Games included in this purchase:", 1)[1]
-        links = re.findall(
-            r'<a [^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
-            included.split("</ul>", 1)[0],
-        )
-        # "Test Game" states no sort_name, so it leads.
-        self.assertEqual(
-            [name for _, name in links],
-            ["Test Game", "Zeta Prime", "alpha", "Doom", "Doom", "Aardvark"],
-        )
-        self.assertEqual(
-            [href for href, name in links if name == "Doom"],
-            [
-                created["doom_first"].get_absolute_url(),
-                created["doom_second"].get_absolute_url(),
-            ],
-        )
-
 
 class PurchaseListDateFilterTest(TestCase):
     """End-to-end: GET /tracker/purchase/list?filter=… narrows the rendered
@@ -650,7 +556,6 @@ class PurchaseListDateFilterTest(TestCase):
     """
 
     def setUp(self) -> None:
-        import datetime
 
         self.user = User.objects.create_superuser(
             username="datetester", email="dt@example.com", password="testpass"
@@ -659,39 +564,25 @@ class PurchaseListDateFilterTest(TestCase):
         self.platform = Platform.objects.create(
             library=self.user.library, name="DateP", icon="gog"
         )
-        # Markers are placed on the Game name because LinkedPurchase renders
-        # the linked game's name (purchase.name doesn't surface in the list row).
-        early_game = Game.objects.create(
-            library=self.user.library, name="EARLY-MARKER", platform=self.platform
-        )
-        mid_game = Game.objects.create(
-            library=self.user.library, name="MID-MARKER", platform=self.platform
-        )
-        late_game = Game.objects.create(
-            library=self.user.library, name="LATE-MARKER", platform=self.platform
-        )
-        self.early = Purchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            platform=self.platform,
-            date_purchased=datetime.date(2024, 1, 15),
-        )
-        self.early.games.add(early_game)
-        self.mid = Purchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            platform=self.platform,
-            date_purchased=datetime.date(2024, 6, 15),
-            date_refunded=datetime.date(2024, 7, 1),
-        )
-        self.mid.games.add(mid_game)
-        self.late = Purchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            platform=self.platform,
-            date_purchased=datetime.date(2025, 1, 15),
-        )
-        self.late.games.add(late_game)
+        # Markers are the game names the Name column prints.
+        bought = []
+        for name, purchased in (
+            ("EARLY-MARKER", "2024-01-15"),
+            ("MID-MARKER", "2024-06-15"),
+            ("LATE-MARKER", "2025-01-15"),
+        ):
+            game = Game(library=self.user.library, name=name, platform=self.platform)
+            graph = default_graph(game, self.user.library, platform=self.platform)
+            bought.append(
+                record_purchase(
+                    record_entry(self.user.library, graph.release),
+                    kind="season_pass",
+                    name="Pass",
+                    purchased=TemporalValue.parse(purchased),
+                )
+            )
+        self.early, self.mid, self.late = bought
+        refund_purchase(self.mid, TemporalValue.parse("2024-07-01"))
 
     def _get(self, filter_obj=None, raw_filter=None):
         import json
@@ -713,18 +604,19 @@ class PurchaseListDateFilterTest(TestCase):
             self.assertEqual(
                 len(
                     re.findall(
-                        rf'data-truncated-clip=""[^>]*>{re.escape(marker)}', html
+                        rf'data-truncated-clip=""[^>]*>Pass · {re.escape(marker)}',
+                        html,
                     )
                 ),
                 1,
             )
 
-    def test_date_purchased_between_narrows_and_prepopulates(self):
+    def test_purchased_between_narrows_and_prepopulates(self):
         """BETWEEN 2024-01-01..2024-12-31 → only early + mid; both date
         inputs pre-filled with the filter bounds."""
         response = self._get(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-01-01",
                     "value2": "2024-12-31",
                     "modifier": "BETWEEN",
@@ -738,21 +630,19 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("LATE-MARKER", html)
         # Pre-populated date inputs round-trip the filter bounds.
         self.assertIn(
-            'name="quick-date_purchased-min" id="quick-date_purchased-min" '
-            'value="2024-01-01"',
+            'name="quick-purchased-min" id="quick-purchased-min" value="2024-01-01"',
             html,
         )
         self.assertIn(
-            'name="quick-date_purchased-max" id="quick-date_purchased-max" '
-            'value="2024-12-31"',
+            'name="quick-purchased-max" id="quick-purchased-max" value="2024-12-31"',
             html,
         )
 
-    def test_date_purchased_greater_than_single_bound(self):
+    def test_purchased_greater_than_single_bound(self):
         """GREATER_THAN populates min only, leaves max blank."""
         response = self._get(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-06-15",
                     "modifier": "GREATER_THAN",
                 }
@@ -764,17 +654,16 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("MID-MARKER", html)
         self.assertIn("LATE-MARKER", html)
         self.assertIn(
-            'name="quick-date_purchased-min" id="quick-date_purchased-min" '
-            'value="2024-06-15"',
+            'name="quick-purchased-min" id="quick-purchased-min" value="2024-06-15"',
             html,
         )
         self.assertIn(
-            'name="quick-date_purchased-max" id="quick-date_purchased-max" value=""',
+            'name="quick-purchased-max" id="quick-purchased-max" value=""',
             html,
         )
 
-    def test_date_refunded_not_null(self):
-        response = self._get({"date_refunded": {"value": "", "modifier": "NOT_NULL"}})
+    def test_refunded_not_null(self):
+        response = self._get({"refunded": {"value": "", "modifier": "NOT_NULL"}})
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertNotIn("EARLY-MARKER", html)
@@ -782,16 +671,16 @@ class PurchaseListDateFilterTest(TestCase):
         self.assertNotIn("LATE-MARKER", html)
 
     def test_combined_dates_and_is_refunded(self):
-        """date_purchased BETWEEN 2024 AND date_refunded NOT_NULL → only the
+        """purchased BETWEEN 2024 AND refunded NOT_NULL → only the
         mid purchase. Confirms AND-composition through the view layer."""
         response = self._get(
             {
-                "date_purchased": {
+                "purchased": {
                     "value": "2024-01-01",
                     "value2": "2024-12-31",
                     "modifier": "BETWEEN",
                 },
-                "date_refunded": {"value": "", "modifier": "NOT_NULL"},
+                "refunded": {"value": "", "modifier": "NOT_NULL"},
             }
         )
         self.assertEqual(response.status_code, 200)
@@ -813,11 +702,21 @@ class PurchaseListDateFilterTest(TestCase):
         # A warning toast is queued (rendered into the django-messages blob).
         self.assertIn("Ignored invalid filter", html)
 
+    def test_a_legacy_key_warns_and_falls_back(self):
+        """A filter the legacy list spelled is refused, not dropped."""
+        response = self._get(
+            {"date_purchased": {"value": "2024-06-15", "modifier": "GREATER_THAN"}}
+        )
+        html = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("EARLY-MARKER", html)
+        self.assertIn("Ignored invalid filter", html)
+
     def test_semantically_invalid_filter_warns_and_falls_back(self):
         """Parseable JSON but a build-time-invalid filter (BETWEEN without value2)
         must warn-and-ignore, not 500."""
         response = self._get(
-            {"date_purchased": {"value": "2024-01-01", "modifier": "BETWEEN"}}
+            {"purchased": {"value": "2024-01-01", "modifier": "BETWEEN"}}
         )
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
@@ -900,7 +799,7 @@ class GameListSessionFilterBoundaryTest(TestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_add_game_submit_and_create_session_redirects(
+def test_add_game_submit_and_add_to_library_redirects(
     client, owned_user, catalog_graph_post
 ):
     #: Out of the TestCase, because the POST dispatches.
@@ -912,7 +811,7 @@ def test_add_game_submit_and_create_session_redirects(
         {
             "name": "New Session Game",
             "status": "unplayed",
-            "submit_and_create_session": "",
+            "submit_and_add_to_library": "",
             **catalog_graph_post(),
         },
     )
@@ -920,7 +819,7 @@ def test_add_game_submit_and_create_session_redirects(
     game = Game.objects.get(name="New Session Game")
     assertRedirects(
         response,
-        reverse("games:add_session_for_game", kwargs={"game_id": game.id}),
+        reverse("games:add_library_entry", kwargs={"game_id": game.id}),
     )
 
 

@@ -2204,7 +2204,7 @@ SESSIONS_SENTENCE = (
 
 def test_the_delivered_registry_names_sessions_and_historical_playtime():
     """Two entries: sessions and records name runs."""
-    sessions, records = referrers.BLOCKING_REFERRERS
+    sessions, records = referrers.referrers_of(Playthrough)
 
     assert (sessions.model, sessions.field_name) == (PlayerSession, "playthrough")
     assert sessions.sentence == SESSIONS_SENTENCE

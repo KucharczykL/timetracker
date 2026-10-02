@@ -5,7 +5,7 @@ The Ninja API is covered separately by ``NinjaAPI(auth=django_auth)``
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import pytest
 from devices import create_device
@@ -21,7 +21,6 @@ from games.models import (
     Game,
     Platform,
     Playthrough,
-    Purchase,
     Release,
 )
 
@@ -32,20 +31,13 @@ def world(owned_library):
     game = Game.objects.create(
         library=owned_library, name="Test Game", platform=platform
     )
-    purchase = Purchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
-    )
-    purchase.games.set([game])
     edition = Edition.objects.create(game=game, is_default=True)
     return {
         "game_id": game.id,
         "edition_id": edition.id,
         "release_id": Release.objects.create(edition=edition, is_default=True).id,
         "slug": game.url_slug,
-        "purchase_id": purchase.id,
+        "purchase_id": uuid.uuid7(),
         "session_id": session_row(
             game, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ).id,

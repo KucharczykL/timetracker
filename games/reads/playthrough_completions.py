@@ -16,7 +16,8 @@ from games.reads.playthrough_runs import library_runs
 #: A row's path to its runs.
 type RunPath = str
 
-PURCHASE_RUNS: RunPath = "player_game__game__purchases"
+PURCHASE_RUNS: RunPath = "player_game__entries__purchases"
+ENTRY_RUNS: RunPath = "player_game__entries"
 GAME_RUNS: RunPath = "player_game__game"
 
 
@@ -35,20 +36,20 @@ def completed_runs(library: UserLibrary, year: YearScope) -> QuerySet[Playthroug
     return library_runs(library).filter(completed_in_scope(year).to_q(context))
 
 
-def _runs_of_the_purchase(
-    library: UserLibrary, year: YearScope
+def _runs_of_the_row(
+    library: UserLibrary, year: YearScope, path: RunPath
 ) -> QuerySet[Playthrough]:
-    """Those runs, correlated to the Purchase."""
-    return completed_runs(library, year).filter(**{PURCHASE_RUNS: OuterRef("pk")})
+    """Those runs, correlated to the row."""
+    return completed_runs(library, year).filter(**{path: OuterRef("pk")})
 
 
-def completion_exists(library: UserLibrary, year: YearScope) -> Exists:
-    """Whether a Purchase names a completed game."""
-    return Exists(_runs_of_the_purchase(library, year))
+def completion_exists(library: UserLibrary, year: YearScope, path: RunPath) -> Exists:
+    """Whether the row names a completed game."""
+    return Exists(_runs_of_the_row(library, year, path))
 
 
-def completion_day(library: UserLibrary, year: YearScope) -> Subquery:
-    """The day a Purchase reports in scope.
+def completion_day(library: UserLibrary, year: YearScope, path: RunPath) -> Subquery:
+    """The day the row reports in scope.
 
     A year reports its earliest completion, so the table
     leads with the day it prints. All-time reports the
@@ -56,8 +57,8 @@ def completion_day(library: UserLibrary, year: YearScope) -> Subquery:
     """
     reducer = Max("completed_lower") if year is None else Min("completed_lower")
     return Subquery(
-        _runs_of_the_purchase(library, year)
-        .values(PURCHASE_RUNS)
+        _runs_of_the_row(library, year, path)
+        .values(path)
         .annotate(day=reducer)
         .values("day")[:1]
     )

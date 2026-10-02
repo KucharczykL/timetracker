@@ -48,6 +48,15 @@ def request_conversion(library: UserLibrary, target_currency: str) -> int:
         return _request_conversion_for_locked_state(state, target_currency)
 
 
+def request_revaluation(library: UserLibrary) -> int:
+    """Request a version at the requested target."""
+    with transaction.atomic():
+        state = PurchaseConversionState.objects.select_for_update().get(
+            library_id=library.pk
+        )
+        return _request_conversion_for_locked_state(state, state.requested_currency)
+
+
 def request_inheriting_library_conversions(target_currency: str) -> None:
     """Request a site-default conversion only for users without an override."""
     libraries = UserLibrary.objects.filter(

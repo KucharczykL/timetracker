@@ -15,7 +15,6 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     IntegerField,
-    Min,
     QuerySet,
     Value,
     When,
@@ -160,14 +159,14 @@ SESSION_SORTS: SortMap = {
 SESSION_DEFAULT_SORT: SortString = "-date,created"
 
 PURCHASE_SORTS: SortMap = {
-    "name": SortSpec("first_game_name", {"first_game_name": Min("games__name")}),
-    "type": SortSpec("type"),
-    "price": SortSpec("converted_price"),
-    "infinite": SortSpec("infinite"),
-    "purchased": SortSpec("date_purchased"),
-    "refunded": SortSpec("date_refunded"),
+    "name": _game_first("entry__player_game__game", then=("name",)),
+    "kind": SortSpec("kind"),
+    #: The view registers `valuation_amount`.
+    "amount": SortSpec("valuation_amount", then=("amount",)),
+    "purchased": SortSpec("purchased_lower", then=("purchased_upper",)),
+    "refunded": SortSpec("refunded_lower", then=("refunded_upper",)),
     "created": SortSpec("created_at"),
-    # No annotate dict: _purchases_with_completions annotates `completed_day`.
+    # No annotate dict: purchase_list_rows annotates `completed_day`.
     "finished": SortSpec("completed_day"),
 }
 PURCHASE_DEFAULT_SORT: SortString = "-purchased,-created"

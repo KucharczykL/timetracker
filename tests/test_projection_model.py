@@ -380,6 +380,22 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "access_end_note": "",
         "access_end_way": "",
     },
+    "games.Purchase": {
+        #: The projector's mark.
+        "removed_at": None,
+        #: Null amount unknown; currency blank.
+        "amount": None,
+        "currency": "",
+        "name": "",
+        "note": "",
+        #: The opening endpoint: the day may be unknown.
+        "purchased": None,
+        "purchase_note": "",
+        #: Null is a purchase not refunded.
+        "refunded": None,
+        "refund_recorded_at": None,
+        "refund_note": "",
+    },
 }
 
 

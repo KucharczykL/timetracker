@@ -1,5 +1,7 @@
 """Isolated server-rendered contracts for the Stage 3 settings UI kit."""
 
+import re
+
 import pytest
 from django import forms
 from django.test import SimpleTestCase
@@ -88,6 +90,23 @@ class GroupedFormFieldsTest(SimpleTestCase):
                     ],
                 )
             )
+
+    def test_a_group_class_and_row_classes_reach_their_elements(self):
+        html = str(
+            FormFields(
+                KitForm(),
+                groups=[FormFieldGroup("Limits", ("limit",), class_="group/limits")],
+                presentations={
+                    "limit": FormFieldPresentation(row_class="hidden"),
+                    "enabled": FormFieldPresentation(row_class="sm:hidden"),
+                },
+            )
+        )
+        assert re.search(r'<fieldset class="[^"]*group/limits', html)
+        assert re.search(r'<div[^>]*data-field-row="limit"[^>]*class="hidden"', html)
+        assert re.search(
+            r'class="[^"]*sm:hidden[^"]*"[^>]*data-form-checkbox-row', html
+        )
 
     def test_all_plain_setting_widget_types_use_the_mixin_path(self):
         form = KitForm()

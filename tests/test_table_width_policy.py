@@ -16,7 +16,10 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row
 
 from games.models import (
@@ -25,7 +28,6 @@ from games.models import (
     PlayerGame,
     Playthrough,
     PlaythroughKind,
-    Purchase,
 )
 
 ZONEINFO = ZoneInfo("Europe/Prague")
@@ -92,14 +94,11 @@ class DataTableGateTest(TestCase):
             game, device=device, started_at=BASE, ended_at=BASE + timedelta(hours=2)
         )
         record_row([run], device=device, when="2020")
-        purchase = Purchase.objects.create(
-            platform=platform,
-            date_purchased=BASE,
-            price=10,
-            price_currency="USD",
-            library=library,
+        record_purchase(
+            record_entry(
+                library, default_graph(game, library, platform=platform).release
+            )
         )
-        purchase.games.add(game)
 
     def setUp(self) -> None:
         self.client.force_login(self.user)

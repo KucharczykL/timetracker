@@ -1,20 +1,24 @@
 """Purchase entry and display currencies have separate live consumers."""
 
 from datetime import date
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
+from entries import record_entry
+from purchases import record_purchase
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.models import Game, Platform, Purchase, UserPreferences
+from games.models import Game, UserPreferences
+from games.purchase_forms import PurchaseAddForm
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_site_setting
+from timetracker.temporal import TemporalValue
 
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -36,81 +40,49 @@ def user(db):
     return get_user_model().objects.create_user(username="currency-user")
 
 
-@pytest.fixture
-def game(user):
-    platform = Platform.objects.create(name="PC", icon="steam", group="PC")
-    return Game.objects.create(
-        library=user.library,
-        name="Test Game",
-        platform=platform,
-    )
-
-
 def _set_currency(callbacks, key, value):
     with callbacks(execute=True):
         change_site_setting(key, value)
 
 
+def _purchase_form(user) -> PurchaseAddForm:
+    return PurchaseAddForm(
+        library=user.library, presentation=_PRESENTATION, today=date(2025, 1, 1)
+    )
+
+
 def test_purchase_form_preselection_tracks_live_entry_currency(
     user, clean_currency_env, django_capture_on_commit_callbacks
 ):
-    from games.forms import PurchaseForm
-
     _set_currency(
         django_capture_on_commit_callbacks,
         "DEFAULT_PURCHASE_CURRENCY",
         "EUR",
     )
-    form = PurchaseForm(
-        library=user.library,
-        user=user,
-        presentation=_PRESENTATION,
-    )
-    assert form.initial["price_currency"] == "EUR"
-    assert form.fields["price_currency"].widget.attrs["placeholder"] == "EUR"
+    form = _purchase_form(user)
+    assert form.initial["currency"] == "EUR"
+    assert form.fields["currency"].widget.attrs["placeholder"] == "EUR"
 
 
 def test_purchase_form_uses_personal_entry_currency(user, clean_currency_env):
-    from games.forms import PurchaseForm
-
     UserPreferences.objects.filter(user=user).update(default_purchase_currency="GBP")
     settings_resolver.clear_cache()
 
-    form = PurchaseForm(
-        library=user.library,
-        user=user,
-        presentation=_PRESENTATION,
-    )
-
-    assert form.initial["price_currency"] == "GBP"
+    assert _purchase_form(user).initial["currency"] == "GBP"
 
 
-def test_purchase_form_requires_explicit_library_and_user_context(db):
-    from games.forms import PurchaseForm
-
+def test_purchase_form_requires_explicit_library_context(db):
     with pytest.raises(TypeError):
-        PurchaseForm(presentation=_PRESENTATION)
-
-
-def test_purchase_model_never_resolves_a_hidden_currency(user):
-    purchase = Purchase(
-        library=user.library,
-        price=10,
-        date_purchased=date(2025, 1, 1),
-        price_currency="",
-    )
-
-    with pytest.raises(ValidationError):
-        purchase.save()
+        PurchaseAddForm(presentation=_PRESENTATION, today=date(2025, 1, 1))
 
 
 def test_convert_prices_targets_display_currency(
     user,
-    game,
     clean_currency_env,
     django_capture_on_commit_callbacks,
+    stated_graph,
 ):
-    from games.models import PurchaseConversionState
+    from games.models import PurchaseConversionState, PurchaseValuation
     from games.tasks import convert_library_prices
 
     _set_currency(
@@ -118,26 +90,17 @@ def test_convert_prices_targets_display_currency(
         "DEFAULT_DISPLAY_CURRENCY",
         "EUR",
     )
-    purchase = Purchase.objects.create(
-        library=user.library,
-        price=50,
-        price_currency="EUR",
-        date_purchased=date(2025, 1, 1),
+    graph = stated_graph(Game(library=user.library, name="Tunic"), user.library)
+    purchase = record_purchase(
+        record_entry(user.library, graph.release),
+        amount=Decimal("50.00"),
+        currency="EUR",
+        purchased=TemporalValue.parse("2025-01-01"),
     )
-    purchase.games.add(game)
 
     state = PurchaseConversionState.objects.get(library=user.library)
     convert_library_prices(str(user.library.pk), state.requested_version)
 
-    purchase.refresh_from_db()
-    assert purchase.converted_currency == "EUR"
-    assert purchase.converted_price == 50
-
-
-def test_the_purchase_platform_offers_to_make_a_platform(user, clean_currency_env):
-    """A platform the library lacks is made from the picker."""
-    from games.forms import PurchaseForm
-
-    form = PurchaseForm(library=user.library, user=user, presentation=_PRESENTATION)
-
-    assert 'create-url="/api/platforms/"' in str(form["platform"])
+    valuation = PurchaseValuation.objects.get(purchase_id=purchase.pk)
+    assert valuation.target_currency == "EUR"
+    assert valuation.amount == Decimal("50.00")

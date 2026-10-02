@@ -1,14 +1,13 @@
 import logging
 from collections.abc import Callable, Mapping
-from datetime import date, timedelta
+from datetime import timedelta
 from operator import attrgetter
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
 from uuid import UUID
 
-import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
+from django.db import models
 from django.db.models import (
     Exists,
     F,
@@ -18,9 +17,8 @@ from django.db.models import (
     Q,
     Value,
 )
-from django.db.models.fields.generated import GeneratedField
-from django.db.models.functions import Cast, Coalesce, Lower, NullIf, Trim
-from django.template.defaultfilters import floatformat, pluralize, slugify
+from django.db.models.functions import Cast, Coalesce, Lower, Trim
+from django.template.defaultfilters import slugify
 from django.urls import reverse
 from django.utils import timezone
 
@@ -55,7 +53,6 @@ from timetracker.temporal import (
     TemporalStartPrecision,
     TemporalStartQualifier,
     TemporalUpperBound,
-    TemporalValue,
     TemporalValueField,
 )
 from timetracker.uuidv7 import UUIDv7Field
@@ -1041,296 +1038,26 @@ class ExternalReference(models.Model):
         super().save(*args, **kwargs)
 
 
-class PurchaseQueryset(RemovableLibraryQuerySet):
-    def for_library(self, library):
-        #: One live game keeps a bundle.
-        #: A purchase that names no game
-        #: is untouched by removal, so it stays.
-        linked = Game.objects.filter(purchases=OuterRef("pk"))
-        return (
-            super()
-            .for_library(library)
-            .filter(~Exists(linked) | Exists(linked.alive()))
-        )
-
-    def refunded(self):
-        return self.filter(date_refunded__isnull=False)
-
-    def not_refunded(self):
-        return self.filter(date_refunded__isnull=True)
-
-    def games_only(self):
-        return self.filter(type=Purchase.GAME)
-
-    def finished(self, library):
-        #: Local: the reads module imports models.
-        from games.reads.playthrough_completions import completion_exists
-
-        #: A done status, or a completed run.
-        return self.filter(
-            Q(
-                games__in=Game.objects.tracked_by(
-                    library, tracked__status__in=DONE_STATUSES
-                )
-            )
-            | Q(completion_exists(library, None))
-        ).distinct()
-
-
-class Purchase(models.Model):
-    if TYPE_CHECKING:
-        #: Annotations, not columns: the Finished cell reads
-        #: the act from one and the value from the other, and
-        #: only the list view's queryset carries them.
-        has_completion: bool
-        completed_value: TemporalValue | None
-        completed_day: date | None
-
-    PHYSICAL = "ph"
-    DIGITAL = "di"
-    DIGITALUPGRADE = "du"
-    RENTED = "re"
-    BORROWED = "bo"
-    TRIAL = "tr"
-    DEMO = "de"
-    PIRATED = "pi"
-    OWNERSHIP_TYPES = (
-        (PHYSICAL, "Physical"),
-        (DIGITAL, "Digital"),
-        (DIGITALUPGRADE, "Digital Upgrade"),
-        (RENTED, "Rented"),
-        (BORROWED, "Borrowed"),
-        (TRIAL, "Trial"),
-        (DEMO, "Demo"),
-        (PIRATED, "Pirated"),
-    )
-    GAME = "game"
-    DLC = "dlc"
-    SEASONPASS = "season_pass"
-    BATTLEPASS = "battle_pass"
-    TYPES = (
-        (GAME, "Game"),
-        (DLC, "DLC"),
-        (SEASONPASS, "Season Pass"),
-        (BATTLEPASS, "Battle Pass"),
-    )
-
-    objects = PurchaseQueryset().as_manager()
-
-    id = UUIDv7Field(primary_key=True, editable=False, serialize=False)
-    library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="purchases"
-    )
-    games = models.ManyToManyField(Game, related_name="purchases")
-
-    platform = models.ForeignKey(
-        Platform,
-        on_delete=models.SET_NULL,
-        default=None,
-        null=True,
-        blank=True,
-    )
-    date_purchased = models.DateField(verbose_name="Purchased")
-    date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
-    infinite = models.BooleanField(default=False)
-    price = models.FloatField(default=0)
-    # Entry forms preselect a resolved default, but every persisted Purchase
-    # carries its original currency explicitly.
-    price_currency = models.CharField(max_length=3, blank=True, default="")
-    converted_price = models.FloatField(null=True)
-    converted_currency = models.CharField(max_length=3, blank=True, default="")
-    needs_price_update = models.BooleanField(default=True, db_index=True)
-    price_per_game = GeneratedField(
-        expression=Coalesce(F("converted_price"), F("price"), 0)
-        / NullIf(F("num_purchases"), 0),
-        output_field=models.FloatField(),
-        db_persist=True,
-        editable=False,
-    )
-    num_purchases = models.IntegerField(default=0)
-    ownership_type = models.CharField(
-        max_length=2, choices=OWNERSHIP_TYPES, default=DIGITAL
-    )
-    type = models.CharField(max_length=255, choices=TYPES, default=GAME)
-    name = models.CharField(max_length=255, blank=True, default="")
-    related_game = models.ForeignKey(
-        Game,
-        on_delete=models.SET_NULL,
-        default=None,
-        null=True,
-        blank=True,
-        related_name="addon_purchases",
-        verbose_name="Base game",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    #: Set instead of destroying the row.
-    removed_at = models.DateTimeField(
-        null=True, blank=True, default=None, editable=False
-    )
-
-    @property
-    def standardized_price(self):
-        return (
-            f"{floatformat(self.converted_price, 0)} {self.converted_currency}"
-            if self.converted_price
-            else None
-        )
-
-    @property
-    def has_one_item(self):
-        return self.games.count() == 1
-
-    @property
-    def standardized_name(self):
-        return self.name or self.first_game.name
-
-    @property
-    def first_game(self):
-        #: `.all()` reads a prefetch; `first()` would not.
-        return min(self.games.all(), key=game_display_key, default=None)
-
-    def __str__(self):
-        return self.standardized_name
-
-    @property
-    def full_name(self):
-        return label_with_details(
-            self.standardized_name,
-            f"{self.num_purchases} game{pluralize(self.num_purchases)}",
-            self.date_purchased,
-            self.standardized_price,
-        )
-
-    def is_game(self):
-        return self.type == self.GAME
-
-    def refund(self):
-        from games.reads.calendar import calendar_today
-
-        self.date_refunded = calendar_today(self.library)
-        self.save()
-
-    def clean(self):
-        super().clean()
-        if self.platform_id is not None:
-            _validate_related_library(
-                self.library_id,
-                self.platform,
-                "platform",
-                allow_shared=True,
-            )
-        if self.related_game_id is not None:
-            _validate_related_library(
-                self.library_id,
-                self.related_game,
-                "related_game",
-            )
-
-    def save(self, *args, **kwargs):
-        if not self.price_currency:
-            raise ValidationError({"price_currency": "Purchase currency is required."})
-        self.clean()
-        if self.type != Purchase.GAME and not self.related_game:
-            raise ValidationError(
-                f"{self.get_type_display()} must have a related game."
-            )
-
-        update_fields = kwargs.get("update_fields")
-        conversion_fields = {"date_purchased", "price", "price_currency"}
-        may_need_conversion = (
-            self._state.adding
-            or update_fields is None
-            or not conversion_fields.isdisjoint(update_fields)
-        )
-        if not may_need_conversion:
-            super().save(*args, **kwargs)
-            return
-
-        from games.conversion import _request_conversion_for_locked_state
-
-        is_new = self._state.adding
-        with transaction.atomic():
-            conversion_state = PurchaseConversionState.objects.select_for_update().get(
-                library_id=self.library_id
-            )
-            price_changed = is_new
-            if not is_new:
-                previous = (
-                    Purchase.objects.only("date_purchased", "price", "price_currency")
-                    .filter(pk=self.pk)
-                    .first()
-                )
-                price_changed = previous is None or (
-                    previous.date_purchased != self.date_purchased
-                    or previous.price != self.price
-                    or previous.price_currency != self.price_currency
-                )
-
-            if price_changed:
-                self.needs_price_update = True
-                if update_fields is not None:
-                    kwargs["update_fields"] = set(update_fields) | {
-                        "needs_price_update"
-                    }
-
-            super().save(*args, **kwargs)
-            if price_changed:
-                _request_conversion_for_locked_state(
-                    conversion_state,
-                    conversion_state.requested_currency,
-                )
+#: Places of a stored rate.
+RATE_PLACES: Final = 12
 
 
 class ExchangeRate(models.Model):
     currency_from = models.CharField(max_length=255)
     currency_to = models.CharField(max_length=255)
     year = models.PositiveIntegerField()
-    rate = models.FloatField()
+    rate = models.DecimalField(max_digits=24, decimal_places=RATE_PLACES)
 
     class Meta:
         unique_together = ("currency_from", "currency_to", "year")
+        constraints = (
+            models.CheckConstraint(
+                condition=Q(rate__gt=0), name="games_exchangerate_rate_positive"
+            ),
+        )
 
     def __str__(self):
         return f"{self.currency_from}/{self.currency_to} - {self.rate} ({self.year})"
-
-
-def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float | None:
-    # Currently unused. If ever wired up, its currency_to must come from
-    # settings_resolver.resolve_str("DEFAULT_DISPLAY_CURRENCY"), not a boot-frozen value.
-    exchange_rate = None
-    result = ExchangeRate.objects.filter(
-        currency_from=currency_from, currency_to=currency_to, year=year
-    )
-    if result:
-        exchange_rate = result[0].rate
-    else:
-        try:
-            # this API endpoint only accepts lowercase currency string
-            response = requests.get(
-                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency_from.lower()}.json"
-            )
-            response.raise_for_status()
-            data = response.json()
-            currency_from_data = data.get(currency_from.lower())
-            rate = currency_from_data.get(currency_to.lower())
-
-            if rate:
-                logger.info(f"[convert_prices]: Got {rate}, saving...")
-                created_rate = ExchangeRate.objects.create(
-                    currency_from=currency_from,
-                    currency_to=currency_to,
-                    year=year,
-                    rate=floatformat(rate, 2),
-                )
-                exchange_rate = created_rate.rate
-            else:
-                logger.info("[convert_prices]: Could not get an exchange rate.")
-        except requests.RequestException as e:
-            logger.info(
-                f"[convert_prices]: Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
-            )
-    return exchange_rate
 
 
 class FilterPreset(models.Model):
@@ -2386,6 +2113,199 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
         return f"{self.access}, {self.format}"
 
 
+#: An ISO 4217 code, e.g. "EUR".
+CURRENCY_CODE = "[A-Z]{3}"
+
+
+class PurchaseKind(models.TextChoices):
+    """What one purchase paid for."""
+
+    GAME = "game", "Game"
+    SEASON_PASS = "season_pass", "Season pass"
+    BATTLE_PASS = "battle_pass", "Battle pass"
+    UPGRADE = "upgrade", "Upgrade"
+
+
+class PriceState(models.TextChoices):
+    """What a stated price says."""
+
+    PAID = "paid", "Paid"
+    FREE = "free", "Free"
+    UNKNOWN = "unknown", "Unknown"
+
+
+def price_state_expression() -> models.Case:
+    """The amount, read as a PriceState word."""
+    return models.Case(
+        models.When(amount__isnull=True, then=models.Value(PriceState.UNKNOWN)),
+        models.When(amount=0, then=models.Value(PriceState.FREE)),
+        default=models.Value(PriceState.PAID),
+        output_field=models.CharField(),
+    )
+
+
+PURCHASE_DAY_COLUMNS = OpeningEndpointColumns(
+    name="purchase",
+    model_label="games.Purchase",
+    when="purchased",
+    lower="purchased_lower",
+    upper="purchased_upper",
+    marker="purchase_recorded_at",
+    note="purchase_note",
+)
+
+PURCHASE_REFUND_COLUMNS = EndpointColumns(
+    name="refund",
+    model_label="games.Purchase",
+    when="refunded",
+    lower="refunded_lower",
+    upper="refunded_upper",
+    marker="refund_recorded_at",
+    note="refund_note",
+)
+
+
+class PurchaseQuerySet(RemovableMixin, models.QuerySet["Purchase"]):
+    """Purchase, entry and tracked-game marks."""
+
+    ancestor_marks = ("entry", "entry__player_game")
+
+    #: The library the valuation alias reads.
+    _valuation_library: UserLibrary | None = None
+
+    def _clone(self) -> PurchaseQuerySet:
+        #: Django's hook; django-stubs declares no `_clone`.
+        clone: PurchaseQuerySet = super()._clone()  # type: ignore[misc]
+        clone._valuation_library = self._valuation_library
+        return clone
+
+    def annotated_for_filtering(
+        self, library: UserLibrary | None = None
+    ) -> PurchaseQuerySet:
+        """Register the price and valuation aliases.
+
+        As the run's condition aliases: a second call naming the
+        same library is a no-op, one naming another is refused,
+        and without a library the names resolve and refuse to
+        compile. A library named after an unscoped call is
+        refused too: filters may already hold the unscoped alias.
+        """
+        from games.reads.purchases import valuation_annotations
+
+        if "valuation_amount" in self.query.annotations:
+            if library is None or library == self._valuation_library:
+                return self
+            if self._valuation_library is None:
+                raise ValueError(
+                    "this queryset carries the unscoped valuation alias; "
+                    "name the library at the first call"
+                )
+            raise ValueError(
+                "this queryset already carries a valuation alias from "
+                f"{self._valuation_library}; annotate once, at the read "
+                "that states the scope"
+            )
+        rate_year, valuation = valuation_annotations(library)
+        if library is None:
+            return self.alias(price_state=price_state_expression(), **rate_year).alias(
+                **valuation
+            )
+        queryset = self.annotate(
+            price_state=price_state_expression(), **rate_year
+        ).annotate(**valuation)
+        queryset._valuation_library = library
+        return queryset
+
+
+class Purchase(ProjectionModel):
+    """One transaction for one copy; Purchases writes."""
+
+    objects = PurchaseQuerySet.as_manager()
+
+    #: The game is two parents away.
+    comparison_through = (("entry__player_game__game", "Game"),)
+
+    #: The creation event's aggregate id.
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    entry = models.ForeignKey(
+        LibraryEntry, on_delete=models.RESTRICT, related_name="purchases"
+    )
+    kind = models.CharField(
+        max_length=max(len(word) for word in PurchaseKind.values),
+        choices=PurchaseKind,
+    )
+    name = models.CharField(max_length=255, blank=True, default="")
+    #: Null unknown; zero free.
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, default=None
+    )
+    #: Blank exactly where amount is null.
+    currency = models.CharField(max_length=3, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    #: The day bought; null unknown.
+    purchased = endpoint_when()
+    purchased_lower = endpoint_bound("purchased", "lower")
+    purchased_upper = endpoint_bound("purchased", "upper")
+    #: The creation's instant; every row holds one.
+    purchase_recorded_at = opening_marker()
+    purchase_note = endpoint_note()
+    #: The day refunded; null unknown or unstated.
+    refunded = endpoint_when()
+    refunded_lower = endpoint_bound("refunded", "lower")
+    refunded_upper = endpoint_bound("refunded", "upper")
+    #: Null is a purchase not refunded.
+    refund_recorded_at = endpoint_marker()
+    refund_note = endpoint_note()
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null live.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    #: The bound columns a comparison may name.
+    comparable_temporal_bounds: ClassVar[Mapping[str, str]] = {
+        "purchased_lower": "Purchased (earliest)",
+        "purchased_upper": "Purchased (latest)",
+        "refunded_lower": "Refunded (earliest)",
+        "refunded_upper": "Refunded (latest)",
+    }
+
+    class Meta:
+        verbose_name = "purchase"
+        verbose_name_plural = "purchases"
+        constraints = (
+            library_identity_constraint(),
+            models.CheckConstraint(
+                condition=Q(kind__in=[word.value for word in PurchaseKind]),
+                name="games_purchase_kind_known",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount__isnull=True) | Q(amount__gte=0),
+                name="games_purchase_amount_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount__isnull=True, currency="")
+                | Q(amount__isnull=False, currency__regex=f"^{CURRENCY_CODE}$"),
+                name="games_purchase_currency_where_amount",
+            ),
+        )
+        indexes = (
+            #: Not unique: one copy, many purchases.
+            models.Index(
+                fields=("library", "entry"),
+                condition=Q(removed_at__isnull=True),
+                name="live_purchase_per_entry_idx",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return self.name or self.kind
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,
@@ -2395,6 +2315,7 @@ class UserLibraryPreferences(models.Model):
     )
     #: A device key, never a foreign key.
     default_device_id = models.UUIDField(null=True, blank=True, default=None)
+    conversion_review_hidden = models.BooleanField(default=False)
     updated_at = models.DateTimeField(default=timezone.now)
 
     @property
@@ -2441,6 +2362,14 @@ class UserLibraryPreferences(models.Model):
         self.save(update_fields=["default_device_id", "updated_at"])
         return True
 
+    def set_conversion_review_hidden(self, hidden: bool) -> bool:
+        if self.conversion_review_hidden == hidden:
+            return False
+        self.conversion_review_hidden = hidden
+        self.updated_at = timezone.now()
+        self.save(update_fields=["conversion_review_hidden", "updated_at"])
+        return True
+
 
 class PurchaseConversionState(models.Model):
     class Status(models.TextChoices):
@@ -2462,6 +2391,57 @@ class PurchaseConversionState(models.Model):
     status = models.CharField(max_length=10, choices=Status, default=Status.COMPLETE)
     retry_at = models.DateTimeField(null=True, blank=True, default=None)
     last_error = models.TextField(blank=True, default="")
+
+
+class PurchaseValuation(models.Model):
+    """A purchase's amount in the reporting currency."""
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.ForeignKey(UserLibrary, on_delete=models.CASCADE, related_name="+")
+    #: Nothing keys into a projection row.
+    purchase_id = models.UUIDField()
+    target_currency = models.CharField(max_length=3)
+    amount = models.DecimalField(max_digits=26, decimal_places=2)
+    source_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    source_currency = models.CharField(max_length=3)
+    rate_year = models.PositiveSmallIntegerField()
+    rate = models.DecimalField(
+        max_digits=24, decimal_places=RATE_PLACES, null=True, default=None
+    )
+    #: Provenance; currency is judged on inputs.
+    version = models.PositiveBigIntegerField()
+    calculated_at = models.DateTimeField()
+
+    class Meta:
+        constraints = (
+            #: Publication keeps one target per library.
+            models.UniqueConstraint(
+                fields=("library", "purchase_id"),
+                name="games_purchasevaluation_one_per_purchase",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount__gte=0) & Q(source_amount__gte=0),
+                name="games_purchasevaluation_amounts_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    rate__isnull=True,
+                    amount=F("source_amount"),
+                )
+                & (Q(source_currency=F("target_currency")) | Q(source_amount=0))
+                | Q(rate__isnull=False, rate__gt=0)
+                & ~Q(source_currency=F("target_currency"))
+                & ~Q(source_amount=0),
+                name="games_purchasevaluation_rate_where_needed",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    source_currency__regex=f"^{CURRENCY_CODE}$",
+                    target_currency__regex=f"^{CURRENCY_CODE}$",
+                ),
+                name="games_purchasevaluation_currency_codes",
+            ),
+        )
 
 
 class UserPreferences(models.Model):

@@ -13,43 +13,35 @@ hides the per-purchase list sections), so the differences are kept explicit.
 
 from collections.abc import Mapping
 from datetime import date, timedelta
+from decimal import Decimal
 from enum import Enum, auto
 from typing import Any, NotRequired, TypedDict
 
-from django.db.models import (
-    F,
-    Max,
-    Q,
-    Sum,
-)
+from django.db.models import F, QuerySet
 
 from common.time import available_stats_year_range
 from common.utils import safe_division
-from games.filters import SESSION_GAME
-from games.models import (
-    DONE_STATUSES,
-    Game,
-    PlayerGameStatus,
-    PlayerSessionQuerySet,
-    Purchase,
-    PurchaseConversionState,
-    PurchaseQueryset,
-    UserLibrary,
-    VisibilityField,
-)
+from games.filters import LibraryEntryFilter
+from games.models import LibraryEntry, UserLibrary
 from games.reads.calendar import calendar_today
+from games.reads.copy_figures import (
+    bought_and_finished_copies,
+    copies_matching,
+    copy_counts,
+    finished_copies,
+    finished_released_copies,
+    paid_for_copy,
+    unfinished_copies,
+)
 from games.reads.days import YearScope
-from games.reads.historical_playtime_records import records_in_scope
 from games.reads.play_figures import (
-    RECORD_GAME,
     PlaySource,
     distinct_days,
     first_play,
     games_in_scope,
     last_play,
 )
-from games.reads.player_sessions import library_sessions
-from games.reads.playthrough_completions import completion_day, completion_exists
+from games.reads.playthrough_completions import ENTRY_RUNS, completion_day
 from games.reads.playtime import (
     GameByPlaytime,
     MonthPlaytime,
@@ -60,6 +52,13 @@ from games.reads.playtime import (
     playtime_by_month,
     playtime_by_platform,
     total_playtime,
+)
+from games.reads.purchase_figures import (
+    purchase_figures,
+    purchases_in_scope,
+    purchases_matching,
+    refunded_in_scope,
+    spending_currency,
 )
 from games.reads.session_figures import (
     highest_average_game,
@@ -82,8 +81,12 @@ class StatsData(TypedDict):
     games_by_playtime: list[GameByPlaytime]
     games_by_playtime_count: int
     total_playtime_per_platform: list[PlatformPlaytime]
-    total_spent: Any
+    total_spent: Decimal
     total_spent_currency: str
+    #: Unrefunded, at a price nobody knows.
+    total_spent_unpriced: int
+    #: Unrefunded, an amount and no valuation.
+    total_spent_unvalued: int
     spent_per_game: int
     all_purchased_this_year_count: int
     all_purchased_refunded_this_year: Any
@@ -131,6 +134,8 @@ class StatsSource(Enum):
     #: A record states no sittings.
     SESSIONS_NO_SITTINGS = auto()
     PURCHASES = auto()
+    #: Live copies on a full Edition.
+    ENTRIES = auto()
     NOT_A_FIGURE = auto()
 
 
@@ -155,7 +160,6 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "last_play_game",
         "last_play_date",
         "total_games",
-        "total_year_games",
     ),
     StatsSource.SESSIONS_NO_SITTINGS: (
         "total_sessions",
@@ -167,14 +171,20 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "highest_session_average_game",
     ),
     StatsSource.PURCHASES: (
-        "this_year_finished_this_year_count",
         "total_spent",
         "total_spent_currency",
+        "total_spent_unpriced",
+        "total_spent_unvalued",
         "spent_per_game",
         "all_purchased_this_year_count",
         "all_purchased_refunded_this_year",
         "all_purchased_refunded_this_year_count",
         "refunded_percent",
+        "all_purchased_this_year",
+    ),
+    StatsSource.ENTRIES: (
+        "total_year_games",
+        "this_year_finished_this_year_count",
         "dropped_count",
         "dropped_percentage",
         "purchased_unfinished_count",
@@ -185,7 +195,6 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "this_year_finished_this_year",
         "purchased_this_year_finished_this_year",
         "purchased_unfinished",
-        "all_purchased_this_year",
     ),
     StatsSource.NOT_A_FIGURE: (
         "year",
@@ -214,64 +223,9 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
     return min(int(unique_days / span * 100), 100)
 
 
-def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
-    """The library's tracked games at these statuses."""
-    return Game.objects.tracked_by(library, tracked__status__in=statuses)
-
-
-def _holding_no_game_excluded_from(library: UserLibrary, fact: VisibilityField) -> Q:
-    """Purchases holding no game stating `fact`."""
-    return ~Q(games__in=Game.objects.tracked_by(library, **{f"tracked__{fact}": True}))
-
-
 def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
-    published_currency = (
-        PurchaseConversionState.objects.only("published_currency")
-        .get(library=library)
-        .published_currency
-    )
-    return _compute_stats_from_scoped_querysets(
-        library=library,
-        sessions=library_sessions(library),
-        purchases=Purchase.objects.for_library(library),
-        year=year,
-        fallback_currency=published_currency,
-    )
-
-
-def _compute_stats_from_scoped_querysets(
-    *,
-    library: UserLibrary,
-    sessions: PlayerSessionQuerySet,
-    purchases: PurchaseQueryset,
-    year: YearScope,
-    fallback_currency: str,
-) -> StatsData:
-    """Compute metrics without selecting a global session or Purchase base.
-
-    Playtime reads library and year, not `sessions`.
-    """
-
-    library_purchases = purchases
+    """Every figure for one scope."""
     is_alltime = year is None
-
-    # ── Scope ──────────────────────────────────────────────────────────────
-    if is_alltime:
-        without_refunded = library_purchases.filter(date_refunded=None)
-        refunded = library_purchases.filter(date_refunded__isnull=False)
-    else:
-        sessions = sessions.filter(effective_day__year=year)
-        purchases = library_purchases.filter(date_purchased__year=year)
-        without_refunded = library_purchases.filter(
-            date_refunded=None, date_purchased__year=year
-        )
-        refunded = library_purchases.exclude(date_refunded=None).filter(
-            date_purchased__year=year
-        )
-
-    completed_q = Q(completion_exists(library, year))
-    done = _games_at_status(library, *DONE_STATUSES)
-    not_finished_q = ~Q(games__in=done) & ~completed_q
 
     # ── Session and day figures, one reader each ─────────────────────────────────────
     longest = longest_session(library, year)
@@ -289,86 +243,32 @@ def _compute_stats_from_scoped_querysets(
     else:
         unique_days_percent = int(unique_days / 365 * 100)
 
-    # ── Spending ─────────────────────────────────────────────────────────────
-    spending = without_refunded.aggregate(
-        total=Sum(F("converted_price")),
-        currency=Max("converted_currency", filter=Q(converted_price__isnull=False)),
-    )
-    total_spent = spending["total"] or 0
-    currency = spending["currency"] or fallback_currency
-    without_refunded_count = without_refunded.count()
+    # ── Purchases ────────────────────────────────────────────────────────────
+    spending = purchase_figures(library, year)
+    currency = spending_currency(library, spending)
 
-    # ── Purchase breakdown ───────────────────────────────────────────────────
-    only_games_and_dlc = Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
-    unfinished = (
-        without_refunded.filter(not_finished_q)
-        .filter(infinite=False)
-        .filter(_holding_no_game_excluded_from(library, "excluded_from_unfinished"))
-        .filter(only_games_and_dlc)
-        #: not_finished_q already excludes retired.
-        .filter(~Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED)))
-    )
-    dropped = (
-        purchases.filter(not_finished_q)
-        .filter(
-            Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED))
-            | Q(date_refunded__isnull=False)
-        )
-        .filter(infinite=False)
-        .filter(_holding_no_game_excluded_from(library, "excluded_from_dropped"))
-        .filter(only_games_and_dlc)
-    )
-    unfinished_count = unfinished.count()
-    dropped_count = dropped.count()
-    all_purchased_count = purchases.count()
-    refunded_count = refunded.count()
+    # ── Copies ───────────────────────────────────────────────────────────────
+    copies = copy_counts(library, year)
 
-    # ── Finished purchases (scope-divergent) ─────────────────────────────────
-    if is_alltime:
-        finished = library_purchases.finished(library).annotate(
-            date_finished=completion_day(library, None)
+    def finished(entry_filter: LibraryEntryFilter) -> QuerySet[LibraryEntry]:
+        """Copies, by their game, with the day."""
+        return (
+            copies_matching(library, entry_filter)
+            .select_related("player_game__game")
+            .annotate(date_finished=completion_day(library, year, ENTRY_RUNS))
         )
-        finished_released = finished.order_by(F("date_finished").desc(nulls_last=True))
-        backlog_decrease_count = finished.count()
-    else:
-        #: A dated completion has its marker stated.
-        finished = library_purchases.filter(completed_q).annotate(
-            date_finished=completion_day(library, year)
-        )
-        finished_released = (
-            finished.filter(games__year_released=year)
-            .distinct()
-            .order_by(F("date_finished").asc(nulls_last=True))
-        )
-        purchased_finished = (
-            without_refunded.filter(completed_q)
-            .annotate(date_finished=completion_day(library, year))
-            .order_by(F("date_finished").asc(nulls_last=True))
-        )
-        backlog_decrease_count = (
-            library_purchases.filter(date_purchased__year__lt=year)
-            .filter(games__in=done)
-            .filter(completed_q)
-            #: The done-status join fans a bundle out.
-            .distinct()
-            .count()
-        )
+
+    finished_released = finished(finished_released_copies(year)).order_by(
+        F("date_finished").desc(nulls_last=True)
+        if is_alltime
+        else F("date_finished").asc(nulls_last=True),
+        "pk",
+    )
 
     # ── Games by playtime ────────────────────────────────────────────────────
     #: Visible games: untracked library games still count.
     ranked_games = games_by_playtime(library, year=year, limit=LIST_CAP)
     ranked_games_count = games_by_playtime_queryset(library, year=year).count()
-
-    #: A bundle counts once, whichever of its games was played.
-    played_purchases = library_purchases.filter(
-        Q(games__id__in=sessions.values(f"{SESSION_GAME}_id"))
-        | Q(games__id__in=records_in_scope(library, year).values(f"{RECORD_GAME}_id"))
-    ).distinct()
-    total_year_games = (
-        played_purchases.count()
-        if is_alltime
-        else played_purchases.filter(games__year_released=year).count()
-    )
 
     year_label = "Alltime" if is_alltime else year
     data: StatsData = {
@@ -378,29 +278,33 @@ def _compute_stats_from_scoped_querysets(
         "total_sessions": session_count(library, year),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,
-        "total_year_games": total_year_games,
-        "this_year_finished_this_year_count": finished_released.count(),
+        "total_year_games": copies.played,
+        "this_year_finished_this_year_count": copies.finished_released,
         "games_by_playtime": ranked_games,
         "games_by_playtime_count": ranked_games_count,
         "total_playtime_per_platform": playtime_by_platform(library, year=year),
-        "total_spent": total_spent,
+        "total_spent": spending.total_spent,
         "total_spent_currency": currency,
-        "spent_per_game": int(safe_division(total_spent, without_refunded_count)),
-        "all_purchased_this_year_count": all_purchased_count,
-        "all_purchased_refunded_this_year": refunded,
-        "all_purchased_refunded_this_year_count": refunded_count,
+        "total_spent_unpriced": spending.unpriced,
+        "total_spent_unvalued": spending.unvalued,
+        "spent_per_game": (
+            int(spending.total_spent / spending.valued) if spending.valued else 0
+        ),
+        "all_purchased_this_year_count": spending.purchases,
+        "all_purchased_refunded_this_year": purchases_matching(
+            library, refunded_in_scope(year)
+        ),
+        "all_purchased_refunded_this_year_count": spending.refunded,
         "refunded_percent": int(
-            safe_division(refunded_count, all_purchased_count) * 100
+            safe_division(spending.refunded, spending.purchases) * 100
         ),
-        "dropped_count": dropped_count,
-        "dropped_percentage": int(
-            safe_division(dropped_count, all_purchased_count) * 100
-        ),
-        "purchased_unfinished_count": unfinished_count,
+        "dropped_count": copies.dropped,
+        "dropped_percentage": int(safe_division(copies.dropped, copies.owned) * 100),
+        "purchased_unfinished_count": copies.unfinished,
         "unfinished_purchases_percent": int(
-            safe_division(unfinished_count, without_refunded_count) * 100
+            safe_division(copies.unfinished, copies.owned_held) * 100
         ),
-        "backlog_decrease_count": backlog_decrease_count,
+        "backlog_decrease_count": copies.backlog_decrease,
         "longest_session_time": longest.session.effective_duration if longest else None,
         "longest_session_game": longest.game if longest else None,
         "highest_session_count": most_sessions.sessions if most_sessions else 0,
@@ -423,19 +327,25 @@ def _compute_stats_from_scoped_querysets(
     }
 
     if year is not None:
+        all_finished = finished(finished_copies(year))
         data["total_games"] = games_in_scope(library, year).count()
         data["month_playtimes"] = playtime_by_month(library, year=year)
-        data["all_finished_this_year"] = finished.prefetch_related("games").order_by(
-            F("date_finished").asc(nulls_last=True)
+        data["all_finished_this_year"] = all_finished.order_by(
+            F("date_finished").asc(nulls_last=True), "pk"
         )
-        data["all_finished_this_year_count"] = finished.count()
-        data["this_year_finished_this_year"] = finished_released.prefetch_related(
-            "games"
+        data["all_finished_this_year_count"] = all_finished.count()
+        data["this_year_finished_this_year"] = finished_released
+        data["purchased_this_year_finished_this_year"] = finished(
+            bought_and_finished_copies(year)
+        ).order_by(F("date_finished").asc(nulls_last=True), "pk")
+        data["purchased_unfinished"] = (
+            copies_matching(library, unfinished_copies(year))
+            .select_related("player_game__game")
+            .annotate(paid=paid_for_copy(library))
+            .order_by("acquired_lower", "pk")
         )
-        data["purchased_this_year_finished_this_year"] = (
-            purchased_finished.prefetch_related("games")
-        )
-        data["purchased_unfinished"] = unfinished
-        data["all_purchased_this_year"] = purchases.order_by("date_purchased")
+        data["all_purchased_this_year"] = purchases_matching(
+            library, purchases_in_scope(year)
+        ).order_by("purchased_lower", "pk")
 
     return data

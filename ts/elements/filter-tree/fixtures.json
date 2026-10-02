@@ -406,13 +406,13 @@
       }
     },
     {
-      "description": "purchase: name INCLUDES related_game__name",
+      "description": "purchase: name INCLUDES entry__player_game__game__name",
       "model": "purchase",
       "filter": {
         "field_comparisons": [
           {
             "left": "name",
-            "right": "related_game__name",
+            "right": "entry__player_game__game__name",
             "modifier": "INCLUDES"
           }
         ]
@@ -519,13 +519,13 @@
       }
     },
     {
-      "description": "multivalued comparison ANY: session end vs the game's purchases' date_purchased (date)",
+      "description": "multivalued comparison ANY: session end vs the game's editions' removed_at (date)",
       "model": "playersession",
       "filter": {
         "field_comparisons": [
           {
             "left": "ended_at",
-            "right": "playthrough__player_game__game__purchases__date_purchased",
+            "right": "playthrough__player_game__game__editions__removed_at",
             "modifier": "GREATER_THAN",
             "granularity": "date"
           }
@@ -533,13 +533,13 @@
       }
     },
     {
-      "description": "multivalued comparison ALL: session end vs the game's purchases' date_purchased (date)",
+      "description": "multivalued comparison ALL: session end vs the game's editions' removed_at (date)",
       "model": "playersession",
       "filter": {
         "field_comparisons": [
           {
             "left": "ended_at",
-            "right": "playthrough__player_game__game__purchases__date_purchased",
+            "right": "playthrough__player_game__game__editions__removed_at",
             "modifier": "GREATER_THAN",
             "granularity": "date",
             "quantifier": "ALL"
@@ -548,30 +548,16 @@
       }
     },
     {
-      "description": "multivalued comparison NONE: session end vs the game's purchases' date_purchased (date)",
+      "description": "multivalued comparison NONE: session end vs the game's editions' removed_at (date)",
       "model": "playersession",
       "filter": {
         "field_comparisons": [
           {
             "left": "ended_at",
-            "right": "playthrough__player_game__game__purchases__date_purchased",
+            "right": "playthrough__player_game__game__editions__removed_at",
             "modifier": "GREATER_THAN",
             "granularity": "date",
             "quantifier": "NONE"
-          }
-        ]
-      }
-    },
-    {
-      "description": "multivalued comparison raw M2M: purchase name INCLUDES games__name (ALL)",
-      "model": "purchase",
-      "filter": {
-        "field_comparisons": [
-          {
-            "left": "name",
-            "right": "games__name",
-            "modifier": "INCLUDES",
-            "quantifier": "ALL"
           }
         ]
       }

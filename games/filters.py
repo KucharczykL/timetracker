@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         Game,
         HistoricalPlaytime,
         LibraryEntry,
+        LibraryEvent,
         Platform,
         PlayerSession,
         Playthrough,
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 
 import builtins
 
-from django.db.models import Model, Q, QuerySet, TextChoices
+from django.db.models import Exists, Model, OuterRef, Q, QuerySet, TextChoices
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -69,6 +70,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
+from games.conversion_review import ORIGIN, REVIEW_WORDS, REVIEWED
 from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import (
     DEVICE_ACCESS_END,
@@ -76,11 +78,14 @@ from games.endpoints import (
     ENTRY_ACQUISITION,
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
+    PURCHASE_DAY,
+    PURCHASE_REFUND,
 )
 from games.models import (
     EntryAccess,
     EntryFormat,
     PlayerSessionTimingMode,
+    PriceState,
     SessionInstantColumn,
     session_day_of,
 )
@@ -172,6 +177,84 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
     return handler
 
 
+#: The rows tagged events reach.
+type TaggedRows = Callable[[QuerySet[LibraryEvent, LibraryEvent]], Q]
+
+_REVIEW_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
+    ChoiceMeta(value=str(word), label=REVIEW_WORDS[word].label) for word in REVIEWED
+)
+_REVIEW_VALUES: Final[frozenset[str]] = frozenset(str(word) for word in REVIEWED)
+
+
+def own_events(events: QuerySet[LibraryEvent, LibraryEvent]) -> Exists:
+    """Events of the outer row itself."""
+    return Exists(
+        events.filter(library=OuterRef("library"), aggregate_id=OuterRef("pk"))
+    )
+
+
+def conversion_review_field(tagged: TaggedRows) -> FilterField:
+    """A row by the conversion's review words."""
+
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
+        if not isinstance(criterion, ChoiceCriterion):
+            raise FilterError("conversion_review picks words; state a list")
+        unknown = sorted({*criterion.value, *criterion.excludes} - _REVIEW_VALUES)
+        if unknown:
+            raise FilterError(f"conversion_review knows no word {unknown}")
+        from games.models import LibraryEvent
+
+        events = LibraryEvent.objects.filter(source_metadata__origin=ORIGIN)
+
+        def any_of(words: list[str]) -> Q:
+            return tagged(events.filter(source_metadata__review__has_any_keys=words))
+
+        modifier = criterion.modifier
+        if modifier == Modifier.IS_NULL:
+            return ~any_of(sorted(_REVIEW_VALUES))
+        if modifier == Modifier.NOT_NULL:
+            return any_of(sorted(_REVIEW_VALUES))
+        words = criterion.value
+        if not words:
+            matched = Q()
+        elif modifier in (Modifier.INCLUDES, Modifier.EQUALS):
+            matched = any_of(words)
+        elif modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
+            matched = ~any_of(words)
+        elif modifier == Modifier.INCLUDES_ALL:
+            matched = Q()
+            for word in words:
+                matched &= any_of([word])
+        elif modifier == Modifier.INCLUDES_ONLY:
+            others = sorted(_REVIEW_VALUES - set(words))
+            matched = any_of(words) & (~any_of(others) if others else Q())
+        else:
+            raise FilterError(f"Unsupported modifier {modifier} for conversion_review")
+        if criterion.excludes:
+            matched &= ~any_of(criterion.excludes)
+        return matched
+
+    return FilterField(
+        handler=handler,
+        label="Conversion review",
+        choices=_REVIEW_CHOICES,
+        nullable=True,
+    )
+
+
+def _purchase_tagged(events: QuerySet[LibraryEvent, LibraryEvent]) -> Q:
+    return Q(own_events(events))
+
+
+def _entry_tagged(events: QuerySet[LibraryEvent, LibraryEvent]) -> Q:
+    """The copy's events, or its purchases'."""
+    from games.models import Purchase
+
+    #: A removed purchase still tags its copy.
+    purchases = Purchase.objects.filter(entry=OuterRef("pk"))
+    return Q(own_events(events)) | Q(Exists(purchases.filter(own_events(events))))
+
+
 #: Columns that widen the Games list.
 ADDON_FIELDS: Final[tuple[AttrName, ...]] = ("kind", "parent")
 
@@ -239,8 +322,8 @@ class GameFilter(OperatorFilter):
     # on `timing_mode` narrows it to one mode's share.
     session_playtime_hours: AggregateCriterion | None = None
 
-    # Cross-entity: sum of the game's purchase prices (converted)
-    purchase_price_total: AggregateCriterion | None = None  # sum of converted prices
+    # Cross-entity: sum of the game's purchase valuations
+    purchase_price_total: AggregateCriterion | None = None  # sum of valuations
 
     # Free-text search (combines name + sort_name + platform name)
     search: StringCriterion | None = None
@@ -312,11 +395,7 @@ class GameFilter(OperatorFilter):
     #: A person reads "copy", never "entry".
     labels: ClassVar[dict[str, str]] = {"entry_count": "Copies"}
 
-    # Two overrides below (PurchaseFilter, DeviceFilter) spell this return type
-    # ``builtins.type[...]``: those filters declare a field named ``type`` that
-    # shadows the builtin in annotation scope, so a bare ``type[Purchase]`` fails
-    # mypy ("Variable ... .type is not valid as a type"). The unshadowed filters
-    # use the plain builtin.
+    # Overrides with a ``type`` field write ``builtins.type``.
     @classmethod
     def _comparison_model(cls) -> type[Game]:
         from games.models import Game
@@ -404,7 +483,7 @@ class GameFilter(OperatorFilter):
                 self.purchase_filter,
                 context=context,
                 related_model=Purchase,
-                related_lookup="games__id",
+                related_lookup="entry__player_game__game__id",
             )
 
         if self.playthrough_filter is not None:
@@ -455,6 +534,7 @@ class GameFilter(OperatorFilter):
 #: sessions the other way round.
 SESSION_GAME: Final = "playthrough__player_game__game"
 GAME_SESSIONS: Final = "player_games__playthroughs__sessions"
+GAME_PURCHASES: Final = "player_games__entries__purchases"
 
 
 # ── PlayerSessionFilter ────────────────────────────────────────────────────
@@ -578,205 +658,6 @@ class PlayerSessionFilter(OperatorFilter):
             )
 
         return q
-
-
-# ── PurchaseFilter ─────────────────────────────────────────────────────────
-
-
-@dataclass
-class PurchaseFilter(OperatorFilter):
-    """Filter for the Purchase model."""
-
-    AND: list[PurchaseFilter] = field(default_factory=list)
-    OR: list[PurchaseFilter] = field(default_factory=list)
-    NOT: list[PurchaseFilter] = field(default_factory=list)
-
-    name: StringCriterion | None = None
-    platform: UUIDMultiCriterion | None = None  # Platform ids
-    games: UUIDMultiCriterion | None = None  # games (M2M ids)
-    date_purchased: DateCriterion | None = None
-    date_refunded: DateCriterion | None = None
-    is_refunded: BoolCriterion | None = None  # date_refunded IS NOT NULL
-    price: FloatCriterion | None = None  # on price field
-    converted_price: FloatCriterion | None = None
-    price_currency: StringCriterion | None = None
-    num_purchases: IntCriterion | None = None
-    ownership_type: ChoiceCriterion | None = None  # ph/di/du/re/bo/tr/de/pi
-    type: ChoiceCriterion | None = None  # game/dlc/season_pass/battle_pass
-    created_at: DateCriterion | None = None  # compared by calendar day
-    updated_at: DateCriterion | None = None  # compared by calendar day
-
-    infinite: BoolCriterion | None = None
-    needs_price_update: BoolCriterion | None = None
-    converted_currency: StringCriterion | None = None
-
-    # Free-text search
-    search: StringCriterion | None = None
-
-    # Cross-entity: purchases for games matching these criteria
-    game_filter: GameFilter | None = None
-
-    # Cross-entity: purchases for platforms matching these criteria
-    platform_filter: PlatformFilter | None = None
-
-    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
-    # reviewable diff (AND-composition makes the order semantically irrelevant).
-    # ``games`` (M2M) carries ``imperative=True``: its widget config lives here (so
-    # ``field_widget`` can build its set widget with ``(All)/(Only)`` modifiers) but
-    # ``to_q`` skips it — its Q is built imperatively by ``_games_to_q`` in
-    # ``_extra_q`` (INCLUDES_ALL/_ONLY need chained subqueries). ``search`` stays
-    # out of the table entirely (the free-text box, not a pickable field).
-    fields: ClassVar[dict[str, FilterField]] = {
-        "name": FilterField(),
-        "platform": FilterField("platform__id", search_url="/api/platforms/search"),
-        "games": FilterField(
-            lookup="games",
-            search_url="/api/games/search",
-            imperative=True,
-            label="Game",
-        ),
-        "date_purchased": FilterField(),
-        "date_refunded": FilterField(),
-        "is_refunded": FilterField(
-            handler=bool_isnull_handler("date_refunded", invert=True)
-        ),
-        "price": FilterField(),
-        "converted_price": FilterField(),
-        "price_currency": FilterField(),
-        "num_purchases": FilterField(),
-        "ownership_type": FilterField(),
-        "type": FilterField(),
-        "created_at": FilterField(
-            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
-        ),
-        "updated_at": FilterField(
-            handler=calendar_day_handler("updated_at"), metadata_lookup="updated_at"
-        ),
-        "infinite": FilterField(),
-        "needs_price_update": FilterField(),
-        "converted_currency": FilterField(),
-    }
-
-    _IMPERATIVE_CRITERIA: ClassVar[set[str]] = {"search"}
-
-    @classmethod
-    def _comparison_model(cls) -> builtins.type[Purchase]:
-        from games.models import Purchase
-
-        return Purchase
-
-    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
-        q = Q()
-
-        # M2M games: chained subqueries for INCLUDES_ALL/_ONLY keep it out of the
-        # declarative fields table. AND-composed into the same Q, so its position
-        # relative to the simple fields does not affect results.
-        if self.games is not None:
-            q &= self._games_to_q(self.games, context)
-
-        # Free-text search
-        if self.search is not None:
-            q &= search_q(self.search, "name", "games__name", "platform__name")
-
-        # Cross-entity sub-filters: purchases for matching games / platforms
-        if self.game_filter is not None:
-            from games.models import Game
-
-            q &= relation_to_q(
-                self.game_filter,
-                context=context,
-                related_model=Game,
-                related_lookup="id",
-                parent_field="games__id",
-            )
-
-        if self.platform_filter is not None:
-            from games.models import Platform
-
-            q &= relation_to_q(
-                self.platform_filter,
-                context=context,
-                related_model=Platform,
-                related_lookup="id",
-                parent_field="platform__id",
-            )
-
-        return q
-
-    @staticmethod
-    def _games_to_q(
-        criterion: UUIDMultiCriterion, context: FilterQueryContext | None = None
-    ) -> Q:
-        """Build the Q for the many-to-many ``games`` field.
-
-        ``INCLUDES_ALL`` ("related to every selected game") and
-        ``INCLUDES_ONLY`` ("related to exactly these, nothing else") cannot be
-        a single ``.filter(Q(games=a) & Q(games=b))`` — that collapses to one
-        join and would require a single link row to be both games. Instead
-        chain a filter per game so each gets its own join, then match by
-        ``pk``.  ``INCLUDES_ONLY`` additionally excludes purchases that have
-        any game outside the specified set.
-
-        ``INCLUDES`` (plain "any") also uses a subquery instead of a raw
-        ``games__in`` join because a single purchase linked to *n* of the
-        given games would appear *n* times in the result set (M2M join
-        duplicates).
-
-        The orthogonal ``excludes`` channel is applied as a negative,
-        consistent with every other modifier. All other modifiers delegate
-        to the criterion.
-
-        Deliberate asymmetry with ``_SetCriterion._not_in_q``: the negatives
-        here are plain ``~Q(games__in=...)`` without the explicit
-        ``__isnull`` arm. That arm exists to keep NULL rows of a nullable FK
-        *column*; ``games`` is an M2M join, where Django compiles the negation
-        to a NOT-IN-pk subquery that already keeps purchases with no linked
-        games (and an M2M ``games__isnull=True`` arm would add a redundant
-        LEFT JOIN, not change results).
-        """
-        # The criterion class already coerced and validated every element, so
-        # the lists reach the M2M lookups as the target's primary-key type.
-        game_ids = criterion.value
-        exclude_ids = criterion.excludes
-
-        # Empty value means no constraint; still apply excludes if any
-        if not game_ids:
-            if exclude_ids:
-                return ~Q(games__in=exclude_ids)
-            return Q()
-
-        from games.models import Game, Purchase
-
-        if context is None:
-            raise FilterQueryContextRequired(
-                "purchase games filter requires query context"
-            )
-        purchases = context.queryset_for(Purchase)
-        games = context.queryset_for(Game)
-
-        if criterion.modifier in (Modifier.INCLUDES_ALL, Modifier.INCLUDES_ONLY):
-            subquery = purchases
-            for game_id in game_ids:
-                subquery = subquery.filter(games=game_id)
-
-            if criterion.modifier == Modifier.INCLUDES_ONLY:
-                extra_ids = games.exclude(id__in=game_ids).values_list("id", flat=True)
-                subquery = subquery.exclude(games__in=extra_ids)
-
-            q = Q(pk__in=subquery.values("pk"))
-            if exclude_ids:
-                q &= ~Q(games__in=exclude_ids)
-            return q
-
-        if criterion.modifier == Modifier.INCLUDES:
-            # Use subquery to avoid duplicate rows from M2M join
-            subquery = purchases.filter(games__in=game_ids)
-            q = Q(pk__in=subquery.values("pk"))
-            if exclude_ids:
-                q &= ~Q(games__in=exclude_ids)
-            return q
-
-        return criterion.to_q("games")
 
 
 # ── DeviceFilter ───────────────────────────────────────────────────────────
@@ -963,7 +844,7 @@ class PlatformFilter(OperatorFilter):
                 self.purchase_filter,
                 context=context,
                 related_model=Purchase,
-                related_lookup="platform__id",
+                related_lookup="entry__release__platform__id",
             )
 
         return q
@@ -1187,14 +1068,17 @@ class LibraryEntryFilter(OperatorFilter):
     access_end_way: ChoiceCriterion | None = None
     platform: UUIDMultiCriterion | None = None  # the Release's platform
     game: UUIDMultiCriterion | None = None  # player_game__game__id
+    edition_kind: ChoiceCriterion | None = None
     note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared by calendar day
+    conversion_review: ChoiceCriterion | None = None
 
     # Free-text search
     search: StringCriterion | None = None
 
     # Cross-entity: copies of games matching these criteria
     game_filter: GameFilter | None = None
+    purchase_filter: PurchaseFilter | None = None
 
     fields: ClassVar[dict[str, FilterField]] = {
         "access": FilterField(),
@@ -1207,10 +1091,12 @@ class LibraryEntryFilter(OperatorFilter):
             "release__platform__id", search_url="/api/platforms/search"
         ),
         "game": FilterField("player_game__game__id", search_url="/api/games/search"),
+        "edition_kind": FilterField("release__edition__kind", label="Edition"),
         "note": FilterField(),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
         ),
+        "conversion_review": conversion_review_field(_entry_tagged),
     }
 
     @classmethod
@@ -1241,6 +1127,136 @@ class LibraryEntryFilter(OperatorFilter):
                 parent_field="player_game__game__id",
             )
 
+        if self.purchase_filter is not None:
+            from games.models import Purchase
+
+            q &= relation_to_q(
+                self.purchase_filter,
+                context=context,
+                related_model=Purchase,
+                related_lookup="entry__id",
+            )
+
+        return q
+
+
+# ── PurchaseFilter ─────────────────────────────────────────────────────────
+
+_PURCHASE_DAY_FIELDS = endpoint_filter_fields(
+    PURCHASE_DAY, interval_label="Purchased", stated_label="Purchased"
+)
+_REFUND_FIELDS = endpoint_filter_fields(
+    PURCHASE_REFUND, interval_label="Day refunded", stated_label="Refunded"
+)
+
+
+@dataclass
+class PurchaseFilter(OperatorFilter):
+    """Filter for the Purchase projection."""
+
+    AND: list[PurchaseFilter] = field(default_factory=list)
+    OR: list[PurchaseFilter] = field(default_factory=list)
+    NOT: list[PurchaseFilter] = field(default_factory=list)
+
+    kind: ChoiceCriterion | None = None
+    name: StringCriterion | None = None
+    note: StringCriterion | None = None
+    amount: FloatCriterion | None = None  # null is unknown
+    currency: StringCriterion | None = None
+    price_state: ChoiceCriterion | None = None
+    #: The current valuation; an alias.
+    valuation: FloatCriterion | None = None
+    purchased: DateCriterion | None = None  # the interval the day states
+    refunded: DateCriterion | None = None  # the interval the refund states
+    is_refunded: BoolCriterion | None = None
+    access: ChoiceCriterion | None = None  # the copy's
+    format: ChoiceCriterion | None = None
+    platform: UUIDMultiCriterion | None = None  # the copy's Release's
+    game: UUIDMultiCriterion | None = None
+    created_at: DateCriterion | None = None  # compared by calendar day
+    conversion_review: ChoiceCriterion | None = None
+
+    # Free-text search
+    search: StringCriterion | None = None
+
+    # Cross-entity: the copy, and its game
+    entry_filter: LibraryEntryFilter | None = None
+    game_filter: GameFilter | None = None
+
+    fields: ClassVar[dict[str, FilterField]] = {
+        "kind": FilterField(),
+        "name": FilterField(),
+        "note": FilterField(),
+        "amount": FilterField(),
+        "currency": FilterField(),
+        "price_state": FilterField(
+            #: Delegate: a hand-built Q drops the modifier.
+            handler=lambda criterion, context: criterion.to_q("price_state"),
+            label="Price",
+            choices=_word_choices(PriceState),
+            nullable=False,
+        ),
+        "valuation": FilterField(
+            handler=lambda criterion, context: criterion.to_q("valuation_amount"),
+            label="Valuation",
+            nullable=True,
+        ),
+        "purchased": _PURCHASE_DAY_FIELDS.interval,
+        "refunded": _REFUND_FIELDS.interval,
+        "is_refunded": _REFUND_FIELDS.stated,
+        "access": FilterField("entry__access"),
+        "format": FilterField("entry__format"),
+        "platform": FilterField(
+            "entry__release__platform__id", search_url="/api/platforms/search"
+        ),
+        "game": FilterField(
+            "entry__player_game__game__id", search_url="/api/games/search"
+        ),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
+        "conversion_review": conversion_review_field(_purchase_tagged),
+    }
+
+    @classmethod
+    def _comparison_model(cls) -> type[Purchase]:
+        from games.models import Purchase
+
+        return Purchase
+
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
+        q = Q()
+
+        if self.search is not None:
+            q &= search_q(
+                self.search,
+                "name",
+                "entry__player_game__game__name",
+                "entry__release__platform__name",
+            )
+
+        if self.entry_filter is not None:
+            from games.models import LibraryEntry
+
+            q &= relation_to_q(
+                self.entry_filter,
+                context=context,
+                related_model=LibraryEntry,
+                related_lookup="id",
+                parent_field="entry__id",
+            )
+
+        if self.game_filter is not None:
+            from games.models import Game
+
+            q &= relation_to_q(
+                self.game_filter,
+                context=context,
+                related_model=Game,
+                related_lookup="id",
+                parent_field="entry__player_game__game__id",
+            )
+
         return q
 
 
@@ -1266,7 +1282,7 @@ GameFilter.aggregates = {
         source="effective_duration",
         unit="duration_hours",
     ),
-    "purchase_count": AggregateSpec("count", "purchases", PurchaseFilter),
+    "purchase_count": AggregateSpec("count", GAME_PURCHASES, PurchaseFilter),
     "entry_count": AggregateSpec("count", "player_games__entries", LibraryEntryFilter),
     "playthrough_count": AggregateSpec(
         "count",
@@ -1284,7 +1300,11 @@ GameFilter.aggregates = {
         unit="duration_hours",
     ),
     "purchase_price_total": AggregateSpec(
-        "sum", "purchases", PurchaseFilter, source="converted_price"
+        "sum",
+        GAME_PURCHASES,
+        PurchaseFilter,
+        source="valuation_amount",
+        correlated="entry__player_game__game",
     ),
 }
 
@@ -1348,6 +1368,9 @@ MODE_PARSERS: dict[str, FilterParser] = {
 
 # ── Model-key → filter-class resolution ────────────────────────────────────
 
+#: Model keys no screen filters any more.
+RETIRED_FILTER_MODELS: Final[frozenset[ModelKey]] = frozenset({"legacypurchase"})
+
 
 def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
     """Resolve a model key (e.g. ``"game"``) to its ``OperatorFilter`` subclass by
@@ -1355,11 +1378,13 @@ def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
 
     The nested filter builder element carries ``model = Model._meta.model_name``;
     every filter in this module is named ``{Model.__name__}Filter``. So
-    ``"game" → Game → GameFilter``. Raises ``LookupError`` for an unknown model and
+    ``"game" → Game → GameFilter``. Raises ``LookupError`` for an unknown or retired model and
     ``KeyError`` if a model has no matching filter class.
     """
     from django.apps import apps
 
+    if model_name in RETIRED_FILTER_MODELS:
+        raise LookupError(f"{model_name!r} no longer has a filter")
     model = apps.get_model("games", model_name)
     return globals()[f"{model.__name__}Filter"]
 
@@ -1390,12 +1415,14 @@ def filter_queryset_for_library(
         LibraryEntry,
         PlayerSession,
         Playthrough,
+        Purchase,
     )
     from games.reads.entries import library_entries
     from games.reads.games_list import games_list_base
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
+    from games.reads.purchases import library_purchases
 
     model = apps.get_model("games", model_name)
     if model is Game:
@@ -1408,6 +1435,8 @@ def filter_queryset_for_library(
         return library_records(library)
     if model is LibraryEntry:
         return library_entries(library)
+    if model is Purchase:
+        return library_purchases(library).annotated_for_filtering(library)
     return model.objects.for_library(library)
 
 
@@ -1431,6 +1460,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
+    from games.reads.purchases import library_purchases
 
     scopes: dict[builtins.type[Model], ScopeThunk] = {
         #: tracked_by, not for_library: a nested game filter resolves
@@ -1440,7 +1470,9 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         PlayerSession: cache(lambda: library_sessions(library)),
         HistoricalPlaytime: cache(lambda: library_records(library)),
         LibraryEntry: cache(lambda: library_entries(library)),
-        Purchase: cache(lambda: Purchase.objects.for_library(library)),
+        Purchase: cache(
+            lambda: library_purchases(library).annotated_for_filtering(library)
+        ),
         Playthrough: cache(lambda: runs_with_condition(library)),
         Device: cache(lambda: Device.objects.for_library(library)),
         # Related Platform selection supports the shared catalogue plus this

@@ -3,7 +3,7 @@
 import pytest
 
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN
-from games.catalog_release import SHARED_GAME_RELEASE
+from games.catalog_release import SHARED_GAME_RELEASE, release_on
 from games.catalog_writes import EditionState, state_catalog_graph
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
@@ -214,3 +214,18 @@ def test_create_refuses_a_game_whose_editions_have_no_default(
     assert not Release.objects.filter(
         edition__game=graph.game, platform__name="Switch"
     ).exists()
+
+
+def test_release_on_reuses_a_live_release_and_states_a_new_one(
+    owned_library, graph, ps5
+):
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+
+    standing = release_on(owned_library, graph.game, ps5)
+    made = release_on(owned_library, graph.game, switch)
+    again = release_on(owned_library, graph.game, switch)
+
+    assert standing == (graph.release, False)
+    assert made.created
+    assert made.release.edition == graph.edition
+    assert again == (made.release, False)

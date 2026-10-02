@@ -10,16 +10,15 @@ itself on click, before anything is posted, so every ORM read below
 waits for the page the redirect lands on first.
 """
 
-from datetime import date
-
 import pytest
 from django.urls import reverse
+from entries import record_entry
 from playwright.sync_api import Locator, Page, expect
 
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
-from games.models import Edition, Game, Platform, PlayerGame, Purchase, Release
+from games.models import Edition, Game, Platform, PlayerGame, Release
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -568,12 +567,11 @@ def test_an_excluded_game_leaves_the_unfinished_list(
 ):
     """Ticked: detail names it, stats drop it."""
     page = signed_in
-    Purchase.objects.create(
-        library=e2e_library,
-        date_purchased=date(2026, 3, 5),
-        price_currency="USD",
-        type=Purchase.GAME,
-    ).games.set([game])
+    record_entry(
+        e2e_library,
+        default_edition(game).releases.get(),
+        acquired=TemporalValue.parse("2026-03-05"),
+    )
     stats = f"{live_server.url}{reverse('games:stats_alltime')}"
     page.goto(stats)
     expect(page.get_by_role("row", name="Unfinished 1 (100%)")).to_be_visible()

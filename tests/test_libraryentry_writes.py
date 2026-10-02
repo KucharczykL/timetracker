@@ -14,6 +14,7 @@ from games.commands.libraryentry import (
     END_BEFORE_ACQUISITION,
     ENTRY_REMOVED,
     UNKNOWN_ACCESS,
+    EntryStatement,
 )
 from games.commands.playergame import RemovePlayerGame
 from games.end_ways import EndWay
@@ -31,7 +32,6 @@ from games.reads.unscoped import UnscopedRead
 from games.removal import remove
 from games.writes.answers import CommandFailed
 from games.writes.libraryentry import (
-    EntryDraft,
     end_entry_access,
     record_entry,
     remove_entry,
@@ -57,7 +57,7 @@ def graph(owned_library, stated_graph):
     return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
-def _draft(release, **changes) -> EntryDraft:
+def _draft(release, **changes) -> EntryStatement:
     stated = {
         "release_id": release.pk,
         "access": "owned",
@@ -65,7 +65,7 @@ def _draft(release, **changes) -> EntryDraft:
         "note": "",
         "acquired": ActStatement(None, ""),
     } | changes
-    return EntryDraft(**stated)
+    return EntryStatement(**stated)
 
 
 def _types(entry: LibraryEntry) -> list[str]:

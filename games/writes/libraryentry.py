@@ -1,8 +1,7 @@
 """Entry writes; refusals become answers."""
 
 import uuid
-from enum import Enum
-from typing import Final, NamedTuple, assert_never
+from typing import NamedTuple, assert_never
 
 from django.contrib.auth.models import User
 
@@ -14,6 +13,7 @@ from games.commands.libraryentry import (
     CorrectEntryAcquisition,
     DescribeEntry,
     EndEntryAccess,
+    EntryStatement,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
@@ -36,19 +36,19 @@ from games.models import EntryAccess, EntryFormat, LibraryEntry
 from games.reads.endpoints import stated
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
-from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
+from games.writes.endpoint import (
+    KEEP,
+    Act,
+    Correct,
+    Keep,
+    Nothing,
+    Restated,
+    Void,
+    endpoint_move,
+)
+from games.writes.revaluation import appended_types, revalue_after
 
 SUBJECT: SubjectNoun = "copy"
-
-
-class EntryDraft(NamedTuple):
-    """What a creation states."""
-
-    release_id: uuid.UUID
-    access: str
-    format: str
-    note: str
-    acquired: ActStatement
 
 
 class RecordedEntry(NamedTuple):
@@ -82,7 +82,7 @@ def _dispatch(
 
 def record_entry(
     actor: User,
-    draft: EntryDraft,
+    draft: EntryStatement,
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
@@ -112,15 +112,6 @@ def record_entry(
     )
 
 
-class Keep(Enum):
-    """No statement; None is a void."""
-
-    KEEP = "keep"
-
-
-KEEP: Final = Keep.KEEP
-
-
 def restate_entry(
     actor: User,
     entry: LibraryEntry,
@@ -130,7 +121,7 @@ def restate_entry(
     note: str | None = None,
     release_id: uuid.UUID | None = None,
     acquired: ActStatement | Keep = KEEP,
-    access_end: WayActStatement | None | Keep = KEEP,
+    access_end: Restated[WayActStatement] = KEEP,
     correlation_id: uuid.UUID,
 ) -> bool:
     """Describe, then move both endpoints; one correlation.
@@ -188,7 +179,7 @@ def _refuse_a_reversed_draft(
     entry: LibraryEntry,
     *,
     acquired: ActStatement | Keep,
-    access_end: WayActStatement | None | Keep,
+    access_end: Restated[WayActStatement],
 ) -> None:
     """Refuse up front: a committed act stays.
 
@@ -227,7 +218,7 @@ def _endpoint_commands(
     entry: LibraryEntry,
     *,
     acquired: ActStatement | Keep,
-    access_end: WayActStatement | None | Keep,
+    access_end: Restated[WayActStatement],
 ) -> list[Command]:
     """Both endpoints, in the order that never reverses them.
 
@@ -335,10 +326,13 @@ def restore_entry(
 ) -> CommandResult:
     """Put a removed copy back."""
     with answered(SUBJECT):
-        return _dispatch(
+        result = _dispatch(
             RestoreEntry(entry_id=entry.pk),
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=source_metadata,
         )
+    #: Its purchases may come back too.
+    revalue_after(actor, appended_types(result))
+    return result

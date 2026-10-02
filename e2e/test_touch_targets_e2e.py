@@ -75,7 +75,7 @@ def test_calendar_controls_meet_min_touch_target(touch_page: Page, live_server):
     are all glyph-only, so their hit areas come from explicit sizing, not from
     padding around a ~4px glyph (#485 follow-up)."""
     page = touch_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+    page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
 
     toggle = page.locator("[data-date-picker-calendar-toggle]").first
     expect(toggle).to_be_visible()

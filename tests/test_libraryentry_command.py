@@ -7,7 +7,7 @@ import pytest
 from django.db import connection, models
 from django.test.utils import isolate_apps
 from django.utils import timezone
-from entries import record_entry, remove_entry, restore_entry
+from entries import record_entry, remove_entry, restore_entry, second_release
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
@@ -41,11 +41,16 @@ from games.models import (
     PlayerGame,
     Playthrough,
     ProjectionModel,
-    Release,
+    Purchase,
     RemovableLibraryQuerySet,
 )
 from games.reads import referrers
-from games.reads.referrers import BlockingReferrer, referrers_of
+from games.reads.referrers import (
+    CASCADING_REFERRERS,
+    BlockingReferrer,
+    CascadingReferrer,
+    referrers_of,
+)
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -101,30 +106,6 @@ def _event_types(entry: LibraryEntry) -> list[str]:
         .order_by("sequence")
         .values_list("event_type", flat=True)
     )
-
-
-def _second_release(library, graph, *, is_default: bool = True) -> Release:
-    """A second live Release on the graph's game."""
-    written = state_catalog_graph(
-        game=graph.game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition-0",
-                edition=graph.edition,
-                is_default=True,
-                releases=(
-                    ReleaseState(
-                        key="edition-0-release-0",
-                        release=graph.release,
-                        is_default=True,
-                    ),
-                    ReleaseState(key="edition-0-release-1"),
-                ),
-            )
-        ],
-    )
-    return written.editions[0].releases[1].release
 
 
 # --- recording ------------------------------------------------------------
@@ -276,7 +257,7 @@ def test_recording_under_a_removed_player_game_is_refused(owned_library, graph):
 
 def test_a_description_states_one_event_per_differing_fact(owned_library, graph):
     entry = record_entry(owned_library, graph.release)
-    other = _second_release(owned_library, graph)
+    other = second_release(owned_library, graph.release)
 
     _dispatch(
         owned_library,
@@ -338,7 +319,7 @@ def test_a_description_refuses_a_release_of_another_game(
 
 def test_a_description_refuses_a_removed_release(owned_library, graph):
     entry = record_entry(owned_library, graph.release)
-    other = _second_release(owned_library, graph)
+    other = second_release(owned_library, graph.release)
     remove(other)
 
     refused = _refused(
@@ -566,8 +547,12 @@ def test_an_entry_naming_a_foreign_private_release_is_a_defect(
     assert _event_types(entry) == ["library.libraryentry.created"]
 
 
-def test_no_referrer_names_an_entry_yet():
+def test_a_purchase_is_the_one_entry_referrer_and_it_cascades():
+    #: A new member needs remove and restore.
     assert referrers_of(LibraryEntry) == ()
+    assert [(referrer.model, referrer.target) for referrer in CASCADING_REFERRERS] == [
+        (Purchase, LibraryEntry)
+    ]
 
 
 @pytest.fixture
@@ -605,6 +590,11 @@ def _register(monkeypatch, referring_model) -> BlockingReferrer:
     )
     monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", (claim,))
     return claim
+
+
+def _cascade(monkeypatch, referring_model) -> None:
+    claim = CascadingReferrer.on(referring_model, "entry", target=LibraryEntry)
+    monkeypatch.setattr(referrers, "CASCADING_REFERRERS", (claim,))
 
 
 def test_a_registered_referrer_keeps_an_entry_in_place(
@@ -654,6 +644,30 @@ def test_a_foreign_referrer_is_refused_as_a_defect(
     assert f"{referring_model.__name__}.entry" in argument
     entry.refresh_from_db()
     assert entry.removed_at is None
+
+
+def test_a_cascading_referrer_blocks_nothing_in_its_library(
+    owned_library, graph, monkeypatch, referring_model
+):
+    entry = record_entry(owned_library, graph.release)
+    referring_model.objects.create(entry=entry, library=owned_library)
+    _cascade(monkeypatch, referring_model)
+
+    assert referrers.blocking_referrer(entry) is None
+    assert referrers.foreign_referrer(entry) is None
+
+
+def test_a_cascading_referrer_of_another_library_is_still_a_defect(
+    owned_library, second_library, graph, monkeypatch, referring_model
+):
+    entry = record_entry(owned_library, graph.release)
+    referring_model.objects.create(entry=entry, library=second_library)
+    _cascade(monkeypatch, referring_model)
+
+    found = referrers.foreign_referrer(entry)
+
+    assert found is not None
+    assert found.library_ids == (second_library.pk,)
 
 
 def test_a_removal_is_recorded_at_the_events_instant(owned_library, graph):

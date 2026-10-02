@@ -3,7 +3,8 @@ import logging
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, Any, Final, NoReturn, assert_never, cast
+from decimal import Decimal
+from typing import Annotated, Any, Final, Literal, NoReturn, assert_never, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -23,7 +24,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
@@ -33,6 +34,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     PlainSerializer,
+    StrictBool,
     WithJsonSchema,
     model_validator,
 )
@@ -43,6 +45,7 @@ from common.filter_execution import execute_filter, regex_timeout_api
 from games.api_creation import RowRefused, created_by_form, refusal_sentence
 from games.catalog_release import release_on_platform
 from games.commands.endpoint import ActStatement, WayActStatement
+from games.commands.libraryentry import EntryStatement
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -50,6 +53,8 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
+from games.commands.purchase import StatedPrice
+from games.conversion_review import CONVERSION_REVIEW_HIDDEN
 from games.end_ways import EndWay
 from games.events.dispatch import (
     IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -57,7 +62,12 @@ from games.events.dispatch import (
     RowUnreadable,
 )
 from games.events.idempotency import IdempotencyKey
-from games.events.libraryentry import EntryWayValue
+from games.events.libraryentry import (
+    EntryAccessValue,
+    EntryFormatValue,
+    EntryWayValue,
+)
+from games.events.purchase import PurchaseKindValue
 from games.filters import (
     MODE_PARSERS,
     GameFilter,
@@ -95,6 +105,11 @@ from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
+from games.reads.purchases import (
+    ValuedPurchase,
+    library_purchases,
+    readable_purchases,
+)
 from games.reads.releases import game_releases, matching_releases, release_label
 from games.removal import remove
 from games.sorting import (
@@ -108,12 +123,11 @@ from games.sorting import (
     parse_per_page_override,
 )
 from games.toast_middleware import RELOAD_HEADER
-from games.writes.answers import CommandFailed, answered
+from games.valuations import CurrencyCode
+from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
+from games.writes.endpoint import KEEP, Restated
 from games.writes.libraryentry import (
-    KEEP,
-    EntryDraft,
-    Keep,
     record_entry,
     restate_entry,
     resume_entry_access,
@@ -133,11 +147,14 @@ from games.writes.playthrough import (
     remove_run,
     restate_run,
 )
+from games.writes.purchase import PurchaseDraft, record_purchase, restate_purchase
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
+    DEFAULT_DEVICE,
     SettingLockedError,
     SettingMutation,
     SettingNamespace,
+    change_library_conversion_review_hidden,
     change_library_default_device,
     change_site_setting,
     change_user_setting,
@@ -672,11 +689,12 @@ def search_platforms(request, q: str = "", limit: int = 10):
                     .values("updated_at")[:1],
                     output_field=DateTimeField(),
                 ),
+                #: Through the copy's Release.
                 last_purchase_use=Subquery(
-                    Purchase.objects.for_library(library)
-                    .filter(platform=OuterRef("pk"))
-                    .order_by("-updated_at")
-                    .values("updated_at")[:1],
+                    library_purchases(library)
+                    .filter(entry__release__platform=OuterRef("pk"))
+                    .order_by("-created_at")
+                    .values("created_at")[:1],
                     output_field=DateTimeField(),
                 ),
             )
@@ -1286,9 +1304,9 @@ class EntryIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     release_id: UUIDv7
-    #: The enum, so Ninja refuses unknown words.
-    access: EntryAccess
-    format: EntryFormat
+    #: The words, so Ninja refuses others.
+    access: EntryAccessValue
+    format: EntryFormatValue
     note: str = ""
     acquired: StatedTemporal = None
     acquisition_note: str = ""
@@ -1332,7 +1350,7 @@ class EntryUpdate(Schema):
                 raise ValueError(f"{key} states a value, or is left out.")
         return self
 
-    def access_end_statement(self) -> WayActStatement | None | Keep:
+    def access_end_statement(self) -> Restated[WayActStatement]:
         """The end stated, a void, or nothing."""
         if "access_end" not in self.model_fields_set:
             return KEEP
@@ -1402,10 +1420,10 @@ def create_entry(
     try:
         recorded = record_entry(
             actor,
-            EntryDraft(
+            EntryStatement(
                 release_id=payload.release_id,
-                access=payload.access.value,
-                format=payload.format.value,
+                access=payload.access,
+                format=payload.format,
                 note=payload.note,
                 acquired=ActStatement(payload.acquired, payload.acquisition_note),
             ),
@@ -1495,6 +1513,255 @@ def resume_entry(
 
 
 api.add_router("/entries", entry_router)
+
+purchase_router = Router()
+
+AMOUNT_TOGETHER = "State the amount and its currency together."
+PURCHASE_DAY_TOGETHER = "State the purchase day and its note together."
+ONE_COPY_KEY = "State entry_id or entry, exactly one."
+RECORDED_UNSHOWN = (
+    "This purchase was recorded, but it could not be shown. The problem has "
+    "been reported."
+)
+
+
+def _written_purchase(library: UserLibrary, purchase_id: uuid.UUID) -> Purchase:
+    """The row a write landed; missing is a defect."""
+    #: Commands refuse every mark this read reads.
+    try:
+        return owned_or_404(readable_purchases(library), library, pk=purchase_id)
+    except Http404:
+        logger.error(
+            "Purchase %s of library %s was written but no read shows it.",
+            purchase_id,
+            library.pk,
+        )
+        raise HttpError(DEFECT_STATUS, RECORDED_UNSHOWN) from None
+
+
+class PurchaseIn(Schema):
+    """One purchase, stated whole."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: A held copy, or a new one.
+    entry_id: UUIDv7 | None = None
+    entry: EntryIn | None = None
+    kind: PurchaseKindValue
+    name: str = ""
+    #: Finite by the schema; the command states the rest.
+    amount: Decimal | None = None
+    currency: str = ""
+    note: str = ""
+    purchased: StatedTemporal = None
+    purchase_note: str = ""
+
+    @model_validator(mode="after")
+    def one_copy(self) -> PurchaseIn:
+        if (self.entry_id is None) == (self.entry is None):
+            raise ValueError(ONE_COPY_KEY)
+        return self
+
+    def stated_copy(self) -> uuid.UUID | EntryStatement:
+        match self.entry_id, self.entry:
+            case uuid.UUID() as entry_id, None:
+                return entry_id
+            case None, EntryIn() as entry:
+                return EntryStatement(
+                    release_id=entry.release_id,
+                    access=entry.access,
+                    format=entry.format,
+                    note=entry.note,
+                    acquired=ActStatement(entry.acquired, entry.acquisition_note),
+                )
+        raise TypeError("one_copy admits exactly one copy.")
+
+
+class PurchaseRefundIn(Schema):
+    """One refund, stated whole."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Required; null is an unknown day.
+    refunded: StatedTemporal
+    note: str = ""
+
+    def statement(self) -> ActStatement:
+        return ActStatement(self.refunded, self.note)
+
+
+class PurchaseUpdate(Schema):
+    """Named keys state; omitted keys state nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: PurchaseKindValue | None = None
+    name: str | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    note: str | None = None
+    entry_id: UUIDv7 | None = None
+    purchased: StatedTemporal = None
+    purchase_note: str | None = None
+    #: Object states; null voids; absent keeps.
+    refund: PurchaseRefundIn | None = None
+
+    @model_validator(mode="after")
+    def a_named_key_states(self) -> PurchaseUpdate:
+        """Null refused except amount, purchased, refund."""
+        stated = self.model_fields_set
+        if ("amount" in stated) != ("currency" in stated):
+            raise ValueError(AMOUNT_TOGETHER)
+        if ("purchased" in stated) != ("purchase_note" in stated):
+            raise ValueError(PURCHASE_DAY_TOGETHER)
+        for key in ("kind", "name", "currency", "note", "entry_id", "purchase_note"):
+            if key in stated and getattr(self, key) is None:
+                raise ValueError(f"{key} states a value, or is left out.")
+        return self
+
+    def stated_price(self) -> StatedPrice | None:
+        if "amount" not in self.model_fields_set:
+            return None
+        #: The validator states both or neither.
+        return StatedPrice(self.amount, cast(str, self.currency))
+
+    def stated_day(self) -> ActStatement | None:
+        if "purchased" not in self.model_fields_set:
+            return None
+        return ActStatement(self.purchased, cast(str, self.purchase_note))
+
+    def refund_statement(self) -> Restated[ActStatement]:
+        """The refund stated, a void, or nothing."""
+        if "refund" not in self.model_fields_set:
+            return KEEP
+        if self.refund is None:
+            return None
+        return self.refund.statement()
+
+
+class ValuationOut(Schema):
+    """An amount in the reporting currency."""
+
+    amount: Decimal
+    currency: CurrencyCode
+
+
+class PurchaseOut(Schema):
+    """The projection row, its game and valuation."""
+
+    id: UUIDv7
+    entry_id: UUIDv7
+    game: str = Field(..., alias="entry.player_game.game.name")
+    game_id: UUIDv7 = Field(..., alias="entry.player_game.game_id")
+    kind: PurchaseKindValue
+    name: str
+    amount: Decimal | None = None
+    currency: str
+    note: str
+    purchased: StatedTemporal
+    purchased_lower: date | None = None
+    purchased_upper: date | None = None
+    purchase_recorded_at: datetime
+    purchase_note: str
+    refunded: StatedTemporal
+    refunded_lower: date | None = None
+    refunded_upper: date | None = None
+    refund_recorded_at: datetime | None = None
+    refund_note: str
+    created_at: datetime
+    valuation: ValuationOut | None = None
+
+    @staticmethod
+    def resolve_valuation(purchase: ValuedPurchase) -> ValuationOut | None:
+        if purchase.valuation_amount is None or purchase.valuation_currency is None:
+            return None
+        return ValuationOut(
+            amount=purchase.valuation_amount, currency=purchase.valuation_currency
+        )
+
+
+@purchase_router.get("/", response=list[PurchaseOut])
+def list_purchases(
+    request,
+    limit: int = Query(100, ge=0),
+    offset: int = Query(0, ge=0),
+):
+    """Live purchases, first recorded first; `limit=0` unbounded."""
+    library = cast(User, request.user).library
+    purchases = readable_purchases(library).order_by("created_at", "id")[offset:]
+    return purchases if limit == 0 else purchases[:limit]
+
+
+@purchase_router.get("/{purchase_id}", response=PurchaseOut)
+def get_purchase(request, purchase_id: UUIDv7):
+    library = cast(User, request.user).library
+    return owned_or_404(readable_purchases(library), library, id=purchase_id)
+
+
+@purchase_router.post("/", response={201: PurchaseOut})
+def create_purchase(
+    request,
+    payload: PurchaseIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    actor = cast(User, request.user)
+    library = actor.library
+    stated_key = _stated_idempotency_key(idempotency_key)
+    #: The copy resolves behind the key.
+    try:
+        recorded = record_purchase(
+            actor,
+            PurchaseDraft(
+                copy=payload.stated_copy(),
+                kind=payload.kind,
+                name=payload.name,
+                price=StatedPrice(payload.amount, payload.currency),
+                note=payload.note,
+                purchased=ActStatement(payload.purchased, payload.purchase_note),
+            ),
+            correlation_id=new_correlation_id(),
+            idempotency_key=stated_key,
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    row = _written_purchase(library, recorded.purchase_id)
+    if not recorded.replayed:
+        messages.success(
+            request,
+            "Purchase recorded and game added to your library."
+            if recorded.tracked_the_game
+            else "Purchase recorded.",
+        )
+    return Status(201, row)
+
+
+@purchase_router.patch("/{purchase_id}", response={200: PurchaseOut})
+def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdate):
+    actor = cast(User, request.user)
+    library = actor.library
+    purchase = owned_or_404(readable_purchases(library), library, id=purchase_id)
+    try:
+        restated = restate_purchase(
+            actor,
+            purchase,
+            kind=payload.kind,
+            name=payload.name,
+            price=payload.stated_price(),
+            note=payload.note,
+            entry_id=payload.entry_id,
+            purchased=payload.stated_day(),
+            refund=payload.refund_statement(),
+            correlation_id=new_correlation_id(),
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    updated = _written_purchase(library, purchase.pk)
+    if restated.appended:
+        messages.success(request, "Purchase updated.")
+    return updated
+
+
+api.add_router("/purchases", purchase_router)
 
 filter_router = Router()
 
@@ -1776,12 +2043,28 @@ class DefaultDeviceIn(Schema):
     value: UUIDv7 | None = None
 
 
-class DefaultDeviceOut(Schema):
-    key: str
+class LibraryPreferenceOut(Schema):
+    """What a library preference's route answers."""
+
+    source: Literal[SettingSource.LIBRARY] = SettingSource.LIBRARY
+    locked: Literal[False] = False
+    namespace: Literal[SettingNamespace.LIBRARY] = SettingNamespace.LIBRARY
+
+
+class DefaultDeviceOut(LibraryPreferenceOut):
+    key: Literal["default-device"] = DEFAULT_DEVICE
     value: UUIDv7 | None
-    source: SettingSource
-    locked: bool
-    namespace: SettingNamespace
+
+
+class ConversionReviewHiddenIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    value: StrictBool
+
+
+class ConversionReviewHiddenOut(LibraryPreferenceOut):
+    key: Literal["conversion-review-hidden"] = CONVERSION_REVIEW_HIDDEN
+    value: bool
 
 
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
@@ -1898,14 +2181,9 @@ ENDED_DEFAULT_DEVICE = (
 )
 
 
-@library_router.patch("/default-device", response=DefaultDeviceOut)
+@library_router.patch(f"/{DEFAULT_DEVICE}", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
-    """Set the current library's default Device, or clear it with null.
-
-    The live-settings client substitutes its field key into a URL template, while
-    this endpoint serves only ``default-device``. Add a key-routed endpoint before
-    adding another library preference.
-    """
+    """Set the library's default Device; null clears."""
     library = request.user.library
     device = None
     if payload.value is not None:
@@ -1916,13 +2194,22 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
             raise RowRefused(ENDED_DEFAULT_DEVICE)
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
-    return {
-        "key": "default-device",
-        "value": device.pk if device is not None else None,
-        "source": SettingSource.LIBRARY,
-        "locked": False,
-        "namespace": SettingNamespace.LIBRARY,
-    }
+    return {"value": device.pk if device is not None else None}
+
+
+@library_router.patch(
+    f"/{CONVERSION_REVIEW_HIDDEN}", response=ConversionReviewHiddenOut
+)
+def update_conversion_review_hidden(
+    request, response: HttpResponse, payload: ConversionReviewHiddenIn
+):
+    """Hide or show the conversion review.
+
+    No toast: the reload shows it.
+    """
+    change_library_conversion_review_hidden(request.user.library, payload.value)
+    response[RELOAD_HEADER] = "true"
+    return {"value": payload.value}
 
 
 @settings_router.get("/site", response=list[SettingOut])

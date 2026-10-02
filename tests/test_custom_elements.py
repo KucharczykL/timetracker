@@ -610,6 +610,15 @@ class DropdownSubmenuTest(unittest.TestCase):
         self.assertIn('placement="right-start"', html)
         self.assertIn('href="/end/"', html)
 
+    def test_a_submenu_without_a_glyph_keeps_its_arrow_inline(self):
+        from common.components import DropdownSubmenuItem
+        from common.components.custom_elements import DROPDOWN_ITEM_WITH_ICON_CLASS
+
+        html = str(DropdownSubmenuItem("Bought · 5 EUR", id="purchase", items=[]))
+
+        self.assertIn(f'class="{DROPDOWN_ITEM_WITH_ICON_CLASS} w-full"', html)
+        self.assertIn("<span>Bought · 5 EUR</span>", html)
+
     def test_a_description_says_more_under_the_label(self):
         from common.components import DropdownLinkItem
 

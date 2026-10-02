@@ -4,18 +4,12 @@ cascading or substituting, and the conditional unique constraint keeps the
 platformless-dedup guarantee that ordinary uniqueness cannot provide when the
 platform is NULL."""
 
-from datetime import date
-
 import pytest
 from django.db import IntegrityError
 from django.utils import timezone
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, PlayerGameStatus, Purchase
-
-#: A stated day; nothing counts by day.
-PURCHASE_DAY = date(2026, 3, 5)
-
+from games.models import Device, Game, Platform, PlayerGameStatus
 
 pytestmark = pytest.mark.django_db
 
@@ -35,41 +29,20 @@ def test_session_without_device_stays_null(owned_library):
     assert Device.objects.count() == 0
 
 
-def test_purchase_without_platform_stays_null_with_explicit_currency(
-    owned_library,
-):
-    game = Game.objects.create(library=owned_library, name="Homebrew")
-    purchase = Purchase.objects.create(
-        library=owned_library,
-        date_purchased=PURCHASE_DAY,
-        price_currency="CZK",
-    )
-    purchase.games.add(game)
-    purchase.refresh_from_db()
-    assert purchase.platform is None
-    assert purchase.price_currency == "CZK"
-
-
-def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
+def test_platform_delete_sets_null_and_keeps_releases(owned_library, stated_graph):
     platform = Platform.objects.create(name="Steam")
-    game = Game.objects.create(library=owned_library, name="Hades", platform=platform)
-    purchase = Purchase.objects.create(
-        price_currency="CZK",
-        library=owned_library,
-        date_purchased=PURCHASE_DAY,
+    graph = stated_graph(
+        Game(library=owned_library, name="Hades", platform=platform),
+        owned_library,
         platform=platform,
     )
-    purchase.games.add(game)
 
     platform.delete()
 
-    # The old CASCADE on Purchase.platform would have destroyed the purchase
-    # (and its price history) here.
-    assert Purchase.objects.count() == 1
-    game.refresh_from_db()
-    purchase.refresh_from_db()
-    assert game.platform is None
-    assert purchase.platform is None
+    graph.game.refresh_from_db()
+    graph.release.refresh_from_db()
+    assert graph.game.platform is None
+    assert graph.release.platform is None
 
 
 def test_platformless_duplicate_name_year_rejected(owned_library):

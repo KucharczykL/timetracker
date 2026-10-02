@@ -53,8 +53,7 @@ describe("computeHiddenColumns", () => {
   });
 
   it("keeps the Actions column on a crowded purchases row", () => {
-    // Measured on /purchase/list at a 390px viewport with a two-game purchase:
-    // the Split action widens Actions to 200, and the name floor is 160.
+    // A crowded row: Actions 200, name floor 160.
     const costs = [160, 49.5, 52.25, 70.2, 128.3, 73.9, 79.4, 109.6, 200];
     const priorities = [1, 2, 3, 1, 2, 1, 1, 1, 4];
     const hidden = computeHiddenColumns(costs, priorities, 358);

@@ -1895,6 +1895,8 @@ def FieldErrors(errors) -> Node | None:
 #: "hidden": screen readers name it; space parts it.
 #: "panel": a section panel, legend inside.
 type FieldGroupLook = Literal["shown", "hidden", "panel"]
+#: Space-separated utility tokens.
+type ClassNames = str
 
 _LEGEND_CLASSES: dict[FieldGroupLook, str] = {
     "shown": "text-type-section text-heading",
@@ -1923,6 +1925,8 @@ class FormFieldGroup(NamedTuple):
     description: str = ""
     id: str = ""
     look: FieldGroupLook = "shown"
+    #: E.g. a named Tailwind group.
+    class_: ClassNames = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1932,6 +1936,8 @@ class FormFieldPresentation:
     label_extra: Node | None = None
     after_control: Node | None = None
     decorate_control: Callable[[Node], Node] | None = None
+    #: On the row, e.g. a group-state rule.
+    row_class: ClassNames = ""
 
 
 def field_label_id(input_id: str) -> str:
@@ -2007,6 +2013,7 @@ def _form_field_row(
             if presentation.after_control:
                 children.append(presentation.after_control)
             return Div(
+                [("class", presentation.row_class)] if presentation.row_class else [],
                 class_=_CHECKBOX_ROW_CLASS,
                 data_form_checkbox_row="",
             )[*children]
@@ -2020,7 +2027,7 @@ def _form_field_row(
             children.append(errors)
         if presentation.after_control:
             children.append(presentation.after_control)
-        return Div()[*children]
+        return Div(class_=presentation.row_class or None)[*children]
 
     children = []
     if errors:
@@ -2033,7 +2040,9 @@ def _form_field_row(
     if presentation.after_control:
         children.append(presentation.after_control)
     #: Named, so an element inside can hide the whole row.
-    return Div(data_field_row=field.name)[*children]
+    return Div(data_field_row=field.name, class_=presentation.row_class or None)[
+        *children
+    ]
 
 
 def _grouped_form_fields(
@@ -2068,6 +2077,8 @@ def _grouped_form_fields(
         ]
         if look_class := _GROUP_LOOK_CLASSES[group.look]:
             attributes.append(("class", look_class))
+        if group.class_:
+            attributes.append(("class", group.class_))
         if group.id:
             attributes.append(("id", group.id))
         if description_id and group.description:

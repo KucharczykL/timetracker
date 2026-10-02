@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+from collections.abc import Mapping
 from io import StringIO
 from pathlib import Path
 from typing import NamedTuple
@@ -11,8 +12,8 @@ from django.core import serializers
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.serializers.base import DeserializationError
-from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db import IntegrityError, connection, transaction
+from django.db.models import Model
 
 from common.platform_icons import canonical_icon
 from games.conversion import _request_conversion_for_locked_state
@@ -27,6 +28,7 @@ from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
 from games.models import (
+    Edition,
     ExchangeRate,
     FilterPreset,
     Game,
@@ -34,22 +36,31 @@ from games.models import (
     LibraryEventReference,
     LibraryEventStreamHead,
     Platform,
-    Purchase,
     PurchaseConversionState,
+    Release,
 )
+from games.projections import FieldName
+from games.reads.purchases import stale_purchases
+
+#: dumpdata's spelling: `_meta.label_lower`.
+type FixtureLabel = str  # e.g. "games.release"
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
 TARGET_LIBRARY_MARKER = "__target_library__"
 
-PRIVATE_MODELS = {
+PRIVATE_MODELS: dict[FixtureLabel, type[Model]] = {
     "games.game": Game,
-    "games.purchase": Purchase,
     "games.filterpreset": FilterPreset,
     "games.libraryeventstreamhead": LibraryEventStreamHead,
     "games.libraryevent": LibraryEvent,
     "games.libraryeventreference": LibraryEventReference,
 }
-LOADABLE_MODELS = {**PRIVATE_MODELS}
+#: Every model the loader deserializes.
+LOADABLE_MODELS: dict[FixtureLabel, type[Model]] = {
+    **PRIVATE_MODELS,
+    "games.edition": Edition,
+    "games.release": Release,
+}
 
 
 class FixtureRelationship(NamedTuple):
@@ -61,27 +72,22 @@ class FixtureRelationship(NamedTuple):
     only when the database FK deliberately targets a secondary identity.
     """
 
-    field: str
-    target_model: str
+    field: FieldName
+    target_model: FixtureLabel
     many: bool
     required: bool
-    reference_field: str = "pk"
+    reference_field: FieldName = "pk"
 
 
-FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
+FIXTURE_RELATIONSHIPS: dict[FixtureLabel, tuple[FixtureRelationship, ...]] = {
     "games.game": (
-        FixtureRelationship(
-            "platform", "games.platform", False, False, reference_field="pk"
-        ),
+        FixtureRelationship("platform", "games.platform", False, False),
+        FixtureRelationship("parent", "games.game", False, False),
     ),
-    "games.purchase": (
-        FixtureRelationship(
-            "platform", "games.platform", False, False, reference_field="pk"
-        ),
-        FixtureRelationship(
-            "related_game", "games.game", False, False, reference_field="pk"
-        ),
-        FixtureRelationship("games", "games.game", True, False),
+    "games.edition": (FixtureRelationship("game", "games.game", False, True),),
+    "games.release": (
+        FixtureRelationship("edition", "games.edition", False, True),
+        FixtureRelationship("platform", "games.platform", False, False),
     ),
     "games.libraryevent": (
         FixtureRelationship("stream", "games.libraryeventstreamhead", False, True),
@@ -89,6 +95,20 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
     "games.libraryeventreference": (
         FixtureRelationship("event", "games.libraryevent", False, True),
     ),
+}
+
+
+#: Fields naming a Platform, remapped on load.
+PLATFORM_FIELDS: Mapping[FixtureLabel, tuple[FieldName, ...]] = {
+    label: fields
+    for label, relationships in FIXTURE_RELATIONSHIPS.items()
+    if (
+        fields := tuple(
+            relationship.field
+            for relationship in relationships
+            if relationship.target_model == "games.platform" and not relationship.many
+        )
+    )
 }
 
 
@@ -135,22 +155,12 @@ class Command(BaseCommand):
                     StringIO(yaml.safe_dump(loadable, sort_keys=False)),
                 ):
                     deserialized.save(force_insert=True)
+                #: Deferred keys hold before the replay.
+                connection.check_constraints()
             except (DeserializationError, IntegrityError, ValueError) as error:
                 raise CommandError(
                     f"Sample fixture could not be loaded: {error}"
                 ) from error
-
-            purchases = Purchase.objects.for_library(user.library)
-            cache_mismatch = purchases.filter(
-                Q(converted_price__isnull=True)
-                | Q(needs_price_update=True)
-                | ~Q(converted_currency__iexact=state.requested_currency)
-            ).exists()
-            if cache_mismatch or state.requested_version != state.published_version:
-                _request_conversion_for_locked_state(
-                    state,
-                    state.requested_currency,
-                )
 
             #: Replay the fixture's events into projections.
             try:
@@ -168,6 +178,14 @@ class Command(BaseCommand):
                 raise CommandError(
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
+                )
+            if (
+                state.requested_version != state.published_version
+                or stale_purchases(user.library).exists()
+            ):
+                _request_conversion_for_locked_state(
+                    state,
+                    state.requested_currency,
                 )
             #: The fixture carries no Wikidata reference rows.
             try:
@@ -421,7 +439,7 @@ class Command(BaseCommand):
         `UUIDv7Field`'s default. Adopting the fixture's instead is not an
         option — `_reject_primary_key_collisions` guards against exactly that
         collision, and the reuse path could not honor it anyway. So the
-        translation here is load-bearing: without it every game and purchase
+        translation here is load-bearing: without it every game and release
         would dangle.
 
         Values are strings because the prepared records are re-serialized with
@@ -500,15 +518,15 @@ class Command(BaseCommand):
                 and fields.get("aggregate_id") == TARGET_LIBRARY_MARKER
             ):
                 fields["aggregate_id"] = str(library.pk)
-            if model in {"games.game", "games.purchase"}:
-                platform_reference = fields.get("platform")
+            for field in PLATFORM_FIELDS.get(model, ()):
+                platform_reference = fields.get(field)
                 if platform_reference is not None:
                     if str(platform_reference) not in platform_uuids:
                         raise CommandError(
                             f"Sample {model} references unknown Platform "
                             f"{platform_reference}."
                         )
-                    fields["platform"] = platform_uuids[str(platform_reference)]
+                    fields[field] = platform_uuids[str(platform_reference)]
             prepared.append(copied)
         return prepared
 

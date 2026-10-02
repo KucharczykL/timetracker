@@ -18,7 +18,7 @@ from django.utils import timezone as django_timezone
 from django.utils.formats import date_format, get_format
 from django.utils.translation import get_language, override
 
-from timetracker.settings_resolver import resolve_str_for_user
+from timetracker.settings_resolver import resolve_for_user, resolve_str_for_user
 
 type SegmentName = Literal["day", "month", "year", "hour", "minute", "day_period"]
 type SegmentKind = Literal["numeric", "day_period"]
@@ -441,24 +441,38 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
     if isinstance(cached, DateTimePresentation):
         return cached
 
+    locale = getattr(request, "_date_format_locale", None)
+    presentation = date_time_presentation_for_user(
+        getattr(request, "user", None),
+        #: The middleware's word, else the language's.
+        locale=locale if isinstance(locale, str) else _active_language(),
+    )
+    setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
+    return presentation
+
+
+def _active_language() -> str:
+    return get_language() or settings.LANGUAGE_CODE
+
+
+def date_time_presentation_for_user(
+    user: object, *, locale: str | None = None
+) -> DateTimePresentation:
+    """The user's presentation; locale defaults to theirs."""
+    if locale is None:
+        stated = resolve_for_user(user, "DATE_FORMAT_LOCALE")
+        locale = stated if isinstance(stated, str) else _active_language()
     active_timezone = django_timezone.get_current_timezone()
     zone = (
         active_timezone
         if isinstance(active_timezone, ZoneInfo)
         else ZoneInfo(django_timezone.get_current_timezone_name())
     )
-    locale = getattr(request, "_date_format_locale", None)
-    profile_id = resolve_str_for_user(getattr(request, "user", None), "DATETIME_FORMAT")
-    display_mode_raw = resolve_str_for_user(
-        getattr(request, "user", None), "SESSION_TIME_ZONE_DISPLAY"
-    )
-    presentation = DateTimePresentation(
+    profile_id = resolve_str_for_user(user, "DATETIME_FORMAT")
+    display_mode_raw = resolve_str_for_user(user, "SESSION_TIME_ZONE_DISPLAY")
+    return DateTimePresentation(
         profile=date_time_format_profile(profile_id),
-        locale=locale
-        if isinstance(locale, str)
-        else get_language() or settings.LANGUAGE_CODE,
+        locale=locale,
         timezone=zone,
         session_time_zone_display="own" if display_mode_raw == "own" else "account",
     )
-    setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
-    return presentation

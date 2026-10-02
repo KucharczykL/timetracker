@@ -1,11 +1,13 @@
 """Game detail's Library section."""
 
 import uuid
+from collections.abc import Sequence
 from typing import NamedTuple
 
 from common.components import (
     Chip,
     ControlButton,
+    Div,
     DropdownLinkItem,
     Icon,
     Span,
@@ -19,10 +21,20 @@ from common.components.primitives import ICON_BUTTON_SIZE_CLASS
 from common.date_time_presentation import DateTimePresentation
 from common.returns import OriginUrl, action_url
 from common.temporal_presentation import present_temporal_value
-from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, UserLibrary
+from games.models import (
+    EntryAccess,
+    EntryFormat,
+    Game,
+    LibraryEntry,
+    Purchase,
+    UserLibrary,
+)
 from games.reads.entries import copy_end, game_entries
+from games.reads.purchases import held_purchases
 from games.reads.releases import edition_words, game_releases, platform_words
-from games.views.entry_menu import entry_row_menu, submission_input
+from games.views.entry_menu import entry_row_menu
+from games.views.purchase_menu import purchase_line
+from games.views.submission import submission_input
 
 EMPTY_LIBRARY = "Nothing in your library yet."
 EMPTY_LIBRARY_NOW = "Nothing in your library right now."
@@ -61,6 +73,7 @@ def _copy_row(
     csrf_token: str,
     *,
     label: str,
+    purchases: Sequence[Purchase],
 ) -> Node:
     return SummaryRow(
         label=label,
@@ -68,7 +81,16 @@ def _copy_row(
             Span()[_facts(entry, presentation)],
             *([_note_chip(entry.note)] if entry.note else []),
         ),
-        control=entry_row_menu(entry, origin, csrf_token, size="compact"),
+        detail=(
+            Div(class_="flex flex-col gap-1")[
+                *(purchase_line(purchase, presentation) for purchase in purchases)
+            ]
+            if purchases
+            else None
+        ),
+        control=entry_row_menu(
+            entry, origin, csrf_token, purchases=purchases, size="compact"
+        ),
         dense=not label,
     )
 
@@ -102,11 +124,21 @@ def copy_rows(
             continue
         held += 1
         by_version.setdefault(entry.release_id, []).append(entry)
+    purchases = held_purchases(
+        library, (entry.pk for copies in by_version.values() for entry in copies)
+    )
     rows = tuple(
         SummaryGroup(
             label=release_words(copies[0]),
             rows=[
-                _copy_row(entry, presentation, origin, csrf_token, label="")
+                _copy_row(
+                    entry,
+                    presentation,
+                    origin,
+                    csrf_token,
+                    label="",
+                    purchases=purchases.get(entry.pk, ()),
+                )
                 for entry in copies
             ],
         )

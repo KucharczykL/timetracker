@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 import pytest
 from django.urls import reverse
 from django.utils.html import escape
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
@@ -12,7 +15,6 @@ from common.date_time_presentation import date_time_presentation_for_request
 from games.filters import (
     PlayerSessionFilter,
     PlaythroughFilter,
-    PurchaseFilter,
     filter_query_context_for_library,
     filter_url,
 )
@@ -23,7 +25,6 @@ from games.models import (
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
-    Purchase,
 )
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
@@ -40,12 +41,9 @@ def game(owned_library):
         owned_library, "Test Game", status=PlayerGameStatus.PLAYED, platform=platform
     )
     session_row(game, started_at=_dt(1), ended_at=_dt(1, 13))
-    Purchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        date_purchased=_dt(1),
-        type=Purchase.GAME,
-    ).games.set([game])
+    record_purchase(
+        record_entry(owned_library, default_graph(game, owned_library).release)
+    )
     return game
 
 
@@ -62,9 +60,9 @@ def test_sessions_section_links_to_filtered_sessions(game, rendered):
     assert href in rendered
 
 
-def test_purchases_section_links_to_filtered_purchases(game, rendered):
-    href = escape(filter_url(PurchaseFilter.where(games=[game.id])))
-    assert href in rendered
+def test_no_legacy_purchases_section(game, rendered):
+    """The copies' rows carry purchases now."""
+    assert "Purchases of this game" not in rendered
 
 
 def test_playthroughs_section_links_to_filtered_playthroughs(game, rendered):
@@ -80,12 +78,6 @@ def test_link_filters_scope_to_game(game):
         library=game.library, name="Other", platform=game.platform
     )
     session_row(other, started_at=_dt(3), ended_at=_dt(3, 13))
-    Purchase.objects.create(
-        library=game.library,
-        price_currency="CZK",
-        date_purchased=_dt(3),
-        type=Purchase.GAME,
-    ).games.set([other])
     context = filter_query_context_for_library(game.library)
     sessions = PlayerSession.objects.filter(
         PlayerSessionFilter.where(game=[game.id]).to_q(context)
@@ -93,11 +85,6 @@ def test_link_filters_scope_to_game(game):
     assert list(sessions) == list(
         PlayerSession.objects.filter(playthrough__player_game__game=game)
     )
-
-    purchases = Purchase.objects.filter(
-        PurchaseFilter.where(games=[game.id]).to_q(context)
-    )
-    assert list(purchases) == list(game.purchases.all())
 
     runs = library_runs(game.library).filter(
         PlaythroughFilter.where(game=[game.id]).to_q(context)

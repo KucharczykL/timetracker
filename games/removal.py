@@ -17,7 +17,6 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
-    Purchase,
     Release,
 )
 
@@ -28,17 +27,8 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Edition,
     Release,
     Platform,
-    Purchase,
     FilterPreset,
 )
-
-
-def _recount_purchases(game: Game, previous_mark: datetime | None) -> None:
-    """A count of the live games only."""
-    for purchase in game.purchases.all():
-        purchase.num_purchases = purchase.games.alive().count()
-        purchase.updated_at = now()
-        purchase.save(update_fields=["num_purchases", "updated_at"])
 
 
 def _mark_the_references_of(instance: Model, previous_mark: datetime | None) -> None:
@@ -86,7 +76,7 @@ def _mirror_the_wikidata_column(game: Game, previous_mark: datetime | None) -> N
 
 #: What a stamp does not do; ordered.
 _AFTER_STAMP: dict[type[Model], tuple[Callable[[Any, datetime | None], None], ...]] = {
-    Game: (_mark_the_references_of, _mirror_the_wikidata_column, _recount_purchases),
+    Game: (_mark_the_references_of, _mirror_the_wikidata_column),
     Edition: (_mark_the_references_of,),
     Release: (_mark_the_references_of,),
     Platform: (_mark_the_references_of,),
@@ -103,7 +93,7 @@ def _stamp(instance: Model, value: datetime | None) -> None:
         #: The row says which act to undo.
         previous_mark = rows.values_list("removed_at", flat=True).first()
         #: An update, not a save.
-        #: Game, Platform, Session and Purchase
+        #: Game, Platform and Release
         #: each override save() to call clean(),
         #: and a stamp must not revalidate
         #: a row a user is taking out.

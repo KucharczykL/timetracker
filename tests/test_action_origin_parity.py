@@ -8,16 +8,18 @@ the single most important URL in the mechanism.
 
 import html
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from devices import create_device
 from django.urls import Resolver404, resolve, reverse
+from entries import record_entry
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row
 
-from games.models import Game, Platform, Playthrough, Purchase
+from games.models import Game, Platform, Playthrough
 from games.views.returns import ORIGIN_AWARE
 
 LINK_ATTRIBUTE = re.compile(r'\b(?:href|action)="([^"]*)"')
@@ -25,18 +27,14 @@ MUST_CARRY_ORIGIN = ORIGIN_AWARE
 
 
 @pytest.fixture
-def world(owned_library):
+def world(owned_library, stated_graph):
     platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(
-        library=owned_library, name="Test Game", platform=platform
+    graph = stated_graph(
+        Game(library=owned_library, name="Test Game", platform=platform),
+        owned_library,
     )
-    purchase = Purchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
-    )
-    purchase.games.set([game])
+    game = graph.game
+    record_purchase(record_entry(owned_library, graph.release))
     session_row(
         game,
         started_at=datetime(2024, 6, 1, 12, tzinfo=UTC),
@@ -89,15 +87,9 @@ def test_list_pages_stamp_their_own_path(client, owned_user, world, url_name):
     assert _missing_origin(response.content.decode(), page_path) == []
 
 
-@pytest.mark.parametrize("url_name", ["games:view_game", "games:view_purchase"])
-def test_detail_pages_stamp_their_own_path(client, owned_user, world, url_name):
+def test_the_detail_page_stamps_its_own_path(client, owned_user, world):
     client.force_login(owned_user)
-    target = world if url_name == "games:view_game" else world.purchases.first()
-    page_path = (
-        target.get_absolute_url()
-        if url_name == "games:view_game"
-        else reverse(url_name, args=[target.id])
-    )
+    page_path = world.get_absolute_url()
     response = client.get(page_path)
     assert response.status_code == 200
     assert _missing_origin(response.content.decode(), page_path) == []

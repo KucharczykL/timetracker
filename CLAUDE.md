@@ -137,9 +137,11 @@ path**, so verify against `make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Render every read-only page as one user to files | `make render-pages ARGS="--user NAME --out DIR"` (read-only; run at two commits on one database and `diff -r`; lists whole, CSRF and version footer normalised) |
-| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
+| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the ten reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
+| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; runs between 0030 and 0035; refuses once the table is gone; **not** in `make check`) |
+| Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a figure or row set no reason explains; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -186,7 +188,15 @@ docs/           — Additional documentation
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
-- **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
+- **LegacyPurchase** — gone (#736, P5c): migration 0035 drops it. The
+  conversion tooling (`games/backfill/`, `verify_purchase_conversion`)
+  reads it from migration state through `legacy_purchase_model()`
+  (`games/backfill/legacy_model.py`) and refuses once the table is gone;
+  tests build rows on that model through the `legacy_purchase` fixture
+  (`tests/legacy_purchases.py`), which refuses a `transaction=True` test.
+  Each module and test #1448 removes at the squash says `conversion-tooling`.
+  `RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`. Contract is
+  [The legacy purchase is gone](docs/superpowers/specs/2026-10-02-issue-736-legacy-purchase-drop-design.md)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
   projection since #1274: a device is owned — bought, renamed, sold, lost,
   retired — so the charter moved it inside the boundary. Written only by the
@@ -212,7 +222,22 @@ docs/           — Additional documentation
   `access_end`. An ended device stays in session and record pickers,
   hinted, and is no default. Contract is
   [A device's access ends](docs/superpowers/specs/2026-09-28-issue-1275-device-access-end-design.md)
-- **ExchangeRate** — cached FX rates per currency pair per year
+- **ExchangeRate** — cached FX rates per currency pair per year;
+  `rate` is `Decimal(24, 12)`, read and fetched through `exchange_rate`
+  (`games/exchange_rates.py`), parsed without a float
+- **PurchaseValuation** — conventional, derived (#728, #729; P3): one
+  row per purchase key, `amount` `Decimal(26, 2)` rounded half up once,
+  beside its inputs (`source_amount`, `source_currency`, `rate_year`,
+  `rate`, null where none is needed). The currency task alone writes it,
+  through `value_all` and `publish_valuations` (`games/valuations.py`),
+  whole per library; a purchase without a rate is skipped with a warning.
+  CHECKs hold the rate rule and currency codes;
+  `valuation_library_violations` joins the ownership audit.
+  `VALUATION_EVENTS` (`games/events/purchase.py`) names the events a
+  write requests a run after; a test classifies every purchase event.
+  `stale_purchases`/`with_valuation` in `games/reads/purchases.py` read
+  the current one. Contract is
+  [Purchase valuations](docs/superpowers/specs/2026-10-01-issue-728-purchase-valuation-design.md)
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read; beside them two Visibility flags, `excluded_from_unfinished` and `excluded_from_dropped` (#1334), each read by its own figure alone. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — second projection: one row per run at a tracked game, written
@@ -306,7 +331,7 @@ docs/           — Additional documentation
   `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the
   link beside each number, so stat and link compile one predicate. A year reads
   the interval the two generated bound columns state, all-time reads the marker;
-  a Purchase reports one row, dated `completed_lower` of its earliest run in a
+  a copy reports one row, dated `completed_lower` of its earliest run in a
   year (its latest all-time, which no table prints today), and a row that
   reports no day sorts last and prints `-`. #1033 gives the projection a
   queryset holding `annotated_for_filtering` alone — no `alive()` and no
@@ -473,7 +498,7 @@ docs/           — Additional documentation
   #704's gates, member 4 of the wave stack, lift the deployment constraint:
   `tests/test_projection_replay_gate.py` replays one command stream through
   every event type of the four families (a Corrected row included), empties
-  and rebuilds five tables, repeats every command under its key; the
+  and rebuilds every table, repeats every command under its key; the
   two-dated-claimers conversion case reconciles clean. Stats page's session
   figures -- count, longest, most sessions, highest average -- are readers in
   `games/reads/session_figures.py`, grouped on the session table, ties broken
@@ -548,8 +573,12 @@ docs/           — Additional documentation
   Release alone, derives the game, tracks an untracked one in the same
   dispatch through `tracking_events`), `DescribeEntry`,
   `CorrectEntryAcquisition`, `RemoveEntry` (asks `blocking_referrer` and
-  `foreign_referrer`, which hold no entry referrer yet), `RestoreEntry`
-  (refuses under a removed Release) in `games/commands/libraryentry.py`;
+  `foreign_referrer`; it removes the copy's purchases in the same
+  dispatch, and `Purchase.entry` sits in `CASCADING_REFERRERS`, which
+  `blocking_referrer` never reads and `foreign_referrer` does),
+  `RestoreEntry` (refuses under a removed Release; restores the
+  purchases whose latest removal shares the copy's key,
+  `cascaded_purchase_ids`) in `games/commands/libraryentry.py`;
   request-free half `games/writes/libraryentry.py`, whose `record_entry`
   reads the entry id off `dispatched_events` because the creation may
   follow the tracking pair, and whose `restate_entry` describes first,
@@ -587,6 +616,92 @@ docs/           — Additional documentation
   and [A copy's access ends and resumes](docs/superpowers/specs/2026-09-29-issue-721-entry-access-end-design.md);
   wave is
   [Access and Purchases](docs/superpowers/specs/2026-09-28-access-and-purchases-wave-design.md)
+- **Purchase** — projection (#725, #726, #828; P1 of the wave stack): one
+  transaction for one copy. `entry` (`LibraryEntry`, `RESTRICT`), `kind`
+  (`PurchaseKind`: game/season_pass/battle_pass/upgrade), `name`, `amount`
+  (`Decimal(12, 2)`, null unknown, 0 free), `currency` (blank exactly where
+  `amount` is null), `note`, and the opening endpoint `PURCHASE_DAY`
+  (`purchased`, `purchase_recorded_at`, `purchase_note`). Written only by
+  `Purchases` from twelve `library.purchase.*` events; a price travels as one
+  `PricePayload` (`{"amount": "12.50", "currency": "EUR"}`) or null,
+  never a float. Commands `RecordPurchase` (`copy`: a held entry's key, or
+  an `EntryStatement` that `entry_creation_events` turns into the copy,
+  tracking an untracked game in the same dispatch), `DescribePurchase`
+  (`StatedPrice`, and `purchased`, the one day correction, and `refund`,
+  so a PATCH is one dispatch), `RemovePurchase`, `RestorePurchase` in
+  `games/commands/purchase.py`; `check_price` refuses a non-number, a
+  sign, an amount above `LARGEST_AMOUNT` (derived from the column), a third
+  place, and requires a currency exactly where an amount is; `check_name`
+  the column's length and text JSONB cannot store (`check_note` takes the
+  notes, the copy's too). A copy a removed Release hides is refused as
+  well. Migration 0026 renames the legacy tables' indexes and constraints
+  off the `games_purchase_` prefix. Every command
+  but the record resolves through `library_purchase_row`. Writes
+  `games/writes/purchase.py`, reads `games/reads/purchases.py` (six marks).
+  #735 (P5a) moves every read onto it: the Purchases list,
+  `PurchaseFilter` (model key `purchase`; `price_state`
+  paid/free/unknown, `valuation` through the alias
+  `annotated_for_filtering(library)` registers, unscoped it refuses to
+  compile), the statistics (`games/reads/purchase_figures.py`, and the
+  copy figures in `games/reads/copy_figures.py`, `StatsSource.ENTRIES`),
+  and their links. `GameFilter.purchase_price_total` sums valuations
+  through `AggregateSpec.correlated` (`games.E016` walks the path). Migration 0032 rewrote saved
+  presets. `make verify-purchase-statistics` judges every figure
+  against a legacy snapshot (`games/purchase_parity.py`)
+  ([reads](docs/superpowers/specs/2026-10-01-issue-735-purchase-reads-design.md)).
+  Contract is
+  [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md).
+  #727 states a refund on the stated endpoint `PURCHASE_REFUND`
+  (`.refunded`, `.refund_corrected`, `.refund_voided`; migration 0028):
+  `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund`, and
+  `DescribePurchase`'s `refund` (`ActStatement` or `TAKE_REFUND_BACK`),
+  chosen by presence under the lock. A `game` refund ends its Owned,
+  unended copy, way `refunded`, in the same dispatch; a correction of the
+  day and a void move that end only while `refund_owns_the_end` says so:
+  the end directly follows a refund act of this purchase under one
+  `idempotency_key`, so an appender writes the two together and the
+  anonymizer keeps one key per dispatch. A refunded purchase moves only
+  beside its void. `restate_purchase` takes `refund` (`KEEP` keeps, `None`
+  voids) and answers `RestatedPurchase` with its `CopyEnd`. Contract is
+  [A purchase is refunded](docs/superpowers/specs/2026-10-01-issue-727-purchase-refund-design.md)
+  #723 (P4) converts every `LegacyPurchase` once, out of migration
+  `0031` (`elidable=True`): `games/backfill/purchase_plan.py` plans one
+  copy per (row, game), `games/backfill/purchase.py` states each through
+  the commands' `build` under `conversion:723:<act>:<legacy>:<game>` keys,
+  so a rerun appends nothing and a legacy row changed since (or an act
+  it no longer states) is a listed defect; bundles split by cents, DLC rows get their own `dlc` Game (an
+  infinite one excludes that Game, not the base), passes and upgrades ride the base's
+  owned copy, valuations are `seeded` (own amount in the target currency,
+  else the legacy converted share) beside the standing ones. `purchase_creation_events`
+  and `release_on` are the extracted halves. Contract is
+  [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
+  #724 (P5b) moves every purchase write onto the projection. Add to
+  library states the game's purchase with the copy (`PriceFields`,
+  `games/price_fields.py`, offers Paid, Free, Unknown; Add to library
+  swaps Unknown for No purchase; Add and Edit purchase live in
+  `games/purchase_forms.py`); amount refusals show on the field through
+  `check_price`;
+  an Edit page's untouched refund block states nothing. Refund is one
+  click (`refund_purchase_now`, through `refund_purchase`); its Undo is `UndoPurchaseRefund`,
+  refused under the lock once a later refund act overtook it.
+  Game detail lists each held copy's live, unrefunded purchases
+  (`held_purchases`), and the copy's menu carries their acts
+  (`games/views/purchase_menu.py`). Contract is
+  [Every purchase write](docs/superpowers/specs/2026-10-01-issue-724-purchase-writes-design.md)
+  #1266 (P5b2): the Purchases list is selectable; `purchase.edit`
+  (kind, price with Keep, day, note; `games/bulk_purchase_edit.py`) and
+  `purchase.remove` share `games/bulk_purchases.py`, and the list's read
+  `purchase_list_rows` lives in `games/reads/purchases.py`.
+  `DescribePurchase` refuses a kind change on a refunded purchase unless
+  the statement takes the refund back. `conversion_review`, a choice
+  field on `PurchaseFilter` and `LibraryEntryFilter` over `Category`
+  (`games/conversion_review.py`), reads the conversion's tags from
+  events; the Library page lists each category's count and link, and
+  Repurchased games, until `UserLibraryPreferences.conversion_review_hidden`
+  hides them (one-time; #1443 removes the review and its preference, and
+  keeps the field). The Library tab's Purchases column prints each held
+  purchase's price. Contract is
+  [Purchases selectable, conversion reviewed](docs/superpowers/specs/2026-10-02-issue-1266-purchases-selectable-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
 `games/endpoints.py` names its columns and three events (stated,
@@ -600,25 +715,25 @@ state a fourth act, `resumed` (#721): a dated fact, not a void, that
 writes the columns back (`ResumableEndpoint`, `ResumableEndpointEvents`,
 `project_resumed`, `resume_endpoint`); the row keeps nothing of it. `certainly_reversed` in
 `games/commands/endpoint.py` is the one day-order rule. Playthrough
-start and completion and a device's and a copy's end of access are its
-four. An
+start and completion, a device's and a copy's end of access, and a
+purchase's refund are its five. An
 **opening endpoint** (`OpeningEndpoint`, #719) is the variant the creation
 states: one event, the correction, and a marker that admits no null; its
 columns are a sibling of the stated shape under `EndpointColumnsBase`, so a
-void of one is a type error. An entry's acquisition is its one.
+void of one is a type error. An entry's acquisition and a purchase's day are its two.
 
-**Nothing user removes is destroyed** (#944). Six removable models — Game,
-Edition, Release, Platform, Purchase, FilterPreset —
+**Nothing user removes is destroyed** (#944). Five removable models — Game,
+Edition, Release, Platform, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
 `games/removal.py`; a projection's mark (session, run, record, device,
-entry) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
+entry, purchase) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
-`post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
-Game recounts its purchases. Playtime is no stored total, so a removed Session
-needs nothing beyond its mark.
+`post_save`. What signal would have done, `_AFTER_STAMP` does by hand: every
+catalog row marks its external references, and a restored Game mirrors its
+wikidata column. Playtime is no stored total, so a removed Session needs
+nothing beyond its mark.
 `for_library()`/`visible_to()` call `.alive()`, so removed row leaves every list,
-form, filter and API response at once; plain manager still sees it. Purchase live
-while any of its games is, or while it names none. Edition and Release read
+form, filter and API response at once; plain manager still sees it. Edition and Release read
 ancestors' marks as well as own, so removed Game hides both and restoring it
 leaves separately removed child out (#966). Only whole-library purge destroys
 anything.
@@ -626,7 +741,7 @@ anything.
 **Removing offers Undo** (#695). Every remove view hands an `UndoOffer`, the
 sentence and the restore route with the row's key, to `confirm_and_remove` or
 `confirm_and_apply`, which queues one notice through `common/notices.py` after
-the act succeeds; the toast's Undo form posts to that route. Nine POST-only restore routes, `restore_<entity>` and the reclassification's undo, share
+the act succeeds; the toast's Undo form posts to that route. The POST-only restore routes, `restore_<entity>` and the undos, share
 `restore_and_return()`; a refusal is an error message on the page the person
 stands on; the game route's error carries a "Try again" action, because its
 stamp clears before its command. `<toast-stack>` appends the page as `?origin=`
@@ -664,7 +779,8 @@ defect never reached included. `<continuing-batch>` posts the waypoint's form
 on connect, so only Stop is pressed. The Undo reads the act's name out of the
 batch's `source_metadata` and its rows through `undo_rows` -- for
 `EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the
-two reads that answer from events rather than a projection -- and runs as a
+reads that answer from events rather than a projection
+(`conversion_review` is another) -- and runs as a
 batch of its own. An act's scope is its own
 base narrowed by the statement's filter, never the filter alone, and an
 unreadable filter refuses rather than widening the act --
@@ -708,21 +824,18 @@ its Undo states each changed fact's earlier value, read by
 `batch_fact_changes` in
 `games/reads/playergame_facts.py`; #1256's Undo reads `status_change`. Contract is
 [Edit many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-game-edit-design.md).
-The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py` and
-`bulk_platform_edit.py`; what they share (the "Keep:" placeholder, the
+The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py`,
+`bulk_platform_edit.py`, `bulk_entry_edit.py` and `bulk_purchase_edit.py`; what they share (the "Keep:" placeholder, the
 carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
-imports no act, and `FactChange` is `games/reads/fact_change.py`.
+imports no act, and `FactChange` is `games/reads/fact_change.py`,
+whose `Fact.read` takes the whole event (`payload_fact` reads one key).
 
-**Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
-refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
-Steam cart) modeled as **separate single-game purchases**: add-purchase form's
-"separate price per game" mode (≥2 games) creates them, and row's **Split** action
-breaks existing bundle into per-game purchases (price split evenly as starting
-point). That why per-game refund/price need no through-model — each refundable
-unit is its own Purchase.
+**A purchase buys one copy** — the conversion split every legacy bundle
+into one purchase per game, cents split, so each refundable unit is its own
+row and needs no through-model.
 
-**Unset platform/device is NULL**: `Game.platform`, `Purchase.platform`,
+**Unset platform/device is NULL**: `Game.platform`, `Release.platform`,
 `PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
 removed them). "Unspecified" (platform) and "No device" are render-layer labels
 only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
@@ -730,9 +843,10 @@ only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
 (`_SetCriterion._not_in_q`), and conditional `UniqueConstraint` keeps (name, year)
 unique among platformless games.
 
-**GeneratedField constraint**: `price_per_game` and the projection's
-`effective_day`, `effective_duration` and `sort_instant` are computed by the
-database and cannot be written from application code.
+**GeneratedField constraint**: the projection's `effective_day`,
+`effective_duration` and `sort_instant`, and every temporal column's generated
+columns, are computed by the database and cannot be written from application
+code.
 
 ### Key patterns
 
@@ -812,8 +926,9 @@ Submodules re-exported via `common/components/__init__.py`:
   `paginated_table_content()`, `AddForm()`, `YearPicker()`,
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
 - **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
-  (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
-  `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
+  (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto),
+  `NameWithIcon()`, `PriceConverted()`, `PurchaseName()`, `PurchaseAmount()`
+  (refuses a row without its valuation alias)
 - **`filters.py`** — filter widget layer: criterion-blob parse helpers
   (`_*_from_field`, `_choice_from_raw`, `parse_filter_dict`), widget builders
   (`StringFilter`, `NumberFilter`, `_bool_control`, the `FilterSelect` adapters),
@@ -1004,16 +1119,20 @@ Filter presets have no classic views — they live on Ninja API; the UI is
 `<preset-panel>` behind the acts group's Presets segment, which loads and saves
 (#297, #1267).
 
-**Signals** (`games/signals.py`):
-- `pre_save` on Purchase: snapshots old price/currency for change detection
-- `post_save` on Purchase: sets `needs_price_update` if price/currency changed
-- `m2m_changed` on Purchase.games: updates `num_purchases` from live games
-  (`games.removal` recounts after stamp, which fires no signal)
+**Signals** (`games/signals.py`): a new user gets a library, preferences and
+conversion state; a settings write clears the resolver cache on commit; a raw
+delete of a row an event references is refused.
 
 **Background tasks**: django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
 broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
-`cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and converting purchase prices to
-resolved site `DEFAULT_CURRENCY`.
+`cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and valuing purchases in the
+resolved `DEFAULT_DISPLAY_CURRENCY`. One run values every `PurchaseValuation`
+and publishes the set; a purchase whose rate the source lacks is skipped, and a
+`DatabaseError` or a source that does not answer (`RateFetchFailed`) fails the
+run and schedules one retry.
+A purchase write that moves a
+value calls `request_revaluation`; the daily recovery requests a library at
+rest with `stale_purchases`.
 
 **Toast middleware** (`games/toast_middleware.py`): converts Django messages
 into one `X-Events` header carrying every queued message as a `show-toast`
@@ -1080,6 +1199,14 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   take `EntryAccess`/`EntryFormat` and refuse a present null at the schema;
   `POST /{id}/resume` `{resumed, note}` states a resume under an optional
   `Idempotency-Key`
+- `GET /api/purchases/`, `GET /{id}` — live purchases through
+  `readable_purchases`; `POST /` takes `entry_id` or `entry` (an entry
+  body), 201 and the row, `Idempotency-Key`; `PATCH /{id}` states each
+  named key, `amount` with `currency` and `purchased` with `purchase_note`
+  or 422, and `refund`, `{refunded, note}` or null voiding it, all in one
+  dispatch. `amount` is a JSON number or string in and a string out;
+  `check_price` answers a bad one at 409. `valuation` is null or the
+  current `{amount, currency}`. No removal route
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update
@@ -1097,7 +1224,7 @@ No template renders at runtime; UI is Python components.
 
 ### Frontend stack
 
-- **Alpine.js** (vendored) — three `x-mask` inputs in the session, purchase and
+- **Alpine.js** (vendored) — three `x-mask` inputs in the session, price and
   settings forms, nothing else; the toasts and both domain selectors are custom elements
 - **Flowbite** — its CSS theme and semantic tokens still in use; legacy
   `flowbite.min.js` bundle is vendored static asset only
@@ -1226,12 +1353,18 @@ named after what they cover; less obvious ones are `test_paths_return_200.py`
 invariants, round-trip).
 
 **`games/fixtures/sample.yaml.gz`** (the `make loadsample` seed) is **generated,
-anonymized production snapshot** — gzip-compressed (~147 KB vs 1.6 MB raw), do not
+anonymized production snapshot** — gzip-compressed (~950 KB), do not
 hand-edit. Regenerate with `make anonymize-sample` against dedicated restored
-production PostgreSQL database (then `make migrate`). It randomizes prices,
-game↔purchase links, and dates (per-game offset), clears free-text notes/names, and
-sanitizes audit timestamps — all inside rolled-back transaction, so source DB
-untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
+production PostgreSQL database (then `make migrate`). It dumps Platform, Game,
+Edition, Release, the event store and ExchangeRate; shifts dates (per-game
+offset), clears free-text notes/names and `source_metadata`, and sanitizes
+audit timestamps; in event payloads it clears every `NoteText`/`NameText` path
+and redraws every `AmountText`, lists included; `--name-overrides` reaches
+edition names too. Edition and Release mint at the epoch; a projected reference
+(an entry) takes its aggregate's new id, a join row's id is re-minted, and any
+other bare id must name an aggregate; a reference, id or payload that does not
+resolve or validate refuses with the event's or reference row's key. All
+inside rolled-back transaction, so source DB untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 
 **UI assertion is not database assertion.** A custom element may update its own
@@ -1258,13 +1391,13 @@ artifact absent; `make check`/`make test` order `test-ts` first.
 Chrome/Chromium (see env section); otherwise `uv run playwright install
 chromium` once. All JS vendored, so tests run fully offline. Bare `make test`
 collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.py`
-(onReady lifecycle, FilterSelect/RangeSlider/add-purchase),
+(onReady lifecycle, FilterSelect, sort headers),
 `test_search_select_e2e.py` (single-select edge cases on synthetic page).
 
 ## Conventions for AI assistants
 
-- **Never write to `GeneratedField`s** (`price_per_game`, `effective_day`,
-  `effective_duration`, `sort_instant`).
+- **Never write to `GeneratedField`s** (`effective_day`, `effective_duration`,
+  `sort_instant`, every temporal column's generated columns).
 - **One act, one verb** — event type, its command and its projection column share
   one verb, and column is `<act>_at`: nullable `DateTimeField` whose null is live
   state. See [Naming](docs/event-retention.md#naming).
@@ -1363,8 +1496,6 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   POST at same URL (which is what lets `?origin=` ride through confirmation for
   free); write them as one `confirm_and_remove()` call. Anything else that changes
   state is POST-only.
-- **Signals handle side-effects** — do not manually recalculate
-  `Purchase.num_purchases`.
 - **A list's columns are the person's** — a list column states a `key` and,
   where a person may not turn it off, `hideable=False`; `hidden_by_default`
   starts one off. `ListColumnChoice` holds the choice and
@@ -1409,6 +1540,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   (`games/forms.py`, which stamps `INPUT/SELECT/TEXTAREA_CLASS` incl. `disabled:`
   variants by widget type, skipping SearchSelect + checkbox). Every form on this
   path, including login. `extras` appends node into named field's row.
+  A row shown by a choice states it in CSS: `FormFieldGroup.class_` names a
+  Tailwind group, `FormFieldPresentation.row_class` reads it, as literals.
 - **Disabled form controls share one look** via constants in `primitives.py` —
   `DISABLED_CONTROL_CLASS` (`disabled:opacity-50 disabled:cursor-not-allowed`, on
   control itself) and `DISABLED_WITHIN_CLASS` (the `has-[:disabled]:` wrapper
@@ -1430,7 +1563,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   one fails unless marked `draws_unknown_icon` (`tests/icon_names.py`). Never
   edit `icons_generated.py` by hand.
 - **Inline Alpine.js** remains only as three `x-mask` inputs
-  (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
+  (`games/forms.py`, `games/price_fields.py`, `games/settings_forms.py`), each with the empty `x-data`
   scope the plugin needs. New
   behavior goes in custom element.
 - **Nothing destroys a record** — call `remove()`/`restore()` from

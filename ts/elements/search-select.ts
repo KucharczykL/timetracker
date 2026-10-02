@@ -49,7 +49,7 @@ const NAVIGABLE_ROWS =
 const HELD_VALUE_INPUTS = 'input[type="hidden"]:not([data-search-select-none])';
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
-// Consumers (e.g. add_purchase.ts) import these types — never redefine them.
+// Consumers import these types — never redefine them.
 export interface SearchSelectOption {
   value: string;
   label: string;
@@ -1269,10 +1269,7 @@ const initWidget = (containerElement: Element) => {
     if (emit) emitChange(option);
   };
 
-  // Public programmatic setter: commit a selection from code without a
-  // round-trip through the option list and without firing search-select:change,
-  // so a consumer's on-change logic cannot loop (origin: #192; also used by the
-  // add-purchase platform auto-fill, #259).
+  // Commit a value from code, firing no change.
   container._searchSelectSetSelected = (value: string, label?: string) => {
     selectOption({ value, label: label ?? value, data: {} }, false);
   };

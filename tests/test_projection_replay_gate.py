@@ -6,6 +6,7 @@ fixture would otherwise write projection rows no event states.
 
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any, NamedTuple
 
 import pytest
@@ -34,6 +35,7 @@ from games.commands.libraryentry import (
     CorrectEntryAcquisition,
     DescribeEntry,
     EndEntryAccess,
+    EntryStatement,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
@@ -71,6 +73,17 @@ from games.commands.playthrough import (
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
 )
+from games.commands.purchase import (
+    CorrectPurchaseRefund,
+    DescribePurchase,
+    RecordPurchase,
+    RefundPurchase,
+    RemovePurchase,
+    RestorePurchase,
+    StatedPrice,
+    UndoPurchaseRefund,
+    VoidPurchaseRefund,
+)
 from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
     UndoSessionReclassification,
@@ -95,6 +108,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
     PlaythroughKind,
+    Purchase,
     Release,
 )
 from games.projectors.device import Devices
@@ -103,8 +117,10 @@ from games.projectors.libraryentry import Entries
 from games.projectors.playergame import PlayerGames
 from games.projectors.playersession import PlayerSessions
 from games.projectors.playthrough import Playthroughs
+from games.projectors.purchase import Purchases
 from games.reads.calendar import calendar_day_zone
 from games.reads.playthrough_numbering import DISPLAY_ORDER_FIELDS
+from games.retention import purging_library
 from timetracker.temporal import TemporalValue
 
 pytestmark = [
@@ -565,9 +581,13 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             "record-entry",
         )
     )
-    run(
-        RecordEntry(release_id=first_release.pk, access="borrowed", format="physical"),
-        "record-entry-twice",
+    second_copy = _created_id(
+        run(
+            RecordEntry(
+                release_id=first_release.pk, access="borrowed", format="physical"
+            ),
+            "record-entry-twice",
+        )
     )
     #: Tracking pair, then the copy: three events.
     run(
@@ -646,6 +666,124 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     #: Left removed, so the mark is compared.
     run(RemoveEntry(entry_id=removed_entry), "remove-entry-again")
 
+    kept_purchase = _created_id(
+        run(
+            RecordPurchase(
+                kind="game",
+                copy=kept_entry,
+                name="Deluxe",
+                price=StatedPrice(Decimal("12.50"), "EUR"),
+                purchased=ActStatement(TemporalValue.parse("2021-05"), "sale"),
+            ),
+            "record-purchase",
+        )
+    )
+    #: Tracking pair, the copy, then the purchase.
+    fifth = Game.objects.create(library=library, name="Celeste")
+    (fifth_release,) = _default_releases(library, fifth)
+    run(
+        RecordPurchase(
+            kind="season_pass",
+            copy=EntryStatement(
+                release_id=fifth_release.pk, access="owned", format="digital"
+            ),
+        ),
+        "record-purchase-new-copy",
+    )
+    run(
+        DescribePurchase(
+            purchase_id=kept_purchase,
+            kind="upgrade",
+            name="Ultimate",
+            price=StatedPrice(None, ""),
+            note="gift",
+            entry_id=second_copy,
+        ),
+        "describe-purchase",
+    )
+    run(
+        DescribePurchase(
+            purchase_id=kept_purchase, purchased=ActStatement(None, "no receipt")
+        ),
+        "correct-purchase-day",
+    )
+    #: A game on a new owned copy: refunds couple.
+    refundable_copy = _created_id(
+        run(
+            RecordEntry(release_id=fifth_release.pk, access="owned", format="physical"),
+            "record-entry-to-refund",
+        )
+    )
+    refunded_purchase = _created_id(
+        run(
+            RecordPurchase(
+                kind="game",
+                copy=refundable_copy,
+                purchased=ActStatement(TemporalValue.parse("2022-01"), ""),
+            ),
+            "record-purchase-to-refund",
+        )
+    )
+    run(
+        RefundPurchase(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-02"), "store"),
+        ),
+        "refund-purchase",
+    )
+    run(
+        CorrectPurchaseRefund(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-03"), "store"),
+        ),
+        "correct-purchase-refund",
+    )
+    run(VoidPurchaseRefund(purchase_id=refunded_purchase), "void-purchase-refund")
+    undone = run(
+        RefundPurchase(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-03"), ""),
+        ),
+        "refund-purchase-to-undo",
+    )
+    assert undone.sequences is not None
+    run(
+        UndoPurchaseRefund(
+            purchase_id=refunded_purchase, refunded_at=undone.sequences.first
+        ),
+        "undo-purchase-refund",
+    )
+    #: Left refunded, so the columns are compared.
+    run(
+        RefundPurchase(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-04"), "again"),
+        ),
+        "refund-purchase-again",
+    )
+    run(RemovePurchase(purchase_id=kept_purchase), "remove-purchase")
+    run(RestorePurchase(purchase_id=kept_purchase), "restore-purchase")
+    removed_purchase = _created_id(
+        run(
+            RecordPurchase(kind="game", copy=second_copy),
+            "record-purchase-to-remove",
+        )
+    )
+    #: Left removed, so the mark is compared.
+    run(RemovePurchase(purchase_id=removed_purchase), "remove-purchase-again")
+    #: A copy's removal takes its purchases.
+    run(RemoveEntry(entry_id=refundable_copy), "remove-copy-with-purchase")
+    run(RestoreEntry(entry_id=refundable_copy), "restore-copy-with-purchase")
+    cascaded_copy = _created_id(
+        run(
+            RecordEntry(release_id=fifth_release.pk, access="owned", format="digital"),
+            "record-copy-to-cascade",
+        )
+    )
+    run(RecordPurchase(kind="game", copy=cascaded_copy), "record-purchase-to-cascade")
+    #: Left removed with its purchase.
+    run(RemoveEntry(entry_id=cascaded_copy), "remove-copy-and-purchase")
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
     #: Left removed, for the same reason as the third run.
@@ -654,12 +792,13 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the six listed projectors read."""
+    """Every type the seven listed projectors read."""
     return {
         spec.event_type
         for handles in (
             Devices.handles,
             Entries.handles,
+            Purchases.handles,
             PlayerGames.handles,
             Playthroughs.handles,
             PlayerSessions.handles,
@@ -687,7 +826,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of forty-nine types."""
+    """A real stream, short of sixty-two types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -703,7 +842,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 50
+    assert len(missing) == 62
 
 
 def build_neighbour(user, library) -> None:
@@ -766,6 +905,17 @@ def build_neighbour(user, library) -> None:
         idempotency_key="neighbour-entry",
     )
     assert result.outcome is CommandOutcome.APPENDED, "neighbour-entry"
+    #: A neighbour in the seventh table.
+    result = dispatch(
+        RecordPurchase(
+            kind="game",
+            copy=LibraryEntry.objects.get(library=library).pk,
+        ),
+        actor=user,
+        library=library,
+        idempotency_key="neighbour-purchase",
+    )
+    assert result.outcome is CommandOutcome.APPENDED, "neighbour-purchase"
 
 
 @pytest.fixture
@@ -789,11 +939,12 @@ type ProjectionSnapshot = tuple[
     ProjectionRows,
     ProjectionRows,
     ProjectionRows,
+    ProjectionRows,
 ]
 
 
 def rows_of(library) -> ProjectionSnapshot:
-    """Six tables' whole rows, in key order.
+    """Seven tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because
@@ -818,10 +969,13 @@ def rows_of(library) -> ProjectionSnapshot:
     entries: ProjectionRows = list(
         LibraryEntry.objects.filter(library=library).order_by("pk").values()
     )
-    assert tracked and runs and sessions and records and joins and entries, (
+    purchases: ProjectionRows = list(
+        Purchase.objects.filter(library=library).order_by("pk").values()
+    )
+    assert all((tracked, runs, sessions, records, joins, entries, purchases)), (
         f"Library {library.pk} holds no rows to compare."
     )
-    return (tracked, runs, sessions, records, joins, entries)
+    return (tracked, runs, sessions, records, joins, entries, purchases)
 
 
 def row_versions(library) -> list[tuple[str, str]]:
@@ -845,21 +999,26 @@ def row_versions(library) -> list[tuple[str, str]]:
             SELECT id::text, xmin::text FROM games_historicalplaytimerun WHERE library_id = %s
             UNION ALL
             SELECT id::text, xmin::text FROM games_libraryentry WHERE library_id = %s
+            UNION ALL
+            SELECT id::text, xmin::text FROM games_purchase WHERE library_id = %s
             ORDER BY 1
             """,
-            [library.pk] * 6,
+            [library.pk] * 7,
         )
         return cursor.fetchall()
 
 
 def empty_projections(library) -> None:
     """By library, children first; records before sessions."""
-    LibraryEntry.objects.filter(library=library).delete()
-    HistoricalPlaytimeRun.objects.filter(library=library).delete()
-    HistoricalPlaytime.objects.filter(library=library).delete()
-    PlayerSession.objects.filter(library=library).delete()
-    Playthrough.objects.filter(library=library).delete()
-    PlayerGame.objects.filter(library=library).delete()
+    #: Purchase events name entries; retention refuses.
+    with purging_library():
+        Purchase.objects.filter(library=library).delete()
+        LibraryEntry.objects.filter(library=library).delete()
+        HistoricalPlaytimeRun.objects.filter(library=library).delete()
+        HistoricalPlaytime.objects.filter(library=library).delete()
+        PlayerSession.objects.filter(library=library).delete()
+        Playthrough.objects.filter(library=library).delete()
+        PlayerGame.objects.filter(library=library).delete()
 
 
 def test_replaying_an_emptied_library_reproduces_every_table(
@@ -906,6 +1065,7 @@ def test_a_rebuild_swaps_every_table_with_an_empty_diff(
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
     assert rows_of(neighbour) == untouched
     assert_entries_belong_to_their_games(owned_library)
@@ -972,6 +1132,9 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
         library=owned_library, removed_at__isnull=False
     ).exists()
     assert LibraryEntry.objects.filter(
+        library=owned_library, removed_at__isnull=False
+    ).exists()
+    assert Purchase.objects.filter(
         library=owned_library, removed_at__isnull=False
     ).exists()
 

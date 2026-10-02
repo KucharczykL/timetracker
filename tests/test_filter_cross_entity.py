@@ -14,6 +14,7 @@ parent's n-ary ``AND`` list. This module asserts:
 
 import json
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -21,7 +22,10 @@ import pytest
 from devices import create_device
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from entries import record_entry
 from filter_contexts import unrestricted_filter_context
+from graphs import default_graph
+from purchases import record_purchase, refund_purchase
 from session_rows import session_row
 
 from games.filters import (
@@ -29,7 +33,14 @@ from games.filters import (
     parse_purchase_filter,
     parse_session_filter,
 )
-from games.models import Device, Game, Platform, PlayerSession, Playthrough, Purchase
+from games.models import (
+    Device,
+    Game,
+    Platform,
+    PlayerSession,
+    Playthrough,
+    Purchase,
+)
 from timetracker.temporal import TemporalValue
 
 UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
@@ -47,7 +58,7 @@ def _single_library_filter_world(db, monkeypatch):
 
         return create
 
-    for model in (Game, Purchase):
+    for model in (Game,):
         manager = model.objects
         monkeypatch.setattr(manager, "create", owned_create(manager.create))
     return user.library
@@ -75,6 +86,19 @@ def _game_ids(filter_json: str) -> set[UUID]:
         .distinct()
         .values_list("id", flat=True)
     )
+
+
+def _bought(game, *, format: str = "digital", refunded: bool = False, **purchase):
+    """One copy of the game, bought."""
+    entry = record_entry(
+        game.library, default_graph(game, game.library).release, format=format
+    )
+    bought = record_purchase(
+        entry, purchased=TemporalValue.parse("2024-01-01"), **purchase
+    )
+    if refunded:
+        refund_purchase(bought, TemporalValue.parse("2024-02-01"))
+    return bought
 
 
 def _set_criterion(value: str, label: str) -> dict:
@@ -127,62 +151,34 @@ def test_device_widget_json_selects_games(device_world):
 def purchase_world(db):
     pc = Platform.objects.create(name="PC")
     game_buyer = Game.objects.create(name="GameBuyer", platform=pc)
-    dlc_buyer = Game.objects.create(name="DlcBuyer", platform=pc)
+    pass_buyer = Game.objects.create(name="PassBuyer", platform=pc)
     Game.objects.create(name="NoPurchase", platform=pc)
 
-    p1 = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.GAME,
-        converted_price=10.0,
-    )
-    p1.games.set([game_buyer])
-    p2 = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.DLC,
-        related_game=dlc_buyer,
-        converted_price=50.0,
-    )
-    p2.games.set([dlc_buyer])
-    return {"game_buyer": game_buyer.id, "dlc_buyer": dlc_buyer.id}
+    _bought(game_buyer, amount=Decimal(10))
+    _bought(pass_buyer, kind="season_pass", name="Pass", amount=Decimal(50))
+    return {"game_buyer": game_buyer.id, "pass_buyer": pass_buyer.id}
 
 
-def test_purchase_type_widget_json_selects_games(purchase_world):
+def test_purchase_kind_widget_json_selects_games(purchase_world):
     filter_json = json.dumps(
-        {"AND": [{"purchase_filter": {"type": _set_criterion("game", "Game")}}]}
+        {"AND": [{"purchase_filter": {"kind": _set_criterion("game", "Game")}}]}
     )
     assert _game_ids(filter_json) == {purchase_world["game_buyer"]}
 
 
-def test_purchase_ownership_type_widget_json_selects_games(db):
-    """Repointed ownership_type widget emits AND→purchase_filter→ownership_type."""
+def test_purchase_format_widget_json_selects_games(db):
+    """AND→purchase_filter→format reads the copy."""
     pc = Platform.objects.create(name="PC")
     physical = Game.objects.create(name="Physical", platform=pc)
     digital = Game.objects.create(name="Digital", platform=pc)
     Game.objects.create(name="NoPurchase", platform=pc)
-
-    physical_purchase = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        ownership_type=Purchase.PHYSICAL,
-    )
-    physical_purchase.games.set([physical])
-    digital_purchase = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        ownership_type=Purchase.DIGITAL,
-    )
-    digital_purchase.games.set([digital])
+    _bought(physical, format="physical")
+    _bought(digital)
 
     filter_json = json.dumps(
         {
             "AND": [
-                {
-                    "purchase_filter": {
-                        "ownership_type": _set_criterion("ph", "Physical")
-                    }
-                }
+                {"purchase_filter": {"format": _set_criterion("physical", "Physical")}}
             ]
         }
     )
@@ -195,7 +191,7 @@ def test_purchase_price_any_widget_json_selects_games(purchase_world):
             "AND": [
                 {
                     "purchase_filter": {
-                        "converted_price": {
+                        "amount": {
                             "value": 20,
                             "modifier": "GREATER_THAN",
                         }
@@ -204,7 +200,7 @@ def test_purchase_price_any_widget_json_selects_games(purchase_world):
             ]
         }
     )
-    assert _game_ids(filter_json) == {purchase_world["dlc_buyer"]}  # 50 > 20
+    assert _game_ids(filter_json) == {purchase_world["pass_buyer"]}  # 50 > 20
 
 
 def _state_run(game: Game, **stated: object) -> None:
@@ -356,14 +352,8 @@ def test_purchase_refunded_false_matches_none(db):
     refunded = Game.objects.create(name="Refunded", platform=pc)
     kept = Game.objects.create(name="Kept", platform=pc)
     none = Game.objects.create(name="NoPurchase", platform=pc)
-    p1 = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        date_refunded=date(2024, 2, 1),
-    )
-    p1.games.set([refunded])
-    p2 = Purchase.objects.create(price_currency="CZK", date_purchased=date(2024, 1, 1))
-    p2.games.set([kept])
+    _bought(refunded, refunded=True)
+    _bought(kept)
 
     filter_json = _relation_bool_json(
         "purchase_filter",
@@ -373,41 +363,14 @@ def test_purchase_refunded_false_matches_none(db):
     assert _game_ids(filter_json) == {kept.id, none.id}
 
 
-def test_purchase_infinite_true_matches_any(db):
-    pc = Platform.objects.create(name="PC")
-    infinite = Game.objects.create(name="Infinite", platform=pc)
-    finite = Game.objects.create(name="Finite", platform=pc)
-    p1 = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=True
-    )
-    p1.games.set([infinite])
-    p2 = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=False
-    )
-    p2.games.set([finite])
-
-    filter_json = _relation_bool_json(
-        "purchase_filter",
-        {"infinite": {"value": True, "modifier": "EQUALS"}},
-        value=True,
-    )
-    assert _game_ids(filter_json) == {infinite.id}
-
-
 def test_purchase_refunded_true_matches_any(db):
     """True → ANY: games with at least one refunded purchase."""
     pc = Platform.objects.create(name="PC")
     refunded = Game.objects.create(name="Refunded", platform=pc)
     kept = Game.objects.create(name="Kept", platform=pc)
     Game.objects.create(name="NoPurchase", platform=pc)
-    p1 = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        date_refunded=date(2024, 2, 1),
-    )
-    p1.games.set([refunded])
-    p2 = Purchase.objects.create(price_currency="CZK", date_purchased=date(2024, 1, 1))
-    p2.games.set([kept])
+    _bought(refunded, refunded=True)
+    _bought(kept)
 
     filter_json = _relation_bool_json(
         "purchase_filter",
@@ -417,82 +380,35 @@ def test_purchase_refunded_true_matches_any(db):
     assert _game_ids(filter_json) == {refunded.id}
 
 
-def test_purchase_infinite_false_matches_none(db):
-    """False → NONE: games with no infinite purchase, including zero-purchase games."""
-    pc = Platform.objects.create(name="PC")
-    infinite = Game.objects.create(name="Infinite", platform=pc)
-    finite = Game.objects.create(name="Finite", platform=pc)
-    no_purchase = Game.objects.create(name="NoPurchase", platform=pc)
-    p1 = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=True
-    )
-    p1.games.set([infinite])
-    p2 = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 1, 1), infinite=False
-    )
-    p2.games.set([finite])
-
-    filter_json = _relation_bool_json(
-        "purchase_filter",
-        {"infinite": {"value": True, "modifier": "EQUALS"}},
-        value=False,
-    )
-    assert _game_ids(filter_json) == {finite.id, no_purchase.id}
-
-
 # ── two widgets over one relation = independent EXISTS ────────────────────────
 
 
 @pytest.fixture
 def two_purchase_world(db):
-    """A game whose two qualifying purchases are *distinct* rows: a type=game
-    purchase (digital ownership) and a separate ownership=physical purchase
-    (dlc type). Only independent EXISTS matches it; a merged single-node filter
-    (one purchase must be BOTH) does not."""
+    """A game whose two qualifying purchases are *distinct* rows: a game
+    purchase on a digital copy and a pass on a separate physical copy. Only
+    independent EXISTS matches it; a merged single-node filter (one purchase
+    must be BOTH) does not."""
     pc = Platform.objects.create(name="PC")
     split = Game.objects.create(name="Split", platform=pc)
     combined = Game.objects.create(name="Combined", platform=pc)
 
-    game_digital = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.GAME,
-        ownership_type=Purchase.DIGITAL,
-    )
-    game_digital.games.set([split])
-    dlc_physical = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.DLC,
-        related_game=split,
-        ownership_type=Purchase.PHYSICAL,
-    )
-    dlc_physical.games.set([split])
-
-    # combined: a single purchase that is BOTH type=game AND ownership=physical.
-    both = Purchase.objects.create(
-        price_currency="CZK",
-        date_purchased=date(2024, 1, 1),
-        type=Purchase.GAME,
-        ownership_type=Purchase.PHYSICAL,
-    )
-    both.games.set([combined])
+    _bought(split)
+    _bought(split, format="physical", kind="season_pass", name="Pass")
+    # combined: one purchase that is BOTH kind=game AND on a physical copy.
+    _bought(combined, format="physical")
     return {"split": split.id, "combined": combined.id}
 
 
 def test_two_widgets_same_relation_are_independent_exists(two_purchase_world):
-    """purchase_type=game AND purchase_ownership=physical as two AND elements:
-    independent EXISTS, so a game with a type=game purchase AND a SEPARATE
-    physical-ownership purchase matches."""
+    """kind=game AND format=physical as two AND elements: independent
+    EXISTS, so a game with a game purchase AND a SEPARATE purchase on a
+    physical copy matches."""
     independent = json.dumps(
         {
             "AND": [
-                {"purchase_filter": {"type": _set_criterion("game", "Game")}},
-                {
-                    "purchase_filter": {
-                        "ownership_type": _set_criterion("ph", "Physical")
-                    }
-                },
+                {"purchase_filter": {"kind": _set_criterion("game", "Game")}},
+                {"purchase_filter": {"format": _set_criterion("physical", "Physical")}},
             ]
         }
     )
@@ -504,14 +420,14 @@ def test_two_widgets_same_relation_are_independent_exists(two_purchase_world):
 
 def test_merged_single_node_requires_one_matching_row(two_purchase_world):
     """Contrast: the WRONG single merged relation node requires ONE purchase to
-    match BOTH type=game and ownership=physical, so the split game is excluded."""
+    match BOTH kind=game and format=physical, so the split game is excluded."""
     merged = json.dumps(
         {
             "AND": [
                 {
                     "purchase_filter": {
-                        "type": _set_criterion("game", "Game"),
-                        "ownership_type": _set_criterion("ph", "Physical"),
+                        "kind": _set_criterion("game", "Game"),
+                        "format": _set_criterion("physical", "Physical"),
                     }
                 }
             ]
@@ -530,14 +446,8 @@ def test_purchase_finished_widget_json_selects_purchases(db):
     other_game = Game.objects.create(name="Other", platform=pc)
     _finished(finished_game, date(2024, 6, 15))
 
-    bought_finished = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 1, 1)
-    )
-    bought_finished.games.set([finished_game])
-    bought_other = Purchase.objects.create(
-        price_currency="CZK", date_purchased=date(2024, 1, 1)
-    )
-    bought_other.games.set([other_game])
+    bought_finished = _bought(finished_game)
+    _bought(other_game)
 
     filter_json = json.dumps(
         {

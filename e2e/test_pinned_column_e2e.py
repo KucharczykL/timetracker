@@ -13,17 +13,22 @@ produce deliberately, and the CSS under test is identical in both.
 
 import re
 from datetime import datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 from column_choice import show_every_column
 from devices import create_device
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from playwright.sync_api import Browser, Page, ViewportSize
+from purchases import record_purchase
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Game, Platform, Purchase
+from games.models import Game, Platform
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -78,14 +83,13 @@ def populated(e2e_library) -> None:
             started_at=BASE + timedelta(days=index),
             ended_at=BASE + timedelta(days=index, hours=2),
         )
-        purchase = Purchase.objects.create(
-            library=e2e_library,
-            platform=platform,
-            date_purchased=BASE + timedelta(days=index),
-            price=1234,
-            price_currency="USD",
+        graph = default_graph(subject, e2e_library, platform=platform)
+        record_purchase(
+            record_entry(e2e_library, graph.release),
+            amount=Decimal(1234),
+            currency="USD",
+            purchased=TemporalValue.from_day((BASE + timedelta(days=index)).date()),
         )
-        purchase.games.add(subject)
 
 
 def _login(page: Page, live_server, django_user_model) -> Page:
@@ -254,11 +258,9 @@ def test_a_control_scrolled_under_the_pin_is_cleared_of_it_on_focus(
     scrolls it clear on focus — it stays hidden under the pin. It is
     `md:`-gated, so this only holds at the wide viewport."""
     page = no_js_page
-    _open(page, live_server, "games:list_purchases", WIDE)
+    _open(page, live_server, "games:list_games", WIDE)
     assert page.evaluate(OVERFLOW) > 0, "no overflow; nothing can park under the pin"
-    # The price column's popover trigger is the earliest control after the
-    # pinned name column. Scroll it to the pin's own midpoint so it is planted
-    # behind the pin, not merely nearby.
+    # Plant the next control under the pin.
     page.evaluate(
         f"""() => {{
             const region = document.querySelector('{REGION}');
@@ -352,7 +354,7 @@ def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
     """The defect this phase had to solve: a panel nested in a sticky cell is
     scoped to that cell's stacking context, so later rows paint over it.
 
-    Purchases renders its first cell through `LinkedPurchase` → `TruncatedText`
+    Purchases renders its first cell through `PurchaseName` → `TruncatedText`
     with `reveal="auto"`, so the tooltip exists only while the name is actually
     clipped — which the long fixture name guarantees at this width.
     """

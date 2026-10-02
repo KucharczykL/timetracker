@@ -34,6 +34,7 @@ from games.events.benchmark import (
     session_command_budget,
     summarize,
 )
+from games.events.benchmark_reads import READS
 from games.events.benchmark_run import run_benchmark
 from games.events.benchmark_workload import (
     purge_scratch_user,
@@ -70,6 +71,7 @@ from games.models import (
     PlayerGame,
     PlayerSession,
     Playthrough,
+    Purchase,
 )
 from games.reads.calendar import calendar_day_zone
 
@@ -517,11 +519,13 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     record_shadow = f"{record_live}{SHADOW_SUFFIX}"
     join_live = HistoricalPlaytimeRun._meta.db_table
     join_shadow = f"{join_live}{SHADOW_SUFFIX}"
-    #: Nor a device, nor an entry.
+    #: Nor a device, an entry or a purchase.
     device_live = Device._meta.db_table
     device_shadow = f"{device_live}{SHADOW_SUFFIX}"
     entry_live = LibraryEntry._meta.db_table
     entry_shadow = f"{entry_live}{SHADOW_SUFFIX}"
+    purchase_live = Purchase._meta.db_table
+    purchase_shadow = f"{purchase_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
     #: Every shadow, and every swap beside it.
@@ -542,6 +546,8 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
         + replay.statements_per_table[device_live]
         + replay.statements_per_table.get(entry_shadow, 0)
         + replay.statements_per_table[entry_live]
+        + replay.statements_per_table.get(purchase_shadow, 0)
+        + replay.statements_per_table[purchase_live]
     )
 
 
@@ -658,6 +664,10 @@ def test_the_read_scenario_times_every_named_read(owned_library):
         "stats_by_platform",
         "stats_by_month",
         "stats_superlatives",
+        "purchase_page",
+        "stats_purchases",
+        "stats_copies",
+        "game_price_total",
     ]
     assert all(read.timings.samples == 2 for read in reads)
 
@@ -666,7 +676,7 @@ def test_the_read_scenario_times_every_named_read(owned_library):
 def test_the_read_scenario_runs_on_an_empty_library(owned_library):
     reads = run_read_scenario(owned_library, iterations=1, warmup=0)
 
-    assert len(reads) == 6
+    assert len(reads) == 10
 
 
 @pytest.mark.django_db(transaction=True)
@@ -843,10 +853,10 @@ def test_library_mode_reads_without_dispatching(owned_library):
     assert report.session_command is None
     assert report.record_command is None
     assert report.bulk_command is None
-    assert len(report.reads) == 6
+    assert len(report.reads) == len(READS)
     assert LibraryEvent.objects.filter(library=owned_library).count() == events_before
     assert [budget.name for budget in report.budgets][-1] == "rebuild"
-    assert len(report.budgets) == 7
+    assert len(report.budgets) == len(READS) + 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -860,9 +870,9 @@ def test_the_report_carries_every_scenario_and_a_schema():
     assert report.record_command is not None
     assert report.bulk_command is not None
     assert report.bulk_resolve is not None
-    assert len(report.reads) == 6
+    assert len(report.reads) == len(READS)
     names = [budget.name for budget in report.budgets]
-    assert len(names) == 11
+    assert len(names) == len(READS) + 5
     assert names[1:5] == [
         "session command p95",
         "record command p95",
@@ -999,6 +1009,7 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
 

@@ -6,13 +6,17 @@ buys is reachable from the keyboard.
 """
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from playwright.sync_api import Page, expect
+from purchases import record_purchase, refund_purchase
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
@@ -22,7 +26,6 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     Playthrough,
-    Purchase,
 )
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
@@ -110,15 +113,20 @@ def populated(e2e_user, e2e_library) -> None:
     )
     # One refunded, one not, so both renderings of the Refunded column appear.
     for index, purchased_game in enumerate((game, short)):
-        purchase = Purchase.objects.create(
-            library=e2e_library,
-            platform=platform,
-            date_purchased=BASE + timedelta(days=index),
-            date_refunded=BASE + timedelta(days=index + 5) if index == 0 else None,
-            price=1234,
-            price_currency="USD",
+        graph = default_graph(purchased_game, e2e_library, platform=platform)
+        purchase = record_purchase(
+            record_entry(e2e_library, graph.release),
+            kind="season_pass",
+            name="Pass",
+            amount=Decimal(1234),
+            currency="USD",
+            purchased=TemporalValue.from_day((BASE + timedelta(days=index)).date()),
         )
-        purchase.games.add(purchased_game)
+        if index == 0:
+            refund_purchase(
+                purchase,
+                TemporalValue.from_day((BASE + timedelta(days=index + 5)).date()),
+            )
     #: A command, so History has an entry:
     #: it reads events, not this direct write.
     track_game(e2e_user, game, correlation_id=new_correlation_id())
@@ -191,7 +199,7 @@ def test_no_game_detail_mini_table_cell_wraps(
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
     #: The page measured is the populated one:
     #: every table, and History with an entry.
-    expect(page.locator('[role="region"] table')).to_have_count(4)
+    expect(page.locator('[role="region"] table')).to_have_count(3)
     expect(page.locator("#history-container li")).to_have_count(1)
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})

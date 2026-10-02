@@ -17,14 +17,16 @@ from devices import create_device
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row
 
 from games.models import (
     Game,
     Platform,
     Playthrough,
-    Purchase,
 )
 
 ZONEINFO = ZoneInfo("Europe/Prague")
@@ -125,22 +127,10 @@ class HtmlValidityTest(TestCase):
             library=library, name="Second Game In The Bundle", platform=self.platform
         )
 
-        # A multi-game bundle: LinkedPurchase renders the games-list popover.
-        self.bundle = Purchase.objects.create(
-            price_currency="CZK",
-            library=library,
-            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
+        self.entry = record_entry(
+            library, default_graph(self.long_game, library).release
         )
-        self.bundle.games.add(self.long_game, self.other_game)
-        self.other_bundle = Purchase.objects.create(
-            price_currency="CZK",
-            library=library,
-            date_purchased=datetime(2022, 9, 27, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
-            price=1,
-        )
-        self.other_bundle.games.add(self.long_game, self.other_game)
+        self.purchase = record_purchase(self.entry, name="Deluxe")
 
         self.session = session_row(
             self.long_game,
@@ -162,16 +152,17 @@ class HtmlValidityTest(TestCase):
             reverse("games:list_devices"),
             reverse("games:list_platforms"),
             self.long_game.get_absolute_url(),
-            reverse("games:view_purchase", args=[self.bundle.id]),
             reverse("games:edit_game", args=[self.long_game.id]),
             reverse("games:remove_game", args=[self.long_game.id]),
             reverse("games:remove_session", args=[self.session.id]),
-            reverse("games:remove_purchase", args=[self.bundle.id]),
+            reverse("games:remove_purchase", args=[self.purchase.id]),
+            reverse("games:edit_purchase", args=[self.purchase.id]),
+            reverse("games:add_purchase", args=[self.entry.id]),
+            reverse("games:add_library_entry", args=[self.long_game.id]),
             reverse("games:remove_playthrough", args=[self.playthrough.id]),
             reverse("games:remove_platform", args=[self.platform.id]),
             reverse("games:remove_device", args=[self.device.id]),
             reverse("games:add_game"),
-            reverse("games:add_purchase"),
             reverse("games:add_session"),
             reverse("games:add_playthrough"),
             reverse("games:stats_alltime"),

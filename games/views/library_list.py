@@ -47,6 +47,7 @@ from games.list_columns import column_choice
 from games.models import EntryAccess, EntryFormat, LibraryEntry
 from games.reads.endpoints import stated, way_of
 from games.reads.entries import library_entries
+from games.reads.purchases import held_purchases
 from games.reads.releases import platform_words
 from games.sorting import ENTRY_DEFAULT_SORT, ENTRY_SORTS, apply_sort, parse_find_filter
 from games.views.entry_menu import entry_row_menu
@@ -55,6 +56,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.purchase_menu import price_lines
 
 ENTRY_COLUMNS: list[Column] = [
     Column("Game", "name", key="game", hideable=False),
@@ -62,6 +64,7 @@ ENTRY_COLUMNS: list[Column] = [
     #: Access drops last when narrow.
     Column("Access", "access", priority=3, key="access"),
     Column("Format", "format", key="format"),
+    Column("Purchases", key="purchases"),
     Column("Acquired", "acquired", key="acquired"),
     Column("Access ended", "ended", priority=2, key="ended"),
     Column("Note", key="note", wrap=True, hidden_by_default=True),
@@ -107,6 +110,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
     page_entries: list[LibraryEntry] = list(page)
 
     csrf_token = get_token(request)
+    purchases = held_purchases(library, (entry.pk for entry in page_entries))
     hidden, picker = column_choice(request, "entries", ENTRY_COLUMNS)
     kept_columns, kept_cells = drop_columns(
         ENTRY_COLUMNS,
@@ -116,6 +120,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
                 platform_words(entry.release),
                 EntryAccess(entry.access).label,
                 EntryFormat(entry.format).label,
+                price_lines(purchases.get(entry.pk, ())),
                 ""
                 if entry.acquired is None
                 else present_temporal_value(entry.acquired, presentation),
@@ -137,7 +142,12 @@ def list_library(request: HttpRequest) -> HttpResponse:
             make_row(
                 *cells,
                 key=str(entry.pk),
-                menu=entry_row_menu(entry, origin, csrf_token),
+                menu=entry_row_menu(
+                    entry,
+                    origin,
+                    csrf_token,
+                    purchases=purchases.get(entry.pk, ()),
+                ),
             )
             for entry, cells in zip(page_entries, kept_cells, strict=True)
         ],

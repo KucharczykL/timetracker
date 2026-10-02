@@ -246,13 +246,13 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
             self.assertNotIn("data-search-select-status", html)
 
     def test_widget_adapter_single_selects_carry_the_cue(self):
-        from games.forms import SearchSelectMultiple, SearchSelectWidget
+        from games.forms import SearchSelectWidget
 
         single = SearchSelectWidget(
             search_url="/api/games/search", options_resolver=lambda values: []
         ).render("device", None)
         self.assertIn("data-search-select-status", single)
-        multi = SearchSelectMultiple(
+        multi = SearchSelectWidget(
             search_url="/api/games/search",
             options_resolver=lambda values: [],
             multi_select=True,
@@ -696,13 +696,11 @@ class SearchLabelTest(django.test.TestCase):
         self.assertIsNone(game.platform)
         self.assertEqual(game.search_label, "Tetris (Unspecified)")
 
-    def test_choice_fields_use_search_label(self):
-        from games.forms import MultipleGameChoiceField, SingleGameChoiceField
+    def test_the_choice_field_uses_search_label(self):
+        from games.forms import SingleGameChoiceField
 
         queryset = Game.objects.for_library(self.library)
-        multi = MultipleGameChoiceField(queryset=queryset)
         single = SingleGameChoiceField(queryset=queryset)
-        self.assertEqual(multi.label_from_instance(self.game), self.game.search_label)
         self.assertEqual(single.label_from_instance(self.game), self.game.search_label)
 
     def test_api_uses_search_label(self):
@@ -1421,12 +1419,11 @@ class NoneLabelWidgetTest(unittest.TestCase):
     """Optional pickers hold none."""
 
     def test_each_optional_picker_holds_none(self):
-        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+        from games.forms import HistoricalPlaytimeForm, SessionForm
 
         cases = [
             (SessionForm, "device", "No device"),
             (HistoricalPlaytimeForm, "device", "No device"),
-            (PurchaseForm, "platform", "Unspecified"),
         ]
         for form_class, name, label in cases:
             with self.subTest(form=form_class.__name__, field=name):
@@ -1454,12 +1451,11 @@ class NoneLabelWidgetTest(unittest.TestCase):
             str(DeviceForm()["device"])
 
     def test_none_and_nothing_picked_both_clean_to_none(self):
-        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+        from games.forms import HistoricalPlaytimeForm, SessionForm
 
         for form_class, name in (
             (SessionForm, "device"),
             (HistoricalPlaytimeForm, "device"),
-            (PurchaseForm, "platform"),
         ):
             field = form_class.base_fields[name]
             for data in ({name: ""}, {}):

@@ -91,7 +91,13 @@ def release_on_platform(
         raise Http404("No such game.")
     if game.library_id is None:
         raise RowRefused(SHARED_GAME_RELEASE)
-    platform = _platform_named(library, platform_name.strip())
+    return release_on(library, game, _platform_named(library, platform_name.strip()))
+
+
+def release_on(library: UserLibrary, game: Game, platform: Platform) -> PlatformRelease:
+    """That platform's live Release, stated if absent."""
+    if game.library_id is None:
+        raise RowRefused(SHARED_GAME_RELEASE)
 
     def state() -> PlatformRelease:
         #: Concurrent creates make one Release.

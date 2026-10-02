@@ -54,13 +54,13 @@ def test_a_chained_form_forwards_the_origin(logged_in, db, catalog_graph_post):
         {
             "name": "Chained",
             "status": "unplayed",
-            "submit_and_create_session": "1",
+            "submit_and_add_to_library": "1",
             **catalog_graph_post(),
         },
     )
     created = Game.objects.get(name="Chained")
     assert response["Location"] == action_url(
-        "games:add_session_for_game", game_id=created.id, origin=origin
+        "games:add_library_entry", game_id=created.id, origin=origin
     )
 
 

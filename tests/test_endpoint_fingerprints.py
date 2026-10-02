@@ -1,6 +1,7 @@
 """Endpoint commands keep their recorded fingerprints."""
 
 import uuid
+from decimal import Decimal
 
 import pytest
 
@@ -11,6 +12,7 @@ from games.commands.libraryentry import (
     CorrectEntryAcquisition,
     DescribeEntry,
     EndEntryAccess,
+    EntryStatement,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
@@ -27,6 +29,18 @@ from games.commands.playthrough import (
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
 )
+from games.commands.purchase import (
+    TAKE_REFUND_BACK,
+    CorrectPurchaseRefund,
+    DescribePurchase,
+    RecordPurchase,
+    RefundPurchase,
+    RemovePurchase,
+    RestorePurchase,
+    StatedPrice,
+    UndoPurchaseRefund,
+    VoidPurchaseRefund,
+)
 from games.end_ways import EndWay
 from games.events.dispatch import Command, canonical_command_input
 from games.events.idempotency import fingerprint_command_input
@@ -36,6 +50,7 @@ RUN = uuid.UUID("01890000-0000-7000-8000-000000000001")
 GAME = uuid.UUID("01890000-0000-7000-8000-000000000002")
 RELEASE = uuid.UUID("01890000-0000-7000-8000-000000000003")
 ENTRY = uuid.UUID("01890000-0000-7000-8000-000000000004")
+PURCHASE = uuid.UUID("01890000-0000-7000-8000-000000000005")
 MAY = TemporalValue.parse("2021-05")
 
 COMMANDS: dict[str, Command] = {
@@ -78,6 +93,40 @@ COMMANDS: dict[str, Command] = {
     "resume_entry_access": ResumeEntryAccess(
         entry_id=ENTRY, statement=ActStatement(MAY, "back")
     ),
+    "record_purchase": RecordPurchase(
+        kind="game",
+        copy=ENTRY,
+        name="Deluxe",
+        price=StatedPrice(Decimal("12.50"), "EUR"),
+        note="gift",
+        purchased=ActStatement(MAY, "sale"),
+    ),
+    "record_purchase_new_copy": RecordPurchase(
+        kind="season_pass",
+        copy=EntryStatement(
+            release_id=RELEASE,
+            access="owned",
+            format="digital",
+            note="",
+            acquired=ActStatement(None, ""),
+        ),
+    ),
+    "describe_purchase": DescribePurchase(
+        purchase_id=PURCHASE, price=StatedPrice(None, ""), entry_id=ENTRY
+    ),
+    "describe_purchase_refund_taken_back": DescribePurchase(
+        purchase_id=PURCHASE, refund=TAKE_REFUND_BACK
+    ),
+    "remove_purchase": RemovePurchase(purchase_id=PURCHASE),
+    "restore_purchase": RestorePurchase(purchase_id=PURCHASE),
+    "refund_purchase": RefundPurchase(
+        purchase_id=PURCHASE, statement=ActStatement(MAY, "store")
+    ),
+    "correct_purchase_refund": CorrectPurchaseRefund(
+        purchase_id=PURCHASE, statement=ActStatement(None, "")
+    ),
+    "void_purchase_refund": VoidPurchaseRefund(purchase_id=PURCHASE),
+    "undo_purchase_refund": UndoPurchaseRefund(purchase_id=PURCHASE, refunded_at=42),
 }
 
 RECORDED: dict[str, str] = {
@@ -114,6 +163,36 @@ RECORDED: dict[str, str] = {
         "31b02261fdd35cb1d88a85afb111029cf12964fb940dcfff270776cc1fb02c66"
     ),
     "void_start": "b83184f38a8c6e7cc9ca5d0fa308f3ad48b2176e1815b388f168fe809e9c2a23",
+    "describe_purchase": (
+        "b55b50bf6a7c20590b1849facceabdf67cae89cb679c26a692df4a3bcd2a82cd"
+    ),
+    "record_purchase": (
+        "910548f3eadfece06170bf42e6826c97e067ce71effc901b935704862325a2f2"
+    ),
+    "record_purchase_new_copy": (
+        "c8a8ce8fb148d5582384d0c3465d576ee6e4da2a5e534ed360f26b025dee0c93"
+    ),
+    "remove_purchase": (
+        "6eb59eaeca25392179507029ed9d32bb3acc5ad20d689a06ca08c2af61179a45"
+    ),
+    "restore_purchase": (
+        "2e588e71418455ed1f6e11c04e3e1629638aa20e85049a5e78918a6729021b81"
+    ),
+    "describe_purchase_refund_taken_back": (
+        "5b6fa7cfd60ad05b4226446a285355af7e028c5f6bbafed66ed0744adad3c74c"
+    ),
+    "refund_purchase": (
+        "740990859d1a40131f80ddb70465846ccc7441337b27c6da1af86b6f4833ea48"
+    ),
+    "correct_purchase_refund": (
+        "0ac6063081e8ba28bc9356be0fd33c847bb2c8b0eedda3fb510abafc535f0e01"
+    ),
+    "void_purchase_refund": (
+        "bcf8735d0164b1f736dc71770189e5693f6a7731ecac5c9c87d51a2c53c57a14"
+    ),
+    "undo_purchase_refund": (
+        "fab7c21574cb2636fed67dd339cf6a80b1cfe39bc64ccc76e56e776cf25cbbca"
+    ),
 }
 
 
@@ -121,3 +200,21 @@ RECORDED: dict[str, str] = {
 def test_fingerprint_is_the_recorded_one(name: str) -> None:
     command = COMMANDS[name]
     assert fingerprint_command_input(canonical_command_input(command)) == RECORDED[name]
+
+
+def test_a_price_fingerprints_alike_in_every_spelling() -> None:
+    def digest(price: StatedPrice) -> str:
+        command = DescribePurchase(purchase_id=PURCHASE, price=price)
+        return fingerprint_command_input(canonical_command_input(command))
+
+    assert digest(StatedPrice(Decimal("12.5"), " eur ")) == digest(
+        StatedPrice(Decimal("12.50"), "EUR")
+    )
+
+
+def test_a_take_back_fingerprints_apart_from_an_undated_refund() -> None:
+    def digest(refund) -> str:
+        command = DescribePurchase(purchase_id=PURCHASE, refund=refund)
+        return fingerprint_command_input(canonical_command_input(command))
+
+    assert digest(TAKE_REFUND_BACK) != digest(ActStatement(None, ""))

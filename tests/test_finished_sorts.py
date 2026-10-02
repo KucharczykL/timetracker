@@ -4,12 +4,13 @@ import json
 from datetime import date
 
 import pytest
-from completed_runs import add_game, make_purchase
+from completed_runs import add_run, bought_game
 from django.urls import reverse
 from purchase_rows import row_order
 
-from common.criteria import Modifier, StringCriterion, UUIDMultiCriterion
-from games.filters import GameFilter, PurchaseFilter
+from common.criteria import Modifier, StringCriterion
+from games.filters import GameFilter, LibraryEntryFilter, PurchaseFilter
+from games.reads.playthrough_completions import completed_in_scope
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -24,16 +25,13 @@ def logged_client(client, owned_user):
 @pytest.fixture
 def three_purchases(owned_user, owned_library):
     """Late, early and one with no completion."""
-    late = make_purchase(owned_library, name="Late")
-    add_game(
-        owned_user, owned_library, late, "L", TemporalValue.from_day(date(2024, 7, 1))
-    )
-    early = make_purchase(owned_library, name="Early")
-    add_game(
-        owned_user, owned_library, early, "E", TemporalValue.from_day(date(2020, 3, 4))
-    )
-    none = make_purchase(owned_library, name="None")
-    add_game(owned_user, owned_library, none, "N", False)
+    late = bought_game(
+        owned_user, owned_library, "L", TemporalValue.from_day(date(2024, 7, 1))
+    ).purchase
+    early = bought_game(
+        owned_user, owned_library, "E", TemporalValue.from_day(date(2020, 3, 4))
+    ).purchase
+    none = bought_game(owned_user, owned_library, "N", False).purchase
     return late, early, none
 
 
@@ -64,12 +62,10 @@ def test_a_dayless_completion_sorts_with_the_undated(
     logged_client, owned_user, owned_library
 ):
     """The cell says Unknown; no day sorts."""
-    dated = make_purchase(owned_library, name="Dated")
-    add_game(
-        owned_user, owned_library, dated, "D", TemporalValue.from_day(date(2020, 3, 4))
-    )
-    dayless = make_purchase(owned_library, name="Dayless")
-    add_game(owned_user, owned_library, dayless, "U", None)
+    dated = bought_game(
+        owned_user, owned_library, "D", TemporalValue.from_day(date(2020, 3, 4))
+    ).purchase
+    dayless = bought_game(owned_user, owned_library, "U", None).purchase
 
     body = logged_client.get(
         reverse("games:list_purchases"), {"sort": "-finished"}
@@ -82,26 +78,12 @@ def test_a_dayless_completion_sorts_with_the_undated(
 def test_the_game_list_orders_by_its_own_completion(
     logged_client, owned_user, owned_library
 ):
-    """No column renders it; the URL does.
-
-    The game reads its own runs, not its purchase's. Were
-    the path the purchase's, both games would report the
-    bundle's latest finish and neither order would hold.
-    """
-    purchase = make_purchase(owned_library)
-    add_game(
-        owned_user,
-        owned_library,
-        purchase,
-        "Later",
-        TemporalValue.from_day(date(2024, 7, 1)),
+    """No column renders it; the URL does."""
+    bought_game(
+        owned_user, owned_library, "Later", TemporalValue.from_day(date(2024, 7, 1))
     )
-    add_game(
-        owned_user,
-        owned_library,
-        purchase,
-        "Sooner",
-        TemporalValue.from_day(date(2020, 3, 4)),
+    bought_game(
+        owned_user, owned_library, "Sooner", TemporalValue.from_day(date(2020, 3, 4))
     )
 
     descending = logged_client.get(
@@ -119,54 +101,37 @@ def test_the_game_list_orders_by_its_own_completion(
 def test_a_filter_does_not_narrow_the_reported_completion(
     logged_client, owned_user, owned_library
 ):
-    """The whole purchase reports, not the match.
+    """The game reports, not the match.
 
-    The filter matches one game in each bundle, and the two
-    matches rank the other way round from the two bundles.
-    A reader the filter could narrow would print 2020 for
-    the first bundle and order the rows the other way.
+    The filter matches both games by their 2020 runs;
+    each row still reports its game's latest finish.
     """
-    bundle = make_purchase(owned_library, name="Bundle")
-    add_game(
-        owned_user,
-        owned_library,
-        bundle,
-        "Keep Early",
-        TemporalValue.from_day(date(2020, 3, 4)),
+    twice = bought_game(
+        owned_user, owned_library, "Twice", TemporalValue.from_day(date(2020, 3, 4))
     )
-    add_game(
-        owned_user,
-        owned_library,
-        bundle,
-        "Drop Late",
-        TemporalValue.from_day(date(2024, 7, 1)),
+    add_run(owned_user, twice.game, TemporalValue.from_day(date(2024, 7, 1)))
+    once = bought_game(
+        owned_user, owned_library, "Once", TemporalValue.from_day(date(2022, 5, 6))
     )
-    single = make_purchase(owned_library, name="Single")
-    add_game(
-        owned_user,
-        owned_library,
-        single,
-        "Keep Middle",
-        TemporalValue.from_day(date(2022, 5, 6)),
-    )
+    add_run(owned_user, once.game, TemporalValue.from_day(date(2020, 6, 1)))
 
     body = logged_client.get(
         reverse("games:list_purchases"),
         {
             "filter": json.dumps(
                 PurchaseFilter(
-                    game_filter=GameFilter(
-                        name=StringCriterion(modifier=Modifier.INCLUDES, value="Keep")
-                    )
+                    game_filter=GameFilter(playthrough_filter=completed_in_scope(2020))
                 ).to_json()
             ),
             "sort": "-finished",
         },
     ).content.decode()
 
-    #: Filter named 2020, bundle reports 2024.
     assert "2024-07-01" in body
-    assert row_order(body, (bundle, single)) == [bundle.pk, single.pk]
+    assert row_order(body, (twice.purchase, once.purchase)) == [
+        twice.purchase.pk,
+        once.purchase.pk,
+    ]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -183,39 +148,18 @@ def test_a_sort_of_finished_beside_another_key_runs(logged_client, three_purchas
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("path", ["game_filter", "search", "games"])
+@pytest.mark.parametrize("path", ["game_filter", "search", "entry_filter"])
 def test_every_join_path_prints_one_row(logged_client, owned_user, owned_library, path):
-    """Each row prints once, whichever filter matched.
-
-    `game_filter` and `search` reach a purchase through a
-    join, so a bundle naming two matches is two rows before
-    `distinct()`. The `games` set compiles to subqueries
-    instead, and this states that it stays that way.
-    """
-    bundle = make_purchase(owned_library, name="Bundle")
-    first, _ = add_game(
-        owned_user,
-        owned_library,
-        bundle,
-        "Keep One",
-        TemporalValue.from_day(date(2020, 3, 4)),
+    """Each row prints once, whichever filter matched."""
+    bought = bought_game(
+        owned_user, owned_library, "Keep", TemporalValue.from_day(date(2020, 3, 4))
     )
-    second, _ = add_game(
-        owned_user,
-        owned_library,
-        bundle,
-        "Keep Two",
-        TemporalValue.from_day(date(2024, 7, 1)),
-    )
+    add_run(owned_user, bought.game, TemporalValue.from_day(date(2024, 7, 1)))
     keep = StringCriterion(modifier=Modifier.INCLUDES, value="Keep")
     filters = {
         "game_filter": PurchaseFilter(game_filter=GameFilter(name=keep)),
         "search": PurchaseFilter(search=keep),
-        "games": PurchaseFilter(
-            games=UUIDMultiCriterion(
-                value=[str(first.pk), str(second.pk)], modifier=Modifier.INCLUDES
-            )
-        ),
+        "entry_filter": PurchaseFilter(entry_filter=LibraryEntryFilter(search=keep)),
     }
 
     body = logged_client.get(
@@ -223,4 +167,4 @@ def test_every_join_path_prints_one_row(logged_client, owned_user, owned_library
         {"filter": json.dumps(filters[path].to_json()), "sort": "-finished"},
     ).content.decode()
 
-    assert body.count(f'id="purchase-row-{bundle.pk}"') == 1
+    assert body.count(f'id="purchase-row-{bought.purchase.pk}"') == 1

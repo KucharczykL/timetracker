@@ -4,7 +4,6 @@ from typing import cast
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import F, Sum
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.urls import reverse
@@ -32,23 +31,27 @@ from common.layout import render_page
 from common.returns import OriginUrl, UrlName, action_url
 from games.end_ways import END_WAY_LABELS
 from games.endpoints import DEVICE_ACCESS_END
-from games.filters import GameFilter, PurchaseFilter, filter_url
+from games.filters import GameFilter, filter_url
 from games.forms import LibraryPreferencesForm
 from games.models import (
     Device,
     Game,
     Platform,
-    Purchase,
-    PurchaseConversionState,
 )
 from games.reads.endpoints import stated, way_of
 from games.reads.playtime import total_playtime
+from games.reads.purchase_figures import (
+    purchase_figures,
+    spending_currency,
+    valued_in_scope,
+)
 from games.views import stats_links
+from games.views.conversion_review import ConversionReview
 from games.views.session_reclassification import (
     TEMPORARY_NOTE,
     PlaytimeReviewPanel,
 )
-from timetracker.settings_commands import SettingNamespace
+from timetracker.settings_commands import DEFAULT_DEVICE, SettingNamespace
 
 
 def _actions(
@@ -81,21 +84,18 @@ def library(request: HttpRequest) -> HttpResponse:
     durations = duration_presentation_for_request(request)
     playtime = total_playtime(library)
     games = Game.objects.for_library(library)
-    purchases = Purchase.objects.for_library(library)
+    spending = purchase_figures(library, None)
     devices = Device.objects.for_library(library)
     platforms = Platform.objects.for_library(library)
-    not_refunded = purchases.not_refunded()
-    conversion = PurchaseConversionState.objects.get(library=library)
     game_count = games.count()
-    purchase_count = purchases.count()
+    purchase_count = spending.purchases
     device_count = devices.count()
     platform_count = platforms.count()
-    refunded_purchase_count = purchases.refunded().count()
+    refunded_purchase_count = spending.refunded
     default_device_source = "library"
     default_device_normal_source = "library"
-    total_spent = not_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
-    currency = conversion.published_currency
-    total_spent_value = f"{currency} {total_spent:,.2f}"
+    currency = spending_currency(library, spending)
+    total_spent_value = f"{currency} {spending.total_spent:,.2f}"
     #: Both count add-ons.
     every_game = filter_url(GameFilter().of_every_kind())
     overview = Fragment(
@@ -131,7 +131,7 @@ def library(request: HttpRequest) -> HttpResponse:
         ),
         states={
             "default_device": SettingFieldState(
-                key="default-device",
+                key=DEFAULT_DEVICE,
                 source=default_device_source,
                 show_source=default_device_source != default_device_normal_source,
                 help_text=default_device_help(stored_default),
@@ -173,9 +173,6 @@ def library(request: HttpRequest) -> HttpResponse:
             SummaryAction(
                 "Add to library", action_url("games:add_to_library", origin=origin)
             ),
-            SummaryAction(
-                "Add purchase", action_url("games:add_purchase", origin=origin)
-            ),
         ),
         detail=StatisticGrid(
             StatisticCard(
@@ -186,7 +183,7 @@ def library(request: HttpRequest) -> HttpResponse:
             StatisticCard(
                 "Total spent",
                 total_spent_value,
-                href=filter_url(PurchaseFilter.where(is_refunded=False)),
+                href=filter_url(valued_in_scope(None)),
             ),
             StatisticCard(
                 "Refunded purchases",
@@ -217,7 +214,11 @@ def library(request: HttpRequest) -> HttpResponse:
             customization,
             description="Games currently includes every game in your library. After IGDB integration, this area will contain only games and platforms you customized or created. Devices will remain here.",
         ),
-        SectionedPageSection("purchases", "Purchases", purchases_summary),
+        SectionedPageSection(
+            "purchases",
+            "Purchases",
+            Fragment(purchases_summary, ConversionReview(request, library)),
+        ),
     ]
     content = SectionedPage(
         "Library",

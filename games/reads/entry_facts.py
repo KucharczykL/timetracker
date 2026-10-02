@@ -10,7 +10,7 @@ from games.events.libraryentry import (
     LIBRARYENTRY_NOTE_CHANGED,
 )
 from games.models import EntryAccess, EntryFormat, UserLibrary
-from games.reads.fact_change import Fact, FactChange, fact_change
+from games.reads.fact_change import Fact, FactChange, fact_change, payload_fact
 
 
 def _access(value: object) -> EntryAccess | None:
@@ -25,9 +25,15 @@ def _note(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-_ACCESS = Fact(LIBRARYENTRY_CREATED, LIBRARYENTRY_ACCESS_CHANGED, "access", _access)
-_FORMAT = Fact(LIBRARYENTRY_CREATED, LIBRARYENTRY_FORMAT_CHANGED, "format", _format)
-_NOTE = Fact(LIBRARYENTRY_CREATED, LIBRARYENTRY_NOTE_CHANGED, "note", _note)
+_ACCESS = Fact(
+    LIBRARYENTRY_CREATED, LIBRARYENTRY_ACCESS_CHANGED, payload_fact("access", _access)
+)
+_FORMAT = Fact(
+    LIBRARYENTRY_CREATED, LIBRARYENTRY_FORMAT_CHANGED, payload_fact("format", _format)
+)
+_NOTE = Fact(
+    LIBRARYENTRY_CREATED, LIBRARYENTRY_NOTE_CHANGED, payload_fact("note", _note)
+)
 
 
 @dataclass(frozen=True, slots=True)

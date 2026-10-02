@@ -4,7 +4,7 @@ import re
 from datetime import date
 
 import pytest
-from completed_runs import add_game, make_purchase
+from completed_runs import bought_game
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -62,60 +62,41 @@ def _column_index(body: str, label: str) -> int:
 
 @pytest.mark.django_db(transaction=True)
 def test_no_completion_prints_a_dash(logged_client, owned_user, owned_library):
-    purchase = make_purchase(owned_library)
-    add_game(owned_user, owned_library, purchase, "Playing", False)
-
-    assert finished_cell(logged_client, purchase) == "-"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_purchase_naming_no_game_prints_a_dash(logged_client, owned_library):
-    """It names no run."""
-    purchase = make_purchase(owned_library)
+    purchase = bought_game(owned_user, owned_library, "Playing", False).purchase
 
     assert finished_cell(logged_client, purchase) == "-"
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_dayless_completion_prints_unknown(logged_client, owned_user, owned_library):
-    purchase = make_purchase(owned_library)
-    add_game(owned_user, owned_library, purchase, "Dayless", None)
+    purchase = bought_game(owned_user, owned_library, "Dayless", None).purchase
 
     assert finished_cell(logged_client, purchase) == "Unknown"
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_dated_completion_prints_its_day(logged_client, owned_user, owned_library):
-    purchase = make_purchase(owned_library)
-    add_game(
-        owned_user,
-        owned_library,
-        purchase,
-        "Dated",
-        TemporalValue.from_day(date(2024, 7, 1)),
-    )
+    purchase = bought_game(
+        owned_user, owned_library, "Dated", TemporalValue.from_day(date(2024, 7, 1))
+    ).purchase
 
     assert finished_cell(logged_client, purchase) == "2024-07-01"
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_decade_prints_its_words(logged_client, owned_user, owned_library):
-    purchase = make_purchase(owned_library)
-    add_game(owned_user, owned_library, purchase, "Coarse", TemporalValue.parse("202X"))
+    purchase = bought_game(
+        owned_user, owned_library, "Coarse", TemporalValue.parse("202X")
+    ).purchase
 
     assert finished_cell(logged_client, purchase) == "2020s"
 
 
 @pytest.mark.django_db(transaction=True)
 def test_an_open_start_range_prints_its_words(logged_client, owned_user, owned_library):
-    purchase = make_purchase(owned_library)
-    add_game(
-        owned_user,
-        owned_library,
-        purchase,
-        "Open",
-        TemporalValue.parse("../2020-05-01"),
-    )
+    purchase = bought_game(
+        owned_user, owned_library, "Open", TemporalValue.parse("../2020-05-01")
+    ).purchase
 
     assert finished_cell(logged_client, purchase) == "until 2020-05-01"
 
@@ -123,13 +104,8 @@ def test_an_open_start_range_prints_its_words(logged_client, owned_user, owned_l
 def seed_rows(user, library, count):
     """`count` purchases, each naming one completed game."""
     for index in range(count):
-        purchase = make_purchase(library, name=f"Bundle {index}")
-        add_game(
-            user,
-            library,
-            purchase,
-            f"Game {index}",
-            TemporalValue.from_day(date(2024, 7, 1)),
+        bought_game(
+            user, library, f"Game {index}", TemporalValue.from_day(date(2024, 7, 1))
         )
 
 

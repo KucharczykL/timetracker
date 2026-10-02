@@ -1,40 +1,38 @@
-"""Seed a purchase whose games state completions."""
+"""Seed a copy whose game states a completion."""
 
 import uuid
-from datetime import UTC, datetime
+from typing import NamedTuple
 
-from games.commands.playergame import TrackGame
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
+
 from games.commands.playthrough import ActStatement, CompletePlaythrough
 from games.events.dispatch import dispatch
-from games.models import Game, Playthrough, Purchase
+from games.models import Game, LibraryEntry, Playthrough, Purchase
 from games.writes.playthrough import RunDraft, record_run
+from timetracker.temporal import TemporalValue
+
+#: A purchase day every helper states.
+PURCHASED = TemporalValue.parse("2020-01-01")
 
 
-def make_purchase(library, name="Bundle"):
-    return Purchase.objects.create(
-        library=library,
-        name=name,
-        date_purchased=datetime(2020, 1, 1, tzinfo=UTC),
-        price=0,
-        price_currency="USD",
-    )
+class BoughtGame(NamedTuple):
+    game: Game
+    run: Playthrough
+    entry: LibraryEntry
+    purchase: Purchase
 
 
-def add_game(user, library, purchase, name, completed):
-    """Track a game and state its completion.
+def bought_game(user, library, name, completed, **purchase) -> BoughtGame:
+    """A game, one copy, one purchase, its run.
 
-    False is a run that reached no completion, and None is one
-    completed on a day nobody wrote down.
+    `completed` False is a run that reached no completion,
+    and None one completed on a day nobody wrote down.
     """
-    game = Game.objects.create(library=library, name=name)
-    purchase.games.add(game)
-    dispatch(
-        TrackGame(game_id=game.pk),
-        actor=user,
-        library=library,
-        idempotency_key=f"track-{name}",
-    )
-    run = Playthrough.objects.get(player_game__game=game)
+    game = default_graph(Game(library=library, name=name), library)
+    entry = record_entry(library, game.release)
+    run = Playthrough.objects.get(player_game__game=game.game)
     if completed is not False:
         dispatch(
             CompletePlaythrough(playthrough_id=run.pk, when=completed, note=""),
@@ -42,7 +40,9 @@ def add_game(user, library, purchase, name, completed):
             library=library,
             idempotency_key=f"done-{name}",
         )
-    return game, run
+        run.refresh_from_db()
+    purchase.setdefault("purchased", PURCHASED)
+    return BoughtGame(game.game, run, entry, record_purchase(entry, **purchase))
 
 
 def add_run(user, game, completed):

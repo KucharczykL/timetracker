@@ -54,7 +54,6 @@ from common.components.primitives import (
     Form,
     Icon,
     Input,
-    Label,
     Legend,
     Li,
     PlainH2,
@@ -282,19 +281,6 @@ _DateTimeField = custom_element_builder("date-time-field")
 _TimeZoneRow = custom_element_builder("time-zone-row")
 
 
-class SelectionFieldsProps(TypedDict):
-    source: str  # data-name of the source SearchSelect to mirror
-    name_prefix: str  # each rendered input is named f"{name_prefix}{item_id}"
-    field_type: str  # input type, e.g. "number"
-    min_items: int  # render nothing until at least this many items are selected
-    active: bool  # when false, render nothing (but preserve typed values)
-
-
-register_element("selection-fields", "SelectionFields", SelectionFieldsProps)
-
-_SelectionFields = custom_element_builder("selection-fields")
-
-
 class DateRangePickerProps(TypedDict):
     pass
 
@@ -397,7 +383,6 @@ def FilterGroup(
         has_comparable_group,
         relation_select_template,
     )
-    from common.components.primitives import Template
     from common.criteria import comparable_columns
     from games.filters import model_field_registry, reachable_models
 
@@ -814,41 +799,6 @@ class TruncatedTextProps(TypedDict):
 register_element("truncated-text", "TruncatedText", TruncatedTextProps)
 
 
-def SelectionFields(
-    *,
-    source: str,
-    name_prefix: str,
-    field_type: str = "text",
-    min_items: int = 1,
-    active: bool = False,
-    input_attributes: list[tuple[str, str]] | None = None,
-) -> Node:
-    """Render one synced form field per selected item of a source SearchSelect.
-
-    General-purpose: it mirrors the SearchSelect named ``source`` and emits an
-    input named ``f"{name_prefix}{item_id}"`` per selected item. Behavior lives
-    in ``ts/elements/selection-fields.ts``; this is just the server-rendered
-    light DOM (an empty rows container + a row ``<template>``). Inputs inherit
-    the global ``#add-form`` styling, so the markup stays minimal.
-    """
-    row_template = Template(data_selection_fields_row="")[
-        Div(data_selection_fields_row_item="")[
-            Label(data_selection_fields_label=""),
-            Input(list(input_attributes or []), type=field_type),
-        ]
-    ]
-    return _SelectionFields(
-        source=source,
-        name_prefix=name_prefix,
-        field_type=field_type,
-        min_items=min_items,
-        active="true" if active else "false",
-    )[
-        Div(data_selection_fields_rows=""),
-        row_template,
-    ]
-
-
 # ── Dropdown ─────────────────────────────────────────────────────────────────
 # A generic, accessible dropdown element. Behavior lives in
 # ts/elements/drop-down.ts (open/close, keyboard nav, behavior dispatch); the
@@ -1153,13 +1103,14 @@ def DropdownSubmenuItem(
     label: Child, *, items: list[Node], id: str, icon: str = ""
 ) -> Node:
     """An item opening ``items`` beside the menu."""
+    #: Flex always: the arrow trails the words.
     trigger = Button(
         type="button",
         role="menuitem",
         tabindex="-1",
-        class_=f"{_item_class(icon)} w-full",
+        class_=f"{DROPDOWN_ITEM_WITH_ICON_CLASS} w-full",
     )[
-        *_item_children(label, icon),
+        *(_item_children(label, icon) if icon else [Span()[label]]),
         Icon(
             "arrowright",
             [("aria-hidden", "true"), ("class", "ms-auto shrink-0 text-body-subtle")],

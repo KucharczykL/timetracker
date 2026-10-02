@@ -11,7 +11,7 @@ from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
 )
 from games.models import PlayerGameStatus, UserLibrary
-from games.reads.fact_change import Fact, FactChange, fact_change
+from games.reads.fact_change import Fact, FactChange, fact_change, payload_fact
 
 
 def _status(value: object) -> PlayerGameStatus | None:
@@ -25,25 +25,25 @@ def _flag(value: object) -> bool | None:
 _STATUS = Fact(
     PLAYERGAME_CREATED,
     PLAYERGAME_STATUS_CHANGED,
-    "status",
-    _status,
+    payload_fact("status", _status),
     initial=PlayerGameStatus.UNPLAYED,
 )
 _MASTERED = Fact(
-    PLAYERGAME_CREATED, PLAYERGAME_MASTERED_CHANGED, "mastered", _flag, initial=False
+    PLAYERGAME_CREATED,
+    PLAYERGAME_MASTERED_CHANGED,
+    payload_fact("mastered", _flag),
+    initial=False,
 )
 _UNFINISHED = Fact(
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
-    "excluded_from_unfinished",
-    _flag,
+    payload_fact("excluded_from_unfinished", _flag),
     initial=False,
 )
 _DROPPED = Fact(
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
-    "excluded_from_dropped",
-    _flag,
+    payload_fact("excluded_from_dropped", _flag),
     initial=False,
 )
 

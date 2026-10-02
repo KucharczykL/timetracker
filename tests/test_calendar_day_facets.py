@@ -11,10 +11,12 @@ from calendar_days import (
     other_displaced_zone,
     set_calendar,
 )
-from completed_runs import make_purchase
 from devices import create_device
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase
 from session_rows import session_row, tracked_run
 
 from common.criteria import DateCriterion, FieldComparisonCriterion, Modifier
@@ -38,6 +40,7 @@ from games.models import (
     Purchase,
 )
 from games.reads.calendar import calendar_today
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -77,12 +80,13 @@ def _device(library):
 
 
 def _purchase(library):
-    return make_purchase(library, name="Tunic")
+    graph = default_graph(Game(library=library, name="Tunic"), library)
+    return record_purchase(record_entry(library, graph.release))
 
 
 ROWS = {
     Game: (_game, GameFilter, ("created_at", "updated_at")),
-    Purchase: (_purchase, PurchaseFilter, ("created_at", "updated_at")),
+    Purchase: (_purchase, PurchaseFilter, ("created_at",)),
     Platform: (_platform, PlatformFilter, ("created_at",)),
     Device: (_device, DeviceFilter, ("created_at",)),
     Playthrough: (_run, PlaythroughFilter, ("created_at",)),
@@ -209,13 +213,16 @@ def test_a_date_operand_meets_a_timestamp_on_the_calendar(
     owned_library, elsewhere, calendar
 ):
     """The date column stays; the timestamp is read in the calendar."""
-    purchase = _purchase(owned_library)
+    graph = default_graph(Game(library=owned_library, name="Tunic"), owned_library)
+    purchase = record_purchase(
+        record_entry(owned_library, graph.release),
+        purchased=TemporalValue.from_day(calendar_today(owned_library)),
+    )
     Purchase.objects.filter(pk=purchase.pk).update(
-        date_purchased=calendar_today(owned_library),
-        created_at=library_noon(owned_library),
+        created_at=library_noon(owned_library)
     )
     bought_on_creation = PurchaseFilter(
-        field_comparisons=[_same_day("date_purchased", "created_at")]
+        field_comparisons=[_same_day("purchased_lower", "created_at")]
     )
 
     with timezone.override(elsewhere):

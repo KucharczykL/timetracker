@@ -1,6 +1,6 @@
 """Rows taken out of the lists, in bulk.
 
-Seven acts, one for each row a selectable table holds. Each states the
+Eight acts, one for each row a selectable table holds. Each states the
 list's own read as its base, and refuses nothing of its own: every rule
 is the command's or the write's, so one row's refusal is a sentence and the batch goes
 on.
@@ -15,7 +15,7 @@ from django.db.models import Exists, Model, OuterRef, QuerySet
 from common.temporal_presentation import TemporalText
 from games.bulk_actions import BulkAction
 from games.bulk_entries import (
-    ENTRY_PREVIEW,
+    ENTRY_REMOVAL_PREVIEW,
     entry_resolution,
     entry_scope,
     removed_entry,
@@ -39,6 +39,12 @@ from games.bulk_platforms import (
     platform_scope,
     undoing,
 )
+from games.bulk_purchases import (
+    PURCHASE_PREVIEW,
+    purchase_resolution,
+    purchase_scope,
+    removed_purchase,
+)
 from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.bulk_sessions import lost, session_resolution, session_scope
 from games.events.dispatch import RowNotHeld
@@ -56,6 +62,7 @@ from games.models import (
     PlayerGame,
     PlayerSession,
     Playthrough,
+    Purchase,
     UserLibrary,
 )
 from games.reads.device_departures import naming_sessions_of, with_naming_sessions
@@ -78,6 +85,8 @@ from games.writes.platform import remove_platform_in_batch
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.playersession import remove_session, restore_session
 from games.writes.playthrough import remove_run, restore_run
+from games.writes.purchase import SUBJECT as PURCHASE_SUBJECT
+from games.writes.purchase import remove_purchase, restore_purchase
 
 #: What `answered` calls a record; the confirmation says "record".
 RECORD_SUBJECT: SubjectNoun = "historical playtime"
@@ -532,6 +541,47 @@ def restore_one_entry(
     )
 
 
+# ── Purchases ────────────────────────────────────────────────────────────────
+
+
+def remove_one_purchase(
+    actor: User,
+    purchase: Purchase,
+    *,
+    choice: ChoiceValue | None,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return RowOutcome.of(
+        remove_purchase(
+            actor,
+            purchase,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(REMOVE_PURCHASE.name),
+        )
+    )
+
+
+def restore_one_purchase(
+    actor: User,
+    purchase_id: uuid.UUID,
+    *,
+    undoes: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return RowOutcome.of(
+        restore_purchase(
+            actor,
+            removed_purchase(actor, purchase_id),
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(REMOVE_PURCHASE.name),
+        )
+    )
+
+
 # ── Platforms ────────────────────────────────────────────────────────────────
 
 
@@ -695,5 +745,21 @@ REMOVE_ENTRY = BulkAction(
     resolve=entry_resolution,
     run=remove_one_entry,
     inverse=restore_one_entry,
-    preview=ENTRY_PREVIEW,
+    preview=ENTRY_REMOVAL_PREVIEW,
+)
+
+REMOVE_PURCHASE = BulkAction(
+    name="purchase.remove",
+    label="Remove",
+    title=ActTitle(one="Remove this purchase", many="Remove {count} purchases"),
+    confirm_label="Remove",
+    subject=PURCHASE_SUBJECT,
+    color="red",
+    undo_rows=EventRows(Purchase),
+    fallback="games:list_purchases",
+    scope=purchase_scope,
+    resolve=purchase_resolution,
+    run=remove_one_purchase,
+    inverse=restore_one_purchase,
+    preview=PURCHASE_PREVIEW,
 )

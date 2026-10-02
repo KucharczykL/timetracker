@@ -4,7 +4,6 @@ A model added to the registry later cannot skip it.
 """
 
 from collections.abc import Callable
-from datetime import date
 
 import pytest
 from django.db.models import Model
@@ -14,7 +13,6 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
-    Purchase,
     Release,
     UserLibrary,
 )
@@ -39,17 +37,6 @@ def _platform(library: UserLibrary) -> Platform:
     return Platform.objects.create(library=library, name="Playdate")
 
 
-def _purchase(library: UserLibrary) -> Purchase:
-    purchase = Purchase.objects.create(
-        library=library,
-        price_currency="CZK",
-        date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
-    )
-    purchase.games.set([_game(library)])
-    return purchase
-
-
 def _filter_preset(library: UserLibrary) -> FilterPreset:
     return FilterPreset.objects.create(library=library, name="Backlog", mode="games")
 
@@ -61,7 +48,6 @@ BUILDERS: dict[type[Model], Builder] = {
     Edition: _edition,
     Release: _release,
     Platform: _platform,
-    Purchase: _purchase,
     FilterPreset: _filter_preset,
 }
 

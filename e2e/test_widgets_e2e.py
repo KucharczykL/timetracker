@@ -1,5 +1,4 @@
-"""Browser tests for widget JavaScript (search_select.js, quick-filter-bar.js,
-add_purchase.js) and their onReady() initialization lifecycle.
+"""Widget scripts and their onReady() lifecycle.
 
 These run a real Chromium via pytest-playwright against pytest-django's
 ``live_server``. All JavaScript under test is served locally from
@@ -14,6 +13,7 @@ import re
 import pytest
 from devices import create_device
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 
 from games.models import Device, Game, Platform
@@ -133,61 +133,30 @@ def test_widgets_initialize_inside_inserted_content(
     expect(value2).to_be_visible()
 
 
-def test_add_purchase_type_toggles_disabled_fields(
-    authenticated_page: Page, live_server
-):
-    """add_purchase.js disables name/related-game while type is "game"
-    and re-enables them for other types."""
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-
-    name_input = page.locator("#id_name")
-    expect(name_input).to_be_disabled()
-    # The Name field (a plain input) self-styles its disabled state via the
-    # INPUT_CLASS disabled: variants — not a global rule. not-allowed is
-    # mode-independent, so it holds in light and dark.
-    assert name_input.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
-
-    page.select_option("#id_type", "dlc")
-    expect(name_input).to_be_enabled()
-    assert name_input.evaluate("el => getComputedStyle(el).cursor") != "not-allowed"
-
-    page.select_option("#id_type", "game")
-    expect(name_input).to_be_disabled()
-
-
-def test_add_purchase_related_game_is_flat_game_search(
-    authenticated_page: Page, live_server
-):
-    """The DLC/Season-Pass anchor is now a flat game search (related_game),
-    wired to the games search API and present regardless of which games are
-    selected — not the old parent-purchase dropdown filtered by chosen games."""
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-
-    related = page.locator('search-select[name="related_game"]')
-    expect(related).to_have_count(1)
-    expect(related).to_have_attribute("search-url", "/api/games/search")
+def _open_add_to_library(page: Page, live_server, library) -> None:
+    """A picker beside native inputs."""
+    game = default_graph(Game(library=library, name="Tunic"), library).game
+    page.goto(f"{live_server.url}{reverse('games:add_library_entry', args=[game.pk])}")
 
 
 def test_searchselect_border_matches_native_input(
-    authenticated_page: Page, live_server
+    authenticated_page: Page, live_server, e2e_library
 ):
     """Field box borders like a native input."""
     page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    price = page.locator("#id_price")  # always-enabled native input
-    wrapper = page.locator("search-select[name='platform'] [data-search-select-box]")
-    search_input = page.locator("#id_platform")
+    _open_add_to_library(page, live_server, e2e_library)
+    amount = page.locator("#id_amount")  # a native input
+    wrapper = page.locator("search-select[name='release'] [data-search-select-box]")
+    search_input = page.locator("#id_release")
     border = "el => getComputedStyle(el).borderColor"
 
-    rest = price.evaluate(border)
+    rest = amount.evaluate(border)
     assert wrapper.evaluate(border) == rest  # same border at rest
 
     search_input.focus()
     focused_wrapper = wrapper.evaluate(border)
-    price.focus()
-    focused_input = price.evaluate(border)
+    amount.focus()
+    focused_input = amount.evaluate(border)
     assert focused_wrapper == focused_input  # same brand border on focus
     assert focused_wrapper != rest  # focus actually changes it
 
@@ -266,51 +235,44 @@ def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_serve
     expect(page.locator("#id_sort_name")).to_have_value("Halo")
 
 
-def test_add_purchase_type_game_disables_related_game_search(
-    authenticated_page: Page, live_server
+def test_a_disabled_search_select_looks_like_a_disabled_input(
+    authenticated_page: Page, live_server, e2e_library
 ):
-    """Type "game" disables and fades related game."""
+    """Both fade over the same surface."""
     page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    # #id_related_game is now on the inner <input data-search-select-search>
-    search_input = page.locator("#id_related_game")
-    # Found under the stable name.
-    wrapper = page.locator(
-        "search-select[name='related_game'] [data-search-select-box]"
-    )
-    name = page.locator("#id_name")
+    _open_add_to_library(page, live_server, e2e_library)
+    page.wait_for_function("() => !!customElements.get('search-select')")
+    search_input = page.locator("#id_release")
+    wrapper = page.locator("search-select[name='release'] [data-search-select-box]")
+    amount = page.locator("#id_amount")
     opacity = "el => getComputedStyle(el).opacity"
     bg = "el => getComputedStyle(el).backgroundColor"
 
-    page.select_option("#id_type", "game")
-    expect(search_input).to_be_disabled()
-    # A disabled SearchSelect must look identical to a disabled native input:
-    # both fade (opacity-50) over the same surface.
+    for control in (search_input, amount):
+        control.evaluate("el => { el.disabled = true; }")
     assert wrapper.evaluate(opacity) == "0.5"
-    assert name.evaluate(opacity) == "0.5"
-    assert wrapper.evaluate(bg) == name.evaluate(bg)
+    assert amount.evaluate(opacity) == "0.5"
+    assert wrapper.evaluate(bg) == amount.evaluate(bg)
     # The inner input stays transparent (no nested box) with the same not-allowed
     # cursor (no flicker across the widget).
     assert search_input.evaluate(bg) == "rgba(0, 0, 0, 0)"
     assert search_input.evaluate("el => getComputedStyle(el).cursor") == "not-allowed"
 
-    page.select_option("#id_type", "dlc")
-    expect(search_input).to_be_enabled()
-    # Enabled, both return to full opacity.
+    for control in (search_input, amount):
+        control.evaluate("el => { el.disabled = false; }")
     assert wrapper.evaluate(opacity) == "1"
-    assert name.evaluate(opacity) == "1"
+    assert amount.evaluate(opacity) == "1"
 
 
-def test_label_click_focuses_search_select(authenticated_page: Page, live_server):
+def test_label_click_focuses_search_select(
+    authenticated_page: Page, live_server, e2e_library
+):
     """Clicking a <label for="id_X"> on a SearchSelect field must focus the
     search input — confirmed now that id is on the real <input> control."""
     page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    # related_game is disabled when type is "game" (the default); switch so it
-    # is enabled, otherwise clicking the label for a disabled control fails.
-    page.select_option("#id_type", "dlc")
-    label = page.locator("label[for='id_related_game']")
-    search_input = page.locator("#id_related_game")
+    _open_add_to_library(page, live_server, e2e_library)
+    label = page.locator("label[for='id_release']")
+    search_input = page.locator("#id_release")
     label.click()
     expect(search_input).to_be_focused()
 
@@ -340,17 +302,16 @@ def test_add_game_sync_stops_once_sort_name_edited(
     expect(sort).to_have_value("Custom Sort")  # not clobbered
 
 
-def test_add_game_submit_and_create_session_redirects(
+def test_add_game_submit_and_add_to_library_redirects(
     authenticated_page: Page, live_server
 ):
-    """Submit & Create Session saves the game and redirects to add-session with
-    the new game pre-selected in the game SearchSelect."""
+    """Saves, then opens Add to library."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_game')}")
-    page.fill("#id_name", "E2E Session Game")
-    page.click('button[name="submit_and_create_session"]')
-    page.wait_for_url(f"{live_server.url}/tracker/session/add/for-game/**")
-    expect(page.locator("#id_game")).to_have_value(re.compile(r"^E2E Session Game"))
+    page.fill("#id_name", "E2E Library Game")
+    page.click('button[name="submit_and_add_to_library"]')
+    page.wait_for_url(f"{live_server.url}/tracker/game/*/library/add**")
+    expect(page).to_have_title(re.compile("Add to library - E2E Library Game"))
 
 
 # ── Sortable column headers (issue #73) ──────────────────────────────────────
@@ -404,161 +365,6 @@ def test_sort_header_shift_click_removes_descending_column(
     # param disappears and the view's default order applies.
     page.get_by_role("link", name="Name", exact=True).click(modifiers=["Shift"])
     expect(page).not_to_have_url(re.compile(r"sort="))
-
-
-def test_add_purchase_game_selection_autofills_platform(
-    authenticated_page: Page, live_server, e2e_library
-):
-    """Selecting a game in the Games SearchSelect auto-fills the Platform
-    SearchSelect with the game's platform: the visible box shows the platform
-    *label* and the committed hidden input carries the id. Guards issue #259,
-    where the raw platform id was written into the visible search box (and no
-    hidden value was committed at all)."""
-    platform = Platform.objects.create(name="Steam", library=e2e_library)
-    Game.objects.create(
-        name="Crosscode", sort_name="Crosscode", platform=platform, library=e2e_library
-    )
-
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-
-    games_widget = page.locator('search-select[name="games"]')
-    games_widget.locator("[data-search-select-search]").click()
-    games_widget.locator("[data-search-select-search]").type("Cross")
-    games_widget.locator("[data-search-select-option][data-value]").first.click()
-
-    expect(page.locator("#id_platform")).to_have_value("Steam")
-    platform_widget = page.locator('search-select[name="platform"]')
-    expect(
-        platform_widget.locator('[data-search-select-pills] input[type="hidden"]')
-    ).to_have_value(str(platform.id))
-
-    # Removing the game fires search-select:change with last=null; the handler
-    # must leave the committed platform untouched (and not throw, which would
-    # also kill the price-mode toggle living in the same listener).
-    games_widget.locator("[data-pill] [data-pill-remove]").click()
-    expect(games_widget.locator("[data-pill]")).to_have_count(0)
-    expect(page.locator("#id_platform")).to_have_value("Steam")
-    expect(
-        platform_widget.locator('[data-search-select-pills] input[type="hidden"]')
-    ).to_have_value(str(platform.id))
-
-
-def _pick_game(page: Page, widget_name: str, query: str) -> None:
-    # Click the matching row, not `.first`: the panel keeps a currently
-    # selected value's row at the top even when the query filters it out.
-    widget = page.locator(f'search-select[name="{widget_name}"]')
-    widget.locator("[data-search-select-search]").click()
-    widget.locator("[data-search-select-search]").type(query)
-    widget.locator("[data-search-select-option][data-value]").filter(
-        has_text=query
-    ).first.click()
-
-
-def test_add_purchase_related_game_autofills_from_games_selection(
-    authenticated_page: Page, live_server, e2e_library
-):
-    """For add-on types (DLC/Season Pass/Battle Pass) Related game auto-fills
-    from the Games selection — re-picking the base game was pure double-entry.
-    The auto-fill follows the games selection while the field is empty or holds
-    a previous auto-fill, is dropped when the type returns to plain "game"
-    (so no stale hidden input submits), and never overwrites a user's own pick."""
-    platform = Platform.objects.create(name="Steam", library=e2e_library)
-    base = Game.objects.create(
-        name="Vampire Survivors",
-        sort_name="Vampire Survivors",
-        platform=platform,
-        library=e2e_library,
-    )
-    other = Game.objects.create(
-        name="Brotato", sort_name="Brotato", platform=platform, library=e2e_library
-    )
-
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-
-    related_search = page.locator("#id_related_game")
-    related_hidden = page.locator(
-        'search-select[name="related_game"] '
-        '[data-search-select-pills] input[type="hidden"]'
-    )
-
-    # Type "game" (the default): selecting a game must not fill Related game.
-    _pick_game(page, "games", "Vampire")
-    expect(related_hidden).to_have_count(0)
-
-    # Switching to an add-on type anchors Related game to the selected game:
-    # the visible box shows the pill's label (game + platform, the same label a
-    # manual pick would commit), the hidden input carries the id.
-    page.select_option("#id_type", "dlc")
-    expect(related_search).to_have_value("Vampire Survivors (Steam)")
-    expect(related_hidden).to_have_value(str(base.id))
-
-    # While the value is an auto-fill it follows the games selection.
-    games_widget = page.locator('search-select[name="games"]')
-    games_widget.locator("[data-pill] [data-pill-remove]").click()
-    expect(related_hidden).to_have_count(0)
-    _pick_game(page, "games", "Brotato")
-    expect(related_search).to_have_value("Brotato (Steam)")
-    expect(related_hidden).to_have_value(str(other.id))
-
-    # Back to plain "game": the auto-fill is dropped, not left to submit.
-    page.select_option("#id_type", "game")
-    expect(related_hidden).to_have_count(0)
-
-    # A value the user picked themselves is never overwritten by the auto-fill.
-    page.select_option("#id_type", "season_pass")
-    _pick_game(page, "related_game", "Vampire")
-    expect(related_hidden).to_have_value(str(base.id))
-    games_widget.locator("[data-pill] [data-pill-remove]").click()
-    _pick_game(page, "games", "Brotato")
-    expect(related_search).to_have_value("Vampire Survivors (Steam)")
-    expect(related_hidden).to_have_value(str(base.id))
-
-
-def test_add_purchase_related_game_edit_clears_autofill(
-    authenticated_page: Page, live_server, e2e_library
-):
-    """Editing an auto-filled Related game clears its committed value (a value
-    is committed only by a pick) and hands the field to the user: the typed
-    text stays, and a later Games change must not overwrite it with a fresh
-    auto-fill."""
-    platform = Platform.objects.create(name="Steam", library=e2e_library)
-    base = Game.objects.create(
-        name="Vampire Survivors",
-        sort_name="Vampire Survivors",
-        platform=platform,
-        library=e2e_library,
-    )
-    Game.objects.create(
-        name="Brotato", sort_name="Brotato", platform=platform, library=e2e_library
-    )
-
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-
-    related_search = page.locator("#id_related_game")
-    related_hidden = page.locator(
-        'search-select[name="related_game"] '
-        '[data-search-select-pills] input[type="hidden"]'
-    )
-
-    _pick_game(page, "games", "Vampire")
-    page.select_option("#id_type", "dlc")
-    expect(related_hidden).to_have_value(str(base.id))
-
-    # The first keystroke clears the auto-filled value; the typed text stays.
-    related_search.click()
-    related_search.type("Bro")
-    expect(related_hidden).to_have_count(0)
-    expect(related_search).to_have_value("Bro")
-
-    # Mid-edit the field belongs to the user: a Games change no longer refills it.
-    games_widget = page.locator('search-select[name="games"]')
-    games_widget.locator("[data-pill] [data-pill-remove]").click()
-    _pick_game(page, "games", "Brotato")
-    expect(related_search).to_have_value("Bro")
-    expect(related_hidden).to_have_count(0)
 
 
 def test_quick_bar_preset_pick_navigates_to_filtered_list(

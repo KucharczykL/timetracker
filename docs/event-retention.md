@@ -247,8 +247,6 @@ played, not when anything was recorded: null in `started_at` is a mode that
 states no instant at all, and null in `ended_at` is a session still running.
 The act records beside them are the session's own events.
 
-`Purchase.date_refunded` is older than the rule.
-
 ## Not in this contract
 
 - A Trash screen that lists what a library removed (#795). The undo toast

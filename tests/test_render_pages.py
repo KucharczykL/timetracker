@@ -15,7 +15,7 @@ from games.management.commands.render_pages import (
     normalise,
     render_plan,
 )
-from games.models import Game, Platform, Purchase
+from games.models import Game, Platform
 from games.views.returns import READ_ONLY
 
 pytestmark = pytest.mark.django_db
@@ -27,14 +27,6 @@ def furnished(owned_user):
     platform = Platform.objects.create(library=library, name="PC")
     first = Game.objects.create(library=library, name="Outer Wilds", platform=platform)
     second = Game.objects.create(library=library, name="Tunic", platform=platform)
-    purchase = Purchase.objects.create(
-        library=library,
-        price_currency="EUR",
-        date_purchased=datetime(2024, 5, 1, tzinfo=UTC).date(),
-        platform=platform,
-        num_purchases=1,
-    )
-    purchase.games.add(first)
     #: Projection rows: the stats years and every session read come from them.
     for game, year in ((first, 2024), (second, 2025)):
         start = datetime(year, 6, 1, 10, tzinfo=UTC)
@@ -59,7 +51,6 @@ def test_every_read_only_route_is_rendered_once_or_per_row(furnished):
     assert set(plan.unmounted) <= {"games:settings_kit_preview"}
     assert set(names) | set(plan.unmounted) == set(READ_ONLY)
     assert names.count("games:view_game") == 2
-    assert names.count("games:view_purchase") == 1
     assert names.count("games:stats_by_year") == 2
     assert names.count("games:filter_builder") == len(FILTER_MODE_MODELS)
     assert names.count("games:list_games") == 1

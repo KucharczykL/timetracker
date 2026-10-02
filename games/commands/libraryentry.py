@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import ClassVar, cast, get_args
+from typing import ClassVar, NamedTuple, cast, get_args
 
 from games.commands.endpoint import (
     ActStatement,
@@ -20,6 +20,7 @@ from games.commands.endpoint import (
     void_endpoint,
 )
 from games.commands.playergame import tracking_events
+from games.commands.playersession import check_note
 from games.commands.scope import Refusal, library_entry_row, visible_row
 from games.end_ways import EndWay
 from games.endpoints import ENTRY_ACCESS_END, ENTRY_ACQUISITION
@@ -41,9 +42,12 @@ from games.events.libraryentry import (
     libraryentry_removed,
     libraryentry_restored,
 )
+from games.events.purchase import purchase_removed, purchase_restored
+from games.events.references import Reference, entry_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import ENTRY_WAYS, LibraryEntry, PlayerGame, Release
 from games.reads.endpoints import stated
+from games.reads.purchases import cascaded_purchase_ids, unremoved_purchase_ids
 from games.reads.referrers import blocking_referrer, foreign_referrer
 from timetracker.temporal import TemporalValue
 
@@ -258,6 +262,72 @@ def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
     )
 
 
+class EntryStatement(NamedTuple):
+    """One copy to record; fingerprints by position.
+
+    A new field moves the digest of every command
+    holding one: RecordPurchase's new-copy keys.
+    """
+
+    release_id: uuid.UUID
+    access: EntryAccessValue
+    format: EntryFormatValue
+    note: str = ""
+    acquired: ActStatement = UNDATED_ACQUISITION
+
+    def normalized(self) -> EntryStatement:
+        """One spelling, so restatements fingerprint alike."""
+        return self._replace(note=self.note.strip(), acquired=normalized(self.acquired))
+
+
+class CreatedEntry(NamedTuple):
+    """A copy's events and its reference."""
+
+    events: tuple[NewEvent, ...]
+    reference: Reference
+
+
+def entry_creation_events(
+    context: CommandContext, statement: EntryStatement
+) -> CreatedEntry:
+    """A copy's creation; tracks an untracked game."""
+    access = check_access(statement.access)
+    format = check_format(statement.format)
+    check_note(statement.note)
+    check_note(statement.acquired.note)
+    release = _visible_release(context, statement.release_id)
+    _refuse_a_removed_release(release)
+    game = release.edition.game
+    tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
+    tracking: list[NewEvent] = []
+    if tracked is None:
+        tracking = tracking_events(game)
+        tracked_id = tracking[0].aggregate_id
+    elif tracked.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed {game.name}, so no copy of it is recorded "
+            "until it is restored.",
+            sentence=RECORD_UNDER_REMOVED_GAME,
+        )
+    else:
+        tracked_id = tracked.pk
+    created = libraryentry_created(
+        tracked_id,
+        release,
+        access=access,
+        format=format,
+        note=statement.note,
+        acquired=statement.acquired.when,
+        acquisition_note=statement.acquired.note,
+    )
+    return CreatedEntry(
+        (*tracking, created),
+        entry_reference(
+            created.aggregate_id, game_name=game.name, access=access, format=format
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RecordEntry(Command):
     """State a copy, tracking an untracked game."""
@@ -275,36 +345,14 @@ class RecordEntry(Command):
         object.__setattr__(self, "acquired", normalized(self.acquired))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        access = check_access(self.access)
-        format = check_format(self.format)
-        release = _visible_release(context, self.release_id)
-        _refuse_a_removed_release(release)
-        game = release.edition.game
-        tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
-        events: list[NewEvent] = []
-        if tracked is None:
-            events = tracking_events(game)
-            tracked_id = events[0].aggregate_id
-        elif tracked.removed_at is not None:
-            raise CommandRejected(
-                f"This library removed {game.name}, so no copy of it is recorded "
-                "until it is restored.",
-                sentence=RECORD_UNDER_REMOVED_GAME,
-            )
-        else:
-            tracked_id = tracked.pk
-        events.append(
-            libraryentry_created(
-                tracked_id,
-                release,
-                access=access,
-                format=format,
-                note=self.note,
-                acquired=self.acquired.when,
-                acquisition_note=self.acquired.note,
-            )
+        statement = EntryStatement(
+            release_id=self.release_id,
+            access=check_access(self.access),
+            format=check_format(self.format),
+            note=self.note,
+            acquired=self.acquired,
         )
-        return events
+        return entry_creation_events(context, statement).events
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,6 +373,8 @@ class DescribeEntry(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         access = None if self.access is None else check_access(self.access)
         format = None if self.format is None else check_format(self.format)
+        if self.note is not None:
+            check_note(self.note)
         entry = library_entry_row(context, self.entry_id)
         release = (
             None
@@ -366,6 +416,7 @@ class CorrectEntryAcquisition(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         return correct_opening_endpoint(
             entry,
@@ -399,7 +450,13 @@ class RemoveEntry(Command):
                 sentence=blocker.sentence,
             )
         _refuse_a_foreign_referrer(entry)
-        return [libraryentry_removed(entry.pk)]
+        return [
+            *(
+                purchase_removed(purchase_id)
+                for purchase_id in unremoved_purchase_ids(context.library, entry.pk)
+            ),
+            libraryentry_removed(entry.pk),
+        ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -415,7 +472,14 @@ class RestoreEntry(Command):
             return Unchanged(f"Entry {entry.pk} is already in this library.")
         _refuse_under_a_removed_game(entry)
         _refuse_a_removed_release(entry.release)
-        return [libraryentry_restored(entry.pk)]
+        #: Mirrors the removal's order, reversed.
+        return [
+            libraryentry_restored(entry.pk),
+            *(
+                purchase_restored(purchase_id)
+                for purchase_id in cascaded_purchase_ids(context.library, entry.pk)
+            ),
+        ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +494,7 @@ class EndEntryAccess(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         way = check_way(self.statement.way)
         return state_endpoint(
@@ -453,6 +518,7 @@ class CorrectEntryAccessEnd(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         way = check_way(self.statement.way)
         return correct_endpoint(
@@ -493,6 +559,7 @@ class ResumeEntryAccess(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        check_note(self.statement.note)
         entry = library_entry_row(context, self.entry_id)
         return resume_endpoint(
             entry,

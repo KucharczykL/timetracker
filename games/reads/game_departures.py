@@ -19,9 +19,10 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
-from games.models import Game, PlayerGame, Purchase, UserLibrary
+from games.models import Game, PlayerGame, UserLibrary
 from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_runs import library_runs
+from games.reads.purchases import library_purchases
 
 #: The annotations `with_departures` adds.
 SESSIONS = "departing_sessions"
@@ -56,8 +57,8 @@ def counted(rows: QuerySet) -> Coalesce:
 def with_departures(games: QuerySet[Game], library: UserLibrary) -> QuerySet[Game]:
     """Each game with what leaves beside it.
 
-    Sessions through `library_sessions`, purchases as Game detail
-    counts them, runs live and ordinary, all on the library.
+    Sessions, purchases and runs through
+    their read scopes, all on the library.
     """
     return games.annotate(
         **{
@@ -67,7 +68,9 @@ def with_departures(games: QuerySet[Game], library: UserLibrary) -> QuerySet[Gam
                 )
             ),
             PURCHASES: counted(
-                Purchase.objects.for_library(library).filter(games=OuterRef("pk"))
+                library_purchases(library).filter(
+                    entry__player_game__game=OuterRef("pk")
+                )
             ),
             RUNS: counted(
                 library_runs(library).filter(player_game__game=OuterRef("pk"))

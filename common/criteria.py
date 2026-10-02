@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
 from datetime import date
+from decimal import Decimal
 from enum import Enum
 from functools import cached_property
 from typing import (
@@ -33,7 +34,7 @@ from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
-from django.db.models import F, Q
+from django.db.models import F, OuterRef, Q, Subquery
 from django.db.models.expressions import Combinable
 from django.db.models.functions import ExtractYear, TruncDate
 from django.db.models.lookups import (
@@ -528,38 +529,7 @@ class FloatCriterion(_ScalarCriterion):
     _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_float)
 
     def to_q(self, field_name: str) -> Q:
-        m = self.modifier
-        if m == Modifier.EQUALS:
-            return Q(**{field_name: self.value})
-        if m == Modifier.NOT_EQUALS:
-            return ~Q(**{field_name: self.value})
-        if m == Modifier.GREATER_THAN:
-            return Q(**{f"{field_name}__gt": self.value})
-        if m == Modifier.LESS_THAN:
-            return Q(**{f"{field_name}__lt": self.value})
-        if m == Modifier.GREATER_THAN_OR_EQUAL:
-            return Q(**{f"{field_name}__gte": self.value})
-        if m == Modifier.LESS_THAN_OR_EQUAL:
-            return Q(**{f"{field_name}__lte": self.value})
-        if m == Modifier.BETWEEN:
-            if self.value is None or self.value2 is None:
-                raise FilterError("BETWEEN requires two bounds (value and value2)")
-            return Q(
-                **{
-                    f"{field_name}__gte": min(self.value, self.value2),
-                    f"{field_name}__lte": max(self.value, self.value2),
-                }
-            )
-        if m == Modifier.NOT_BETWEEN:
-            if self.value is None or self.value2 is None:
-                raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
-            lo, hi = min(self.value, self.value2), max(self.value, self.value2)
-            return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
-        if m == Modifier.IS_NULL:
-            return Q(**{f"{field_name}__isnull": True})
-        if m == Modifier.NOT_NULL:
-            return Q(**{f"{field_name}__isnull": False})
-        raise FilterError(f"Unsupported modifier {m} for float field")
+        return _numeric_to_q(self.value, self.value2, self.modifier, field_name)
 
 
 #: One lookup class per ordered modifier, over any expression.
@@ -1387,6 +1357,7 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
 type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
 type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
 type RelationAccessor = str  # a relation accessor on the parent model, e.g. "sessions"
+type RelationPath = str  # related row to parent, e.g. "entry__player_game__game"
 
 
 @dataclass(frozen=True)
@@ -1412,6 +1383,8 @@ class AggregateSpec:
     unit: DurationUnit | None = None
     # A scope the spec states itself, always applied.
     base_scope: OperatorFilter | None = None
+    #: Related row back to parent; reduce correlated.
+    correlated: RelationPath | None = None
 
     def __post_init__(self) -> None:
         # The reducer/source/unit dependencies are cross-field invariants the
@@ -1423,6 +1396,8 @@ class AggregateSpec:
                 raise TypeError("a count aggregate takes no source field")
             if self.unit is not None:
                 raise TypeError("a count aggregate takes no unit")
+            if self.correlated is not None:
+                raise TypeError("a count aggregate reads no correlated path")
         elif self.source is None:
             raise TypeError(f"a {self.reducer} aggregate requires a source field")
         if self.base_scope is not None and not isinstance(
@@ -1432,6 +1407,28 @@ class AggregateSpec:
                 f"a base scope must be a {self.scope_filter.__name__},"
                 f" got {type(self.base_scope).__name__}"
             )
+
+
+def correlated_path_problem(
+    parent: type[models.Model] | None, spec: AggregateSpec
+) -> str | None:
+    """Why a correlated path misses its parent, or None."""
+    if spec.correlated is None:
+        return None
+    model = spec.scope_filter._comparison_model()
+    if model is None or parent is None:
+        return "has no model to walk"
+    for hop in spec.correlated.split("__"):
+        try:
+            field = model._meta.get_field(hop)
+        except FieldDoesNotExist:
+            return f"names no field {hop!r} on {model.__name__}"
+        if not (field.many_to_one or field.one_to_one) or field.related_model is None:
+            return f"crosses {hop!r}, which is not to-one"
+        model = field.related_model
+    if model is not parent:
+        return f"ends at {model.__name__}, not {parent.__name__}"
+    return None
 
 
 QuerysetResolver = Callable[[type[models.Model]], models.QuerySet[Any]]
@@ -1712,7 +1709,7 @@ class OperatorFilter:
                     )
                 # The relation paths whose fan-out the quantifier ranges over: one
                 # per multi-valued operand (deduped, so two operands on the SAME
-                # relation — purchases__date_purchased vs purchases__date_refunded,
+                # relation — player_games__tracked_at vs player_games__removed_at,
                 # say — share a
                 # single join and compare same-row, while two DIFFERENT relations
                 # form a cross product). Empty when both operands are single-valued.
@@ -2100,10 +2097,20 @@ def filter_to_json(f: OperatorFilter) -> str:
 Number = int | float
 
 
+def _exact[Value: Number | Decimal | None](value: Value) -> Value | Decimal:
+    """A float as typed, so decimals compare exactly."""
+    # A float reaches a numeric column unrounded.
+    return Decimal(repr(value)) if isinstance(value, float) else value
+
+
 def _numeric_to_q(
-    value: Number, value2: Number | None, modifier: Modifier, field_name: str
+    value: Number | Decimal,
+    value2: Number | Decimal | None,
+    modifier: Modifier,
+    field_name: str,
 ) -> Q:
-    """Numeric comparison Q against a plain column/annotation (int or float)."""
+    """Numeric comparison Q against a plain column or annotation."""
+    value, value2 = _exact(value), _exact(value2)
     if modifier == Modifier.EQUALS:
         return Q(**{field_name: value})
     if modifier == Modifier.NOT_EQUALS:
@@ -2355,7 +2362,7 @@ class ComparisonOperandInfo(NamedTuple):
     """A resolved comparison operand: its terminal comparison group, whether the
     path crosses a multi-valued relation (#282), and — when it does — the
     ``relation_path`` (the operand minus its terminal column, e.g.
-    ``game__purchases``) that the ALL quantifier's relation-existence guard
+    ``game__editions``) that the ALL quantifier's relation-existence guard
     filters on."""
 
     group: ComparisonGroup
@@ -2589,8 +2596,7 @@ def _multivalued_relation_label(model_field: Any) -> str:
     explicit ``verbose_name`` (a forward M2M carries one); otherwise title-cases
     the relation's accessor name. The accessor (not the related model's plural
     name) keeps the label unique when a model reaches the same target through two
-    relations — e.g. Game → Purchase via both ``purchases`` (M2M) and
-    ``addon_purchases`` (the ``related_game`` FK reverse)."""
+    relations."""
     verbose = getattr(model_field, "verbose_name", None)
     if verbose:
         return str(verbose).title()
@@ -3528,7 +3534,7 @@ def _multivalued_comparison_to_q(
     ``predicate_q`` is the row predicate from ``_field_comparison_to_q``: the
     comparison **plus** explicit ``__isnull=False`` guards on both operand paths.
     ``relation_paths`` are the multi operands minus their terminal column (e.g.
-    ``[game__purchases]``, or ``[sessions, purchases]`` when both sides are
+    ``[game__editions]``, or ``[editions, player_games]`` when both sides are
     multi-valued). One entry → the quantifier ranges over that relation's rows;
     two entries → over the cross product Django's double join produces (two
     operands on the *same* relation dedupe to one entry, comparing same-row).
@@ -3629,9 +3635,19 @@ def aggregate_to_q(
         if spec.source is None:
             raise RuntimeError(f"{spec.reducer!r} aggregate requires a source field")
         reduce = Sum if spec.reducer == "sum" else Avg
-        aggregate_expression = reduce(
-            f"{spec.accessor}__{spec.source}", filter=scope_condition
-        )
+        if spec.correlated is not None:
+            # A join cannot reach an alias.
+            aggregate_expression = Subquery(
+                matching.filter(**{spec.correlated: OuterRef("pk")})
+                .order_by()
+                .values(spec.correlated)
+                .annotate(_reduced=reduce(spec.source))
+                .values("_reduced")
+            )
+        else:
+            aggregate_expression = reduce(
+                f"{spec.accessor}__{spec.source}", filter=scope_condition
+            )
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 

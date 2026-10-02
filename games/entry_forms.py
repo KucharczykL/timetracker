@@ -4,7 +4,7 @@ import datetime
 import hashlib
 import uuid
 from functools import partial
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 from django import forms
 
@@ -12,6 +12,7 @@ from common.components import FormFieldGroup, PostCreate, SearchSelectOption
 from common.components.search_select import ParamSources
 from common.date_time_presentation import DateTimePresentation
 from games.commands.endpoint import ActStatement, WayActStatement
+from games.commands.libraryentry import EntryStatement
 from games.end_ways import END_WAY_LABELS, EndWay
 from games.endpoints import ENTRY_ACCESS_END
 from games.events.idempotency import IdempotencyKey, key_answered
@@ -32,9 +33,11 @@ from games.models import (
     Release,
     UserLibrary,
 )
+from games.price_fields import PriceChoice, PriceFields, price_group
 from games.reads.endpoints import stated
 from games.reads.releases import game_releases, release_label
-from games.writes.libraryentry import KEEP, EntryDraft, Keep
+from games.writes.endpoint import KEEP, Keep
+from games.writes.purchase import PurchaseDraft
 from timetracker.temporal import TemporalValue
 
 RELEASE_SEARCH_URL = "/api/releases/search"
@@ -52,6 +55,7 @@ WAY_CHOICES = [(way.value, END_WAY_LABELS[way]) for way in ENTRY_WAYS]
 _COPY_GROUPS = (
     FormFieldGroup("What", ("game", "release", "format"), look="hidden"),
     FormFieldGroup("How you have it", ("access", "acquired"), look="hidden"),
+    price_group(),
     FormFieldGroup("Note", ("note",), look="hidden"),
 )
 
@@ -152,38 +156,42 @@ class _SeenEnd(forms.Form):
             self.add_error(None, CHANGED_SINCE_OPENED)
 
 
-type SubmissionAct = Literal["add", "end", "resume"]
+#: One press kind per key prefix.
+type SubmissionKind = Literal[
+    "copy-add", "copy-end", "copy-resume", "purchase-add", "purchase-refund"
+]
 
 
-def page_key(act: SubmissionAct, token: uuid.UUID) -> IdempotencyKey:
-    return f"copy-{act}-{token}"
+def page_key(kind: SubmissionKind, token: uuid.UUID) -> IdempotencyKey:
+    return f"{kind}-{token}"
 
 
-def one_click_key(act: SubmissionAct, token: uuid.UUID) -> IdempotencyKey:
-    return f"copy-{act}-now-{token}"
+def one_click_key(kind: SubmissionKind, token: uuid.UUID) -> IdempotencyKey:
+    return f"{kind}-now-{token}"
 
 
-class _Submission(forms.Form):
+class Submission(forms.Form):
     #: One key per page; a resubmit replays.
     submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
 
-    act: SubmissionAct
+    kind: ClassVar[SubmissionKind]
 
     def submission_key(self) -> IdempotencyKey:
-        return page_key(self.act, self.cleaned_data["submission"])
+        return page_key(self.kind, self.cleaned_data["submission"])
 
     def _replays(self, library: UserLibrary) -> bool:
         """This press already ran; dispatch replays."""
         submission = self.cleaned_data.get("submission")
         return submission is not None and key_answered(
-            library, page_key(self.act, submission)
+            library, page_key(self.kind, submission)
         )
 
 
-class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
-    """One copy; the Game fixed or picked."""
+class EntryAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
+    """One copy, and how it was bought."""
 
-    act: SubmissionAct = "add"
+    kind: ClassVar[SubmissionKind] = "copy-add"
+    price_choices = (PriceChoice.PAID, PriceChoice.FREE, PriceChoice.NONE)
 
     access = forms.ChoiceField(
         choices=EntryAccess.choices, initial=EntryAccess.OWNED, label="Got it as"
@@ -206,7 +214,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         game: Game | None = None,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, user=library.user, **kwargs)
         self.library = library
         self.game = game
         params: ParamSources
@@ -233,7 +241,19 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         self.fields["acquired"] = TemporalFormField(
             presentation=presentation, label="Got it on", initial=_day(today)
         )
-        self.order_fields(["game", "release", "format", "access", "acquired", "note"])
+        self.order_fields(
+            [
+                "game",
+                "release",
+                "format",
+                "access",
+                "acquired",
+                "price",
+                "amount",
+                "currency",
+                "note",
+            ]
+        )
 
     def clean_note(self) -> str:
         return normalised_note(self.cleaned_data["note"])
@@ -252,15 +272,28 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
             self.add_error("release", RELEASE_OF_ANOTHER_GAME)
         return cleaned
 
-    def draft(self) -> EntryDraft:
+    def draft(self) -> EntryStatement:
         """What the creation states."""
         cleaned = self.cleaned_data
-        return EntryDraft(
+        return EntryStatement(
             release_id=cleaned["release"].pk,
             access=cleaned["access"],
             format=cleaned["format"],
             note=cleaned["note"],
             acquired=ActStatement(cleaned["acquired"], ""),
+        )
+
+    def purchase_draft(self) -> PurchaseDraft | None:
+        """The game's purchase, on the acquired day."""
+        if (price := self.price_statement()) is None:
+            return None
+        return PurchaseDraft(
+            copy=self.draft(),
+            kind="game",
+            name="",
+            price=price,
+            note="",
+            purchased=ActStatement(self.cleaned_data["acquired"], ""),
         )
 
 
@@ -332,10 +365,10 @@ class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
         return ActStatement(when, self.entry.acquisition_note)
 
 
-class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
+class EntryEndForm(PrimitiveWidgetsMixin, Submission, _SeenEnd, forms.Form):
     """Access to a held copy ended."""
 
-    act: SubmissionAct = "end"
+    kind: ClassVar[SubmissionKind] = "copy-end"
 
     way = forms.ChoiceField(choices=WAY_CHOICES, label="What happened")
     note = forms.CharField(
@@ -376,10 +409,10 @@ class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
         )
 
 
-class EntryResumeForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
+class EntryResumeForm(PrimitiveWidgetsMixin, Submission, _SeenEnd, forms.Form):
     """Access to an ended copy resumed."""
 
-    act: SubmissionAct = "resume"
+    kind: ClassVar[SubmissionKind] = "copy-resume"
 
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"

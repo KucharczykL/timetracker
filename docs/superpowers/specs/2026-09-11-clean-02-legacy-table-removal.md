@@ -340,23 +340,10 @@ from the `recorded_at` values it just rewrote:
 | `correlation_id` / `causation_id` | one new id per correlation group, from that group's rewritten `recorded_at` |
 | `LibraryEventReference.id` | its event's rewritten `recorded_at` |
 
-**`LibraryEventStreamHead.id` is left alone — verified impossible to reassign
-safely.** `LibraryEvent.stream` is a real FK, so `_remap_referrers`'s pattern
-would in principle follow it, and the head has no date column for
-`_resequence_identity` to read regardless. But `games_libraryevent`'s
-composite FK to it (`library_event_stream_matches_library`, migration `0023`,
-`ADD CONSTRAINT ... FOREIGN KEY (stream_id, library_id) REFERENCES
-games_libraryeventstreamhead (id, library_id)`) carries no `DEFERRABLE` —
-unlike every other FK this pass relies on being `DEFERRABLE INITIALLY
-DEFERRED`. Postgres checks it immediately per statement, so
-`LibraryEvent.stream_id` and `LibraryEventStreamHead.id` cannot be swapped to
-new values in two separate `UPDATE`s without one side transiently naming a row
-the other doesn't have yet: `IntegrityError: ... violates foreign key
-constraint "library_event_stream_matches_library"`, confirmed by running it.
-The residual leak — the stream head's own uuid still encodes its real
-creation millisecond — is accepted: it is far smaller than what this
-command's jitter actually targets (play dates, prices, notes), and matches
-the class's own documented "Residual (accepted) traits" posture.
+**`LibraryEventStreamHead.id` is left alone.** The composite key
+`library_event_stream_matches_library` was checked at each statement, so the
+head and its events could not be swapped in two `UPDATE`s. Migration `defer_library_event_stream_matches_library`
+defers it (#1450); #1454 re-mints the head.
 
 `aggregate_id` is the load-bearing one: it becomes the `PlayerGame`/`Playthrough`
 primary key on replay — "the creation event's aggregate_id, evaluated once"

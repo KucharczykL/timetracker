@@ -90,14 +90,6 @@ class TestFieldWidgetKindDispatch:
         assert 'name="filter-created_at-min"' in html
         assert 'name="filter-created_at-max"' in html
 
-    def test_games_set_surfaces_all_and_only(self):
-        # games is many-to-many on Purchase → field_widget derives is_m2m and
-        # surfaces the (All)/(Only) modifiers, the one set field that needs them.
-        html = str(field_widget(PurchaseFilter, "games"))
-        assert 'data-kind="set"' in html
-        assert "INCLUDES_ALL" in html
-        assert "INCLUDES_ONLY" in html
-
     def test_aggregate_field_renders_number(self):
         # Aggregates (session_count) have no `fields` entry, so field_metadata
         # carries field_spec=None — field_widget must still build a number widget.
@@ -217,8 +209,8 @@ class TestFieldWidgetPathAndOverride:
         html = str(
             field_widget(
                 PurchaseFilter,
-                "type",
-                path=["purchase_filter", "type"],
+                "kind",
+                path=["purchase_filter", "kind"],
                 field_name_override="purchase_type",
             )
         )

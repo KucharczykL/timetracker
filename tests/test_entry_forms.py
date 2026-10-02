@@ -23,7 +23,7 @@ from games.entry_forms import (
     end_seen,
 )
 from games.models import Game, Platform
-from games.writes.libraryentry import KEEP
+from games.writes.endpoint import KEEP
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -75,6 +75,7 @@ def test_add_on_a_game_cleans_to_a_draft(owned_library, graph):
             "library-add-format": "physical",
             "library-add-note": " from Ana ",
             "library-add-submission": "01928e5e-4f6b-7c3a-8e9d-000000000001",
+            "library-add-price": "none",
             **_day("library-add-acquired", datetime.date(2026, 9, 1)),
         },
         game=graph.game,

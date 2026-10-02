@@ -1,9 +1,12 @@
 """An aggregate spec states its own scope."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase, remove_purchase
 from session_rows import session_row
 
 from common.criteria import (
@@ -14,18 +17,14 @@ from common.criteria import (
     aggregate_to_q,
 )
 from games.filters import (
+    GAME_PURCHASES,
     GAME_SESSIONS,
     GameFilter,
     PlayerSessionFilter,
     PurchaseFilter,
     filter_query_context_for_library,
 )
-from games.models import Game, PlayerSession, Purchase
-from games.removal import remove
-
-#: A stated day; nothing counts by day.
-PURCHASE_DAY = date(2026, 3, 5)
-
+from games.models import Game, PlayerSession
 
 pytestmark = pytest.mark.django_db
 
@@ -137,16 +136,10 @@ def test_an_unscoped_count_reads_the_library_scope(owned_library):
 
 def test_an_unscoped_purchase_count_omits_a_removed_purchase(owned_library):
     game = Game.objects.create(library=owned_library, name="Bought")
-    for name in ("kept", "removed"):
-        purchase = Purchase.objects.create(
-            library=owned_library,
-            name=name,
-            price_currency="CZK",
-            date_purchased=PURCHASE_DAY,
-        )
-        purchase.games.add(game)
-    remove(Purchase.objects.get(name="removed"))
+    entry = record_entry(owned_library, default_graph(game, owned_library).release)
+    record_purchase(entry, name="kept")
+    remove_purchase(record_purchase(entry, name="removed"))
 
-    spec = AggregateSpec("count", "purchases", PurchaseFilter)
+    spec = AggregateSpec("count", GAME_PURCHASES, PurchaseFilter)
 
     assert _counted(owned_library, spec, 1) == [game]

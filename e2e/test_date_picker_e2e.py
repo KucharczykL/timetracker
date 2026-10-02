@@ -1,5 +1,5 @@
 """End-to-end Playwright tests for the DatePicker element (issue #485):
-add/edit Purchase and Playthrough date fields under different account display
+add/edit Playthrough date fields under different account display
 profiles, the calendar popup, live DATETIME_FORMAT changes, and the
 JS-disabled native `<input type="date">` fallback.
 """
@@ -11,13 +11,17 @@ from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path, reverse
 from playwright.sync_api import expect
+from stated_runs import state_run
+from tracked_games import create_tracked_game
 
 from common.components import DatePicker
 from common.components.primitives import CsrfInput
 from common.date_time_presentation import date_time_presentation_for_request
-from games.models import Game, Platform, Purchase, UserPreferences
+from games.commands.endpoint import ActStatement
+from games.models import Game, Platform, UserPreferences
+from timetracker.temporal import TemporalValue
 
-# ── Real-app tests: add/edit Purchase and Playthrough ───────────────────────
+# ── Real-app tests: add/edit Playthrough ────────────────────────────────────
 
 
 @pytest.fixture
@@ -42,117 +46,73 @@ def _fill_segments(page, container: str, values: dict) -> None:
         page.keyboard.type(value)
 
 
-def test_add_purchase_date_field_iso_order_and_persists(
-    authenticated_page, live_server
-):
-    """Default (ISO) account: segments render year → month → day, and the
-    persisted date matches what was typed."""
-    page, user = authenticated_page
-    platform = Platform.objects.create(
-        library=user.library, name="PC", icon="steam", group="PC"
+STARTED = 'date-picker:has(input[name="started"]) [data-date-picker-field]'
+
+
+def _part_names(page, field: str) -> list[str]:
+    return page.locator(f"{field} input[data-date-part]").evaluate_all(
+        "(els) => els.map(e => e.dataset.datePart)"
     )
-    Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
-
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    field = 'date-picker:has(input[name="date_purchased"]) [data-date-picker-field]'
-    parts = page.locator(f"{field} input[data-date-part]")
-    expect(parts).to_have_count(3)
-    part_names = parts.evaluate_all("(els) => els.map(e => e.dataset.datePart)")
-    assert part_names == ["year", "month", "day"]
-
-    _select_first_game(page)
-    _fill_segments(page, field, {"year": "2026", "month": "03", "day": "15"})
-
-    with page.expect_navigation():
-        page.get_by_role("button", name="Submit", exact=True).click()
-
-    purchase = Purchase.objects.get()
-    assert str(purchase.date_purchased) == "2026-03-15"
 
 
-def test_add_purchase_date_field_mdy_order_persists_same_iso_date(
+def test_an_mdy_account_types_month_first_and_persists_the_same_day(
     authenticated_page, live_server
 ):
-    """An mdy_12h account: segments render month → day → year, but the
-    persisted date is the same canonical ISO value regardless of display
-    order (issue #485 acceptance criterion)."""
+    """Display order moves; the day stays."""
+    from games.models import Playthrough
+
     page, user = authenticated_page
     preferences = UserPreferences.objects.get(user=user)
     preferences.datetime_format = "mdy_12h"
     preferences.save(update_fields=["datetime_format"])
-    platform = Platform.objects.create(
-        library=user.library, name="PC", icon="steam", group="PC"
-    )
-    Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
+    game = Game.objects.create(library=user.library, name="Alpha Game")
 
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    field = 'date-picker:has(input[name="date_purchased"]) [data-date-picker-field]'
-    parts = page.locator(f"{field} input[data-date-part]")
-    part_names = parts.evaluate_all("(els) => els.map(e => e.dataset.datePart)")
-    assert part_names == ["month", "day", "year"]
+    page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
+    assert _part_names(page, STARTED) == ["month", "day", "year"]
 
     _select_first_game(page)
-    _fill_segments(page, field, {"month": "03", "day": "15", "year": "2026"})
-
+    _fill_segments(page, STARTED, {"month": "03", "day": "15", "year": "2026"})
     with page.expect_navigation():
         page.get_by_role("button", name="Submit", exact=True).click()
 
-    purchase = Purchase.objects.get()
-    assert str(purchase.date_purchased) == "2026-03-15"
+    run = Playthrough.objects.get(player_game__game=game)
+    assert str(run.started_lower) == "2026-03-15"
 
 
-def test_edit_purchase_date_field_prefills_from_instance(
+def test_edit_playthrough_date_field_prefills_from_the_run(
     authenticated_page, live_server
 ):
     page, user = authenticated_page
-    platform = Platform.objects.create(
-        library=user.library, name="PC", icon="steam", group="PC"
+    run = state_run(
+        user,
+        create_tracked_game(user.library, "Alpha Game"),
+        started=ActStatement(TemporalValue.parse("2025-06-01"), ""),
     )
-    game = Game.objects.create(
-        library=user.library, name="Alpha Game", platform=platform
-    )
-    purchase = Purchase.objects.create(
-        library=user.library,
-        price=10,
-        price_currency="USD",
-        date_purchased="2025-06-01",
-        platform=platform,
-        ownership_type=Purchase.DIGITAL,
-        type=Purchase.GAME,
-    )
-    purchase.games.add(game)
 
-    page.goto(f"{live_server.url}{reverse('games:edit_purchase', args=[purchase.id])}")
-    field = 'date-picker:has(input[name="date_purchased"]) [data-date-picker-field]'
-    hidden = page.locator('input[name="date_purchased"][data-date-picker-hidden]')
+    page.goto(f"{live_server.url}{reverse('games:edit_playthrough', args=[run.pk])}")
+    hidden = page.locator('input[name="started"][data-date-picker-hidden]')
     expect(hidden).to_have_value("2025-06-01")
-    expect(page.locator(f'{field} input[data-date-part="year"]')).to_have_value("2025")
-    expect(page.locator(f'{field} input[data-date-part="month"]')).to_have_value("06")
-    expect(page.locator(f'{field} input[data-date-part="day"]')).to_have_value("01")
+    expect(page.locator(f'{STARTED} input[data-date-part="year"]')).to_have_value(
+        "2025"
+    )
+    expect(page.locator(f'{STARTED} input[data-date-part="month"]')).to_have_value("06")
+    expect(page.locator(f'{STARTED} input[data-date-part="day"]')).to_have_value("01")
 
 
-def test_changing_datetime_format_updates_add_purchase_segment_order(
+def test_changing_datetime_format_updates_the_segment_order(
     authenticated_page, live_server
 ):
-    """Changing DATETIME_FORMAT and reloading the add-purchase form updates
-    the date field's segment order (issue #485 acceptance criterion)."""
+    """A format change reorders the segments."""
     page, user = authenticated_page
-    field = 'date-picker:has(input[name="date_purchased"]) [data-date-picker-field]'
 
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    initial_order = page.locator(f"{field} input[data-date-part]").evaluate_all(
-        "(els) => els.map(e => e.dataset.datePart)"
-    )
-    assert initial_order == ["year", "month", "day"]
+    page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
+    assert _part_names(page, STARTED) == ["year", "month", "day"]
 
     preferences = UserPreferences.objects.get(user=user)
     preferences.datetime_format = "mdy_12h"
     preferences.save(update_fields=["datetime_format"])
     page.reload()
-    updated_order = page.locator(f"{field} input[data-date-part]").evaluate_all(
-        "(els) => els.map(e => e.dataset.datePart)"
-    )
-    assert updated_order == ["month", "day", "year"]
+    assert _part_names(page, STARTED) == ["month", "day", "year"]
 
 
 def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
@@ -193,8 +153,8 @@ def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server)
     )
     Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 
-    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    picker = 'date-picker:has(input[name="date_purchased"])'
+    page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
+    picker = 'date-picker:has(input[name="started"])'
     popup = f"{picker} [data-date-range-calendar]"
 
     page.locator(f"{picker} [data-date-picker-calendar-toggle]").click()
@@ -208,7 +168,7 @@ def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server)
     picked_iso = day_button.get_attribute("data-date")
     day_button.click()
 
-    hidden = page.locator('input[name="date_purchased"][data-date-picker-hidden]')
+    hidden = page.locator('input[name="started"][data-date-picker-hidden]')
     expect(hidden).to_have_value(picked_iso)
     expect(page.locator(popup)).to_be_hidden()
 

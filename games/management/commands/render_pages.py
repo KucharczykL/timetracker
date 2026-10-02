@@ -20,7 +20,7 @@ from django.utils.html import escape
 from common.components.custom_elements import FILTER_MODE_MODELS
 from common.layout import VERSION_STAMP_CLASS
 from common.returns import UrlName
-from games.models import Game, Purchase, UserLibrary
+from games.models import Game, UserLibrary
 from games.reads.playtime import played_years
 from games.views.returns import READ_ONLY
 
@@ -87,9 +87,6 @@ def _urls(library: UserLibrary, unmounted: list[UrlName]) -> Iterator[RenderedUr
         elif name == "games:view_game":
             for game in Game.objects.for_library(library).order_by("pk"):
                 yield _rendered(name, game.get_absolute_url())
-        elif name == "games:view_purchase":
-            for purchase in Purchase.objects.for_library(library).order_by("pk"):
-                yield _rendered(name, reverse(name, args=[purchase.pk]))
         elif name == "games:stats_by_year":
             for year in played_years(library):
                 yield _rendered(name, reverse(name, args=[year]))

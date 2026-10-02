@@ -146,11 +146,19 @@ def confirm_and_remove(
     )
 
 
+#: A sentence, or one read afterwards.
+type AfterAct = str | Callable[[], str]
+
+
+def said(sentence: AfterAct) -> str:
+    return sentence if isinstance(sentence, str) else sentence()
+
+
 def restore_and_return(
     request: HttpRequest,
     *,
     action: Callable[[], CommandResult | None],
-    restored: str,
+    restored: AfterAct,
     fallback: UrlName,
     fallback_args: Sequence[Any] = (),
     retry: bool = False,
@@ -184,5 +192,5 @@ def restore_and_return(
         ):
             messages.info(request, unchanged)
         else:
-            messages.success(request, restored)
+            messages.success(request, said(restored))
     return redirect(return_url(request, fallback=fallback, fallback_args=fallback_args))

@@ -12,7 +12,7 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
-from games.models import Device, LibraryEntry
+from games.models import Device, LibraryEntry, Purchase
 from games.projections import library_path_of
 
 
@@ -144,6 +144,12 @@ def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEn
         ),
         pk=entry_id,
     )
+    _refuse_a_drifted_entry(context, entry)
+    return entry
+
+
+def _refuse_a_drifted_entry(context: CommandContext, entry: LibraryEntry) -> None:
+    """Refuse an entry naming another library's parent."""
     if entry.player_game.library_id != context.library.pk:
         raise RowUnreadable(
             f"Entry {entry.pk} of library {entry.library_id} names player game "
@@ -158,4 +164,28 @@ def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEn
             f"{entry.release_id} of library {release_library}; the ownership "
             "audit reports it, and no command states a fact about it."
         )
-    return entry
+
+
+def library_purchase_row(context: CommandContext, purchase_id: uuid.UUID) -> Purchase:
+    """This library's purchase, removed or not."""
+    purchase = library_row(
+        context,
+        Purchase.objects.select_related(
+            "entry__player_game__game", "entry__release__edition__game"
+        ),
+        Refusal(
+            message=(
+                f"This library holds no purchase {purchase_id}. A stated fact "
+                "names a purchase the library records."
+            )
+        ),
+        pk=purchase_id,
+    )
+    if purchase.entry.library_id != context.library.pk:
+        raise RowUnreadable(
+            f"Purchase {purchase.pk} of library {purchase.library_id} names entry "
+            f"{purchase.entry_id} of library {purchase.entry.library_id}; the "
+            "ownership audit reports it, and no command states a fact about it."
+        )
+    _refuse_a_drifted_entry(context, purchase.entry)
+    return purchase

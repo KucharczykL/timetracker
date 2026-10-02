@@ -181,78 +181,12 @@ function conditionalElementHandler(...configs: ElementHandlerConfig[]) {
   });
 }
 
-function disableElementsWhenValueNotEqual(
-  targetSelect: string,
-  targetValue: string | string[],
-  elementList: string[]
-) {
-  return conditionalElementHandler([
-    () => {
-      let target = document.querySelector<HTMLSelectElement>(targetSelect);
-      if (!target) return false;
-      console.debug(
-        `${disableElementsWhenTrue.name}: triggered on ${target.id}`
-      );
-      console.debug(`
-      ${disableElementsWhenTrue.name}: matching against value(s): ${targetValue}`);
-      if (targetValue instanceof Array) {
-        if (targetValue.every((value) => target.value != value)) {
-          console.debug(
-            `${disableElementsWhenTrue.name}: none of the values is equal to ${target.value}, returning true.`
-          );
-          return true;
-        }
-        return false;
-      } else {
-        console.debug(
-          `${disableElementsWhenTrue.name}: none of the values is equal to ${target.value}, returning true.`
-        );
-        return target.value != targetValue;
-      }
-    },
-    elementList,
-    (el) => {
-      console.debug(
-        `${disableElementsWhenTrue.name}: evaluated true, disabling ${el.id}.`
-      );
-      (el as HTMLInputElement).disabled = true;
-    },
-    (el) => {
-      console.debug(
-        `${disableElementsWhenTrue.name}: evaluated false, NOT disabling ${el.id}.`
-      );
-      (el as HTMLInputElement).disabled = false;
-    },
-  ]);
-}
-
-function disableElementsWhenTrue(targetSelect: string, targetValue: string | string[], elementList: string[]) {
-  return conditionalElementHandler([
-    () => {
-      console.log(`${disableElementsWhenTrue.name}: triggered on ${targetSelect}`)
-      console.log(`Value of ${targetSelect} is ${targetValue}: ${document.querySelector<HTMLSelectElement>(targetSelect)?.value == targetValue}`)
-      return document.querySelector<HTMLSelectElement>(targetSelect)?.value == targetValue;
-    },
-    elementList,
-    (el) => {
-      console.log(`${disableElementsWhenTrue.name}: disabling ${el.id}`);
-      (el as HTMLInputElement).disabled = true;
-    },
-    (el) => {
-      console.log(`${disableElementsWhenTrue.name}: enabling ${el.id}`);
-      (el as HTMLInputElement).disabled = false;
-    },
-  ]);
-}
-
 export {
   onReady,
   nowISOUTC,
   toISOUTCString,
   syncSelectInputUntilChanged,
   conditionalElementHandler,
-  disableElementsWhenValueNotEqual,
-  disableElementsWhenTrue,
   getValueFromProperty,
   bindPopupDismiss,
 };

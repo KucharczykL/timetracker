@@ -2,10 +2,12 @@
 
 import datetime
 import re
+from decimal import Decimal
 
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from purchases import record_purchase, refund_purchase, remove_purchase
 
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.end_ways import EndWay
@@ -17,6 +19,7 @@ from games.models import (
     LibraryEvent,
     Platform,
     PlayerGame,
+    Purchase,
     Release,
 )
 from games.removal import remove
@@ -76,6 +79,7 @@ def _add_post(graph, **changes) -> dict[str, str]:
         "format": "digital",
         "note": "",
         "submission": SUBMISSION,
+        "price": "none",
         **_day("acquired", datetime.date(2026, 9, 1)),
     } | changes
 
@@ -316,6 +320,29 @@ def test_remove_confirms_then_removes(logged_in, entry, graph):
     assert entry.removed_at is not None
 
 
+def test_remove_names_each_purchase_it_takes(logged_in, entry):
+    record_purchase(entry, purchased=TemporalValue.parse("2021-06-03"))
+    refund_purchase(record_purchase(entry, kind="upgrade", name="Deluxe"), None)
+    remove_purchase(record_purchase(entry, name="Gone already"))
+
+    page = logged_in.get(
+        reverse("games:remove_library_entry", args=[entry.pk])
+    ).content.decode()
+
+    assert "Its purchases are removed with it:" in page
+    assert "Bought · " in page and "19.99 EUR" in page
+    assert "Upgrade: Deluxe · " in page and " · refunded" in page
+    assert "Gone already" not in page
+
+
+def test_remove_of_a_copy_without_purchases_names_none(logged_in, entry):
+    page = logged_in.get(
+        reverse("games:remove_library_entry", args=[entry.pk])
+    ).content.decode()
+
+    assert "Its purchases" not in page
+
+
 def test_restore_puts_a_removed_copy_back(logged_in, entry):
     entry = remove_entry(entry)
 
@@ -348,7 +375,12 @@ def test_the_add_page_records_a_copy_on_the_picked_game(logged_in, graph):
     assert LibraryEntry.objects.filter(release=graph.release).count() == 1
 
 
-def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
+@pytest.mark.parametrize(
+    "price",
+    [{"price": "none"}, {"price": "paid", "amount": "5"}, {"price": "free"}],
+    ids=["none", "paid", "free"],
+)
+def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library, price):
     shared = Game.objects.create(name="Celeste")
     edition = Edition.objects.create(game=shared, is_default=True)
     release = Release.objects.create(edition=edition, is_default=True)
@@ -358,12 +390,51 @@ def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
         "access": "owned",
         "format": "physical",
         "submission": SUBMISSION,
+        "currency": "EUR",
+        **price,
     }
 
     response = logged_in.post(reverse("games:add_to_library"), posted)
 
     assert response.status_code == 302
     assert PlayerGame.objects.filter(library=owned_library, game=shared).exists()
+    assert Purchase.objects.exists() is (price["price"] != "none")
+
+
+@pytest.mark.parametrize(
+    ("price", "amount"),
+    [({"price": "paid", "amount": "30"}, Decimal(30)), ({"price": "free"}, Decimal(0))],
+    ids=["paid", "free"],
+)
+def test_add_records_the_games_purchase_with_the_copy(logged_in, graph, price, amount):
+    posted = _add_post(graph, currency="EUR", **price)
+
+    for _ in range(2):
+        response = logged_in.post(_add_url(graph.game), posted)
+
+    assert response.status_code == 302
+    entry = LibraryEntry.objects.get(release=graph.release)
+    purchase = Purchase.objects.get(entry=entry)
+    assert (purchase.kind, purchase.amount, purchase.currency) == (
+        "game",
+        amount,
+        "EUR",
+    )
+    assert purchase.purchased == entry.acquired
+
+
+def test_no_purchase_records_the_copy_alone(logged_in, graph):
+    logged_in.post(_add_url(graph.game), _add_post(graph))
+
+    assert LibraryEntry.objects.filter(release=graph.release).count() == 1
+    assert not Purchase.objects.exists()
+
+
+def test_the_add_page_starts_on_paid(logged_in, graph):
+    html = logged_in.get(_add_url(graph.game)).content.decode()
+
+    assert re.search(r'value="paid"[^>]*checked|checked[^>]*value="paid"', html)
+    assert "group/price" in html
 
 
 def test_the_library_page_offers_add_to_library(logged_in):

@@ -127,6 +127,14 @@ class CommandName(CommandVocabulary):
     LIBRARYENTRY_CORRECT_ACCESS_END = "library.libraryentry.correct_access_end"
     LIBRARYENTRY_VOID_ACCESS_END = "library.libraryentry.void_access_end"
     LIBRARYENTRY_RESUME_ACCESS = "library.libraryentry.resume_access"
+    PURCHASE_RECORD = "library.purchase.record"
+    PURCHASE_DESCRIBE = "library.purchase.describe"
+    PURCHASE_REMOVE = "library.purchase.remove"
+    PURCHASE_RESTORE = "library.purchase.restore"
+    PURCHASE_REFUND = "library.purchase.refund"
+    PURCHASE_CORRECT_REFUND = "library.purchase.correct_refund"
+    PURCHASE_VOID_REFUND = "library.purchase.void_refund"
+    PURCHASE_UNDO_REFUND = "library.purchase.undo_refund"
 
 
 @dataclass(frozen=True, slots=True)

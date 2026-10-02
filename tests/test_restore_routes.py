@@ -1,12 +1,15 @@
 """Undo posts to a restore route; the route puts the row back and returns."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from devices import create_device, remove_device
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
+from purchases import record_purchase, remove_purchase
 from session_rows import session_row
 from stated_runs import another_run
 
@@ -24,6 +27,7 @@ from games.models import (
 )
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
+from games.reads.purchases import library_purchases
 from games.removal import remove
 from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.historical_playtime import remove_historical_playtime
@@ -89,15 +93,8 @@ def _removed_run(user, game):
 
 
 def _removed_purchase(user, game):
-    purchase = Purchase.objects.create(
-        library=user.library,
-        price_currency="CZK",
-        date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
-    )
-    purchase.games.set([game])
-    remove(purchase)
-    return purchase
+    graph = default_graph(game, user.library)
+    return remove_purchase(record_purchase(record_entry(user.library, graph.release)))
 
 
 def _removed_platform(user, game):
@@ -133,13 +130,15 @@ def _visible(library, instance) -> bool:
         return library_sessions(library).filter(pk=instance.pk).exists()
     if isinstance(instance, Playthrough):
         return Playthrough.objects.filter(pk=instance.pk, removed_at=None).exists()
+    if isinstance(instance, Purchase):
+        return library_purchases(library).filter(pk=instance.pk).exists()
     return type(instance).objects.for_library(library).filter(pk=instance.pk).exists()
 
 
 ROUTES = [
     ("games:restore_session", _removed_session, "games:list_sessions"),
     ("games:restore_playthrough", _removed_run, None),
-    ("games:restore_purchase", _removed_purchase, "games:list_purchases"),
+    ("games:restore_purchase", _removed_purchase, None),
     ("games:restore_platform", _removed_platform, "games:list_platforms"),
     ("games:restore_device", _removed_device, "games:list_devices"),
     ("games:restore_preset", _removed_preset, "games:list_games"),

@@ -7,14 +7,18 @@ behaves exactly like the old positional hiding.
 """
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 from column_choice import show_every_column
 from devices import create_device
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from playwright.sync_api import Browser, Page
+from purchases import record_purchase, refund_purchase
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
@@ -23,7 +27,6 @@ from games.models import (
     HistoricalPlaytimeProvenance,
     Platform,
     Playthrough,
-    Purchase,
 )
 from timetracker.temporal import TemporalValue
 
@@ -80,15 +83,18 @@ def populated(e2e_library) -> None:
         note="a session note",
     )
     for index, purchased_game in enumerate((game, short)):
-        purchase = Purchase.objects.create(
-            library=e2e_library,
-            platform=platform,
-            date_purchased=BASE + timedelta(days=index),
-            date_refunded=BASE + timedelta(days=index + 5) if index == 0 else None,
-            price=1234,
-            price_currency="USD",
+        graph = default_graph(purchased_game, e2e_library, platform=platform)
+        purchase = record_purchase(
+            record_entry(e2e_library, graph.release),
+            amount=Decimal(1234),
+            currency="USD",
+            purchased=TemporalValue.from_day((BASE + timedelta(days=index)).date()),
         )
-        purchase.games.add(purchased_game)
+        if index == 0:
+            refund_purchase(
+                purchase,
+                TemporalValue.from_day((BASE + timedelta(days=index + 5)).date()),
+            )
     #: The run the game was born with holds the days and the long note.
     Playthrough.objects.filter(player_game__game=game).update(
         start_recorded_at=BASE,
@@ -103,20 +109,6 @@ def populated(e2e_library) -> None:
         when="2020/2022",
         provenance=HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED,
     )
-
-
-@pytest.fixture
-def bundled_purchase(populated, e2e_library) -> None:
-    """A two-game purchase: it carries the extra Split action, which widens the
-    Actions column past what a single-game row needs."""
-    bundle = Purchase.objects.create(
-        library=e2e_library,
-        platform=Platform.objects.first(),
-        date_purchased=BASE + timedelta(days=9),
-        price=4321,
-        price_currency="USD",
-    )
-    bundle.games.add(*Game.objects.all())
 
 
 def _login(page: Page, live_server, django_user_model) -> Page:
@@ -230,26 +222,6 @@ def test_a_table_never_collapses_to_its_row_header(
         settle_layout(page)
         visible = page.evaluate(VISIBLE_HEADER_COUNT)
         assert visible >= 2, f"{url_name} kept only {visible} column(s) at {width}px"
-
-
-def test_actions_survive_a_multi_game_purchase(
-    authenticated_page: Page, live_server, bundled_purchase
-):
-    """The Split action a bundle adds widens the Actions column; the fit must
-    squeeze the elastic name column rather than drop the only column that
-    offers interaction."""
-    page = authenticated_page
-    page.set_viewport_size({"width": 390, "height": 900})
-    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-    settle_layout(page)
-    actions_header = page.locator("thead th").last
-    # Rendered uppercase by the header style, so compare case-insensitively.
-    assert actions_header.inner_text().strip().lower() == "actions"
-    assert actions_header.is_visible(), "Actions dropped on a bundled-purchase row"
-    name_width = page.evaluate(
-        "() => document.querySelector('tbody th').getBoundingClientRect().width"
-    )
-    assert name_width >= 150, f"name column squeezed to {name_width}px"
 
 
 def test_an_added_row_inherits_the_current_decision(

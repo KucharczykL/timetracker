@@ -8,7 +8,6 @@ in CI (mirrors the parity tests in tests/test_sorting.py).
 """
 
 import re
-from datetime import datetime
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
@@ -17,7 +16,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, Platform
 from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,
@@ -56,13 +55,6 @@ class SortHeaderParityTest(TestCase):
         self.game = Game.objects.create(
             library=library, name="Test Game", platform=self.platform
         )
-        self.purchase = Purchase.objects.create(
-            library=library,
-            price_currency="CZK",
-            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
-        )
-        self.purchase.games.add(self.game)
 
     def _assert_parity(self, url_name: str, sort_map: dict) -> None:
         response = self.client.get(reverse(url_name))

@@ -5,12 +5,16 @@ from datetime import UTC, datetime
 import pytest
 from devices import create_device
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
+from purchases import record_purchase
 from session_rows import session_row
 from stated_runs import another_run
 
 from common.returns import action_url
 from games.models import Game, Platform, PlayerSession
 from games.reads.player_sessions import library_sessions
+from games.reads.purchases import library_purchases
 
 
 @pytest.fixture
@@ -65,21 +69,13 @@ def test_the_confirmation_form_keeps_the_origin(logged_in, game):
 
 @pytest.fixture
 def removables(owned_library):
-    from datetime import date
-
-    from games.models import Purchase
-
     platform = Platform.objects.create(name="Console")
-    owned = Game.objects.create(
-        library=owned_library, name="Removable", platform=platform
+    graph = default_graph(
+        Game(library=owned_library, name="Removable", platform=platform),
+        owned_library,
     )
-    purchase = Purchase.objects.create(
-        library=owned_library,
-        price_currency="CZK",
-        date_purchased=date(2024, 6, 1),
-        type=Purchase.GAME,
-    )
-    purchase.games.set([owned])
+    owned = graph.game
+    purchase = record_purchase(record_entry(owned_library, graph.release))
     return {
         "game": owned,
         "session": session_row(owned, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC)),
@@ -93,7 +89,6 @@ def removables(owned_library):
     "url_name,key,fallback",
     [
         ("games:remove_session", "session", "games:list_sessions"),
-        ("games:remove_purchase", "purchase", "games:list_purchases"),
         ("games:remove_platform", "platform", "games:list_platforms"),
         ("games:remove_device", "device", "games:list_devices"),
     ],
@@ -112,6 +107,20 @@ def test_every_removal_confirms_first(
     assert response["Location"] == reverse(fallback)
     assert manager.filter(pk=instance.pk).exists()
     assert not _visible(owned_library, instance).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_purchase_s_removal_confirms_and_returns_to_its_game(
+    logged_in, owned_library, removables
+):
+    purchase = removables["purchase"]
+    url = reverse("games:remove_purchase", args=[purchase.pk])
+    assert logged_in.get(url).status_code == 200
+
+    response = logged_in.post(url)
+
+    assert response["Location"] == removables["game"].get_absolute_url()
+    assert not library_purchases(owned_library).filter(pk=purchase.pk).exists()
 
 
 def _visible(library, instance):

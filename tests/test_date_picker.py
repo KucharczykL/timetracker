@@ -10,7 +10,8 @@ optional values, bound invalid data, canonical field names, edit round-trip).
 import re
 from zoneinfo import ZoneInfo
 
-from django.test import SimpleTestCase, TestCase
+from django import forms
+from django.test import SimpleTestCase
 
 from common.components import DatePicker, DatePickerCalendar, DatePickerField
 from common.date_time_presentation import (
@@ -19,6 +20,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
     build_format_profile,
 )
+from games.forms import DatePickerWidget
 
 _ESCAPED_TAG_MARKERS = ["&lt;div", "&lt;span", "&lt;button", "&lt;input"]
 DEFAULT_PRESENTATION = DateTimePresentation(
@@ -274,47 +276,29 @@ class DatePickerTest(SimpleTestCase):
         )
 
 
-class DatePickerWidgetFormTest(TestCase):
-    """Form-level integration: value_from_datadict, three profiles round-trip
-    identically to the persisted date, blank-optional vs required validation,
-    and invalid-POST redisplay behavior."""
+class _DaysForm(forms.Form):
+    """Two days and a name."""
 
-    def setUp(self):
-        from django.contrib.auth import get_user_model
+    date_purchased = forms.DateField()
+    date_refunded = forms.DateField(required=False)
+    name = forms.CharField()
 
-        from games.models import Platform
+    def __init__(self, *args, presentation, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in ("date_purchased", "date_refunded"):
+            self.fields[field_name].widget = DatePickerWidget(
+                presentation=presentation, label=field_name
+            )
 
-        self.user = get_user_model().objects.create_user(username="date-picker")
-        self.library = self.user.library
-        self.platform = Platform.objects.create(name="PC", icon="steam", group="PC")
+
+class DatePickerWidgetFormTest(SimpleTestCase):
+    """Form round trip, validation, redisplay."""
 
     def _form(self, presentation=DEFAULT_PRESENTATION, **kwargs):
-        from games.forms import PurchaseForm
+        return _DaysForm(presentation=presentation, **kwargs)
 
-        return PurchaseForm(
-            library=self.library,
-            user=self.user,
-            presentation=presentation,
-            **kwargs,
-        )
-
-    def _game(self):
-        from games.models import Game
-
-        return Game.objects.create(
-            library=self.library, name="Test Game", platform=self.platform
-        )
-
-    def _valid_data(self, game, **overrides):
-        from games.models import Purchase
-
-        data = {
-            "games": [game.pk],
-            "date_purchased": "2024-03-15",
-            "price_currency": "USD",
-            "ownership_type": Purchase.DIGITAL,
-            "type": Purchase.GAME,
-        }
+    def _valid_data(self, **overrides):
+        data = {"date_purchased": "2024-03-15", "name": "Tunic"}
         data.update(overrides)
         return data
 
@@ -324,58 +308,42 @@ class DatePickerWidgetFormTest(TestCase):
         self.assertIn("<date-picker", html)
         self.assertIn('name="date_purchased"', html)
 
-    def test_persisted_date_identical_regardless_of_display_profile(self):
-        """The regression proving date persistence is profile-independent
-        (issue #485 acceptance criterion)."""
+    def test_cleaned_date_identical_regardless_of_display_profile(self):
+        """Date persistence is profile-independent."""
         for profile in (
             DEFAULT_DATE_TIME_FORMAT_PROFILE,
             _DMY_PROFILE,
             _MDY_PROFILE,
         ):
-            game = self._game()
             form = self._form(
-                presentation=_presentation(profile),
-                data=self._valid_data(game),
+                presentation=_presentation(profile), data=self._valid_data()
             )
             self.assertTrue(form.is_valid(), form.errors)
-            purchase = form.save()
-            self.assertEqual(str(purchase.date_purchased), "2024-03-15")
+            self.assertEqual(str(form.cleaned_data["date_purchased"]), "2024-03-15")
 
     def test_blank_optional_date_submits_as_none(self):
-        game = self._game()
-        form = self._form(data=self._valid_data(game, date_refunded=""))
+        form = self._form(data=self._valid_data(date_refunded=""))
         self.assertTrue(form.is_valid(), form.errors)
         self.assertIsNone(form.cleaned_data["date_refunded"])
 
     def test_required_date_blank_fails_validation(self):
-        game = self._game()
-        form = self._form(data=self._valid_data(game, date_purchased=""))
+        form = self._form(data=self._valid_data(date_purchased=""))
         self.assertFalse(form.is_valid())
         self.assertIn("date_purchased", form.errors)
 
     def test_invalid_post_redisplays_error_and_preserves_hidden_value(self):
-        """A syntactically-valid-looking but out-of-range date fails
-        DateField validation; the widget must not crash on redisplay and
-        must not silently drop the submitted value."""
-        game = self._game()
-        form = self._form(data=self._valid_data(game, date_purchased="2024-99-99"))
+        """A bad date fails, and stays shown."""
+        form = self._form(data=self._valid_data(date_purchased="2024-99-99"))
         self.assertFalse(form.is_valid())
         self.assertIn("date_purchased", form.errors)
         html = str(form["date_purchased"])
         self.assertIn("2024-99-99", html)
 
     def test_unrelated_field_error_preserves_the_full_valid_date(self):
-        """A cross-field error elsewhere (missing related_game for a
-        non-GAME purchase type) must not blank an already-complete, valid
-        date_purchased on redisplay."""
-        from games.models import Purchase
-
-        game = self._game()
-        form = self._form(
-            data=self._valid_data(game, type=Purchase.DLC, related_game="", name="")
-        )
+        """Another field's error keeps the date."""
+        form = self._form(data=self._valid_data(name=""))
         self.assertFalse(form.is_valid())
-        self.assertIn("related_game", form.errors)
+        self.assertIn("name", form.errors)
         self.assertNotIn("date_purchased", form.errors)
         html = str(form["date_purchased"])
         # id="id_date_purchased" lands on the first (year) segment.
@@ -383,30 +351,15 @@ class DatePickerWidgetFormTest(TestCase):
         self.assertIn('value="03" data-date-part="month" data-date-side="value"', html)
         self.assertIn('value="15" data-date-part="day" data-date-side="value"', html)
 
-    def test_edit_round_trip_preserves_instance_date(self):
+    def test_an_initial_date_round_trips(self):
         from datetime import date
 
-        from games.models import Purchase
-
-        game = self._game()
-        purchase = Purchase.objects.create(
-            library=self.library,
-            price_currency="CZK",
-            price=10,
-            date_purchased=date(2025, 6, 1),
-        )
-        purchase.games.add(game)
-
-        form = self._form(instance=purchase)
+        form = self._form(initial={"date_purchased": date(2025, 6, 1)})
         html = str(form["date_purchased"])
         self.assertIn('value="2025" id="id_date_purchased" data-date-part="year"', html)
         self.assertIn('value="06" data-date-part="month" data-date-side="value"', html)
         self.assertIn('value="01" data-date-part="day" data-date-side="value"', html)
 
-        resubmitted = self._form(
-            instance=purchase,
-            data=self._valid_data(game, date_purchased="2025-06-01"),
-        )
+        resubmitted = self._form(data=self._valid_data(date_purchased="2025-06-01"))
         self.assertTrue(resubmitted.is_valid(), resubmitted.errors)
-        saved = resubmitted.save()
-        self.assertEqual(str(saved.date_purchased), "2025-06-01")
+        self.assertEqual(str(resubmitted.cleaned_data["date_purchased"]), "2025-06-01")

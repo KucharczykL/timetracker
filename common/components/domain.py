@@ -2,9 +2,8 @@
 
 import logging
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple, cast
 
-from django.template.defaultfilters import floatformat
 from django.urls import reverse
 
 from common.components.core import Children, Fragment, Node, as_children
@@ -12,7 +11,6 @@ from common.components.primitives import (
     NAME_MAX_WIDTH_CLASS,
     Icon,
     Input,
-    Li,
     Link,
     PageTab,
     PageTabs,
@@ -21,7 +19,6 @@ from common.components.primitives import (
     TooltipDefinition,
     TooltipDefinitionList,
     TruncatedText,
-    Ul,
 )
 from common.date_time_presentation import DateTimePresentation
 from common.temporal_presentation import present_temporal_value
@@ -34,7 +31,6 @@ from games.models import (
     PlayerGameStatus,
     PlayerSession,
     Purchase,
-    game_display_key,
 )
 from games.reads.endpoints import way_of
 from games.reads.entries import AccessSummary, EndedCopy
@@ -42,6 +38,7 @@ from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
+    from games.reads.purchases import ValuedPurchase
 
 logger = logging.getLogger("games")
 
@@ -309,60 +306,48 @@ def ExternalReferenceLinks(references: Sequence[ExternalReference]) -> Node:
     ]
 
 
-def _game_name(game: Game, purchase: Purchase) -> str:
-    """The game's name, or words instead.
-
-    `Game.name` is not blank, so an empty one is a row
-    nothing here wrote. One cell degrades and says which
-    row to look at; the whole list does not stop.
-    """
-    if game.name:
-        return game.name
-    logger.error(
-        "[purchases]: game %s of purchase %s states no name", game.pk, purchase.pk
-    )
-    return "Untitled game"
-
-
-def LinkedPurchase(purchase: Purchase) -> Node:
-    link = reverse("games:view_purchase", args=[purchase.id])
-    games_list: Node | None = None
-    #: Sort the prefetched games here: `order_by()` skips the
-    #: prefetch cache, costing a query per purchase. Python's
-    #: code-point order matches the Purchase page's `order_by()`
-    #: under C.UTF-8.
-    games = sorted(purchase.games.all(), key=game_display_key)
-    game_count = len(games)
-    if game_count == 0:
-        #: A purchase naming no game is live.
-        link_content = purchase.name or "No games"
-    elif game_count == 1:
-        first_game_name = _game_name(games[0], purchase)
-        if purchase.name:
-            link_content = (
-                f"{first_game_name} - {purchase.get_type_display()} ({purchase.name})"
-            )
-        else:
-            link_content = first_game_name
-    else:
-        games_list = Ul(class_="list-disc list-inside")[
-            *[Li()[_game_name(game, purchase)] for game in games]
-        ]
-        link_content = purchase.name or f"{game_count} games"
-    icon = (
-        (purchase.platform.icon if purchase.platform else "unspecified")
-        if game_count == 1
-        else "unspecified"
-    )
+def PurchaseName(purchase: Purchase) -> Node:
+    """The game, or product · game."""
+    game = purchase.entry.player_game.game
+    platform = purchase.entry.release.platform
     return TruncatedText(
-        link_content,
-        link=link,
-        leading=Icon(icon, [("title", "Multiple"), ("class", "shrink-0")]),
-        reveal="always" if game_count > 1 else "auto",
-        tooltip_content=games_list,
-        instance_key=f"purchase-list:{purchase.pk}" if games_list else None,
-        reveal_label="Show purchase details",
+        f"{purchase.name} · {game.name}" if purchase.name else game.name,
+        link=game.get_absolute_url(),
+        leading=Icon(
+            platform.icon if platform else "unspecified",
+            [
+                ("title", platform.name if platform else "Unspecified"),
+                ("class", "shrink-0"),
+            ],
+        ),
     )
+
+
+def PurchaseAmount(purchase: Purchase) -> Node:
+    """Free, Unknown, or the amount; valuation beside."""
+    if purchase.amount is None:
+        return Span()["Unknown"]
+    if purchase.amount == 0:
+        return Span()["Free"]
+    stated = f"{purchase.amount} {purchase.currency}"
+    if not hasattr(purchase, "valuation_amount"):
+        raise ValueError(
+            f"purchase {purchase.pk} carries no valuation; "
+            "read it through annotated_for_filtering(library)"
+        )
+    valuation = cast("ValuedPurchase", purchase)
+    if (
+        valuation.valuation_amount is None
+        or valuation.valuation_currency == purchase.currency
+    ):
+        return Span(class_="whitespace-nowrap")[stated]
+    return Span(class_="whitespace-nowrap")[
+        stated,
+        " ",
+        PriceConverted(
+            f"({valuation.valuation_amount} {valuation.valuation_currency})"
+        ),
+    ]
 
 
 class PlatformBadge(NamedTuple):
@@ -488,17 +473,6 @@ def _resolve_name_with_icon(
 
     return ResolvedNameWithIcon(
         name=resolved_name, badge=badge, emulated=emulated, link=link
-    )
-
-
-def PurchasePrice(purchase) -> Node:
-    return Popover(
-        popover_content=f"{floatformat(purchase.price)} {purchase.price_currency}",
-        wrapped_content=f"{floatformat(purchase.converted_price)} {purchase.converted_currency}",
-        # Without this, Popover derives its id from its own content, so any two
-        # purchases sharing both the original and the converted price collide —
-        # a DEBUG-only 500 on every list that renders more than one purchase.
-        id=f"purchase-price-{purchase.pk}",
     )
 
 
