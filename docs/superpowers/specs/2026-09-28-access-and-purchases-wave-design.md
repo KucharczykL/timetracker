@@ -632,26 +632,32 @@ deploy. The pre-deploy dump is the rollback.
 ### Review surface
 
 A "Conversion review" section on the Library page, one row per category
-with its count. Unknown price (54) and Epic free (19) link to the
-Purchases list with its price-state facet and platform set. Rentals (30)
-link to the Library tab at Access: Rented. Repurchased games (39) link to
-the Games list at entry count two or more. Created Releases (15) and mixed
-games (6), which no filter expresses, render as rows: every pass append carries `source_metadata =
-{"origin": "conversion", "issue": 723, "legacy_purchase": id, "review":
-[categories]}` (`unknown_price`, `epic_free`, `rental`,
-`created_release`, `demo_edition`, `mixed_infinite`, `addon_game`,
-`quantized`, `bundle_split`), the section reads the events by origin,
-since correlation ids differ per library, and each row links to its
-edit page. A Release writes no event, so the row is the entry that names
-it. Demo editions (34, of which 30 games hold sessions) link to the
-Games list at entry access Demo; the pass names no session's Release,
-because no finder is reliable, and #1354's bulk Edit field is where a
-person states which sessions were the demo. A copy recorded by hand
-between M3 and the cutover beside a legacy purchase of the same copy
-becomes two entries, since no rule tells one copy stated twice from two
-copies; the preflight lists such games as a category. A "Hide this
-review" checkbox on `UserLibraryPreferences` closes the section; it is
-its own toggle, read from nothing else.
+with its count, each linking to the list holding exactly those rows.
+Every pass append carries `source_metadata = {"origin": "conversion",
+"issue": 723, "legacy_purchase": id, "review": [categories]}`, the
+categories being `Category` in `games/backfill/purchase_plan.py`
+(thirteen, `unknown_price`, `epic_free`, `rental`, `created_release`,
+`demo_edition`, `mixed_infinite`, `addon_game`, `quantized`,
+`bundle_split`, `own_copy_fallback`, `renamed_addon` among them;
+`skipped_removed_game` appends nothing and stays preflight-only). One
+field reaches them: `conversion_review`, a choice field on
+`PurchaseFilter` and `LibraryEntryFilter` whose choices are `Category`'s
+words, compiled as an `Exists` over `LibraryEvent` on the row's key,
+origin conversion and the word in `review`. It is the third read that
+answers from events beside `batch_aggregate_ids`, because the category
+exists nowhere else; it is a link target and no quick facet, and its
+words stay stable once shipped, since a stored preset naming one is
+refused as unknown if the word goes. The row menus and the bulk tray on
+each list do the fixing, and #1432's audit screen reuses the field.
+Repurchased games (39) link to the Games list at entry count two or
+more; the pass names no session's Release, because no finder is
+reliable, and #1354's bulk Edit field is where a person states which
+sessions were the demo. A copy recorded by hand between M3 and the
+cutover beside a legacy purchase of the same copy becomes two entries,
+since no rule tells one copy stated twice from two copies; the preflight
+lists such games as a category. A "Hide this review" checkbox on
+`UserLibraryPreferences` closes the section; it is its own toggle, read
+from nothing else.
 
 The sample fixture is regenerated inside the stack, by P5, from the
 day's dump after the rehearsal: `load_sample_data` runs no conversion
