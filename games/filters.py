@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         Game,
         HistoricalPlaytime,
         LibraryEntry,
+        LibraryEvent,
         Platform,
         PlayerSession,
         Playthrough,
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 
 import builtins
 
-from django.db.models import Model, Q, QuerySet, TextChoices
+from django.db.models import Exists, Model, OuterRef, Q, QuerySet, TextChoices
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -69,6 +70,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
+from games.conversion_review import ORIGIN, REVIEW_WORDS, REVIEWED
 from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import (
     DEVICE_ACCESS_END,
@@ -173,6 +175,81 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
         return q
 
     return handler
+
+
+#: The rows a set of tagged events reaches.
+type TaggedRows = Callable[[QuerySet[LibraryEvent, LibraryEvent]], Q]
+
+_REVIEW_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
+    ChoiceMeta(value=str(word), label=REVIEW_WORDS[word].label) for word in REVIEWED
+)
+_REVIEW_VALUES: Final[frozenset[str]] = frozenset(str(word) for word in REVIEWED)
+
+
+def own_events(events: QuerySet[LibraryEvent]) -> Exists:
+    """Events of the outer row itself."""
+    return Exists(
+        events.filter(library=OuterRef("library"), aggregate_id=OuterRef("pk"))
+    )
+
+
+def conversion_review_field(tagged: TaggedRows) -> FilterField:
+    """A row by the conversion's review words."""
+
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
+        if not isinstance(criterion, ChoiceCriterion):
+            raise FilterError("conversion_review picks words; state a list")
+        unknown = sorted({*criterion.value, *criterion.excludes} - _REVIEW_VALUES)
+        if unknown:
+            raise FilterError(f"conversion_review knows no word {unknown}")
+        from games.models import LibraryEvent
+
+        events = LibraryEvent.objects.filter(source_metadata__origin=ORIGIN)
+
+        def any_of(words: list[str]) -> Q:
+            return tagged(events.filter(source_metadata__review__has_any_keys=words))
+
+        modifier = criterion.modifier
+        if modifier == Modifier.IS_NULL:
+            return ~any_of(sorted(_REVIEW_VALUES))
+        if modifier == Modifier.NOT_NULL:
+            return any_of(sorted(_REVIEW_VALUES))
+        words = criterion.value
+        if not words:
+            q = Q()
+        elif modifier in (Modifier.INCLUDES, Modifier.EQUALS):
+            q = any_of(words)
+        elif modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
+            q = ~any_of(words)
+        elif modifier == Modifier.INCLUDES_ALL:
+            q = Q()
+            for word in words:
+                q &= any_of([word])
+        else:
+            raise FilterError(f"Unsupported modifier {modifier} for conversion_review")
+        if criterion.excludes:
+            q &= ~any_of(criterion.excludes)
+        return q
+
+    return FilterField(
+        handler=handler,
+        label="Conversion review",
+        choices=_REVIEW_CHOICES,
+        nullable=True,
+    )
+
+
+def _purchase_tagged(events: QuerySet[LibraryEvent]) -> Q:
+    return Q(own_events(events))
+
+
+def _entry_tagged(events: QuerySet[LibraryEvent]) -> Q:
+    """The copy's events, or its purchases'."""
+    from games.models import Purchase
+
+    #: Removed purchases keep their tags.
+    purchases = Purchase.objects.filter(entry=OuterRef("pk"))
+    return Q(own_events(events)) | Q(Exists(purchases.filter(own_events(events))))
 
 
 #: Columns that widen the Games list.
@@ -991,6 +1068,7 @@ class LibraryEntryFilter(OperatorFilter):
     edition_kind: ChoiceCriterion | None = None
     note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared by calendar day
+    conversion_review: ChoiceCriterion | None = None
 
     # Free-text search
     search: StringCriterion | None = None
@@ -1015,6 +1093,7 @@ class LibraryEntryFilter(OperatorFilter):
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
         ),
+        "conversion_review": conversion_review_field(_entry_tagged),
     }
 
     @classmethod
@@ -1092,6 +1171,7 @@ class PurchaseFilter(OperatorFilter):
     platform: UUIDMultiCriterion | None = None  # the copy's Release's
     game: UUIDMultiCriterion | None = None
     created_at: DateCriterion | None = None  # compared by calendar day
+    conversion_review: ChoiceCriterion | None = None
 
     # Free-text search
     search: StringCriterion | None = None
@@ -1132,6 +1212,7 @@ class PurchaseFilter(OperatorFilter):
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
         ),
+        "conversion_review": conversion_review_field(_purchase_tagged),
     }
 
     @classmethod

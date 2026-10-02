@@ -15,6 +15,7 @@ from games.commands.purchase import (
     UndoPurchaseRefund,
     VoidPurchaseRefund,
 )
+from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandResult, append_command
 from games.events.purchase import PURCHASE_CREATED, PurchaseKindValue
 from games.models import (
@@ -27,7 +28,11 @@ from games.models import (
 from timetracker.temporal import TemporalValue
 
 
-def _state(library: UserLibrary, command: Command) -> CommandResult:
+def _state(
+    library: UserLibrary,
+    command: Command,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     with transaction.atomic():
         return append_command(
             command,
@@ -35,6 +40,7 @@ def _state(library: UserLibrary, command: Command) -> CommandResult:
             library=library,
             idempotency_key=str(uuid.uuid7()),
             correlation_id=uuid.uuid7(),
+            source_metadata=source_metadata,
         )
 
 
@@ -48,6 +54,7 @@ def record_purchase(
     note: str = "",
     purchased: TemporalValue | None = None,
     purchase_note: str = "",
+    source_metadata: SourceMetadata | None = None,
 ) -> Purchase:
     """A live purchase of a held copy."""
     result = _state(
@@ -60,6 +67,7 @@ def record_purchase(
             note=note,
             purchased=ActStatement(purchased, purchase_note),
         ),
+        source_metadata,
     )
     assert result.sequences is not None
     created = LibraryEvent.objects.get(

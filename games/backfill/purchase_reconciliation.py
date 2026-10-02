@@ -20,15 +20,15 @@ from django.db.models import (
 )
 from django.utils import timezone
 
-from games.backfill.purchase import ORIGIN, LibraryConversion
+from games.backfill.purchase import LibraryConversion
 from games.backfill.purchase_plan import (
     AccessAndFormat,
-    Category,
     CurrencyCode,
     LegacyRow,
     exact_amount,
     quantized_amount,
 )
+from games.conversion_review import ORIGIN, Category
 from games.models import (
     LibraryEntry,
     LibraryEvent,

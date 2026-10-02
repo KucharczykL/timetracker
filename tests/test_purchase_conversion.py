@@ -19,7 +19,6 @@ from games.backfill.purchase import (
     convert_purchases,
     legacy_rows,
 )
-from games.backfill.purchase_plan import Category
 from games.backfill.purchase_reconciliation import (
     legacy_statistics,
     reconcile,
@@ -28,6 +27,7 @@ from games.backfill.purchase_reconciliation import (
 )
 from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.purchase import VoidPurchaseRefund
+from games.conversion_review import Category
 from games.events.purchase import PURCHASE_CREATED
 from games.models import (
     Edition,

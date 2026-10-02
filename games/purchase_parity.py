@@ -15,8 +15,6 @@ from typing import Any, NamedTuple
 from django.db.models import Model, QuerySet
 
 from common.utils import safe_division
-from games.backfill.purchase import ORIGIN
-from games.backfill.purchase_plan import Category
 from games.backfill.purchase_reconciliation import (
     ROWS_KEYS,
     SNAPSHOT_FORMAT,
@@ -26,6 +24,7 @@ from games.backfill.purchase_reconciliation import (
     SnapshotScope,
     snapshot_value,
 )
+from games.conversion_review import ORIGIN, Category
 from games.events.libraryentry import LIBRARYENTRY_CREATED
 from games.events.purchase import PURCHASE_CREATED
 from games.filters import PurchaseFilter

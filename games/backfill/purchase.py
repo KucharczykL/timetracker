@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from functools import partial
-from typing import Any, Final, Literal, NamedTuple, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict
 
 from django.core.exceptions import ValidationError
 from django.db import DataError, IntegrityError, connection, models, transaction
@@ -19,7 +19,6 @@ from django.utils import timezone
 
 from games.api_creation import RowRefused
 from games.backfill.purchase_plan import (
-    Category,
     ConvertedShare,
     CopyShape,
     CurrencyCode,
@@ -51,6 +50,7 @@ from games.commands.purchase import (
     purchase_creation_events,
 )
 from games.conversion import request_revaluation
+from games.conversion_review import ORIGIN, Category
 from games.end_ways import EndWay
 from games.events.append import LockedStream
 from games.events.conflicts import CommandConflict
@@ -101,7 +101,6 @@ from timetracker.temporal import TemporalValue
 logger = logging.getLogger("games")
 
 ISSUE = 723
-ORIGIN: Final = "conversion"
 DEMO_EDITION = "Demo"
 
 type ConversionAct = Literal[

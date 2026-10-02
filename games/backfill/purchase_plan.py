@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Literal, NamedTuple, get_args
 
 from games.commands.purchase import UNKNOWN_PRICE, StatedPrice, refund_ends
+from games.conversion_review import Category
 from games.events.libraryentry import EntryAccessValue, EntryFormatValue
 from games.events.purchase import PurchaseKindValue
 from timetracker.temporal import TemporalValue
@@ -29,24 +30,6 @@ LEGACY_OWNERSHIPS: frozenset[str] = frozenset(get_args(LegacyOwnership.__value__
 LEGACY_TYPES: frozenset[str] = frozenset(get_args(LegacyType.__value__))
 OWNED: frozenset[str] = frozenset({"ph", "di", "du"})
 PASSES: frozenset[str] = frozenset({"season_pass", "battle_pass"})
-
-
-class Category(StrEnum):
-    """A review list a planned copy joins."""
-
-    UNKNOWN_PRICE = "unknown_price"
-    EPIC_FREE = "epic_free"
-    RENTAL = "rental"
-    CREATED_RELEASE = "created_release"
-    DEMO_EDITION = "demo_edition"
-    MIXED_INFINITE = "mixed_infinite"
-    ADDON_GAME = "addon_game"
-    QUANTIZED = "quantized"
-    BUNDLE_SPLIT = "bundle_split"
-    HAND_RECORDED_COPY = "hand_recorded_copy"
-    OWN_COPY_FALLBACK = "own_copy_fallback"
-    RENAMED_ADDON = "renamed_addon"
-    SKIPPED_REMOVED_GAME = "skipped_removed_game"
 
 
 class CopyShape(StrEnum):
