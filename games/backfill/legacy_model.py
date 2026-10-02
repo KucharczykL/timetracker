@@ -23,7 +23,7 @@ LEGACY_TABLE: Final[TableName] = "games_legacypurchase"
 
 
 class LegacyTableGone(Exception):
-    """The drop already took the table."""
+    """The table or its migration state is gone."""
 
 
 @functools.cache
@@ -32,13 +32,18 @@ def legacy_purchase_model() -> HistoricalModel:
     loader = MigrationLoader(None, ignore_no_migrations=True)
     try:
         state = loader.project_state(LEGACY_STATE)
-    except (NodeNotFoundError, KeyError) as error:
-        raise LegacyTableGone(f"Migration state {LEGACY_STATE} is gone.") from error
+    except NodeNotFoundError as error:
+        raise LegacyTableGone(
+            f"Migration {LEGACY_STATE[1]} is no longer on disk; the table "
+            "may still hold rows."
+        ) from error
     return state.apps.get_model("games", "LegacyPurchase")
 
 
 def require_legacy_table(connection: BaseDatabaseWrapper) -> HistoricalModel:
     """The historical model, while its table stands."""
     if LEGACY_TABLE not in connection.introspection.table_names():
-        raise LegacyTableGone(LEGACY_TABLE)
+        raise LegacyTableGone(
+            f"Table {LEGACY_TABLE} is absent; migration 0035 dropped it."
+        )
     return legacy_purchase_model()

@@ -1,7 +1,6 @@
 # The legacy purchase is gone
 
-Issue: [#736](https://github.com/KucharczykL/timetracker/issues/736),
-member P5c of the
+Issue [#736](https://github.com/KucharczykL/timetracker/issues/736), P5c of the
 [Access and Purchases wave](2026-09-28-access-and-purchases-wave-design.md).
 
 ## The drop
@@ -15,8 +14,7 @@ source does not have is skipped with a warning. A `DatabaseError`, or a
 source that does not answer (`RateFetchFailed`), fails the run and
 schedules one retry.
 
-`RETIRED_FILTER_MODELS` keeps `legacypurchase`. A stored filter that
-names it is refused with its sentence.
+`RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`.
 
 ## The conversion tooling
 
@@ -26,8 +24,7 @@ squash (#1448).
 
 They read the model from migration state `0034_conversion_review_hidden`
 through `legacy_purchase_model()` (`games/backfill/legacy_model.py`).
-The historical model takes keys, not instances. It has no `save()` rules
-and no signals. `require_legacy_table` raises `LegacyTableGone` when the
+The historical model takes keys, not instances, and has no signals. `require_legacy_table` raises `LegacyTableGone` when the
 table or the migration state is absent. The command then refuses with
 one sentence.
 
@@ -58,17 +55,18 @@ prints, for each step after the first.
 ## The sample fixture
 
 The fixture holds Platform, Game, Edition, Release, the event store and
-ExchangeRate. The anonymizer keeps the copy that each purchase names.
-A refund ends that copy, and a pass uses the copy of its base game.
+ExchangeRate. The anonymizer keeps the copy that each purchase names,
+because a refund ends that copy.
 
 - Edition and Release have no `created_at`. They get new ids at
   `FIXED_EPOCH`, in key order.
 - A reference to an entry gets the new id of the entry's aggregate, in
   the payload and in `LibraryEventReference`.
-- A path rewrite goes into each item of a list. A bare id that no
-  aggregate holds, such as a join id, gets a new id at the epoch.
-- Each rewritten payload is sorted and validated again. A reference or a
-  payload that fails stops the command with the key of the event.
+- A path rewrite goes into each item of a list. A join id gets a new id
+  at the epoch. Any other bare id must name an aggregate of the library.
+- The runs of a record are sorted again, and each rewritten payload is
+  validated again. A reference, an id or a payload that fails stops the
+  command with the key of the event or of the reference row.
 - `--name-overrides` also changes the names of editions.
 - The prune deletes the projection rows of the other libraries first,
   because their keys are `RESTRICT`.
@@ -79,6 +77,6 @@ valuation run when the state is behind or a purchase is stale.
 
 ## Residuals
 
-- #1450: a purge of a library that has an add-on fails.
-- #1451: `verify-baseline` finds seven CHECK constraints that have a
-  different text.
+- #1450: a purge of a library that has an add-on fails. P6, the
+  last member of the stack, fixes it.
+- #1451: seven CHECK constraints differ in text under `verify-baseline`.

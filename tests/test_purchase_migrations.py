@@ -1,4 +1,4 @@
-"""The legacy rename, forward and back."""
+"""The purchase migrations, forward and back."""
 
 # conversion-tooling
 

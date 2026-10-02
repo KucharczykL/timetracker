@@ -4,12 +4,15 @@
 
 from datetime import date
 from io import StringIO
+from typing import get_args
 
 import pytest
 from django.core.management import CommandError, call_command
 from django.db import connection
+from legacy_purchases import LegacyOwnershipCode, LegacyTypeCode
 
 from games.backfill.legacy_model import LegacyTableGone, require_legacy_table
+from games.backfill.purchase_plan import LegacyOwnership, LegacyType
 from games.models import Game
 
 pytestmark = pytest.mark.django_db
@@ -43,17 +46,28 @@ def test_a_squashed_state_is_gone_too(monkeypatch):
     monkeypatch.setattr(legacy_model, "LEGACY_STATE", ("games", "9999_squashed"))
     legacy_model.legacy_purchase_model.cache_clear()
     try:
-        with pytest.raises(LegacyTableGone, match="9999_squashed"):
+        with pytest.raises(LegacyTableGone, match="9999_squashed is no longer on disk"):
             legacy_model.legacy_purchase_model()
     finally:
         legacy_model.legacy_purchase_model.cache_clear()
 
 
 def test_the_command_refuses_once_the_table_is_gone(owned_user):
-    with pytest.raises(CommandError, match="legacy purchase is gone"):
+    with pytest.raises(
+        CommandError, match="Nothing to convert: Table games_legacypurchase is absent"
+    ):
         call_command(
             "verify_purchase_conversion",
             "--user",
             owned_user.username,
             stdout=StringIO(),
         )
+
+
+@pytest.mark.parametrize(
+    ("codes", "words"),
+    [(LegacyOwnershipCode, LegacyOwnership), (LegacyTypeCode, LegacyType)],
+)
+def test_the_codes_are_the_stored_words(codes, words):
+    stated = {value for name, value in vars(codes).items() if name.isupper()}
+    assert stated == set(get_args(words.__value__))

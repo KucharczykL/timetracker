@@ -47,6 +47,7 @@ from games.management.commands.anonymize_sample import (
     FIXED_EPOCH,
     GENERATED_FIELDS,
     JITTER_DAYS,
+    _read_path,
     rewrite_path,
     shift_dated,
     shift_instant,
@@ -61,6 +62,7 @@ from games.models import (
     GameKind,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
+    HistoricalPlaytimeRun,
     LibraryCalendar,
     LibraryEntry,
     LibraryEvent,
@@ -393,6 +395,11 @@ def test_a_rewrite_refuses_a_shape_no_vocabulary_states(payload, path):
         rewrite_path(payload, path, str.upper)
 
 
+def test_a_dated_path_never_crosses_a_list():
+    with pytest.raises(CommandError, match="crosses a list"):
+        _read_path({"runs": [{"day": "2021-01-01"}]}, ("runs", "day"))
+
+
 def test_the_pinned_generated_keys_are_derived():
     assert GENERATED_KEYS <= GENERATED_FIELDS["games.release"]
 
@@ -669,6 +676,11 @@ class AnonymizeSampleTest(TransactionTestCase):
             library=source_user.library,
             idempotency_key="track-0",
         )
+        #: A removed release a copy still names.
+        remove(Release.objects.get(edition__game__name="Game 3"))
+        source_join_ids = set(
+            HistoricalPlaytimeRun.objects.values_list("pk", flat=True)
+        )
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
             call_command(
@@ -703,6 +715,14 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertEqual(events.count(), dumped_events)
         record = HistoricalPlaytime.objects.get(library=target.library)
         self.assertEqual(record.runs.get().playthrough.player_game, record.player_game)
+        #: Join ids are re-minted too.
+        self.assertFalse(
+            source_join_ids
+            & set(HistoricalPlaytimeRun.objects.values_list("pk", flat=True))
+        )
+        self.assertEqual(
+            LibraryEntry.objects.filter(release__removed_at__isnull=False).count(), 1
+        )
         self.assertTrue(all(event.pk.version == 7 for event in events))
         sessions = PlayerSession.objects.filter(library=target.library)
         self.assertEqual(sessions.count(), 3)
@@ -1052,6 +1072,26 @@ class ReassignedIdentityTest(TransactionTestCase):
                 if len(event["fields"]["payload"]["playthroughs"]) == 2
             ]
             self.assertEqual(both, sorted_runs(both))
+
+    def test_a_payload_naming_a_missing_row_is_named(self):
+        _build_dataset()
+        event = LibraryEvent.objects.filter(
+            event_type="library.purchase.created"
+        ).first()
+        payload = dict(event.payload)
+        payload["entry"] = {**payload["entry"], "id": str(uuid.uuid7())}
+        LibraryEvent.objects.filter(pk=event.pk).update(payload=payload)
+
+        with (
+            TemporaryDirectory() as tempdir,
+            self.assertRaisesMessage(CommandError, f"Event {event.pk}"),
+        ):
+            call_command(
+                "anonymize_sample",
+                user="sample-source",
+                seed=1,
+                output=Path(tempdir) / "out.yaml.gz",
+            )
 
     def test_a_reference_no_event_creates_is_named(self):
         _build_dataset()

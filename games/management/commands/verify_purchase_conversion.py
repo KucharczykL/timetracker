@@ -75,9 +75,7 @@ class Command(BaseCommand):
         try:
             model = require_legacy_table(connection)
         except LegacyTableGone as gone:
-            raise CommandError(
-                f"The legacy purchase is gone ({gone}); nothing to convert."
-            ) from gone
+            raise CommandError(f"Nothing to convert: {gone}") from gone
         library = self._library(username)
         rows = legacy_rows(model, library.pk)
         if options["snapshot"] is not None:

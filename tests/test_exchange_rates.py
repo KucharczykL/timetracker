@@ -92,6 +92,23 @@ def test_a_failed_request_raises_for_a_retry(monkeypatch):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("status", [500, 503, None], ids=["500", "503", "no response"])
+def test_any_other_http_error_raises_for_a_retry(monkeypatch, status):
+    response = None
+    if status is not None:
+        response = requests.Response()
+        response.status_code = status
+    monkeypatch.setattr(
+        exchange_rates.requests,
+        "get",
+        Mock(side_effect=requests.HTTPError("unavailable", response=response)),
+    )
+
+    with pytest.raises(exchange_rates.RateFetchFailed):
+        exchange_rates.exchange_rate("USD", "CZK", 2023)
+
+
+@pytest.mark.django_db
 def test_an_absent_year_is_none(monkeypatch):
     response = requests.Response()
     response.status_code = 404

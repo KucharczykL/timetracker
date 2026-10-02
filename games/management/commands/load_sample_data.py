@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+from collections.abc import Mapping
 from io import StringIO
 from pathlib import Path
 from typing import NamedTuple
@@ -38,13 +39,16 @@ from games.models import (
     PurchaseConversionState,
     Release,
 )
-from games.projections import FieldName, ModelLabel
+from games.projections import FieldName
 from games.reads.purchases import stale_purchases
+
+#: dumpdata's spelling: `_meta.label_lower`.
+type FixtureLabel = str  # e.g. "games.release"
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
 TARGET_LIBRARY_MARKER = "__target_library__"
 
-PRIVATE_MODELS: dict[ModelLabel, type[Model]] = {
+PRIVATE_MODELS: dict[FixtureLabel, type[Model]] = {
     "games.game": Game,
     "games.filterpreset": FilterPreset,
     "games.libraryeventstreamhead": LibraryEventStreamHead,
@@ -52,7 +56,7 @@ PRIVATE_MODELS: dict[ModelLabel, type[Model]] = {
     "games.libraryeventreference": LibraryEventReference,
 }
 #: Every model the loader deserializes.
-LOADABLE_MODELS: dict[ModelLabel, type[Model]] = {
+LOADABLE_MODELS: dict[FixtureLabel, type[Model]] = {
     **PRIVATE_MODELS,
     "games.edition": Edition,
     "games.release": Release,
@@ -69,13 +73,13 @@ class FixtureRelationship(NamedTuple):
     """
 
     field: FieldName
-    target_model: ModelLabel
+    target_model: FixtureLabel
     many: bool
     required: bool
     reference_field: FieldName = "pk"
 
 
-FIXTURE_RELATIONSHIPS: dict[ModelLabel, tuple[FixtureRelationship, ...]] = {
+FIXTURE_RELATIONSHIPS: dict[FixtureLabel, tuple[FixtureRelationship, ...]] = {
     "games.game": (
         FixtureRelationship("platform", "games.platform", False, False),
         FixtureRelationship("parent", "games.game", False, False),
@@ -94,14 +98,18 @@ FIXTURE_RELATIONSHIPS: dict[ModelLabel, tuple[FixtureRelationship, ...]] = {
 }
 
 
-#: Fixture rows naming a Platform, remapped on load.
-PLATFORM_HOLDERS: frozenset[ModelLabel] = frozenset(
-    label
+#: Fields naming a Platform, remapped on load.
+PLATFORM_FIELDS: Mapping[FixtureLabel, tuple[FieldName, ...]] = {
+    label: fields
     for label, relationships in FIXTURE_RELATIONSHIPS.items()
-    if any(
-        relationship.target_model == "games.platform" for relationship in relationships
+    if (
+        fields := tuple(
+            relationship.field
+            for relationship in relationships
+            if relationship.target_model == "games.platform" and not relationship.many
+        )
     )
-)
+}
 
 
 class Command(BaseCommand):
@@ -508,15 +516,15 @@ class Command(BaseCommand):
                 and fields.get("aggregate_id") == TARGET_LIBRARY_MARKER
             ):
                 fields["aggregate_id"] = str(library.pk)
-            if model in PLATFORM_HOLDERS:
-                platform_reference = fields.get("platform")
+            for field in PLATFORM_FIELDS.get(model, ()):
+                platform_reference = fields.get(field)
                 if platform_reference is not None:
                     if str(platform_reference) not in platform_uuids:
                         raise CommandError(
                             f"Sample {model} references unknown Platform "
                             f"{platform_reference}."
                         )
-                    fields["platform"] = platform_uuids[str(platform_reference)]
+                    fields[field] = platform_uuids[str(platform_reference)]
             prepared.append(copied)
         return prepared
 

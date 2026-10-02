@@ -52,11 +52,7 @@ def exchange_rate(
             url,
             error,
         )
-        if (
-            isinstance(error, requests.HTTPError)
-            and error.response is not None
-            and error.response.status_code == ABSENT_STATUS
-        ):
+        if _source_has_none(error):
             return None
         raise RateFetchFailed(
             f"Fetching {source}->{target} for {year} failed: {error}"
@@ -87,6 +83,15 @@ def exchange_rate(
         defaults={"rate": rate},
     )
     return stored.rate
+
+
+def _source_has_none(error: requests.RequestException) -> bool:
+    """A 404: no table for that year."""
+    return (
+        isinstance(error, requests.HTTPError)
+        and error.response is not None
+        and error.response.status_code == ABSENT_STATUS
+    )
 
 
 def _is_storable(rate: Decimal) -> bool:

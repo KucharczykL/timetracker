@@ -884,3 +884,11 @@ def test_sample_load_requests_a_run_for_stale_purchases_alone(owner, monkeypatch
 
     after = PurchaseConversionState.objects.get(library=owner.library)
     assert after.requested_version == before.requested_version + 1
+
+
+def test_the_loader_takes_every_dumped_model():
+    from games.management.commands.anonymize_sample import DUMP_LABELS
+    from games.management.commands.load_sample_data import LOADABLE_MODELS
+
+    rebuilt = {"games.platform", "games.exchangerate"}
+    assert set(DUMP_LABELS) - rebuilt <= set(LOADABLE_MODELS)

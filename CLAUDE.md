@@ -140,7 +140,7 @@ path**, so verify against `make check` before pushing when possible.
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the ten reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
-| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; runs between 0030 and 0035 only, refuses once the table is gone; **not** in `make check`) |
+| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; runs between 0030 and 0035; refuses once the table is gone; **not** in `make check`) |
 | Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a figure or row set no reason explains; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
@@ -1361,9 +1361,9 @@ offset), clears free-text notes/names and `source_metadata`, and sanitizes
 audit timestamps; in event payloads it clears every `NoteText`/`NameText` path
 and redraws every `AmountText`, lists included; `--name-overrides` reaches
 edition names too. Edition and Release mint at the epoch; a projected reference
-(an entry) takes its aggregate's new id, and a bare id no aggregate holds is
-re-minted; a reference or payload that does not resolve or validate refuses
-with the event's key. All
+(an entry) takes its aggregate's new id, a join row's id is re-minted, and any
+other bare id must name an aggregate; a reference, id or payload that does not
+resolve or validate refuses with the event's or reference row's key. All
 inside rolled-back transaction, so source DB untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 
