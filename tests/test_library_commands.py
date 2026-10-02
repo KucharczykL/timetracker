@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from gzip import open as gzip_open
 from io import StringIO
 from pathlib import Path
@@ -25,7 +25,6 @@ from games.models import (
     Device,
     ExchangeRate,
     Game,
-    LegacyPurchase,
     LibraryCalendar,
     LibraryEvent,
     Platform,
@@ -33,7 +32,9 @@ from games.models import (
     PlayerSession,
     Playthrough,
     PlaythroughKind,
+    Purchase,
     PurchaseConversionState,
+    Release,
     UserLibraryPreferences,
 )
 
@@ -60,17 +61,9 @@ def _owned_graph(owner):
         name="Owner game",
         platform=platform,
     )
-    purchase = LegacyPurchase.objects.create(
-        library=owner.library,
-        price=10,
-        price_currency="CZK",
-        date_purchased=date(2025, 1, 1),
-        platform=platform,
-    )
-    purchase.games.add(game)
     started_at = datetime(2025, 1, 1, tzinfo=UTC)
     timed_row(tracked_run(owner.library, game), started_at, None, device=device)
-    return platform, device, game, purchase
+    return platform, device, game
 
 
 @pytest.mark.django_db
@@ -124,7 +117,7 @@ def test_audit_reports_direct_derived_cross_link_and_preference_sections(owner):
 
 @pytest.mark.django_db
 def test_audit_exits_nonzero_and_names_an_injected_cross_library_link(owner, outsider):
-    _, _, game, _ = _owned_graph(owner)
+    _, _, game = _owned_graph(owner)
     foreign_device = create_device(
         library=outsider.library,
         name="Foreign device",
@@ -180,7 +173,7 @@ def test_purge_user_library_rejects_a_mismatched_confirmation(owner):
 
 @pytest.mark.django_db
 def test_purge_user_library_cascades_private_data_but_keeps_shared_platform(owner):
-    platform, _, game, _ = _owned_graph(owner)
+    platform, _, game = _owned_graph(owner)
     output = StringIO()
 
     call_command(
@@ -218,13 +211,13 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     # the fixture's, so the loaded rows must have been remapped onto this exact
     # platform rather than carrying the fixture's identity through.
     assert Game.objects.filter(platform=steam).exists()
-    assert LegacyPurchase.objects.filter(platform=steam).exists()
+    assert Release.objects.filter(platform=steam).exists()
     assert Game.objects.filter(library=owner.library).exists()
     assert not Game.objects.exclude(library=owner.library).exists()
     assert Device.objects.filter(library=owner.library).exists()
     assert not Device.objects.exclude(library=owner.library).exists()
-    assert LegacyPurchase.objects.filter(library=owner.library).exists()
-    assert not LegacyPurchase.objects.exclude(library=owner.library).exists()
+    assert Purchase.objects.filter(library=owner.library).exists()
+    assert not Purchase.objects.exclude(library=owner.library).exists()
     assert PlayerSession.objects.filter(library=owner.library).exists()
     assert not PlayerSession.objects.exclude(library=owner.library).exists()
     assert LibraryCalendar.objects.filter(library=owner.library).exists()
@@ -276,11 +269,11 @@ def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
 
     promoted = {
         model: [record for record in records if record["model"] == model]
-        for model in ("games.filterpreset", "games.legacypurchase")
+        for model in ("games.filterpreset", "games.edition", "games.release")
     }
     #: A device travels as its events, never as a row.
     assert not any(record["model"] == "games.device" for record in records)
-    assert promoted["games.legacypurchase"]
+    assert promoted["games.release"]
     for model_records in promoted.values():
         assert all(isinstance(record["pk"], str) for record in model_records)
         assert all(UUID(record["pk"]).version == 7 for record in model_records)
@@ -306,75 +299,20 @@ def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
 
 
 @pytest.mark.django_db
-def test_sample_load_requests_conversion_when_preserved_cache_currency_differs(
-    owner, monkeypatch, tmp_path
-):
-    from games import conversion
-    from games.management.commands import load_sample_data
-
-    queued = []
-    monkeypatch.setattr(conversion, "async_task", lambda *args: queued.append(args))
-    fixture = tmp_path / "sample.yaml"
-    purchase_uuid = "00000000-0000-7000-8000-000000000101"
-    fixture.write_text(
-        f"""- model: games.legacypurchase
-  pk: {purchase_uuid}
-  fields:
-    library: __target_library__
-    games: []
-    platform: null
-    date_purchased: 2025-01-01
-    date_refunded: null
-    infinite: false
-    price: 10
-    price_currency: USD
-    converted_price: 230
-    converted_currency: CZK
-    needs_price_update: false
-    num_purchases: 0
-    ownership_type: di
-    type: game
-    name: Sample
-    related_game: null
-    created_at: 2025-01-01 00:00:00+00:00
-    updated_at: 2025-01-01 00:00:00+00:00
-"""
-    )
-    state = owner.library.purchase_conversion_state
-    state.requested_currency = "EUR"
-    state.published_currency = "EUR"
-    state.save(update_fields=["requested_currency", "published_currency"])
-    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
-
-    call_command("load_sample_data", "--user", owner.username, verbosity=0)
-
-    state.refresh_from_db()
-    purchase = LegacyPurchase.objects.get(pk=purchase_uuid)
-    assert (purchase.converted_price, purchase.converted_currency) == (230, "CZK")
-    assert (
-        state.requested_version,
-        state.requested_currency,
-        state.status,
-    ) == (1, "EUR", PurchaseConversionState.Status.PENDING)
-
-
-@pytest.mark.django_db
 def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     owner, monkeypatch, tmp_path
 ):
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
-    purchase_id = "00000000-0000-7000-8000-000000000202"
+    game_id = "00000000-0000-7000-8000-000000000202"
     fixture.write_text(
-        f"""- model: games.legacypurchase
-  pk: {purchase_id}
+        f"""- model: games.game
+  pk: {game_id}
   fields:
     library: null
-    games: []
+    name: Unmarked
     platform: null
-    date_purchased: 2025-01-01
-    ownership_type: di
     created_at: 2025-01-01 00:00:00+00:00
     updated_at: 2025-01-01 00:00:00+00:00
 """
@@ -384,7 +322,7 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     with pytest.raises(CommandError, match="portable owner marker"):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not LegacyPurchase.objects.filter(pk=purchase_id).exists()
+    assert not Game.objects.filter(pk=game_id).exists()
 
 
 @pytest.mark.django_db
@@ -490,13 +428,8 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
     ("model", "fields", "target_model"),
     [
         (
-            "games.legacypurchase",
-            {"library": "__target_library__", "games": [999]},
-            "Game",
-        ),
-        (
-            "games.legacypurchase",
-            {"library": "__target_library__", "related_game": ABSENT_GAME_UUID},
+            "games.game",
+            {"library": "__target_library__", "parent": ABSENT_GAME_UUID},
             "Game",
         ),
         (
@@ -504,11 +437,8 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
             {"library": "__target_library__", "platform": ABSENT_PLATFORM_UUID},
             "Platform",
         ),
-        (
-            "games.legacypurchase",
-            {"library": "__target_library__", "platform": ABSENT_PLATFORM_UUID},
-            "Platform",
-        ),
+        ("games.edition", {"game": ABSENT_GAME_UUID}, "Game"),
+        ("games.release", {"edition": ABSENT_GAME_UUID}, "Edition"),
     ],
 )
 def test_sample_load_rejects_relationships_outside_the_fixture_graph(
@@ -587,21 +517,21 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
-    duplicate_purchase_id = "00000000-0000-7000-8000-000000000401"
+    duplicate_game_id = "00000000-0000-7000-8000-000000000401"
     fixture.write_text(
         yaml.safe_dump(
             [
                 {
-                    "model": "games.legacypurchase",
-                    "pk": duplicate_purchase_id,
+                    "model": "games.game",
+                    "pk": duplicate_game_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "First",
                     },
                 },
                 {
-                    "model": "games.legacypurchase",
-                    "pk": duplicate_purchase_id,
+                    "model": "games.game",
+                    "pk": duplicate_game_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "Second",
@@ -614,11 +544,11 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
 
     with pytest.raises(
         CommandError,
-        match=rf"duplicate games.legacypurchase primary key {duplicate_purchase_id}",
+        match=rf"duplicate games.game primary key {duplicate_game_id}",
     ):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not LegacyPurchase.objects.filter(pk=duplicate_purchase_id).exists()
+    assert not Game.objects.filter(pk=duplicate_game_id).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -628,7 +558,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
-    colliding_purchase_id = "00000000-0000-7000-8000-000000000503"
+    colliding_game_id = "00000000-0000-7000-8000-000000000503"
     fixture.write_text(
         yaml.safe_dump(
             [
@@ -652,16 +582,12 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
                     },
                 },
                 {
-                    "model": "games.legacypurchase",
-                    "pk": colliding_purchase_id,
+                    "model": "games.game",
+                    "pk": colliding_game_id,
                     "fields": {
                         "library": "__target_library__",
-                        "games": [],
                         "platform": None,
-                        "date_purchased": "2025-01-01",
-                        "ownership_type": "di",
-                        "price_currency": "USD",
-                        "name": "Fixture purchase",
+                        "name": "Fixture game",
                         "created_at": "2025-01-01 00:00:00+00:00",
                         "updated_at": "2025-01-01 00:00:00+00:00",
                     },
@@ -674,13 +600,8 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     def insert_after_check(records):
         original_check(records)
-        LegacyPurchase.objects.create(
-            pk=colliding_purchase_id,
-            library=owner.library,
-            name="Concurrent purchase",
-            date_purchased=date(2025, 1, 1),
-            ownership_type="di",
-            price_currency="USD",
+        Game.objects.create(
+            pk=colliding_game_id, library=owner.library, name="Concurrent game"
         )
 
     monkeypatch.setattr(
@@ -694,7 +615,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     assert "duplicate key" in str(error.value).lower()
     assert not Platform.objects.filter(name="Rollback platform").exists()
-    assert not LegacyPurchase.objects.filter(pk=colliding_purchase_id).exists()
+    assert not Game.objects.filter(pk=colliding_game_id).exists()
     assert not ExchangeRate.objects.filter(
         currency_from="USD",
         currency_to="EUR",
@@ -709,21 +630,13 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         name="Owner private platform",
         group="Private",
     )
-    _, owner_device, owner_game, _ = _owned_graph(owner)
-    _, _, outsider_game, outsider_purchase = _owned_graph(outsider)
+    _, owner_device, _ = _owned_graph(owner)
+    _, _, outsider_game = _owned_graph(outsider)
     outsider_session = PlayerSession.objects.get(
         playthrough__player_game__game=outsider_game
     )
 
     Game.objects.filter(pk=outsider_game.pk).update(platform=owner_platform)
-    LegacyPurchase.objects.filter(pk=outsider_purchase.pk).update(
-        platform=owner_platform,
-        related_game=owner_game,
-    )
-    LegacyPurchase.games.through.objects.create(
-        legacypurchase_id=outsider_purchase.pk,
-        game_id=owner_game.pk,
-    )
     PlayerSession.objects.filter(pk=outsider_session.pk).update(device=owner_device)
     UserLibraryPreferences.objects.filter(library=outsider.library).update(
         default_device_id=owner_device.pk
@@ -754,9 +667,6 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     report = output.getvalue()
     for relation in (
         "Game.platform",
-        "LegacyPurchase.platform",
-        "LegacyPurchase.related_game",
-        "LegacyPurchase.games",
         "PlayerSession.device",
         "UserLibraryPreferences.default_device",
         "Playthrough.player_game",

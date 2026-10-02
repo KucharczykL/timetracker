@@ -38,15 +38,6 @@ def schedule_tasks(sender, **kwargs):
     #         catchup=False,
     #     )
 
-    # if not Schedule.objects.filter(name="Update price per game").exists():
-    #     schedule(
-    #         "games.tasks.calculate_price_per_game",
-    #         name="Update price per game",
-    #         schedule_type=Schedule.MINUTES,
-    #         next_run=now() + timedelta(seconds=30),
-    #         catchup=False,
-    #     )
-
     from games.models import ExchangeRate
 
     if not ExchangeRate.objects.exists():

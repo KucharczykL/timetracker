@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import pytest
 from django.apps import apps
@@ -22,7 +22,7 @@ from games.identity_audit import (
     primary_key_types,
     relation_columns,
 )
-from games.models import Game, LegacyPurchase, PlayerGame
+from games.models import Game, PlayerGame
 from timetracker.uuidv7 import uuid7_at
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
@@ -70,11 +70,6 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_playthrough", "player_game_id"),
     ("games_purchase", "entry_id"),
     ("games_purchase", "library_id"),
-    ("games_legacypurchase", "library_id"),
-    ("games_legacypurchase", "platform_id"),
-    ("games_legacypurchase", "related_game_id"),
-    ("games_legacypurchase_games", "game_id"),
-    ("games_legacypurchase_games", "legacypurchase_id"),
     ("games_purchaseconversionstate", "library_id"),
     ("games_purchasevaluation", "library_id"),
     ("games_release", "edition_id"),
@@ -85,7 +80,6 @@ EXPECTED_RELATION_COLUMNS = {
 }
 
 EXPECTED_RESIDUAL_INTEGER_PRIMARY_KEYS = {
-    "games_legacypurchase_games": "never converts: an auto-created through table keeps its own key",
     "games_exchangerate": "never converts: not part of the UUID identity cutover",
     "games_sitesetting": "never converts: not part of the UUID identity cutover",
     "games_userpreferences": "never converts: not part of the UUID identity cutover",
@@ -231,20 +225,6 @@ def test_residual_inventory_reports_an_unowned_integer_primary_key(
     ]
 
 
-def test_purchase_relations_are_absent_from_the_residual_inventory(actual_types):
-    report = check_residual_inventory(
-        relation_columns(), actual_types, primary_key_types(actual_types)
-    )
-
-    through_notes = [
-        note
-        for note in report.notes
-        if note.subject == "games_legacypurchase_games.legacypurchase_id"
-    ]
-    assert through_notes == []
-    assert "games_legacypurchase" not in RESIDUAL_INTEGER_PRIMARY_KEYS
-
-
 def test_command_succeeds_on_a_migrated_database():
     call_command("audit_uuid_identity")
 
@@ -278,7 +258,6 @@ EXPECTED_IDENTITY_TABLES = {
     "games_playergame",
     "games_playersession",
     "games_playthrough",
-    "games_legacypurchase",
     "games_purchase",
     "games_purchaseconversionstate",
     "games_purchasevaluation",
@@ -425,26 +404,27 @@ def test_referential_agreement_is_clean_on_a_migrated_database(cursor):
     assert check_referential_agreement(cursor, relation_columns()).violations == []
 
 
-def test_referential_agreement_reports_an_orphan_row(cursor, owned_library):
+def test_referential_agreement_reports_an_orphan_row(cursor):
     """Every foreign key here is deferred, so an orphan survives until commit.
 
-    The through row names a Game that never existed.
+    The Edition names a Game that never existed.
     """
-    purchase = LegacyPurchase.objects.create(
-        library=owned_library, date_purchased=date(2026, 1, 1), price_currency="CZK"
-    )
     cursor.execute(
-        "INSERT INTO games_legacypurchase_games (legacypurchase_id, game_id) VALUES (%s, %s)",
-        [purchase.pk, uuid7_at(datetime(2029, 1, 1, tzinfo=UTC))],
+        "INSERT INTO games_edition (id, game_id, name, kind, is_default)"
+        " VALUES (%s, %s, '', 'full', false)",
+        [
+            uuid7_at(datetime(2029, 1, 1, tzinfo=UTC)),
+            uuid7_at(datetime(2029, 1, 2, tzinfo=UTC)),
+        ],
     )
 
     report = check_referential_agreement(cursor, relation_columns())
     # Removed before asserting: Django's fixture teardown runs SET CONSTRAINTS
     # ALL IMMEDIATE, which would surface the deferred violation as a test error.
-    cursor.execute("DELETE FROM games_legacypurchase_games")
+    cursor.execute("DELETE FROM games_edition")
 
     assert [violation.subject for violation in report.violations] == [
-        "games_legacypurchase_games.game_id"
+        "games_edition.game_id"
     ]
     assert "reference a missing games_game.id" in report.violations[0].detail
 

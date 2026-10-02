@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from importlib.util import find_spec
 from threading import Event, Thread
@@ -10,7 +10,7 @@ from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import close_old_connections, connection, transaction
+from django.db import DatabaseError, close_old_connections, connection
 from django.test import Client
 from django.utils import timezone
 from entries import record_entry
@@ -20,10 +20,9 @@ from purchases import record_purchase, request_run
 from games.models import (
     ExchangeRate,
     Game,
-    LegacyPurchase,
     PurchaseConversionState,
+    PurchaseValuation,
     UserLibrary,
-    UserPreferences,
 )
 from timetracker.temporal import TemporalValue
 
@@ -36,25 +35,6 @@ def owner(db):
 @pytest.fixture
 def outsider(db):
     return get_user_model().objects.create_user(username="conversion-outsider")
-
-
-def _purchase(
-    owner,
-    *,
-    price=10,
-    currency="USD",
-    converted=111,
-    converted_currency="EUR",
-):
-    return LegacyPurchase.objects.create(
-        library=owner.library,
-        price=price,
-        price_currency=currency,
-        date_purchased=date(2025, 1, 1),
-        converted_price=converted,
-        converted_currency=converted_currency,
-        needs_price_update=True,
-    )
 
 
 def _state(owner, **values):
@@ -142,51 +122,11 @@ def test_five_rapid_requests_coalesce_to_last_target(
 
 
 @pytest.mark.django_db
-def test_same_currency_and_zero_price_publish_without_exchange_rate(owner, monkeypatch):
-    """Trivial rows must not fail merely because no external rate exists."""
-    from games import tasks
-
-    same = _purchase(owner, price=12, currency="CZK")
-    zero = _purchase(owner, price=0, currency="USD")
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        status=PurchaseConversionState.Status.PENDING,
-    )
-    rate = Mock(side_effect=AssertionError("trivial conversion fetched a rate"))
-    monkeypatch.setattr(tasks, "exchange_rate", rate)
-
-    tasks.convert_library_prices(str(owner.library.pk), 1)
-
-    same.refresh_from_db()
-    zero.refresh_from_db()
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert (same.converted_price, same.converted_currency, same.needs_price_update) == (
-        12,
-        "CZK",
-        False,
-    )
-    assert (zero.converted_price, zero.converted_currency, zero.needs_price_update) == (
-        0,
-        "CZK",
-        False,
-    )
-    assert (
-        state.published_version,
-        state.published_currency,
-        state.status,
-        state.retry_at,
-        state.last_error,
-    ) == (1, "CZK", PurchaseConversionState.Status.COMPLETE, None, "")
-
-
-@pytest.mark.django_db
 def test_old_job_cannot_publish_after_newer_request(owner, monkeypatch):
     """A delayed worker for an intermediate choice must be a no-op."""
     from games import tasks
 
-    purchase = _purchase(owner)
+    _bought_in_dollars(owner)
     _state(
         owner,
         requested_version=2,
@@ -194,14 +134,13 @@ def test_old_job_cannot_publish_after_newer_request(owner, monkeypatch):
         published_version=0,
         status=PurchaseConversionState.Status.PENDING,
     )
-    rate = Mock(return_value=2)
+    rate = Mock(return_value=Decimal(2))
     monkeypatch.setattr(tasks, "exchange_rate", rate)
 
     tasks.convert_library_prices(str(owner.library.pk), 1)
 
-    purchase.refresh_from_db()
     state = PurchaseConversionState.objects.get(library=owner.library)
-    assert (purchase.converted_price, purchase.converted_currency) == (111, "EUR")
+    assert not PurchaseValuation.objects.filter(library=owner.library).exists()
     assert (state.requested_version, state.published_version, state.status) == (
         2,
         0,
@@ -210,101 +149,35 @@ def test_old_job_cannot_publish_after_newer_request(owner, monkeypatch):
     rate.assert_not_called()
 
 
-@pytest.mark.django_db(transaction=True)
-def test_purchase_edit_invalidates_candidate_before_publication(owner, monkeypatch):
-    """A conversion calculated from stale original facts must be discarded."""
-    from games import conversion, tasks
-
-    purchase = _purchase(owner)
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        published_version=0,
-        status=PurchaseConversionState.Status.PENDING,
-    )
-    monkeypatch.setattr(conversion, "async_task", Mock())
-
-    def edit_while_fetching(*_args):
-        purchase.price = 20
-        purchase.save(update_fields=["price", "updated_at"])
-        return 2
-
-    monkeypatch.setattr(tasks, "exchange_rate", edit_while_fetching)
-
-    tasks.convert_library_prices(str(owner.library.pk), 1)
-
-    purchase.refresh_from_db()
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert purchase.converted_price == 111
-    assert state.requested_version == 2
-    assert state.published_version == 0
-    assert state.status == PurchaseConversionState.Status.PENDING
-
-
-@pytest.mark.django_db(transaction=True)
-def test_publication_rolls_back_every_row_when_bulk_update_fails(owner, monkeypatch):
-    """Readers must never observe part of a newly converted library."""
-    from games import tasks
-
-    first = _purchase(owner, price=10)
-    second = _purchase(owner, price=20)
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        published_version=0,
-        status=PurchaseConversionState.Status.PENDING,
-    )
-    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: 2)
-
-    def partial_then_fail(objects, fields):
-        LegacyPurchase.objects.filter(pk=objects[0].pk).update(
-            converted_price=objects[0].converted_price,
-            converted_currency=objects[0].converted_currency,
-        )
-        raise RuntimeError("database write interrupted")
-
-    monkeypatch.setattr(LegacyPurchase.objects, "bulk_update", partial_then_fail)
-
-    tasks.convert_library_prices(str(owner.library.pk), 1)
-
-    first.refresh_from_db()
-    second.refresh_from_db()
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert [
-        (first.converted_price, first.converted_currency),
-        (second.converted_price, second.converted_currency),
-    ] == [(111, "EUR"), (111, "EUR")]
-    assert state.published_version == 0
-    assert state.status == PurchaseConversionState.Status.FAILED
-
-
 @pytest.mark.django_db
-def test_missing_rate_keeps_old_values_and_schedules_one_retry(owner, monkeypatch):
-    """A missing rate must preserve the complete old cache and expose bounded recovery."""
+def test_a_failed_publication_schedules_one_retry(owner, monkeypatch):
+    """A database failure exposes bounded recovery."""
     from games import tasks
 
-    purchase = _purchase(owner)
+    _bought_in_dollars(owner)
     _state(
         owner,
         requested_version=1,
-        requested_currency="CZK",
+        requested_currency="USD",
         published_version=0,
         status=PurchaseConversionState.Status.PENDING,
     )
-    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: None)
+
+    def refuse(*_args):
+        raise DatabaseError("publication refused")
+
+    monkeypatch.setattr(tasks, "publish_valuations", refuse)
     scheduled = Mock()
     monkeypatch.setattr(tasks, "schedule", scheduled)
     before = timezone.now()
 
     tasks.convert_library_prices(str(owner.library.pk), 1)
+    tasks.convert_library_prices(str(owner.library.pk), 1)
 
-    purchase.refresh_from_db()
     state = PurchaseConversionState.objects.get(library=owner.library)
-    assert (purchase.converted_price, purchase.converted_currency) == (111, "EUR")
+    assert not PurchaseValuation.objects.filter(library=owner.library).exists()
     assert state.status == PurchaseConversionState.Status.FAILED
-    assert "USD" in state.last_error and "CZK" in state.last_error
+    assert "publication refused" in state.last_error
     assert (
         before + timedelta(minutes=14) < state.retry_at < before + timedelta(minutes=16)
     )
@@ -573,7 +446,7 @@ def test_duplicate_job_exits_when_requested_version_is_already_published(
 ):
     from games import tasks
 
-    purchase = _purchase(owner)
+    _bought_in_dollars(owner)
     _state(
         owner,
         requested_version=2,
@@ -587,9 +460,8 @@ def test_duplicate_job_exits_when_requested_version_is_already_published(
 
     tasks.convert_library_prices(str(owner.library.pk), 2)
 
-    purchase.refresh_from_db()
     state = PurchaseConversionState.objects.get(library=owner.library)
-    assert (purchase.converted_price, purchase.converted_currency) == (111, "EUR")
+    assert not PurchaseValuation.objects.filter(library=owner.library).exists()
     assert state.status == PurchaseConversionState.Status.COMPLETE
     rate.assert_not_called()
 
@@ -628,7 +500,7 @@ def test_losing_same_version_worker_cannot_republish_after_winner(owner, monkeyp
     """A duplicate already past its start check must not overwrite the winner."""
     from games import tasks
 
-    purchase = _purchase(owner, price=10)
+    _bought_in_dollars(owner)
     _state(
         owner,
         requested_version=2,
@@ -639,253 +511,23 @@ def test_losing_same_version_worker_cannot_republish_after_winner(owner, monkeyp
     )
 
     def publish_winner_while_loser_fetches(*_args):
-        LegacyPurchase.objects.filter(pk=purchase.pk).update(
-            converted_price=25,
-            converted_currency="CZK",
-            needs_price_update=False,
-        )
         PurchaseConversionState.objects.filter(library=owner.library).update(
             published_version=2,
             published_currency="CZK",
             status=PurchaseConversionState.Status.COMPLETE,
         )
-        return 3
+        return Decimal(3)
 
     monkeypatch.setattr(tasks, "exchange_rate", publish_winner_while_loser_fetches)
 
     tasks.convert_library_prices(str(owner.library.pk), 2)
 
-    purchase.refresh_from_db()
     state = PurchaseConversionState.objects.get(library=owner.library)
-    assert (purchase.converted_price, purchase.converted_currency) == (25, "CZK")
+    assert not PurchaseValuation.objects.filter(library=owner.library).exists()
     assert (state.published_version, state.status) == (
         2,
         PurchaseConversionState.Status.COMPLETE,
     )
-
-
-@pytest.mark.django_db(transaction=True)
-def test_new_purchase_rolls_back_when_conversion_version_cannot_be_saved(
-    owner, monkeypatch
-):
-    """Original facts must not commit without their matching requested version."""
-    original_save = PurchaseConversionState.save
-
-    def fail_version_increment(state, *args, **kwargs):
-        if state.requested_version > 0:
-            raise RuntimeError("conversion state unavailable")
-        return original_save(state, *args, **kwargs)
-
-    monkeypatch.setattr(PurchaseConversionState, "save", fail_version_increment)
-
-    with pytest.raises(RuntimeError, match="conversion state unavailable"):
-        _purchase(owner)
-
-    assert not LegacyPurchase.objects.filter(library=owner.library).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_purchase_edit_rolls_back_when_conversion_version_cannot_be_saved(
-    owner, monkeypatch
-):
-    """An edited original price and its conversion request are one commit."""
-    purchase = _purchase(owner, price=10)
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        published_version=1,
-        published_currency="CZK",
-        status=PurchaseConversionState.Status.COMPLETE,
-    )
-    original_save = PurchaseConversionState.save
-
-    def fail_version_increment(state, *args, **kwargs):
-        if state.requested_version > 1:
-            raise RuntimeError("conversion state unavailable")
-        return original_save(state, *args, **kwargs)
-
-    monkeypatch.setattr(PurchaseConversionState, "save", fail_version_increment)
-    purchase.price = 20
-
-    with pytest.raises(RuntimeError, match="conversion state unavailable"):
-        purchase.save(update_fields=["price", "updated_at"])
-
-    purchase.refresh_from_db()
-    assert purchase.price == 10
-
-
-@pytest.mark.django_db(transaction=True)
-def test_purchase_save_preserves_target_committed_by_another_settings_worker(
-    owner, monkeypatch
-):
-    """A stale resolver cache must not supersede the serialized state target."""
-    from games import conversion
-    from timetracker.settings_resolver import resolve_for_user_with_origin
-
-    monkeypatch.setattr(conversion, "async_task", Mock())
-    assert (
-        resolve_for_user_with_origin(owner, "DEFAULT_DISPLAY_CURRENCY").value == "CZK"
-    )
-    UserPreferences.objects.filter(user=owner).update(default_display_currency="EUR")
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="EUR",
-        published_version=0,
-        published_currency="CZK",
-        status=PurchaseConversionState.Status.PENDING,
-    )
-
-    _purchase(owner)
-
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert (state.requested_version, state.requested_currency) == (2, "EUR")
-
-
-@pytest.mark.django_db(transaction=True)
-def test_purchase_date_edit_requests_conversion_for_the_new_rate_year(
-    owner, monkeypatch
-):
-    """Changing the exchange-rate year must invalidate the published conversion."""
-    from games import conversion
-
-    monkeypatch.setattr(conversion, "async_task", Mock())
-    purchase = _purchase(owner)
-    LegacyPurchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        published_version=1,
-        published_currency="CZK",
-        status=PurchaseConversionState.Status.COMPLETE,
-    )
-    purchase.needs_price_update = False
-    purchase.date_purchased = date(2024, 1, 1)
-
-    purchase.save(update_fields=["date_purchased", "updated_at"])
-
-    purchase.refresh_from_db()
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert purchase.needs_price_update is True
-    assert (
-        state.requested_version,
-        state.requested_currency,
-        state.status,
-    ) == (2, "CZK", PurchaseConversionState.Status.PENDING)
-
-
-@pytest.mark.django_db(transaction=True)
-def test_purchase_fallback_insert_requests_conversion(owner, monkeypatch):
-    """A zero-row update fallback must be treated as a new conversion input set."""
-    from games import conversion
-
-    monkeypatch.setattr(conversion, "async_task", Mock())
-    purchase = _purchase(owner)
-    LegacyPurchase.objects.filter(pk=purchase.pk).update(needs_price_update=False)
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        published_version=1,
-        published_currency="CZK",
-        status=PurchaseConversionState.Status.COMPLETE,
-    )
-    purchase.needs_price_update = False
-    LegacyPurchase.objects.filter(pk=purchase.pk).delete()
-
-    purchase.save()
-
-    purchase.refresh_from_db()
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert purchase.needs_price_update is True
-    assert (
-        state.requested_version,
-        state.requested_currency,
-        state.status,
-    ) == (2, "CZK", PurchaseConversionState.Status.PENDING)
-
-
-@pytest.mark.django_db(transaction=True)
-def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeypatch):
-    """Concurrent edit/publication must complete without a lock-order deadlock."""
-    from games import conversion, tasks
-
-    purchase = _purchase(owner, price=10)
-    _state(
-        owner,
-        requested_version=1,
-        requested_currency="CZK",
-        published_version=0,
-        published_currency="EUR",
-        status=PurchaseConversionState.Status.PENDING,
-    )
-    monkeypatch.setattr(conversion, "async_task", Mock())
-    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: 2)
-
-    worker_at_publication = Event()
-    editor_at_state_lock = Event()
-    release_worker = Event()
-    errors: list[BaseException] = []
-    original_bulk_update = LegacyPurchase.objects.bulk_update
-
-    def hold_publication(objects, fields):
-        worker_at_publication.set()
-        if not release_worker.wait(10):
-            raise TimeoutError("editor never reached the conversion state")
-        return original_bulk_update(objects, fields)
-
-    monkeypatch.setattr(LegacyPurchase.objects, "bulk_update", hold_publication)
-
-    def run_worker():
-        close_old_connections()
-        try:
-            tasks.convert_library_prices(str(owner.library.pk), 1)
-        except Exception as error:  # noqa: BLE001 - return thread failures
-            errors.append(error)
-        finally:
-            close_old_connections()
-
-    def run_editor():
-        close_old_connections()
-
-        def observe_state_lock(execute, sql, params, many, context):
-            if "games_purchaseconversionstate" in sql.lower():
-                editor_at_state_lock.set()
-            return execute(sql, params, many, context)
-
-        try:
-            with connection.execute_wrapper(observe_state_lock), transaction.atomic():
-                edited = LegacyPurchase.objects.get(pk=purchase.pk)
-                edited.price = 20
-                edited.save(update_fields=["price", "updated_at"])
-        except Exception as error:  # noqa: BLE001 - return thread failures
-            errors.append(error)
-        finally:
-            close_old_connections()
-
-    worker = Thread(target=run_worker, name="conversion-worker")
-    editor = Thread(target=run_editor, name="purchase-editor")
-    worker.start()
-    assert worker_at_publication.wait(10)
-    editor.start()
-    assert editor_at_state_lock.wait(10)
-    release_worker.set()
-    worker.join(10)
-    editor.join(10)
-
-    assert not worker.is_alive()
-    assert not editor.is_alive()
-    assert errors == []
-    purchase.refresh_from_db()
-    state = PurchaseConversionState.objects.get(library=owner.library)
-    assert purchase.price == 20
-    assert (
-        state.requested_version,
-        state.published_version,
-        state.status,
-    ) == (2, 1, PurchaseConversionState.Status.PENDING)
 
 
 @pytest.mark.django_db(transaction=True)

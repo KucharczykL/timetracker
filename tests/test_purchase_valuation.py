@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from io import StringIO
 from typing import cast
@@ -21,7 +21,6 @@ from games.events.dispatch import dispatch
 from games.models import (
     ExchangeRate,
     Game,
-    LegacyPurchase,
     Purchase,
     PurchaseConversionState,
     PurchaseValuation,
@@ -295,24 +294,6 @@ def test_a_purchase_without_a_rate_is_skipped_and_the_rest_publish(
     assert str(skipped.pk) in warning.getMessage()
 
 
-def test_a_legacy_row_without_a_rate_still_fails_the_run(entry, rates, monkeypatch):
-    purchase = record_purchase(entry, amount=Decimal(10), currency="CZK")
-    LegacyPurchase.objects.create(
-        library=entry.library,
-        price=10,
-        price_currency="GBP",
-        date_purchased=date(2021, 3, 1),
-    )
-    monkeypatch.setattr(tasks, "schedule", Mock())
-
-    _run(entry.library)
-
-    state = PurchaseConversionState.objects.get(library=entry.library)
-    assert state.status == PurchaseConversionState.Status.FAILED
-    assert "GBP" in state.last_error and "2021" in state.last_error
-    assert not PurchaseValuation.objects.filter(purchase_id=purchase.pk).exists()
-
-
 def test_a_changed_purchase_publishes_nothing_and_requests_again(entry, monkeypatch):
     purchase = record_purchase(entry, amount=Decimal(10), currency="CZK")
 
@@ -409,15 +390,8 @@ def test_a_pending_target_keeps_the_published_valuation_current(entry):
     assert _current(purchase) == (Decimal("250.00"), "CZK")
 
 
-def test_a_failed_valuation_write_rolls_back_the_legacy_cache(entry, monkeypatch):
+def test_a_failed_valuation_write_keeps_the_published_set(entry, monkeypatch):
     purchase = _published(entry)
-    legacy = LegacyPurchase.objects.create(
-        library=entry.library,
-        price=10,
-        price_currency="CZK",
-        date_purchased=date(2021, 3, 1),
-    )
-    LegacyPurchase.objects.filter(pk=legacy.pk).update(converted_price=7)
     monkeypatch.setattr(tasks, "schedule", Mock())
 
     def fail(*args, **kwargs):
@@ -427,9 +401,7 @@ def test_a_failed_valuation_write_rolls_back_the_legacy_cache(entry, monkeypatch
 
     _run(entry.library)
 
-    legacy.refresh_from_db()
     state = PurchaseConversionState.objects.get(library=entry.library)
-    assert legacy.converted_price == 7
     assert _valuation(purchase).version == 1
     assert state.status == PurchaseConversionState.Status.FAILED
 

@@ -12,7 +12,6 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
-    LegacyPurchase,
     Platform,
     UserLibrary,
     UserLibraryPreferences,
@@ -37,16 +36,6 @@ def test_direct_and_derived_records_filter_by_library(libraries):
     platform_a = Platform.objects.create(library=library_a, name="A platform")
     game_a = Game.objects.create(library=library_a, name="A game", platform=platform_a)
     game_b = Game.objects.create(library=library_b, name="B game")
-    purchase_a = LegacyPurchase.objects.create(
-        library=library_a,
-        date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
-        price_currency="CZK",
-    )
-    LegacyPurchase.objects.create(
-        library=library_b,
-        date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
-        price_currency="CZK",
-    )
     FilterPreset.objects.create(library=library_a, name="A preset", mode="games")
     FilterPreset.objects.create(library=library_b, name="B preset", mode="games")
     session_a = session_row(
@@ -58,7 +47,6 @@ def test_direct_and_derived_records_filter_by_library(libraries):
     session_row(game_b, started_at=datetime(2025, 1, 1, tzinfo=UTC), library=library_b)
 
     assert Game.objects.for_library(library_a).get() == game_a
-    assert LegacyPurchase.objects.for_library(library_a).get() == purchase_a
     assert Device.objects.for_library(library_a).get() == device_a
     assert FilterPreset.objects.for_library(library_a).get().name == "A preset"
     assert library_sessions(library_a).get() == session_a
@@ -107,59 +95,6 @@ def test_game_rejects_another_library_private_platform_and_allows_shared(librari
         ).platform
         == shared
     )
-
-
-def test_purchase_rejects_cross_library_platform_and_related_game(libraries):
-    library_a, library_b = libraries
-    private_b = Platform.objects.create(library=library_b, name="B platform")
-    game_b = Game.objects.create(library=library_b, name="B game")
-
-    with pytest.raises(ValidationError):
-        LegacyPurchase.objects.create(
-            library=library_a,
-            date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
-            price_currency="CZK",
-            platform=private_b,
-        )
-    with pytest.raises(ValidationError):
-        LegacyPurchase.objects.create(
-            library=library_a,
-            date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
-            price_currency="CZK",
-            type=LegacyPurchase.DLC,
-            related_game=game_b,
-        )
-
-
-def test_purchase_allows_shared_platform(libraries):
-    library_a, _ = libraries
-    shared = Platform.objects.create(name="Shared purchase platform")
-
-    assert (
-        LegacyPurchase.objects.create(
-            library=library_a,
-            date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
-            price_currency="CZK",
-            platform=shared,
-        ).platform
-        == shared
-    )
-
-
-def test_purchase_games_reject_a_cross_library_add(libraries):
-    library_a, library_b = libraries
-    purchase_a = LegacyPurchase.objects.create(
-        library=library_a,
-        date_purchased=datetime(2025, 1, 1, tzinfo=UTC).date(),
-        price_currency="CZK",
-    )
-    game_a = Game.objects.create(library=library_a, name="A game")
-    game_b = Game.objects.create(library=library_b, name="B game")
-
-    purchase_a.games.add(game_a)
-    with pytest.raises(ValidationError), transaction.atomic():
-        purchase_a.games.add(game_b)
-    assert list(purchase_a.games.all()) == [game_a]
 
 
 def test_library_preferences_reject_another_library_default_device(libraries):

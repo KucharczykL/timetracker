@@ -1,5 +1,7 @@
 """Convert one library's legacy purchases; reconcile."""
 
+# conversion-tooling
+
 import json
 from pathlib import Path
 from typing import NamedTuple, cast
@@ -7,8 +9,10 @@ from typing import NamedTuple, cast
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
+from django.db.models import Model
 
+from games.backfill.legacy_model import LegacyTableGone, require_legacy_table
 from games.backfill.purchase import (
     LibraryConversion,
     PurchaseConversionDrift,
@@ -23,7 +27,7 @@ from games.backfill.purchase_reconciliation import (
     reconcile,
     review_lists,
 )
-from games.models import LegacyPurchase, PlayerGame, UserLibrary
+from games.models import PlayerGame, UserLibrary
 from games.views.stats_data import compute_stats
 
 
@@ -65,17 +69,23 @@ class Command(BaseCommand):
             raise CommandError(
                 "--confirm must exactly match --user; nothing converted."
             )
+        try:
+            model = require_legacy_table(connection)
+        except LegacyTableGone as gone:
+            raise CommandError(
+                "The legacy purchase table is gone; nothing to convert."
+            ) from gone
         library = self._library(username)
-        rows = legacy_rows(LegacyPurchase, library.pk)
+        rows = legacy_rows(model, library.pk)
         if options["snapshot"] is not None:
-            snapshot = legacy_statistics(LegacyPurchase, library, rows)
+            snapshot = legacy_statistics(model, library, rows)
             options["snapshot"].write_text(json.dumps(snapshot, indent=2) + "\n")
             self.stdout.write(
                 f"Snapshot of {len(snapshot['scopes'])} scope(s) written."
             )
         try:
             with transaction.atomic():
-                if not self._convert(library, rows):
+                if not self._convert(model, library, rows):
                     return
                 if confirmation is None:
                     raise _Preflight
@@ -88,9 +98,11 @@ class Command(BaseCommand):
             return
         self.stdout.write(self.style.SUCCESS("Converted and committed."))
 
-    def _convert(self, library: UserLibrary, rows: list[LegacyRow]) -> bool:
+    def _convert(
+        self, model: type[Model], library: UserLibrary, rows: list[LegacyRow]
+    ) -> bool:
         """Whether the pass had anything to state."""
-        legacy = legacy_figures(LegacyPurchase, library, None).values
+        legacy = legacy_figures(model, library, None).values
         before = Backlog(
             unfinished=cast(int, legacy["purchased_unfinished_count"]),
             dropped=cast(int, legacy["dropped_count"]),

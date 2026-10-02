@@ -8,6 +8,7 @@ from django.db.models.signals import post_save
 from django.utils import timezone
 from graphs import default_graph
 from icon_names import unknown_icon_names_fail  # noqa: F401
+from legacy_purchases import legacy_purchase  # noqa: F401
 
 from games.models import (
     USER_PREFERENCE_FIELD_BY_KEY,

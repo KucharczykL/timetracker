@@ -24,7 +24,7 @@ from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
 from common.components.primitives import _FIELD_ERROR_CLASS, control_button_class
-from games.models import Game, LegacyPurchase, Platform, PlayerSession
+from games.models import Game, Platform, PlayerSession
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
@@ -119,13 +119,6 @@ class RenderedPagesTest(TestCase):
         self.game = Game.objects.create(
             library=self.user.library, name="Test Game", platform=self.platform
         )
-        self.purchase = LegacyPurchase.objects.create(
-            library=self.user.library,
-            price_currency="CZK",
-            date_purchased=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            platform=self.platform,
-        )
-        self.purchase.games.add(self.game)
         #: The projection reads this one.
         record_purchase(
             record_entry(

@@ -1,21 +1,17 @@
 import logging
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.signals import (
-    m2m_changed,
     post_delete,
     post_save,
     pre_delete,
 )
 from django.dispatch import receiver
-from django.utils.timezone import now
 
 from games.models import (
     Device,
     Game,
-    LegacyPurchase,
     LibraryEntry,
     Platform,
     PurchaseConversionState,
@@ -59,26 +55,6 @@ def invalidate_settings_cache(sender, instance, **kwargs):
     # on_commit, not inline: firing inside the atomic block would let a racing
     # thread re-cache the old value, or cache a rolled-back phantom.
     transaction.on_commit(clear_settings_cache)
-
-
-@receiver(m2m_changed, sender=LegacyPurchase.games.through)
-def validate_purchase_game_ownership(sender, instance, action, model, pk_set, **kwargs):
-    if action != "pre_add" or not pk_set:
-        return
-    if (
-        model.objects.filter(pk__in=pk_set)
-        .exclude(library_id=instance.library_id)
-        .exists()
-    ):
-        raise ValidationError("Purchase and Game must belong to the same library.")
-
-
-@receiver(m2m_changed, sender=LegacyPurchase.games.through)
-def update_num_purchases(sender, instance, action, reverse, **kwargs):
-    if not reverse and action.startswith("post_"):
-        instance.num_purchases = instance.games.alive().count()
-        instance.updated_at = now()
-        instance.save(update_fields=["num_purchases", "updated_at"])
 
 
 @receiver(pre_delete, sender=Game)

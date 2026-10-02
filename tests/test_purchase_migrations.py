@@ -83,19 +83,24 @@ def test_the_rate_copy_runs_both_ways():
 
 @pytest.mark.untracked_games
 def test_the_purchase_conversion_runs_over_legacy_rows(owned_library, stated_graph):
-    from games.models import Game, LegacyPurchase, Purchase
+    from games.models import Game, Purchase
 
-    (latest,) = MigrationExecutor(connection).loader.graph.leaf_nodes("games")
+    executor = MigrationExecutor(connection)
+    (latest,) = executor.loader.graph.leaf_nodes("games")
+    before = ("games", "0030_purchasevaluation")
+    legacy_purchase = executor.loader.project_state(before).apps.get_model(
+        "games", "LegacyPurchase"
+    )
     try:
-        _migrate(("games", "0030_purchasevaluation"))
+        _migrate(before)
         game = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
-        row = LegacyPurchase.objects.create(
-            library=owned_library,
+        row = legacy_purchase.objects.create(
+            library_id=owned_library.pk,
             date_purchased=date(2021, 5, 3),
             price=10.0,
             price_currency="EUR",
         )
-        row.games.add(game.game)
+        row.games.add(game.game.pk)
 
         _migrate(("games", "0031_purchase_conversion"))
 

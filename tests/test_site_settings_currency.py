@@ -1,21 +1,24 @@
 """Purchase entry and display currencies have separate live consumers."""
 
 from datetime import date
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
+from entries import record_entry
+from purchases import record_purchase
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.models import Game, LegacyPurchase, Platform, UserPreferences
+from games.models import Game, UserPreferences
 from games.purchase_forms import PurchaseAddForm
 from timetracker import config as config_module
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_site_setting
+from timetracker.temporal import TemporalValue
 
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -35,16 +38,6 @@ def clean_currency_env(monkeypatch):
 @pytest.fixture
 def user(db):
     return get_user_model().objects.create_user(username="currency-user")
-
-
-@pytest.fixture
-def game(user):
-    platform = Platform.objects.create(name="PC", icon="steam", group="PC")
-    return Game.objects.create(
-        library=user.library,
-        name="Test Game",
-        platform=platform,
-    )
 
 
 def _set_currency(callbacks, key, value):
@@ -83,25 +76,13 @@ def test_purchase_form_requires_explicit_library_context(db):
         PurchaseAddForm(presentation=_PRESENTATION, today=date(2025, 1, 1))
 
 
-def test_purchase_model_never_resolves_a_hidden_currency(user):
-    purchase = LegacyPurchase(
-        library=user.library,
-        price=10,
-        date_purchased=date(2025, 1, 1),
-        price_currency="",
-    )
-
-    with pytest.raises(ValidationError):
-        purchase.save()
-
-
 def test_convert_prices_targets_display_currency(
     user,
-    game,
     clean_currency_env,
     django_capture_on_commit_callbacks,
+    stated_graph,
 ):
-    from games.models import PurchaseConversionState
+    from games.models import PurchaseConversionState, PurchaseValuation
     from games.tasks import convert_library_prices
 
     _set_currency(
@@ -109,17 +90,17 @@ def test_convert_prices_targets_display_currency(
         "DEFAULT_DISPLAY_CURRENCY",
         "EUR",
     )
-    purchase = LegacyPurchase.objects.create(
-        library=user.library,
-        price=50,
-        price_currency="EUR",
-        date_purchased=date(2025, 1, 1),
+    graph = stated_graph(Game(library=user.library, name="Tunic"), user.library)
+    purchase = record_purchase(
+        record_entry(user.library, graph.release),
+        amount=Decimal("50.00"),
+        currency="EUR",
+        purchased=TemporalValue.parse("2025-01-01"),
     )
-    purchase.games.add(game)
 
     state = PurchaseConversionState.objects.get(library=user.library)
     convert_library_prices(str(user.library.pk), state.requested_version)
 
-    purchase.refresh_from_db()
-    assert purchase.converted_currency == "EUR"
-    assert purchase.converted_price == 50
+    valuation = PurchaseValuation.objects.get(purchase_id=purchase.pk)
+    assert valuation.target_currency == "EUR"
+    assert valuation.amount == Decimal("50.00")

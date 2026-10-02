@@ -1,25 +1,32 @@
 """The purchase conversion command."""
 
+# conversion-tooling
+
 import json
 from datetime import date
 from io import StringIO
 
 import pytest
 from django.core.management import CommandError, call_command
+from legacy_purchases import LegacyCodes, legacy_row
 
 from games.backfill import purchase as conversion
+from games.backfill.legacy_model import legacy_purchase_model
 from games.backfill.purchase import PurchaseConversionDrift
 from games.backfill.purchase_reconciliation import Reconciliation
 from games.models import (
     Game,
     GameKind,
-    LegacyPurchase,
     LibraryEvent,
     Platform,
     Purchase,
 )
 
-pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
+pytestmark = [
+    pytest.mark.django_db,
+    pytest.mark.untracked_games,
+    pytest.mark.usefixtures("legacy_purchase"),
+]
 
 
 @pytest.fixture
@@ -28,14 +35,13 @@ def row(owned_library, stated_graph):
     game = stated_graph(
         Game(name="Tunic", library=owned_library), owned_library, platform=steam
     ).game
-    legacy = LegacyPurchase.objects.create(
-        library=owned_library,
+    return legacy_row(
+        owned_library,
+        game,
         date_purchased=date(2021, 5, 3),
         price=10.0,
         price_currency="EUR",
     )
-    legacy.games.add(game)
-    return legacy
 
 
 def run(*arguments: str) -> str:
@@ -80,7 +86,7 @@ def test_the_snapshot_is_written(owned_user, owned_library, row, tmp_path):
 
 
 def test_a_refusal_names_the_row(owned_user, row):
-    LegacyPurchase.objects.filter(pk=row.pk).update(price=1e12)
+    legacy_purchase_model().objects.filter(pk=row.pk).update(price=1e12)
     out = StringIO()
 
     with pytest.raises(CommandError, match="1 refusal"):
@@ -103,16 +109,17 @@ def test_an_unexplained_difference_commits_nothing(owned_user, row, monkeypatch)
 
 
 def test_the_preflight_rolls_back_catalog_rows(owned_user, owned_library, row):
-    base = row.games.get()
-    LegacyPurchase.objects.create(
-        library=owned_library,
+    base = Game.objects.get(pk=row.games.get().pk)
+    legacy_row(
+        owned_library,
+        base,
         date_purchased=date(2021, 6, 1),
         price=5.0,
         price_currency="EUR",
-        type=LegacyPurchase.DLC,
+        type=LegacyCodes.DLC,
         name="Expansion",
         related_game=base,
-    ).games.add(base)
+    )
 
     printed = run("--user", owned_user.username)
 

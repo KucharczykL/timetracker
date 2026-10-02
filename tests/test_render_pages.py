@@ -15,7 +15,7 @@ from games.management.commands.render_pages import (
     normalise,
     render_plan,
 )
-from games.models import Game, LegacyPurchase, Platform
+from games.models import Game, Platform
 from games.views.returns import READ_ONLY
 
 pytestmark = pytest.mark.django_db
@@ -27,14 +27,6 @@ def furnished(owned_user):
     platform = Platform.objects.create(library=library, name="PC")
     first = Game.objects.create(library=library, name="Outer Wilds", platform=platform)
     second = Game.objects.create(library=library, name="Tunic", platform=platform)
-    purchase = LegacyPurchase.objects.create(
-        library=library,
-        price_currency="EUR",
-        date_purchased=datetime(2024, 5, 1, tzinfo=UTC).date(),
-        platform=platform,
-        num_purchases=1,
-    )
-    purchase.games.add(first)
     #: Projection rows: the stats years and every session read come from them.
     for game, year in ((first, 2024), (second, 2025)):
         start = datetime(year, 6, 1, 10, tzinfo=UTC)

@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -21,8 +21,8 @@ from games.forms import _game_options
 from games.models import (
     Game,
     HistoricalPlaytime,
-    LegacyPurchase,
     LibraryEntry,
+    Platform,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -63,11 +63,11 @@ class GameDisplayOrderReadsTest(TestCase):
 
     def test_related_manager_reads_in_display_order(self):
         games = tied_games(self.library)
-        purchase = LegacyPurchase.objects.create(
-            library=self.library, date_purchased="2025-01-01", price_currency="USD"
+        platform = Platform.objects.create(name="Steam")
+        Game.objects.filter(pk__in=[game.pk for game in games]).update(
+            platform=platform
         )
-        purchase.games.set(games)
-        self.assertEqual(list(purchase.games.in_display_order()), games)
+        self.assertEqual(list(platform.game_set.in_display_order()), games)
 
     def test_order_through_a_relation(self):
         self.assertEqual(
@@ -88,18 +88,6 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
         self.games = tied_games(self.library)
         self.expected = [game.id for game in self.games]
 
-    def _bundle(self):
-        bundle = LegacyPurchase.objects.create(
-            library=self.library,
-            price=70,
-            price_currency="USD",
-            date_purchased=date(2025, 1, 1),
-            ownership_type=LegacyPurchase.DIGITAL,
-            type=LegacyPurchase.GAME,
-        )
-        bundle.games.set(reversed(self.games))
-        return bundle
-
     def test_search_answers_in_display_order(self):
         request = SimpleNamespace(user=self.user)
         self.assertEqual(
@@ -114,16 +102,6 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
     def test_picker_resolves_selected_games_in_display_order(self):
         options = _game_options(list(reversed(self.expected)), library=self.library)
         self.assertEqual([option["value"] for option in options], self.expected)
-
-    def test_first_game_leads_the_display_order(self):
-        self.assertEqual(self._bundle().first_game, self.games[0])
-
-    def test_first_game_reads_prefetched_games(self):
-        bundle = LegacyPurchase.objects.prefetch_related("games").get(
-            pk=self._bundle().pk
-        )
-        with self.assertNumQueries(0):
-            self.assertEqual(bundle.first_game, self.games[0])
 
     def test_game_resolutions_answer_in_display_order(self):
         for resolution in (game_resolution, game_edit_resolution):

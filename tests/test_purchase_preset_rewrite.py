@@ -358,13 +358,13 @@ def test_a_second_pass_changes_nothing(owned_library, capsys):
 
 
 @pytest.fixture
-def converted(owned_library, stated_graph, monkeypatch):
+def converted(owned_library, stated_graph, monkeypatch, legacy_purchase):
     """Legacy rows of each type and ownership, converted."""
     from datetime import UTC, date, datetime
 
     from games.backfill import purchase as conversion
     from games.backfill.purchase import convert_purchases, legacy_rows
-    from games.models import Game, LegacyPurchase, PurchaseConversionState
+    from games.models import Game, PurchaseConversionState
 
     monkeypatch.setattr(conversion, "require_replay_parity", lambda libraries: None)
     PurchaseConversionState.objects.filter(library=owned_library).update(
@@ -374,9 +374,9 @@ def converted(owned_library, stated_graph, monkeypatch):
     def game(name: str) -> Game:
         return stated_graph(Game(name=name, library=owned_library), owned_library).game
 
-    def legacy(target, day, **columns) -> LegacyPurchase:
-        row = LegacyPurchase.objects.create(
-            library=owned_library,
+    def legacy(target, day, **columns):
+        row = legacy_purchase.objects.create(
+            library_id=owned_library.pk,
             date_purchased=day,
             price=columns.pop("price", 10),
             price_currency="EUR",
@@ -384,33 +384,33 @@ def converted(owned_library, stated_graph, monkeypatch):
             converted_currency="EUR",
             **columns,
         )
-        row.games.add(target)
+        row.games.add(target.pk)
         return row
 
     base = game("Base")
-    legacy(base, date(2021, 1, 1), ownership_type=LegacyPurchase.PHYSICAL)
-    legacy(base, date(2021, 2, 1), ownership_type=LegacyPurchase.DIGITALUPGRADE)
+    legacy(base, date(2021, 1, 1), ownership_type="ph")
+    legacy(base, date(2021, 2, 1), ownership_type="du")
     legacy(
         base,
         date(2021, 3, 1),
-        type=LegacyPurchase.DLC,
+        type="dlc",
         name="More",
-        related_game=base,
+        related_game_id=base.pk,
         date_refunded=date(2021, 3, 4),
     )
     legacy(
         base,
         date(2021, 4, 1),
-        type=LegacyPurchase.SEASONPASS,
+        type="season_pass",
         name="Year 1",
-        related_game=base,
+        related_game_id=base.pk,
         #: A pass now takes its base copy's.
-        ownership_type=LegacyPurchase.PHYSICAL,
+        ownership_type="ph",
     )
-    legacy(game("Rental"), date(2021, 5, 1), ownership_type=LegacyPurchase.RENTED)
+    legacy(game("Rental"), date(2021, 5, 1), ownership_type="re")
     legacy(game("Digital"), date(2021, 6, 1))
     convert_purchases(
-        legacy_rows(LegacyPurchase, owned_library.pk),
+        legacy_rows(legacy_purchase, owned_library.pk),
         recorded_at=datetime(2026, 10, 1, 12, tzinfo=UTC),
     )
     return owned_library
@@ -434,8 +434,9 @@ def converted(owned_library, stated_graph, monkeypatch):
         {"price": {"value": 5, "modifier": "GREATER_THAN"}},
     ],
 )
-def test_a_rewritten_preset_matches_the_same_rows(converted, legacy_filter):
-    from games.models import LegacyPurchase
+def test_a_rewritten_preset_matches_the_same_rows(
+    converted, legacy_filter, legacy_purchase
+):
     from games.purchase_parity import ConversionMap
     from games.reads.purchase_figures import purchases_matching
 
@@ -455,8 +456,8 @@ def test_a_rewritten_preset_matches_the_same_rows(converted, legacy_filter):
     }
     before = {
         str(pk)
-        for pk in LegacyPurchase.objects.filter(
-            library=converted, **lookups[key]()
+        for pk in legacy_purchase.objects.filter(
+            library_id=converted.pk, **lookups[key]()
         ).values_list("pk", flat=True)
     }
     rewritten = _purchase(legacy_filter)

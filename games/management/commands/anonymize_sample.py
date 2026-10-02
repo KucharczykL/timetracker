@@ -12,7 +12,8 @@ import yaml
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
+from django.db.models import GeneratedField
 
 from games.events.playersession import (
     day_from_text,
@@ -20,16 +21,17 @@ from games.events.playersession import (
     instant_from_text,
     instant_text,
 )
-from games.events.references import capture_reference
+from games.events.references import Resolution, capture_reference
 from games.events.vocabulary import DatedKeys, KeyPath
 from games.events.wiring import DEFAULT_WIRING
 from games.management.commands.load_sample_data import TARGET_LIBRARY_MARKER
 from games.models import (
     Device,
+    Edition,
+    ExchangeRate,
     FilterPreset,
     Game,
     HistoricalPlaytime,
-    LegacyPurchase,
     LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
@@ -39,18 +41,17 @@ from games.models import (
     PlayerSession,
     Playthrough,
     Purchase,
+    PurchaseValuation,
+    Release,
     UserLibraryPreferences,
 )
+from games.projections import projection_models
 from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 
-# DB-computed columns: the serializer emits them, loaddata discards them.
-# Stripped to keep the fixture clean.
-GENERATED_FIELDS = frozenset(["price_per_game"])
 PORTABLE_LIBRARY_MODELS = frozenset(
     [
         "games.game",
-        "games.legacypurchase",
         "games.filterpreset",
         "games.libraryeventstreamhead",
         "games.libraryevent",
@@ -61,22 +62,31 @@ PORTABLE_LIBRARY_MODELS = frozenset(
 # Dumped models, dependencies first (Game before its FK referrers,
 # LibraryEventStreamHead before LibraryEvent before LibraryEventReference).
 # Omitted: FilterPreset (sample data does not ship personal saved searches).
-DUMP_LABELS = [
-    "games.Platform",
-    "games.Game",
-    "games.LegacyPurchase",
-    "games.LibraryEventStreamHead",
-    "games.LibraryEvent",
-    "games.LibraryEventReference",
-    "games.ExchangeRate",
-]
+DUMPED_MODELS = (
+    Platform,
+    Game,
+    Edition,
+    Release,
+    LibraryEventStreamHead,
+    LibraryEvent,
+    LibraryEventReference,
+    ExchangeRate,
+)
+DUMP_LABELS = [model._meta.label for model in DUMPED_MODELS]
+
+# DB-computed columns: the serializer emits them, loaddata discards them.
+# Stripped to keep the fixture clean.
+GENERATED_FIELDS = frozenset(
+    field.name
+    for model in DUMPED_MODELS
+    for field in model._meta.concrete_fields
+    if isinstance(field, GeneratedField)
+)
 
 # Deterministic stand-in for audit timestamps with no natural date to derive from.
 FIXED_EPOCH = datetime(2020, 1, 1, tzinfo=UTC)
 
-MAX_GAMES_PER_PURCHASE = 10
 JITTER_DAYS = 365
-CONVERSION_RATE = 23.0
 
 # Gitignored map of real game name -> replacement, applied at generation so
 # sensitive titles never enter the committed fixture. Absent = no-op.
@@ -90,7 +100,7 @@ DEFAULT_NAME_OVERRIDES = (
 # derive from recorded_at, not created_at, and from each other's grouping
 # (aggregate/correlation/stream), so they get their own dedicated pass in
 # _reassign_event_identities rather than this generic one.
-IDENTITY_MODELS = (Platform, Device, Game, LegacyPurchase)
+IDENTITY_MODELS = (Platform, Device, Game, Edition, Release)
 #: Old identity to new, per model.
 type Replacements = Mapping[UUID, UUID]
 type ReplacementsByModel = Mapping[type, Replacements]
@@ -200,8 +210,8 @@ class Command(BaseCommand):
     help = (
         "Regenerate games/fixtures/sample.yaml.gz from the currently-loaded database "
         "(a production copy), anonymizing the sensitive parts so the result is safe "
-        "to commit. Randomizes prices, game<->purchase links, and dates (per-game "
-        "offset), clears free-text notes, and sanitizes audit timestamps. All "
+        "to commit. Randomizes prices and dates (per-game offset), clears "
+        "free-text notes, and sanitizes audit timestamps. All "
         "mutation happens inside a rolled-back transaction, so the source database is "
         "never modified.\n\n"
         "Workflow: restore a production dump into a dedicated PostgreSQL database, "
@@ -285,21 +295,6 @@ class Command(BaseCommand):
             .order_by("pk")
             .values_list("pk", flat=True)
         )
-        #: The games a purchase may be pointed at, which is the live ones
-        #: only: a purchase is live while any of its games is, so links
-        #: reassigned onto removed games would drop the purchase out of every
-        #: list the fixture feeds.
-        reassignable_game_ids = list(
-            Game.objects.for_library(library)
-            .order_by("pk")
-            .values_list("pk", flat=True)
-        )
-        if (
-            not reassignable_game_ids
-            and LegacyPurchase.objects.for_library(library).exists()
-        ):
-            raise CommandError("Purchases exist but no games to reassign them to.")
-
         name_overrides = self._load_overrides(options["name_overrides"])
 
         with tempfile.TemporaryDirectory() as tempdir:
@@ -308,7 +303,6 @@ class Command(BaseCommand):
                 self._prune_other_libraries(library)
                 counts = self._anonymize(
                     all_game_ids,
-                    reassignable_game_ids,
                     options["scrub_devices"],
                     name_overrides,
                     library_id=library.pk,
@@ -338,12 +332,20 @@ class Command(BaseCommand):
         The three event-store models go before Game, Platform and Device:
         while another library's LibraryEventReference rows still name those
         rows, the pre_delete guard in games/signals.py refuses to delete them.
+        Projection rows go first, raw: their keys are RESTRICT.
         """
+        with connection.cursor() as cursor:
+            for model in projection_models():
+                cursor.execute(
+                    f"DELETE FROM {connection.ops.quote_name(model._meta.db_table)}"
+                    ' WHERE "library_id" <> %s',
+                    [library.pk],
+                )
+        PurchaseValuation.objects.exclude(library=library).delete()
         FilterPreset.objects.exclude(library=library).delete()
         LibraryEventReference.objects.exclude(library=library).delete()
         LibraryEvent.objects.exclude(library=library).delete()
         LibraryEventStreamHead.objects.exclude(library=library).delete()
-        LegacyPurchase.objects.exclude(library=library).delete()
         Game.objects.exclude(library=library).delete()
         Device.objects.exclude(library=library).delete()
         Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
@@ -351,7 +353,6 @@ class Command(BaseCommand):
     def _anonymize(
         self,
         all_game_ids,
-        reassignable_game_ids,
         scrub_devices,
         name_overrides,
         *,
@@ -361,51 +362,6 @@ class Command(BaseCommand):
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
         }
-
-        purchases = list(LegacyPurchase.objects.order_by("pk"))
-        through_rows = []
-        Through = LegacyPurchase.games.through
-        Through.objects.all().delete()
-        for purchase in purchases:
-            offset = timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
-            purchase.date_purchased += offset
-            if purchase.date_refunded is not None:
-                purchase.date_refunded += offset
-            purchase.price = round(random.uniform(0, 100), 2)
-            purchase.converted_price = round(purchase.price * CONVERSION_RATE, 2)
-            purchase.converted_currency = "CZK"
-            purchase.needs_price_update = False
-            purchase.name = ""
-            if purchase.type != LegacyPurchase.GAME:
-                purchase.related_game_id = random.choice(reassignable_game_ids)
-            count = random.randint(
-                1, min(MAX_GAMES_PER_PURCHASE, len(reassignable_game_ids))
-            )
-            chosen = random.sample(reassignable_game_ids, count)
-            through_rows.extend(
-                Through(legacypurchase_id=purchase.pk, game_id=game_id)
-                for game_id in chosen
-            )
-            purchase.num_purchases = count
-            purchase.created_at = _midnight(purchase.date_purchased)
-            purchase.updated_at = purchase.created_at
-        Through.objects.bulk_create(through_rows)
-        LegacyPurchase.objects.bulk_update(
-            purchases,
-            [
-                "date_purchased",
-                "date_refunded",
-                "price",
-                "converted_price",
-                "converted_currency",
-                "needs_price_update",
-                "name",
-                "related_game",
-                "num_purchases",
-                "created_at",
-                "updated_at",
-            ],
-        )
 
         if name_overrides:
             renamed = list(Game.objects.filter(name__in=name_overrides).order_by("pk"))
@@ -466,7 +422,8 @@ class Command(BaseCommand):
 
         return {
             "games": len(all_game_ids),
-            "purchases": len(purchases),
+            "entries": LibraryEntry.objects.count(),
+            "purchases": Purchase.objects.count(),
             "sessions": session_count,
             "events": event_count,
         }
@@ -601,16 +558,6 @@ class Command(BaseCommand):
             ],
         )
 
-        references = list(LibraryEventReference.objects.order_by("pk"))
-        for reference in references:
-            replacements = replacements_by_model.get(
-                kinds.kind_for(reference.kind).model, {}
-            )
-            reference.referenced_id = replacements.get(
-                reference.referenced_id, reference.referenced_id
-            )
-        LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
-
         def _mint(moment, state):
             current_ms = _floor_ms(moment)
             state["sequence"] = (
@@ -659,6 +606,19 @@ class Command(BaseCommand):
         correlation_replacements = _group_replacements(
             events, lambda event: event.correlation_id
         )
+
+        def remapped(kind, old_id):
+            """A projected row takes its aggregate's id."""
+            if kind.resolution is Resolution.PROJECTED and kind.model is not Device:
+                return aggregate_replacements[old_id]
+            return replacements_by_model.get(kind.model, {}).get(old_id, old_id)
+
+        references = list(LibraryEventReference.objects.order_by("pk"))
+        for reference in references:
+            reference.referenced_id = remapped(
+                kinds.kind_for(reference.kind), reference.referenced_id
+            )
+        LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
         #: LibraryEventStreamHead.id is deliberately left alone.
         #: games_libraryevent's composite FK to it
         #: (library_event_stream_matches_library) is a plain RunSQL
@@ -699,6 +659,13 @@ class Command(BaseCommand):
                     _write_path(
                         payload, path, str(aggregate_replacements.get(old_id, old_id))
                     )
+            for found in event_types.references_in(event.event_type, payload):
+                kind = kinds.kind_for(found.value["kind"])
+                if kind.resolution is Resolution.PROJECTED and kind.model is not Device:
+                    payload[found.key] = {
+                        **found.value,
+                        "id": str(aggregate_replacements[UUID(found.value["id"])]),
+                    }
             event.payload = payload
         LibraryEvent.objects.bulk_update(
             events, ["aggregate_id", "correlation_id", "causation_id", "payload"]
@@ -740,16 +707,21 @@ class Command(BaseCommand):
         keeps the output byte-identical for a given --seed.
         """
         identity = cls._identity_field_name(model)
-        rows = list(model.objects.order_by("created_at", "pk"))
+        dated = any(field.name == "created_at" for field in model._meta.fields)
+        #: Undated rows mint at the epoch.
+        rows = list(
+            model._base_manager.order_by(*(["created_at"] if dated else []), "pk")
+        )
         replacements = {}
         previous_ms = None
         sequence = 0
         for row in rows:
-            current_ms = _floor_ms(row.created_at)
+            moment = row.created_at if dated else FIXED_EPOCH
+            current_ms = _floor_ms(moment)
             sequence = sequence + 1 if current_ms == previous_ms else 0
             previous_ms = current_ms
             replacement = uuid7_at(
-                row.created_at,
+                moment,
                 sequence=sequence,
                 entropy=random.getrandbits(_RAND_B_BITS),
             )
@@ -758,7 +730,7 @@ class Command(BaseCommand):
         # primary-key field outright, which is what `identity` is for a promoted
         # model. A queryset update writes either.
         for original, replacement in replacements.items():
-            model.objects.filter(**{identity: original}).update(
+            model._base_manager.filter(**{identity: original}).update(
                 **{identity: replacement}
             )
         return replacements
@@ -783,8 +755,8 @@ class Command(BaseCommand):
         Many-to-many relations are walked too, via their through model's own
         foreign key. Whether a relation needs remapping is decided by what it
         targets, never by its kind: an auto-created through references the
-        target's primary key, so `LegacyPurchase.games` is inert while the identity is
-        a secondary column and live once it is the primary key.
+        target's primary key, so such a relation is inert while the identity
+        is a secondary column and live once it is the primary key.
 
         Unmanaged referrers are skipped. A rebuild's shadow twin
         (games/events/targets.py) joins the live registry and stays there for

@@ -33,12 +33,12 @@ from games.models import (
     ExchangeRate,
     FilterPreset,
     Game,
-    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     PlayerSession,
     Purchase,
     PurchaseConversionState,
+    PurchaseValuation,
 )
 from games.reads.player_sessions import library_sessions
 from games.views import stats_links
@@ -121,42 +121,19 @@ def parity_world(monkeypatch):
         _session(shared_game_b, device_b, 4, 1),
     ]
 
-    purchase_a = LegacyPurchase.objects.create(
-        library=library_a,
-        name="Reconcile A Purchase",
-        platform=platform_a,
-        date_purchased=date(YEAR, 3, 1),
-        price=100,
-        price_currency="CZK",
-        converted_price=100,
-        converted_currency="CZK",
-    )
-    purchase_a.games.set([game_a, shared_game_a])
-    purchase_b = LegacyPurchase.objects.create(
-        library=library_b,
-        name="Reconcile B Purchase",
-        platform=platform_b,
-        date_purchased=date(YEAR, 3, 2),
-        price=200,
-        price_currency="CZK",
-        converted_price=200,
-        converted_currency="CZK",
-    )
-    purchase_b.games.set([game_b, shared_game_b])
-    LegacyPurchase.objects.filter(pk__in=[purchase_a.pk, purchase_b.pk]).update(
-        needs_price_update=False
-    )
+    purchases = {}
     for library, game, amount, day in (
         (library_a, game_a, 100, 1),
         (library_b, game_b, 200, 2),
     ):
-        record_purchase(
+        purchases[library.pk] = record_purchase(
             record_entry(library, default_graph(game, library).release),
             amount=Decimal(amount),
             currency="CZK",
             purchased=TemporalValue.from_day(date(YEAR, 3, day)),
         )
         tasks.convert_library_prices(str(library.pk), request_run(library, "CZK"))
+    purchase_a, purchase_b = purchases[library_a.pk], purchases[library_b.pk]
 
     client_a = _client_for(user_a)
     client_b = _client_for(user_b)
@@ -185,16 +162,9 @@ def test_row_link_and_audit_reconciliation_is_independent(parity_world):
     ):
         assert Game.objects.for_library(library).count() == 2
         assert Device.objects.for_library(library).count() == 1
-        assert LegacyPurchase.objects.for_library(library).count() == 1
         assert library_sessions(library).count() == 2
         assert Platform.objects.for_library(library).count() == 1
         assert Platform.objects.visible_to(library).count() == 2
-        assert (
-            LegacyPurchase.games.through.objects.filter(
-                legacypurchase__library=library
-            ).count()
-            == 2
-        )
         output = StringIO()
         call_command("audit_library_ownership", "--user", username, stdout=output)
         assert "Cross-library links: 0" in output.getvalue()
@@ -346,6 +316,11 @@ def test_statistics_and_exact_links_reconcile_per_library(parity_world):
             assert client.get(filter_url(link_filter), follow=True).status_code == 200
 
 
+def _valued(purchase) -> tuple[Decimal, str]:
+    valuation = PurchaseValuation.objects.get(purchase_id=purchase.pk)
+    return valuation.amount, valuation.target_currency
+
+
 def test_conversion_publication_is_independent_per_library(parity_world):
     world = parity_world
     ExchangeRate.objects.create(
@@ -358,25 +333,13 @@ def test_conversion_publication_is_independent_per_library(parity_world):
     version_b = request_conversion(world.library_b, "USD")
 
     tasks.convert_library_prices(str(world.library_a.pk), version_a)
-    world.purchase_a.refresh_from_db()
-    world.purchase_b.refresh_from_db()
     state_b = PurchaseConversionState.objects.get(library=world.library_b)
-    assert (world.purchase_a.converted_price, world.purchase_a.converted_currency) == (
-        4,
-        "EUR",
-    )
-    assert (world.purchase_b.converted_price, world.purchase_b.converted_currency) == (
-        200,
-        "CZK",
-    )
+    assert _valued(world.purchase_a) == (Decimal("4.00"), "EUR")
+    assert _valued(world.purchase_b) == (Decimal("200.00"), "CZK")
     assert (state_b.status, state_b.requested_currency) == ("pending", "USD")
 
     tasks.convert_library_prices(str(world.library_b.pk), version_b)
-    world.purchase_b.refresh_from_db()
-    assert (world.purchase_b.converted_price, world.purchase_b.converted_currency) == (
-        10,
-        "USD",
-    )
+    assert _valued(world.purchase_b) == (Decimal("10.00"), "USD")
     assert compute_stats(world.library_a, YEAR)["total_spent_currency"] == "EUR"
     assert compute_stats(world.library_b, YEAR)["total_spent_currency"] == "USD"
     assert (

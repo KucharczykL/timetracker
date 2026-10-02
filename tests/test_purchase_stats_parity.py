@@ -1,9 +1,12 @@
 """The legacy purchase figures, and their parity gate."""
 
+# conversion-tooling
+
 import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from io import StringIO
+from typing import Any
 
 import pytest
 from django.core.management import CommandError, call_command
@@ -11,11 +14,13 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 from graphs import default_graph
+from legacy_purchases import LegacyCodes, legacy_row, link_game
 from purchases import record_purchase, remove_purchase, void_refund
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
 from games.backfill import purchase as conversion
+from games.backfill.legacy_model import legacy_purchase_model
 from games.backfill.purchase import convert_purchases, legacy_rows
 from games.backfill.purchase_reconciliation import (
     ALL_TIME,
@@ -24,7 +29,6 @@ from games.backfill.purchase_reconciliation import (
 )
 from games.models import (
     Game,
-    LegacyPurchase,
     LibraryEntry,
     PlayerGame,
     PlayerGameStatus,
@@ -48,23 +52,21 @@ from games.stats_parity import unattributed
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("legacy_purchase")]
 
 YEAR = 2021
 INSTANT = datetime(2026, 10, 1, 12, tzinfo=UTC)
 
 
-def _legacy(library, game, day: date, **columns) -> LegacyPurchase:
+def _legacy(library, game, day: date, **columns):
     """A row the old task converted, as a priced row was."""
     currency = columns.pop("price_currency", "EUR")
     if columns.get("price"):
         columns.setdefault("converted_price", columns["price"])
         columns.setdefault("converted_currency", currency)
-    purchase = LegacyPurchase.objects.create(
-        library=library, date_purchased=day, price_currency=currency, **columns
+    return legacy_row(
+        library, game, date_purchased=day, price_currency=currency, **columns
     )
-    purchase.games.add(game)
-    return purchase
 
 
 @pytest.fixture
@@ -116,7 +118,7 @@ def legacy_library(owned_library):
             library,
             playing,
             date(YEAR, 5, 3),
-            type=LegacyPurchase.SEASONPASS,
+            type=LegacyCodes.SEASONPASS,
             name="Pass",
             related_game=playing,
         ),
@@ -128,7 +130,7 @@ def legacy_library(owned_library):
 def test_the_year_rows_follow_the_old_rules(legacy_library):
     library, key = legacy_library
 
-    rows = legacy_figures(LegacyPurchase, library, YEAR).rows
+    rows = legacy_figures(legacy_purchase_model(), library, YEAR).rows
 
     assert rows.purchases == {
         key[name]
@@ -148,7 +150,7 @@ def test_the_year_rows_follow_the_old_rules(legacy_library):
 def test_the_year_values_follow_the_old_rules(legacy_library):
     library, key = legacy_library
 
-    figures = legacy_figures(LegacyPurchase, library, YEAR)
+    figures = legacy_figures(legacy_purchase_model(), library, YEAR)
 
     assert figures.values == {
         "all_purchased_this_year_count": 6,
@@ -175,27 +177,32 @@ def test_the_year_values_follow_the_old_rules(legacy_library):
 def test_all_time_finishes_by_a_done_status_too(legacy_library):
     library, key = legacy_library
 
-    rows = legacy_figures(LegacyPurchase, library, None).rows
+    rows = legacy_figures(legacy_purchase_model(), library, None).rows
 
     assert rows.finished == {key["done"], key["finished"]}
     assert rows.backlog_decrease == rows.finished
     assert len(rows.purchases) == 7
 
 
+def _games_of(legacy_id: str) -> list:
+    """The game keys one row links."""
+    row: Any = legacy_purchase_model()._default_manager.get(pk=legacy_id)
+    return list(row.games.values_list("pk", flat=True))
+
+
 def test_a_removed_game_hides_its_purchase(legacy_library):
     from games.removal import remove
 
     library, key = legacy_library
-    remove(LegacyPurchase.objects.get(pk=key["dropped"]).games.get())
+    remove(Game.objects.get(pk=_games_of(key["dropped"])[0]))
 
     assert (
         key["dropped"]
-        not in legacy_figures(LegacyPurchase, library, None).rows.purchases
+        not in legacy_figures(legacy_purchase_model(), library, None).rows.purchases
     )
 
 
-@pytest.mark.django_db(transaction=True)
-def test_the_historical_model_answers_alike(legacy_library):
+def test_the_migration_s_model_answers_alike(legacy_library):
     library, _ = legacy_library
     state = MigrationExecutor(connection).loader.project_state(
         ("games", "0031_purchase_conversion")
@@ -203,10 +210,10 @@ def test_the_historical_model_answers_alike(legacy_library):
     historical = state.apps.get_model("games", "LegacyPurchase")
 
     assert legacy_figures(historical, library, YEAR) == legacy_figures(
-        LegacyPurchase, library, YEAR
+        legacy_purchase_model(), library, YEAR
     )
     assert legacy_figures(historical, library, None) == legacy_figures(
-        LegacyPurchase, library, None
+        legacy_purchase_model(), library, None
     )
 
 
@@ -220,12 +227,16 @@ def no_replay_check(monkeypatch):
 
 
 def _snapshot(library) -> dict:
-    rows = legacy_rows(LegacyPurchase, library.pk)
-    return json.loads(json.dumps(legacy_statistics(LegacyPurchase, library, rows)))
+    rows = legacy_rows(legacy_purchase_model(), library.pk)
+    return json.loads(
+        json.dumps(legacy_statistics(legacy_purchase_model(), library, rows))
+    )
 
 
 def _convert(library) -> None:
-    convert_purchases(legacy_rows(LegacyPurchase, library.pk), recorded_at=INSTANT)
+    convert_purchases(
+        legacy_rows(legacy_purchase_model(), library.pk), recorded_at=INSTANT
+    )
 
 
 def _judged(library, snapshot) -> dict[str, PurchaseScope]:
@@ -365,7 +376,7 @@ def test_a_lost_refund_on_a_bundle_fails(
         price=10,
         date_refunded=date(YEAR, 3, 5),
     )
-    row.games.add(game_on("Two"))
+    link_game(row, game_on("Two"))
     path = tmp_path / "legacy.json"
     path.write_text(json.dumps(_snapshot(owned_library)))
     _convert(owned_library)
@@ -456,7 +467,7 @@ def test_a_held_reason_that_cannot_move_the_set_explains_nothing(
         owned_library,
         game_on("Rented"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyPurchase.RENTED,
+        ownership_type=LegacyCodes.RENTED,
         price=5,
     )
     snapshot = _snapshot(owned_library)
@@ -519,7 +530,7 @@ def test_a_free_rental_is_a_copy_and_no_purchase(owned_library, euro, game_on):
         owned_library,
         game_on("Inside"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyPurchase.RENTED,
+        ownership_type=LegacyCodes.RENTED,
         price=0,
     )
 
@@ -528,7 +539,7 @@ def test_a_free_rental_is_a_copy_and_no_purchase(owned_library, euro, game_on):
 
 def test_a_bundle_splits(owned_library, euro, game_on):
     row = _legacy(owned_library, game_on("One"), date(YEAR, 3, 1), price=10)
-    row.games.add(game_on("Two"))
+    link_game(row, game_on("Two"))
 
     _reason_of(owned_library, row, Reason.BUNDLE_SPLIT)
 
@@ -538,7 +549,7 @@ def test_a_rental_is_not_owned(owned_library, euro, game_on):
         owned_library,
         game_on("Rented"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyPurchase.RENTED,
+        ownership_type=LegacyCodes.RENTED,
         price=5,
     )
 
@@ -550,7 +561,7 @@ def test_a_demo_is_a_prerelease_copy(owned_library, euro, game_on):
         owned_library,
         game_on("Demo"),
         date(YEAR, 3, 1),
-        ownership_type=LegacyPurchase.DEMO,
+        ownership_type=LegacyCodes.DEMO,
         price=0,
     )
 
@@ -563,7 +574,7 @@ def test_a_dlc_counts_through_its_own_game(owned_library, euro, game_on):
         owned_library,
         base,
         date(YEAR, 3, 1),
-        type=LegacyPurchase.DLC,
+        type=LegacyCodes.DLC,
         name="Expansion",
         related_game=base,
         price=5,
@@ -587,7 +598,7 @@ def test_a_pass_rides_the_base_copy(owned_library, euro, game_on):
         owned_library,
         game,
         date(YEAR, 4, 1),
-        type=LegacyPurchase.SEASONPASS,
+        type=LegacyCodes.SEASONPASS,
         name="Year 1",
         related_game=game,
         price=5,
@@ -602,7 +613,7 @@ def test_a_pass_without_a_base_records_its_own_copy(owned_library, euro, game_on
         owned_library,
         game,
         date(YEAR, 4, 1),
-        type=LegacyPurchase.SEASONPASS,
+        type=LegacyCodes.SEASONPASS,
         name="Year 1",
         related_game=game,
         price=5,

@@ -24,7 +24,7 @@ from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from common.components import Column, Span, StyledTable, make_row
-from games.models import Game, LegacyPurchase, Platform, Playthrough
+from games.models import Game, Platform, Playthrough
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2024, 5, 1, 12, 0, tzinfo=ZONEINFO)
@@ -117,14 +117,6 @@ class ActionsColumnPriorityTest(TestCase):
         session_row(
             self.game, device=device, started_at=BASE, ended_at=BASE.replace(hour=14)
         )
-        purchase = LegacyPurchase.objects.create(
-            library=library,
-            platform=platform,
-            date_purchased=BASE,
-            price=10,
-            price_currency="USD",
-        )
-        purchase.games.add(self.game)
         #: The section draws a table only with a row.
         record_row([Playthrough.objects.get(player_game__game=self.game)])
 

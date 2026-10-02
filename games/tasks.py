@@ -1,6 +1,5 @@
-import contextlib
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -16,7 +15,6 @@ from games.conversion import (
 )
 from games.exchange_rates import exchange_rate
 from games.models import (
-    LegacyPurchase,
     PurchaseConversionState,
     UserLibrary,
 )
@@ -36,23 +34,6 @@ logger = logging.getLogger("games")
 
 RETRY_DELAY = timedelta(minutes=15)
 MAX_ERROR_LENGTH = 240
-
-#: pk, price, price_currency, date_purchased.
-type LegacySnapshotRow = tuple[UUID, float, str, date]
-
-
-class MissingExchangeRate(RuntimeError):
-    pass
-
-
-def _required_rate(key: RateKey, target: CurrencyCode, needed_by: str) -> Decimal:
-    rate = exchange_rate(key.currency, target, key.year)
-    if rate is None:
-        raise MissingExchangeRate(
-            f"Exchange rate unavailable: {key.currency} to {target} for "
-            f"{key.year}, needed by {needed_by}"
-        )
-    return rate
 
 
 def _rates_for(
@@ -91,18 +72,9 @@ def _not_published(library_id: str, version: ConversionVersion, reason: str) -> 
 
 
 def _changed_since(
-    library: UserLibrary,
-    legacy_snapshot: list[LegacySnapshotRow],
-    valuation_snapshot: list[ValuationInput],
+    library: UserLibrary, valuation_snapshot: list[ValuationInput]
 ) -> str | None:
-    """What changed since the snapshots, if anything."""
-    current_legacy = list(
-        LegacyPurchase.objects.filter(library_id=library.pk)
-        .order_by("pk")
-        .values_list("pk", "price", "price_currency", "date_purchased")
-    )
-    if current_legacy != legacy_snapshot:
-        return "legacy rows changed"
+    """What changed since the snapshot, if anything."""
     if valuation_inputs(library) != valuation_snapshot:
         return "purchases changed"
     return None
@@ -154,7 +126,7 @@ def _mark_failed(
 
 
 def convert_library_prices(library_id: str, requested_version: int) -> None:
-    """Value both snapshots; publish both if still current."""
+    """Value the snapshot; publish if current."""
     library_pk = UUID(library_id)
     with transaction.atomic():
         state = (
@@ -174,38 +146,10 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
         state.last_error = ""
         state.save(update_fields=["status", "last_error"])
 
-    purchases = list(
-        LegacyPurchase.objects.filter(library_id=library_pk).order_by("pk")
-    )
-    snapshot: list[LegacySnapshotRow] = [
-        (
-            purchase.pk,
-            purchase.price,
-            purchase.price_currency,
-            purchase.date_purchased,
-        )
-        for purchase in purchases
-    ]
-
     try:
         library = UserLibrary.objects.get(pk=library_pk)
         valuation_snapshot = valuation_inputs(library)
         rates = _rates_for(valuation_snapshot, target_currency)
-        for purchase in purchases:
-            source_currency = purchase.price_currency.upper()
-            if source_currency == target_currency or purchase.price == 0:
-                converted_price = purchase.price
-            else:
-                rate = _required_rate(
-                    RateKey(source_currency, purchase.date_purchased.year),
-                    target_currency,
-                    f"legacy purchase {purchase.pk}",
-                )
-                converted_price = round(purchase.price * float(rate), 0)
-            purchase.converted_price = converted_price
-            purchase.converted_currency = target_currency
-            purchase.needs_price_update = False
-
         with transaction.atomic():
             state = PurchaseConversionState.objects.select_for_update().get(
                 library_id=library_pk
@@ -217,16 +161,12 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
             ):
                 _not_published(library_id, requested_version, "superseded")
                 return
-            changed = _changed_since(library, snapshot, valuation_snapshot)
+            changed = _changed_since(library, valuation_snapshot)
             if changed is not None:
                 # A removal requests nothing; request here.
                 _request_conversion_for_locked_state(state, state.requested_currency)
                 _not_published(library_id, requested_version, changed)
                 return
-            LegacyPurchase.objects.bulk_update(
-                purchases,
-                ["converted_price", "converted_currency", "needs_price_update"],
-            )
             valuations = value_all(
                 valuation_snapshot,
                 rates,
@@ -251,7 +191,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                     "last_error",
                 ]
             )
-    except (MissingExchangeRate, DatabaseError) as error:
+    except DatabaseError as error:
         logger.exception(
             "[convert_library_prices]: conversion failed for library %s version %s",
             library_id,
@@ -333,16 +273,3 @@ def convert_prices() -> None:
             library.user, "DEFAULT_DISPLAY_CURRENCY"
         ).value
         request_conversion(library, str(target))
-
-
-def calculate_price_per_game():
-    """
-    This task is deprecated because price_per_game is now a GeneratedField.
-    It is kept here to prevent errors from lingering scheduled tasks.
-    """
-    # Best-effort by design: whatever state the scheduler tables are in,
-    # a lingering schedule for the retired task must never break anything.
-    with contextlib.suppress(Exception):
-        from django_q.models import Schedule
-
-        Schedule.objects.filter(func="games.tasks.calculate_price_per_game").delete()

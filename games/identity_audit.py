@@ -18,8 +18,8 @@ from django.apps import apps
 from django.db import connection
 from django.db.models import Field, ForeignObject, Model
 
-type TableName = str  # e.g. "games_legacypurchase_games"
-#: e.g. ("games_legacypurchase_games", "game_id")
+type TableName = str  # e.g. "games_exchangerate"
+#: e.g. ("games_userlibrary", "user_id")
 type TableColumn = tuple[TableName, str]
 type OwnerLabel = str  # e.g. "ID-11 (#646)"
 type ColumnType = str  # e.g. "uuid_v7", "bigint"
@@ -30,9 +30,6 @@ def _converted_by(slice_name: str) -> OwnerLabel:
 
 
 NEVER_CONVERTS = "never converts: auth.User is not a converted model"
-_THROUGH_PK_IS_PERMANENT = (
-    "never converts: an auto-created through table keeps its own key"
-)
 _NOT_A_CONVERTED_MODEL = "never converts: not part of the UUID identity cutover"
 
 # Relation columns that are still integer on purpose, and the slice that owns
@@ -47,7 +44,6 @@ RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {
-    "games_legacypurchase_games": _THROUGH_PK_IS_PERMANENT,
     "games_exchangerate": _NOT_A_CONVERTED_MODEL,
     "games_sitesetting": _NOT_A_CONVERTED_MODEL,
     "games_userpreferences": _NOT_A_CONVERTED_MODEL,
@@ -121,8 +117,7 @@ class IdentityModel(NamedTuple):
 def audited_models() -> list[type[Model]]:
     """Every table this project owns, auto-created through tables included.
 
-    `include_auto_created` is not optional: `games_legacypurchase_games` carries the
-    permanent bigint through-row primary-key exemption and is invisible without it.
+    `include_auto_created` keeps a through table's integer key visible.
     """
     #: `managed` is what excludes the manufactured twins.
     return [

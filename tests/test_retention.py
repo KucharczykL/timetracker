@@ -6,7 +6,7 @@ Nothing a user reaches destroys a row. The guard is what stops a
 
 import uuid
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from typing import TypedDict
 
@@ -37,7 +37,6 @@ from games.models import (
     Device,
     Edition,
     Game,
-    LegacyPurchase,
     LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
@@ -255,19 +254,13 @@ class LibraryState(TypedDict):
     """What stays after a game goes."""
 
     sessions: int
-    purchases: int
     editions: int
     releases: int
-    bundle_count: int | None
     other_game_playtime: timedelta
 
 
 def populate(library):
-    """One game with everything below it.
-
-    The bystander shares a bundle purchase, so the bundle keeps a
-    lower count while the single-game purchase drops to zero.
-    """
+    """One game with everything below it."""
     platform = Platform.objects.create(library=library, name="Steam", group="PC")
     doomed = Game.objects.create(
         library=library, name="Doomed", year_released=2023, platform=platform
@@ -287,32 +280,14 @@ def populate(library):
     )
     edition = Edition.objects.create(game=doomed, is_default=True)
     Release.objects.create(edition=edition, is_default=True, platform=platform)
-
-    alone = LegacyPurchase.objects.create(
-        library=library,
-        date_purchased=date(2026, 1, 1),
-        platform=platform,
-        price_currency="USD",
-    )
-    alone.games.set([doomed])
-    bundle = LegacyPurchase.objects.create(
-        library=library,
-        date_purchased=date(2026, 1, 2),
-        platform=platform,
-        price_currency="USD",
-    )
-    bundle.games.set([doomed, bystander])
-    return doomed, bundle, bystander
+    return doomed, bystander
 
 
-def snapshot(library, bundle, bystander) -> LibraryState:
-    surviving = LegacyPurchase.objects.filter(pk=bundle.pk).first()
+def snapshot(library, bystander) -> LibraryState:
     return LibraryState(
         sessions=PlayerSession.objects.filter(library=library).count(),
-        purchases=LegacyPurchase.objects.filter(library=library).count(),
         editions=Edition.objects.filter(game__library=library).count(),
         releases=Release.objects.filter(edition__game__library=library).count(),
-        bundle_count=None if surviving is None else surviving.num_purchases,
         other_game_playtime=game_playtime(library, bystander).total,
     )
 
@@ -323,23 +298,21 @@ def test_removing_leaves_every_child_row(owned_library, other_library):
     The same fixture in two libraries, one game referenced and one
     not. Both are removed, and the two libraries must match.
     """
-    referenced_game, referenced_bundle, referenced_bystander = populate(owned_library)
-    plain_game, plain_bundle, plain_bystander = populate(other_library)
+    referenced_game, referenced_bystander = populate(owned_library)
+    plain_game, plain_bystander = populate(other_library)
     name_in_an_event(owned_library, referenced_game)
 
     remove(referenced_game)
     remove(plain_game)
 
-    after_referenced = snapshot(owned_library, referenced_bundle, referenced_bystander)
-    after_plain = snapshot(other_library, plain_bundle, plain_bystander)
+    after_referenced = snapshot(owned_library, referenced_bystander)
+    after_plain = snapshot(other_library, plain_bystander)
     assert after_referenced == after_plain
     #: Not vacuous: a delete took all this.
     assert after_plain == LibraryState(
         sessions=2,
-        purchases=2,
         editions=1,
         releases=1,
-        bundle_count=1,
         other_game_playtime=timedelta(hours=1),
     )
     #: Out of the library, and still there.
@@ -356,12 +329,6 @@ def test_removing_a_platform_keeps_what_names_it(owned_library, platform):
     game = Game.objects.create(
         library=owned_library, name="Tetris", year_released=1984, platform=platform
     )
-    purchase = LegacyPurchase.objects.create(
-        library=owned_library,
-        date_purchased=date(2026, 1, 1),
-        platform=platform,
-        price_currency="USD",
-    )
     edition = Edition.objects.create(game=game, is_default=True)
     release = Release.objects.create(
         edition=edition, is_default=True, platform=platform
@@ -371,7 +338,6 @@ def test_removing_a_platform_keeps_what_names_it(owned_library, platform):
     remove(platform)
 
     assert Game.objects.get(pk=game.pk).platform_id == platform.pk
-    assert LegacyPurchase.objects.get(pk=purchase.pk).platform_id == platform.pk
     assert Release.objects.get(pk=release.pk).platform_id == platform.pk
 
 

@@ -15,6 +15,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import pytest
+from bundle_model import Bundle
 from devices import create_device
 from django.db.models import F, Q
 from django.db.models.lookups import (
@@ -2716,9 +2717,7 @@ class TestComparisonGroupResolver:
     # ── concrete field → group ───────────────────────────────────────────────
 
     def test_date_field(self):
-        from games.models import LegacyPurchase
-
-        assert _comparison_group_for(LegacyPurchase, "date_purchased") == "date"
+        assert _comparison_group_for(Bundle, "date_purchased") == "date"
 
     def test_datetime_field(self):
         from games.models import PlayerSession
@@ -2733,14 +2732,10 @@ class TestComparisonGroupResolver:
 
     def test_generated_field_number(self):
         """GeneratedField (price_per_game) resolves via output_field to 'number'."""
-        from games.models import LegacyPurchase
-
-        assert _comparison_group_for(LegacyPurchase, "price_per_game") == "number"
+        assert _comparison_group_for(Bundle, "price_per_game") == "number"
 
     def test_float_field(self):
-        from games.models import LegacyPurchase
-
-        assert _comparison_group_for(LegacyPurchase, "price") == "number"
+        assert _comparison_group_for(Bundle, "price") == "number"
 
     def test_integer_field(self):
         from games.models import Game
@@ -2773,10 +2768,8 @@ class TestComparisonGroupResolver:
             _comparison_group_for(PlayerSession, "game")
 
     def test_m2m_relation_raises(self):
-        from games.models import LegacyPurchase
-
         with pytest.raises(FilterError):
-            _comparison_group_for(LegacyPurchase, "games")
+            _comparison_group_for(Bundle, "games")
 
     def test_auto_pk_raises(self):
         """AutoField / BigAutoField has no comparison group."""
@@ -2828,9 +2821,7 @@ class TestMaybeGroupFor:
     # ── comparable columns → group (parity with _comparison_group_for) ───────
 
     def test_date_field(self):
-        from games.models import LegacyPurchase
-
-        assert _maybe_group_for(LegacyPurchase, "date_purchased") == "date"
+        assert _maybe_group_for(Bundle, "date_purchased") == "date"
 
     def test_datetime_field(self):
         from games.models import PlayerSession
@@ -2870,9 +2861,7 @@ class TestMaybeGroupFor:
         assert _maybe_group_for(Game, "platform") is None
 
     def test_m2m_relation_returns_none(self):
-        from games.models import LegacyPurchase
-
-        assert _maybe_group_for(LegacyPurchase, "games") is None
+        assert _maybe_group_for(Bundle, "games") is None
 
     def test_auto_pk_returns_none(self):
         from games.models import Game
@@ -2940,13 +2929,13 @@ class TestComparableColumns:
         """Close the group matrix: datetime (Session) and date (Purchase) carry
         the ordered-only operator set, like number."""
         from common.criteria import _allowed_comparison_modifiers
-        from games.models import LegacyPurchase, PlayerSession
+        from games.models import PlayerSession
 
         ordered = [
             modifier.value for modifier in _allowed_comparison_modifiers("number")
         ]
         assert self._by_value(PlayerSession)["ended_at"]["operators"] == ordered
-        assert self._by_value(LegacyPurchase)["date_purchased"]["operators"] == ordered
+        assert self._by_value(Bundle)["date_purchased"]["operators"] == ordered
 
     def test_known_game_columns(self):
         from games.models import Game, PlayerGame
@@ -2967,19 +2956,17 @@ class TestComparableColumns:
         assert columns["ended_at"]["label"] == "Ended At"
 
     def test_purchase_date_columns(self):
-        from games.models import LegacyPurchase
-
-        columns = self._by_value(LegacyPurchase)
+        columns = self._by_value(Bundle)
         assert columns["date_purchased"]["group"] == "date"
         assert columns["date_refunded"]["group"] == "date"
 
     def test_relations_and_pk_absent(self):
-        from games.models import Game, LegacyPurchase
+        from games.models import Game
 
         game_columns = self._by_value(Game)
         assert "platform" not in game_columns
         assert "id" not in game_columns
-        assert "games" not in self._by_value(LegacyPurchase)
+        assert "games" not in self._by_value(Bundle)
 
     def test_labels_are_title_cased_verbose_names(self):
         from games.models import Game
@@ -3025,9 +3012,7 @@ class TestComparableColumnsCrossModel:
 
     def test_purchase_includes_both_fk_sources(self):
         # Purchase has TWO forward FKs: platform and related_game, plus its own source.
-        from games.models import LegacyPurchase
-
-        columns = comparable_columns(LegacyPurchase)
+        columns = comparable_columns(Bundle)
         sources = {column["source"] for column in columns}
         assert "Purchase" in sources  # own columns
         assert len(sources) >= 3
@@ -3073,9 +3058,9 @@ class TestComparableColumnsCrossModel:
     def test_m2m_and_reverse_enumerated_as_multivalued(self):
         # #282: M2M + reverse relations are now enumerated as multi-valued operand
         # blocks (marked so the widget offers a quantifier).
-        from games.models import Game, LegacyPurchase, PlayerSession
+        from games.models import Game, PlayerSession
 
-        purchase_columns = {c["value"]: c for c in comparable_columns(LegacyPurchase)}
+        purchase_columns = {c["value"]: c for c in comparable_columns(Bundle)}
         assert "games__name" in purchase_columns
         assert purchase_columns["games__name"]["multivalued"] is True
 
@@ -3096,7 +3081,7 @@ class TestComparableColumnsCrossModel:
         # fans out a set containing the comparing row itself, so ALL is always
         # vacuously false and ANY is off by the self-row. The pk__in-on-parent form
         # cannot self-exclude, so these paths are not offered as operands.
-        from games.models import Game, LegacyPurchase, PlayerSession
+        from games.models import Game, PlayerSession
 
         session_values = {c["value"] for c in comparable_columns(PlayerSession)}
         assert not any(
@@ -3108,7 +3093,7 @@ class TestComparableColumnsCrossModel:
         )
         game_values = {c["value"] for c in comparable_columns(Game)}
         assert not any(v.startswith("platform__game__") for v in game_values)
-        purchase_values = {c["value"] for c in comparable_columns(LegacyPurchase)}
+        purchase_values = {c["value"] for c in comparable_columns(Bundle)}
         assert not any(v.startswith("platform__purchase__") for v in purchase_values)
         # But a cross-model path through the same FK prefix is still offered.
         assert any(
@@ -3212,9 +3197,7 @@ class _PurchaseStub(OperatorFilter):
 
     @classmethod
     def _comparison_model(cls):
-        from games.models import LegacyPurchase
-
-        return LegacyPurchase
+        return Bundle
 
 
 @dataclass
@@ -6000,9 +5983,7 @@ class TestComparisonOperandPaths:
     def test_m2m_path_is_multivalued(self):
         # #282: a forward M2M hop (Purchase.games) is now an accepted multi-valued
         # operand rather than rejected.
-        from games.models import LegacyPurchase
-
-        info = _comparison_operand_info(LegacyPurchase, "games__name", side="left")
+        info = _comparison_operand_info(Bundle, "games__name", side="left")
         assert info.group == "string"
         assert info.multivalued is True
         assert info.relation_path == "games"

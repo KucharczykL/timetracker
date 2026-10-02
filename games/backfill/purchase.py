@@ -1,5 +1,7 @@
 """Convert legacy purchases into copies and purchases."""
 
+# conversion-tooling
+
 import logging
 import uuid
 from collections import defaultdict

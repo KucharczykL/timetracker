@@ -1,12 +1,11 @@
 """Every relation that names a Platform reads back that Platform's identity."""
 
-import datetime
 import uuid
 
 import pytest
 from django.db import IntegrityError, transaction
 
-from games.models import Game, LegacyPurchase, Platform
+from games.models import Game, Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -26,24 +25,8 @@ def game(owned_library, platform):
     )
 
 
-def make_purchase(library, platform):
-    return LegacyPurchase.objects.create(
-        library=library,
-        platform=platform,
-        date_purchased=datetime.date(2026, 1, 1),
-        price=10,
-        price_currency="USD",
-    )
-
-
 def test_game_platform_id_reads_back_as_the_platforms_identity(game, platform):
     assert game.platform_id == platform.pk
-
-
-def test_purchase_platform_id_reads_back_as_the_platforms_identity(
-    owned_library, platform
-):
-    assert make_purchase(owned_library, platform).platform_id == platform.pk
 
 
 def test_filters_by_platform_instance_and_integer_id(game, owned_library, platform):
@@ -62,21 +45,14 @@ def test_filters_platformless_rows_by_isnull(owned_library, platform):
     assert list(Game.objects.filter(platform__isnull=True)) == [platformless]
 
 
-def test_platform_reverse_accessor_exposes_games_and_the_key_purchases(
-    game, owned_library, platform
-):
-    purchase = make_purchase(owned_library, platform)
+def test_platform_reverse_accessor_exposes_games(game, platform):
     assert list(platform.game_set.all()) == [game]
-    assert list(LegacyPurchase.objects.filter(platform=platform)) == [purchase]
 
 
-def test_deleting_a_platform_nulls_both_relations(game, owned_library, platform):
-    purchase = make_purchase(owned_library, platform)
+def test_deleting_a_platform_nulls_the_relation(game, platform):
     platform.delete()
     game.refresh_from_db()
-    purchase.refresh_from_db()
     assert game.platform_id is None
-    assert purchase.platform_id is None
 
 
 def test_database_rejects_a_game_referencing_a_uuid_no_platform_owns(owned_library):
@@ -87,21 +63,4 @@ def test_database_rejects_a_game_referencing_a_uuid_no_platform_owns(owned_libra
     with pytest.raises(IntegrityError), transaction.atomic():
         Game.objects.bulk_create(
             [Game(library=owned_library, name="Dangling", platform_id=uuid.uuid7())]
-        )
-
-
-def test_database_rejects_a_purchase_referencing_a_uuid_no_platform_owns(
-    owned_library,
-):
-    with pytest.raises(IntegrityError), transaction.atomic():
-        LegacyPurchase.objects.bulk_create(
-            [
-                LegacyPurchase(
-                    library=owned_library,
-                    platform_id=uuid.uuid7(),
-                    date_purchased=datetime.date(2026, 1, 1),
-                    price=10,
-                    price_currency="USD",
-                )
-            ]
         )

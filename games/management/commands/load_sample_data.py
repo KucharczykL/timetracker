@@ -12,7 +12,6 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 
 from common.platform_icons import canonical_icon
 from games.conversion import _request_conversion_for_locked_state
@@ -27,15 +26,16 @@ from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
 from games.models import (
+    Edition,
     ExchangeRate,
     FilterPreset,
     Game,
-    LegacyPurchase,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
     Platform,
     PurchaseConversionState,
+    Release,
 )
 from games.reads.purchases import stale_purchases
 
@@ -44,13 +44,19 @@ TARGET_LIBRARY_MARKER = "__target_library__"
 
 PRIVATE_MODELS = {
     "games.game": Game,
-    "games.legacypurchase": LegacyPurchase,
     "games.filterpreset": FilterPreset,
     "games.libraryeventstreamhead": LibraryEventStreamHead,
     "games.libraryevent": LibraryEvent,
     "games.libraryeventreference": LibraryEventReference,
 }
-LOADABLE_MODELS = {**PRIVATE_MODELS}
+#: Catalog rows a Game carries.
+LOADABLE_MODELS = {
+    **PRIVATE_MODELS,
+    "games.edition": Edition,
+    "games.release": Release,
+}
+#: Fixture rows naming a Platform.
+PLATFORM_HOLDERS = frozenset({"games.game", "games.release"})
 
 
 class FixtureRelationship(NamedTuple):
@@ -74,15 +80,12 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
         FixtureRelationship(
             "platform", "games.platform", False, False, reference_field="pk"
         ),
+        FixtureRelationship("parent", "games.game", False, False),
     ),
-    "games.legacypurchase": (
-        FixtureRelationship(
-            "platform", "games.platform", False, False, reference_field="pk"
-        ),
-        FixtureRelationship(
-            "related_game", "games.game", False, False, reference_field="pk"
-        ),
-        FixtureRelationship("games", "games.game", True, False),
+    "games.edition": (FixtureRelationship("game", "games.game", False, True),),
+    "games.release": (
+        FixtureRelationship("edition", "games.edition", False, True),
+        FixtureRelationship("platform", "games.platform", False, False),
     ),
     "games.libraryevent": (
         FixtureRelationship("stream", "games.libraryeventstreamhead", False, True),
@@ -158,15 +161,8 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
-            purchases = LegacyPurchase.objects.for_library(user.library)
-            cache_mismatch = purchases.filter(
-                Q(converted_price__isnull=True)
-                | Q(needs_price_update=True)
-                | ~Q(converted_currency__iexact=state.requested_currency)
-            ).exists()
             if (
-                cache_mismatch
-                or state.requested_version != state.published_version
+                state.requested_version != state.published_version
                 or stale_purchases(user.library).exists()
             ):
                 _request_conversion_for_locked_state(
@@ -425,7 +421,7 @@ class Command(BaseCommand):
         `UUIDv7Field`'s default. Adopting the fixture's instead is not an
         option — `_reject_primary_key_collisions` guards against exactly that
         collision, and the reuse path could not honor it anyway. So the
-        translation here is load-bearing: without it every game and purchase
+        translation here is load-bearing: without it every game and release
         would dangle.
 
         Values are strings because the prepared records are re-serialized with
@@ -504,7 +500,7 @@ class Command(BaseCommand):
                 and fields.get("aggregate_id") == TARGET_LIBRARY_MARKER
             ):
                 fields["aggregate_id"] = str(library.pk)
-            if model in {"games.game", "games.legacypurchase"}:
+            if model in PLATFORM_HOLDERS:
                 platform_reference = fields.get("platform")
                 if platform_reference is not None:
                     if str(platform_reference) not in platform_uuids:
