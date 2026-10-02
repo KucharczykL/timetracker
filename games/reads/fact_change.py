@@ -30,7 +30,7 @@ def payload_fact[T](
     key: PayloadKey, parse: Callable[[object], T | None]
 ) -> EventRead[T]:
     """The fact one payload key states."""
-    #: An absent key is unreadable.
+    # An absent key is unreadable.
     return lambda event: parse(event.payload[key]) if key in event.payload else None
 
 

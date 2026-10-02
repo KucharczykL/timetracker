@@ -155,15 +155,10 @@ class RestatedPurchase(NamedTuple):
         return self.result.outcome is CommandOutcome.APPENDED
 
     @classmethod
-    def of(cls, result: CommandResult) -> RestatedPurchase:
-        """The copy end, read off the result."""
-        return cls.of_types(result, appended_types(result))
-
-    @classmethod
-    def of_types(
+    def of(
         cls, result: CommandResult, event_types: frozenset[EventType]
     ) -> RestatedPurchase:
-        """`appended_types(result)`, already read."""
+        """Takes `appended_types(result)`."""
         return cls(copy_end=_copy_end_of(event_types), result=result)
 
 
@@ -202,7 +197,7 @@ def restate_purchase(
         )
     event_types = appended_types(result)
     revalue_after(actor, event_types)
-    return RestatedPurchase.of_types(result, event_types)
+    return RestatedPurchase.of(result, event_types)
 
 
 def _copy_end_of(event_types: frozenset[EventType]) -> CopyEnd | None:
@@ -285,7 +280,7 @@ def undo_refund(
             actor=actor,
             correlation_id=correlation_id,
         )
-    return RestatedPurchase.of(result)
+    return RestatedPurchase.of(result, appended_types(result))
 
 
 def remove_purchase(

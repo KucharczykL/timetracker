@@ -313,7 +313,9 @@ def _day_stated(cleaned: TemporalValue | Keep | None) -> TemporalValue | None:
     """Keep keeps; ⊘ states no day."""
     if cleaned is KEEP:
         return None
-    return TemporalValue.unknown() if cleaned is None else cast(TemporalValue, cleaned)
+    if cleaned is None:
+        return TemporalValue.unknown()
+    return cleaned
 
 
 def _form(
