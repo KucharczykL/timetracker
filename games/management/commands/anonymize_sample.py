@@ -2,9 +2,10 @@ import copy
 import gzip
 import random
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -155,6 +156,23 @@ def _write_path(payload: dict, path: KeyPath, value) -> None:
     for key in path[:-1]:
         container = container[key]
     container[path[-1]] = value
+
+
+def rewrite_path(payload, path: KeyPath, rewrite: Callable[[Any], Any]) -> None:
+    """Rewrite each value at path; a list fans out."""
+    if isinstance(payload, list):
+        for item in payload:
+            rewrite_path(item, path, rewrite)
+        return
+    if not isinstance(payload, dict) or payload.get(path[0]) is None:
+        return
+    if len(path) > 1:
+        rewrite_path(payload[path[0]], path[1:], rewrite)
+        return
+    value = payload[path[0]]
+    payload[path[0]] = (
+        [rewrite(item) for item in value] if isinstance(value, list) else rewrite(value)
+    )
 
 
 def shift_instant(text: str, *, days: int, zone: str) -> str:
@@ -517,11 +535,11 @@ class Command(BaseCommand):
             if "note" in payload:
                 payload["note"] = ""
             for path in event_types.text_keys(event.event_type):
-                if _read_path(payload, path) is not None:
-                    _write_path(payload, path, "")
+                rewrite_path(payload, path, lambda _text: "")
             for path in event_types.amount_keys(event.event_type):
-                if _read_path(payload, path) is not None:
-                    _write_path(payload, path, f"{random.uniform(0, 100):.2f}")
+                rewrite_path(
+                    payload, path, lambda _amount: f"{random.uniform(0, 100):.2f}"
+                )
             if "name" in payload:
                 payload["name"] = (
                     device_names[
@@ -653,12 +671,13 @@ class Command(BaseCommand):
             #: Bare aggregate ids follow the re-minting.
             payload = copy.deepcopy(event.payload)
             for path in event_types.aggregate_id_keys(event.event_type):
-                named = _read_path(payload, path)
-                if named is not None:
-                    old_id = UUID(named)
-                    _write_path(
-                        payload, path, str(aggregate_replacements.get(old_id, old_id))
-                    )
+                rewrite_path(
+                    payload,
+                    path,
+                    lambda named: str(
+                        aggregate_replacements.get(UUID(named), UUID(named))
+                    ),
+                )
             for found in event_types.references_in(event.event_type, payload):
                 kind = kinds.kind_for(found.value["kind"])
                 if kind.resolution is Resolution.PROJECTED and kind.model is not Device:

@@ -21,6 +21,10 @@ from graphs import default_graph
 from purchases import record_purchase, refund_purchase
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    RecordHistoricalPlaytime,
+)
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     CorrectedTiming,
@@ -48,6 +52,8 @@ from games.models import (
     Device,
     Game,
     GameKind,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
     LibraryCalendar,
     LibraryEntry,
     LibraryEvent,
@@ -227,6 +233,23 @@ def _build_dataset():
     )
     remove_session(
         owner, PlayerSession.objects.get(pk=corrected_id), correlation_id=uuid.uuid7()
+    )
+    #: Its runs travel inside a list.
+    dispatch(
+        RecordHistoricalPlaytime(
+            statement=HistoricalPlaytimeStatement(
+                duration=timedelta(hours=3),
+                when="2021-06-05",
+                provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                playthrough_ids=(run_one.pk,),
+                device_id=None,
+                emulated=False,
+                note="",
+            )
+        ),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="record-1",
     )
 
     #: A refunded purchase ends its copy.
@@ -636,8 +659,10 @@ class AnonymizeSampleTest(TransactionTestCase):
             4,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Fifteen, then eight for two copies.
-        self.assertEqual(events.count(), 23)
+        #: Sixteen, then eight for two copies.
+        self.assertEqual(events.count(), 24)
+        record = HistoricalPlaytime.objects.get(library=target.library)
+        self.assertEqual(record.runs.get().playthrough.player_game, record.player_game)
         self.assertTrue(all(event.pk.version == 7 for event in events))
         sessions = PlayerSession.objects.filter(library=target.library)
         self.assertEqual(sessions.count(), 3)
