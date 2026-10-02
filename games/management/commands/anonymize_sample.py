@@ -847,10 +847,10 @@ class Command(BaseCommand):
         #: No head means no events.
         if head is None:
             return
-        first = LibraryEvent.objects.filter(stream_id=head.pk).aggregate(
-            first=Min("recorded_at")
-        )["first"]
-        new_id = _mint(first or FIXED_EPOCH, {"ms": None, "sequence": None})
+        first_recorded = LibraryEvent.objects.filter(stream_id=head.pk).aggregate(
+            first_recorded=Min("recorded_at")
+        )["first_recorded"]
+        new_id = _mint(first_recorded or FIXED_EPOCH, {"ms": None, "sequence": None})
         LibraryEventStreamHead.objects.filter(pk=head.pk).update(id=new_id)
         cls._remap_referrers(LibraryEventStreamHead, {head.pk: new_id})
 

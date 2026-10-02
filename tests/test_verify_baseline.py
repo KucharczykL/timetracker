@@ -56,15 +56,7 @@ def test_a_missing_normalize_file_is_refused_before_the_restore(tooling):
         )
 
 
-@pytest.mark.parametrize(
-    "write",
-    [
-        {"migrate": True},
-        {"record": "0001_squashed"},
-        {"normalize": "statements"},
-    ],
-    ids=["migrate", "record", "normalize"],
-)
+@pytest.mark.parametrize("write", ["migrate", "record", "normalize"])
 def test_each_database_is_round_tripped_before_the_compare(
     tooling, monkeypatch, tmp_path, write
 ):
@@ -100,12 +92,11 @@ def test_each_database_is_round_tripped_before_the_compare(
     monkeypatch.setattr(tooling, "round_trip", round_trip)
     monkeypatch.setattr(tooling, "compare", compare)
     monkeypatch.setattr(tooling, "drop_database", lambda database, url: None)
-    if "normalize" in write:
-        statements = tmp_path / "cutover.sql"
-        statements.write_text("SELECT 1;")
-        write = {"normalize": statements}
+    statements = tmp_path / "cutover.sql"
+    statements.write_text("SELECT 1;")
+    values = {"migrate": True, "record": "0001_squashed", "normalize": statements}
 
-    tooling.verify(Path("x.dump"), database_url="unused", **write)
+    tooling.verify(Path("x.dump"), database_url="unused", **{write: values[write]})
 
     deployed, fresh = tooling.DEPLOYED_DATABASE, tooling.FRESH_DATABASE
     trips = [call for call in calls if call[0] == "round_trip"]
