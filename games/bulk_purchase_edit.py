@@ -150,9 +150,9 @@ class PurchaseEditStatement:
         if "kind" in stated and kind not in PurchaseKind.values:
             raise statement_unreadable(f"{raw!r} states a kind that is no word")
         price = None if "price" not in stated else _price(raw, stated["price"])
-        purchased = None
-        if "purchased" in stated:
-            purchased = _purchased(raw, stated["purchased"])
+        purchased = (
+            None if "purchased" not in stated else _purchased(raw, stated["purchased"])
+        )
         note = stated.get("note")
         if "note" in stated and not isinstance(note, str):
             raise statement_unreadable(f"{raw!r} states a note that is no text")

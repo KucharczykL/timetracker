@@ -445,12 +445,14 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
     presentation = date_time_presentation_for_user(
         getattr(request, "user", None),
         #: The middleware's word, else the language's.
-        locale=locale
-        if isinstance(locale, str)
-        else get_language() or settings.LANGUAGE_CODE,
+        locale=locale if isinstance(locale, str) else _active_language(),
     )
     setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
     return presentation
+
+
+def _active_language() -> str:
+    return get_language() or settings.LANGUAGE_CODE
 
 
 def date_time_presentation_for_user(
@@ -459,11 +461,7 @@ def date_time_presentation_for_user(
     """The user's presentation; locale defaults to theirs."""
     if locale is None:
         stated = resolve_for_user(user, "DATE_FORMAT_LOCALE")
-        locale = (
-            stated
-            if isinstance(stated, str)
-            else get_language() or settings.LANGUAGE_CODE
-        )
+        locale = stated if isinstance(stated, str) else _active_language()
     active_timezone = django_timezone.get_current_timezone()
     zone = (
         active_timezone

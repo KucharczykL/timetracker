@@ -216,23 +216,23 @@ def conversion_review_field(tagged: TaggedRows) -> FilterField:
             return any_of(sorted(_REVIEW_VALUES))
         words = criterion.value
         if not words:
-            q = Q()
+            matched = Q()
         elif modifier in (Modifier.INCLUDES, Modifier.EQUALS):
-            q = any_of(words)
+            matched = any_of(words)
         elif modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
-            q = ~any_of(words)
+            matched = ~any_of(words)
         elif modifier == Modifier.INCLUDES_ALL:
-            q = Q()
+            matched = Q()
             for word in words:
-                q &= any_of([word])
+                matched &= any_of([word])
         elif modifier == Modifier.INCLUDES_ONLY:
             others = sorted(_REVIEW_VALUES - set(words))
-            q = any_of(words) & (~any_of(others) if others else Q())
+            matched = any_of(words) & (~any_of(others) if others else Q())
         else:
             raise FilterError(f"Unsupported modifier {modifier} for conversion_review")
         if criterion.excludes:
-            q &= ~any_of(criterion.excludes)
-        return q
+            matched &= ~any_of(criterion.excludes)
+        return matched
 
     return FilterField(
         handler=handler,

@@ -76,12 +76,8 @@ class PurchaseFactChanges:
 
     @property
     def changed_any(self) -> bool:
-        return not (
-            self.kind is None
-            and self.price is None
-            and self.purchased is None
-            and self.note is None
-        )
+        changes = (self.kind, self.price, self.purchased, self.note)
+        return any(change is not None for change in changes)
 
 
 def purchase_fact_changes(
