@@ -187,7 +187,7 @@ def newest_dump(directory: Path) -> Path:
             f"No dump is in {directory}. Run `make fetch-dump` first, or name "
             "one with DUMP=<path>."
         )
-    #: By name; the timestamp sorts after a same-day suffix.
+    #: By name, which sorts by age.
     return dumps[-1]
 
 
@@ -222,7 +222,7 @@ def fetch(source: ProductionSource, destination: Path) -> Path:
         raise DumpError(
             f"Could not read the deployed database: {error}{_fetch_hint(error)}"
         ) from error
-    #: A link refuses an existing name; a rename replaces it.
+    #: Unlike a rename, a link never replaces.
     try:
         os.link(partial, destination)
     except FileExistsError as error:
