@@ -433,7 +433,7 @@ copy's purchases rather than refusing on them.
 | Command | Event | Rule |
 |---|---|---|
 | `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
-| `DescribePurchase` | `kind_changed`, `name_changed`, `price_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game; `entry_id` is refused while a refund stands, so the coupled end always lies on `purchase.entry` |
+| `DescribePurchase` | `kind_changed`, `name_changed`, `price_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game; `entry_id` is refused while a refund stands, so the coupled end always lies on `purchase.entry`; a kind change under a standing refund is refused unless the same statement takes the refund back (`KIND_UNDER_A_REFUND`), since the kind decides whether the refund ended the copy |
 | `CorrectPurchaseDay` | `purchase_corrected` | the opening endpoint's correction; the endpoint's noun is "purchase" (`purchased`, `purchase_recorded_at`, `purchase_note`), as the entry's is "acquisition" |
 | `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund`, and `DescribePurchase`'s `refund` for a PATCH | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund of a purchase of kind `game` also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch (a pass or an upgrade names the base game's entry, so its refund leaves the copy held), as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped, only where that coupled end is due, since on a non-owned or ended copy no end is stated and nothing is ordered; a refund before the purchase day is always refused, and a purchase-day correction certainly after a standing refund too; `CorrectPurchaseRefund` appends `access_end_corrected` on the copy under the same rule as the void; "the refund's own" is `refund_owns_the_end(library, purchase)` in `games/reads/purchases.py`: the copy's latest end-family event is a stated or corrected end, and the event directly before it in the stream (sequence − 1), under the same `LibraryEvent.idempotency_key`, is a `refunded` or `refund_corrected` of this purchase; adjacency, because a direct appender that reuses one key across appends (the benchmark seeder does) could otherwise lend a hand end to a refund; P5's one-click Refund Undo reads it, widening the answer to the event where it needs one; which one dispatch stamps on every event it appends, an invariant every writer of the column keeps: P2 makes the anonymizer rewrite one key per dispatch rather than per event, and P4's pass and #740 state one key per dispatch too; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
 | `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
@@ -632,10 +632,22 @@ deploy. The pre-deploy dump is the rollback.
 ### Review surface
 
 The Conversion review rows sit inside the Library page's Purchases
-section, a `SummaryList` after its statistics and no section of their
-own: one row per category holding the category, a one-line reason, its
-count and Review, each linking to the list holding exactly those rows;
-a category with zero rows is left out.
+section as one `SummaryRow` "Conversion review", its detail holding the
+"Hide this review" checkbox above a `SummaryList`: one row per category
+holding the label, a one-line reason, its count linking to exactly those
+rows, and a Review action (a link on wide screens, ⋯ on narrow); a
+category with zero rows is left out. `unknown_price`, `epic_free` and
+`quantized` link to the Purchases list, every other category to the
+Library tab, whose `Exists` also matches the events of any purchase
+naming the copy, since an attached pass appends `purchase.created`
+alone. The count is history, not open work: the tag sits on the
+conversion's events, so fixing a row does not lower it and only removal
+does; the person works through the links, then hides. The review is one
+time: #1443 removes the rows, the checkbox and the preference after P5c
+and keeps the field and `Category`. On the 2026-10-01 dump: Unknown
+price 54, Free on Epic 19, Rounded price 2, Rentals 36, New releases 48,
+Demos 34, Mixed infinite 2, DLC as games 35, Split bundles 38, Passes
+without a game copy 1, Repurchased games 18, the rest 0.
 Every pass append carries `source_metadata = {"origin": "conversion",
 "issue": 723, "legacy_purchase": id, "review": [categories]}`, the
 categories being `Category` in `games/backfill/purchase_plan.py`
@@ -646,7 +658,8 @@ categories being `Category` in `games/backfill/purchase_plan.py`
 field reaches them: `conversion_review`, a choice field on
 `PurchaseFilter` and `LibraryEntryFilter` whose choices are `Category`'s
 words, compiled as an `Exists` over `LibraryEvent` on the row's key,
-origin conversion and the word in `review`. It is the third read that
+origin conversion and the word in `review`; an unknown word and
+`INCLUDES_ONLY` are refused at compile. It is the third read that
 answers from events beside `batch_aggregate_ids`, because the category
 exists nowhere else; it is a link target and no quick facet, and its
 words stay stable once shipped, since a stored preset naming one is
@@ -1078,6 +1091,8 @@ runs on it.
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1437, move a purchase to another copy (after P5b)
+- #1443, remove the one-time Conversion review rows after P5c, keeping
+  `conversion_review` and `Category`
 - #1432, the Library page as the one place for purchase data gaps, later
   a library-wide audit screen that absorbs P5b's review surface and
   #1418's report; after P5b, outside the stack, mockup first
