@@ -1054,7 +1054,11 @@ constraints that deparse differently, pre-existing on `main` and filed
 as #1451, which blocks a green step 8 until resolved. #1450, also
 pre-existing: `purge-library` fails for a library holding an add-on Game
 with a parent and events, the shape every converted library has after
-the deploy. After it: the review surface, the first valuation
+the deploy; its fix (the stream key made deferrable) lands after the
+stack as the next migration, never before it, since the stack's ten
+migrations are named by number in specs, the rehearsal and the tooling
+and `purge-library` is no deploy step. #1451 carries no migration and
+may land first. After it: the review surface, the first valuation
 refresh and its printed totals; the fixture already shipped with P5. The valuation
 task's daily schedule row must exist in production, since the recovery
 runs on it.
