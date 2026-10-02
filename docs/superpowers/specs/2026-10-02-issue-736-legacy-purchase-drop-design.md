@@ -79,4 +79,3 @@ valuation run when the state is behind or a purchase is stale.
 
 - #1450: a purge of a library that has an add-on fails. P6, the
   last member of the stack, fixes it.
-- #1451: seven CHECK constraints differ in text under `verify-baseline`.

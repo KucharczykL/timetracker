@@ -19,7 +19,7 @@ has no head, and the step does nothing:
   of the library's events, so the head comes no later than its first
   event in id order. A dated event takes the midnight of its jittered
   day, and that day can be before `FIXED_EPOCH`: the 2026-10-01 fixture
-  holds 622 such events. A library whose stream holds no event mints at
+  held 622 such events. A library whose stream holds no event mints at
   `FIXED_EPOCH`.
 - The entropy comes from the seeded random generator. The call comes
   after every other draw, so the ids before it do not move.
@@ -58,10 +58,9 @@ The `TODO(#1454)` in `anonymize_sample.py` goes.
 
 ## The fixture
 
-`games/fixtures/sample.yaml.gz` is generated again from the 2026-10-02
-post-deploy dump, which is at migration 0036, with
-`make anonymize-sample USER=<owner>`. That is seed 42, no
-`--scrub-devices`, and no name overrides, as for the 2026-10-01 fixture.
-The tests that read the fixture are the gate:
-`tests/test_library_commands.py`, `tests/test_uuid_identity_audit.py`
+`games/fixtures/sample.yaml.gz` comes from the 2026-10-02 post-deploy
+dump, at migration 0036, through `make anonymize-sample USER=<owner>`:
+seed 42, no `--scrub-devices`, no name overrides. Its head mints at
+2001-01-03, the day of its first event. The tests that read the fixture
+are `tests/test_library_commands.py`, `tests/test_uuid_identity_audit.py`
 and `tests/test_external_references.py`.

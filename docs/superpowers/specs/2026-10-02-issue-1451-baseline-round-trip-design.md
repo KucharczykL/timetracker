@@ -2,29 +2,17 @@
 
 Issue [#1451](https://github.com/KucharczykL/timetracker/issues/1451).
 
-## The finding
-
-`make verify-baseline ARGS="--migrate"` on the 2026-10-01 dump reported
-seven CHECK constraints as drift. The meaning was the same. Only the text
-was different:
-
-- copy: `ANY ((ARRAY['main'::character varying, …])::text[])`
-- fresh: `ANY (ARRAY[('main'::character varying)::text, …])`
-
 ## The cause
 
-The catalog text of a CHECK on a `varchar` column changes once under
-`pg_dump` and `pg_restore`. After that one trip, it does not change. This
-was tested on PostgreSQL 18: a constraint
-`CHECK (kind IN ('a', 'b'))` on `varchar(20)` gave the first spelling
-when added, and the second spelling after one dump and restore. A second
-trip gave the second spelling again.
+`pg_dump` and `pg_restore` change the catalog text of a CHECK on a
+`varchar` column once:
 
-`verify_baseline.py` sends the fresh build through the trip. It does not
-send the copy. A plain copy is a restore, so it has taken the trip
-already. `--migrate`, `--normalize` and `--record` write to the copy
-after the restore. A constraint that `--migrate` adds has not taken the
-trip, so its text differs from the fresh build.
+- before: `ANY ((ARRAY['main'::character varying, …])::text[])`
+- after: `ANY (ARRAY[('main'::character varying)::text, …])`
+
+A second trip gives the same text. A restored copy has taken the trip.
+A constraint that `--migrate`, `--normalize` or `--record` adds after
+the restore has not, and it compares as drift with the same meaning.
 
 ## The rule
 
