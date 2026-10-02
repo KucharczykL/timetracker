@@ -47,9 +47,9 @@ event: `append` copies `library_id` from the head to each event.
   raw-SQL foreign key must be `DEFERRABLE INITIALLY DEFERRED` too.
 - `make verify-baseline` against a dump from before that migration reports this
   constraint's definition as drift. Run it with `--migrate`.
-- The migration lands after the purchase stack (#723 and after), as the
-  next number on top of it. The stack's numbers stay fixed, because its
-  specs and its deploy rehearsal name them.
+- The fix is the last member of the purchase stack (#723 and after). Its
+  migration takes the number after the stack's last. The stack's numbers
+  stay fixed, because its specs and its deploy rehearsal name them.
 
 ## Tests
 

@@ -3,7 +3,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("games", "0025_playergame_excluded_from_dropped"),
+        ("games", "0035_delete_legacypurchase"),
     ]
 
     operations = [
