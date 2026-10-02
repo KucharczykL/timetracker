@@ -3,6 +3,7 @@
 import datetime
 import json
 import logging
+import re
 import uuid
 from decimal import Decimal
 
@@ -491,3 +492,43 @@ def test_the_reader_reads_the_creation_for_each_fact(owned_user, owned_library, 
         ActStatement(TemporalValue.parse("2020-05-04"), "receipt"),
     )
     assert changes.note == FactChange("first", "second")
+
+
+# ── The lists ───────────────────────────────────────────────────────────────
+
+
+def test_the_purchases_list_carries_the_selection(logged_in, first):
+    html = logged_in.get(reverse("games:list_purchases")).content.decode()
+
+    assert "selectable-table" in html
+    assert f'id="purchase-row-{first.pk}"' in html
+    assert act_url(PURCHASE_EDIT) in html
+    assert act_url(REMOVE_PURCHASE) in html
+
+
+def _purchases_cell(client, copy) -> str:
+    html = client.get(reverse("games:list_library")).content.decode()
+    (row,) = re.findall(
+        rf'<tr[^>]*data-selection-key="{copy.pk}".*?</tr>', html, re.DOTALL
+    )
+    return row
+
+
+def test_the_library_tab_lists_each_purchase_price(logged_in, copy, first):
+    record_purchase(copy, kind="season_pass", amount=Decimal("9.99"))
+    record_purchase(copy, name="Deluxe", amount=None)
+    refunded = record_purchase(copy, amount=Decimal(0))
+    refund_purchase(refunded, TemporalValue.parse("2021-04-01"))
+
+    row = _purchases_cell(logged_in, copy)
+
+    assert "<span>19.99 EUR</span>" in row
+    assert "<span>Season pass · 9.99 EUR</span>" in row
+    assert "<span>Deluxe · Unknown price</span>" in row
+    assert "Free" not in row
+
+
+def test_a_copy_without_purchases_has_an_empty_cell(logged_in, copy):
+    row = _purchases_cell(logged_in, copy)
+
+    assert "EUR" not in row

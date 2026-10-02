@@ -56,6 +56,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.purchase_menu import price_lines
 
 ENTRY_COLUMNS: list[Column] = [
     Column("Game", "name", key="game", hideable=False),
@@ -63,6 +64,7 @@ ENTRY_COLUMNS: list[Column] = [
     #: Access drops last when narrow.
     Column("Access", "access", priority=3, key="access"),
     Column("Format", "format", key="format"),
+    Column("Purchases", key="purchases"),
     Column("Acquired", "acquired", key="acquired"),
     Column("Access ended", "ended", priority=2, key="ended"),
     Column("Note", key="note", wrap=True, hidden_by_default=True),
@@ -118,6 +120,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
                 platform_words(entry.release),
                 EntryAccess(entry.access).label,
                 EntryFormat(entry.format).label,
+                price_lines(purchases.get(entry.pk, ())),
                 ""
                 if entry.acquired is None
                 else present_temporal_value(entry.acquired, presentation),

@@ -37,6 +37,9 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.temporal_presentation import TemporalText
 from common.utils import paginate
+from games.bulk_purchase_edit import PURCHASE_EDIT
+from games.bulk_removal import REMOVE_PURCHASE
+from games.bulk_tray import tray_actions
 from games.commands.endpoint import ActStatement
 from games.endpoints import PURCHASE_REFUND
 from games.filters import (
@@ -188,11 +191,19 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
             make_row(
                 *cells,
                 id=f"purchase-row-{purchase.id}",
+                key=str(purchase.pk),
                 menu=purchase_row_menu(purchase, origin, csrf_token),
             )
             for purchase, cells in zip(page_purchases, kept_cells, strict=True)
         ],
         "column_picker": picker,
+        "selection": {
+            "filter": filter_json,
+            "csrf_token": csrf_token,
+            "actions": tray_actions(
+                PURCHASE_EDIT.name, REMOVE_PURCHASE.name, origin=origin
+            ),
+        },
     }
     content = paginated_table_content(
         data,

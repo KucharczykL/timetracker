@@ -1,5 +1,7 @@
 """A purchase's words and acts."""
 
+from collections.abc import Sequence
+
 from common.components import (
     Div,
     DropdownDivider,
@@ -58,6 +60,20 @@ def purchase_line(purchase: Purchase, presentation: DateTimePresentation) -> Nod
         TemporalText(purchase.purchased, presentation),
         Span(aria_hidden="true")["·"],
         PurchaseAmount(purchase),
+    ]
+
+
+def price_line(purchase: Purchase) -> str:
+    """The price; a pass or name leads."""
+    if purchase.kind == PurchaseKind.GAME and not purchase.name:
+        return price_words(purchase)
+    return f"{purchase_label(purchase)} · {price_words(purchase)}"
+
+
+def price_lines(purchases: Sequence[Purchase]) -> Node:
+    """One line per purchase."""
+    return Div(class_="flex flex-col")[
+        *(Span()[price_line(purchase)] for purchase in purchases)
     ]
 
 
