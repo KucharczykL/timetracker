@@ -1036,6 +1036,12 @@ inside a member says so in its body and closes with it.
 
 ## Deployment
 
+Deployed on 2026-10-02 after the stack (P1 to P6, PRs #1403 to #1458)
+merged: the deployment's data differed from the rehearsed 2026-10-01
+dump by one session changed and one added, so the pass ran on the
+rehearsed shape; the post-deploy dump is the sample fixture's source
+(#1454).
+
 One image carries the stack. The container's startup `migrate` runs the
 pass; the pre-deploy dump is the rollback. The pass's migration is
 `RunPython` alone, so the rehearsal on that day's dump is: restore it;
