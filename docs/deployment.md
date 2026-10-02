@@ -97,8 +97,9 @@ round trip from a development machine, filling the blanks above from `.env`
 (`PROD_SSH_HOST`, `PROD_DB_CONTAINER`; see
 [Configuration](configuration.md#dump-tooling-variables)). `fetch-dump` runs
 `pg_dump` inside the database container over ssh and writes
-`.dumps/timetracker-<date>T<hhmmss>.dump`, and refuses a name that exists, `OUT=` included; `restore-dump` loads the newest dump into a
-scratch database created from `template0` under the
+`.dumps/timetracker-<date>T<hhmmss>Z.dump` in UTC (`OUT=<path>` names another
+file), refusing a name that exists; `restore-dump` loads the last written dump
+into a scratch database created from `template0` under the
 [database contract](database.md) and prints its URL; `verify-dump` restores,
 migrates the copy, and drops it only if the migration succeeded (`KEEP=1` keeps
 it). A restore refuses to name the development database or a maintenance one.

@@ -1,10 +1,13 @@
 """Unit tests for the deployed-database dump, restore, and verify tooling."""
 
 import importlib.util
+import os
+import re
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -95,17 +98,40 @@ def test_a_missing_ssh_host_names_the_setting_to_add(tooling, isolated_configura
         tooling.production_source()
 
 
-def test_a_dump_is_named_for_the_second_it_was_fetched(tooling, tmp_path):
-    assert tooling.dump_path(tmp_path, datetime(2026, 8, 28, 17, 4, 9, tzinfo=UTC)) == (
-        tmp_path / "timetracker-2026-08-28T170409.dump"
+def test_a_dump_is_named_for_its_utc_second(tooling, tmp_path):
+    prague = timezone(timedelta(hours=2))
+    moment = datetime(2026, 8, 28, 19, 4, 9, tzinfo=prague)
+
+    assert tooling.dump_path(tmp_path, moment) == (
+        tmp_path / "timetracker-2026-08-28T170409Z.dump"
     )
 
 
-def test_an_existing_dump_is_refused_before_the_transfer(
-    tooling, monkeypatch, tmp_path
+def _write_archive(content: bytes = b"PGDMP"):
+    def write(command, **kwargs):
+        kwargs["stdout"].write(content)
+
+    return write
+
+
+def test_a_finished_transfer_leaves_only_the_dump(tooling, monkeypatch, tmp_path):
+    destination = tmp_path / "dumps" / "timetracker-2026-08-28T170409Z.dump"
+    monkeypatch.setattr(tooling, "run", _write_archive())
+
+    assert tooling.fetch(_source(tooling), destination) == destination
+    assert destination.read_bytes() == b"PGDMP"
+    assert list(destination.parent.iterdir()) == [destination]
+
+
+@pytest.mark.parametrize("kind", ["file", "dangling symlink"])
+def test_an_existing_name_is_refused_before_the_transfer(
+    tooling, monkeypatch, tmp_path, kind
 ):
-    destination = tmp_path / "timetracker-2026-08-28.dump"
-    destination.write_bytes(b"BACKUP")
+    destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
+    if kind == "file":
+        destination.write_bytes(b"BACKUP")
+    else:
+        destination.symlink_to(tmp_path / "gone.dump")
     monkeypatch.setattr(
         tooling, "run", lambda *args, **kwargs: pytest.fail("transferred")
     )
@@ -113,12 +139,11 @@ def test_an_existing_dump_is_refused_before_the_transfer(
     with pytest.raises(tooling.DumpError, match="already exists"):
         tooling.fetch(_source(tooling), destination)
 
-    assert destination.read_bytes() == b"BACKUP"
     assert list(tmp_path.iterdir()) == [destination]
 
 
 def test_a_dump_written_during_the_transfer_is_kept(tooling, monkeypatch, tmp_path):
-    destination = tmp_path / "timetracker-2026-08-28.dump"
+    destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
 
     def race(command, **kwargs):
         destination.write_bytes(b"BACKUP")
@@ -126,24 +151,112 @@ def test_a_dump_written_during_the_transfer_is_kept(tooling, monkeypatch, tmp_pa
 
     monkeypatch.setattr(tooling, "run", race)
 
-    with pytest.raises(tooling.DumpError, match="already exists"):
+    with pytest.raises(tooling.DumpError, match="fetched copy was discarded"):
         tooling.fetch(_source(tooling), destination)
 
     assert destination.read_bytes() == b"BACKUP"
     assert list(tmp_path.iterdir()) == [destination]
 
 
-def test_a_finished_transfer_replaces_the_partial_file(tooling, monkeypatch, tmp_path):
-    destination = tmp_path / "dumps" / "timetracker-2026-08-28.dump"
+def test_concurrent_fetches_never_share_a_partial(tooling, monkeypatch, tmp_path):
+    destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
+    calls = []
 
-    def write_archive(command, **kwargs):
-        kwargs["stdout"].write(b"PGDMP")
+    def first_then_second(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            kwargs["stdout"].write(b"FIRST-")
+            tooling.fetch(_source(tooling), destination)
+            kwargs["stdout"].write(b"WHOLE")
+        else:
+            kwargs["stdout"].write(b"SECOND-WHOLE")
 
-    monkeypatch.setattr(tooling, "run", write_archive)
+    monkeypatch.setattr(tooling, "run", first_then_second)
+
+    with pytest.raises(tooling.DumpError, match="fetched copy was discarded"):
+        tooling.fetch(_source(tooling), destination)
+
+    assert destination.read_bytes() == b"SECOND-WHOLE"
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_a_filesystem_without_hard_links_gets_a_copy(tooling, monkeypatch, tmp_path):
+    destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
+    monkeypatch.setattr(tooling, "run", _write_archive())
+    monkeypatch.setattr(
+        tooling.os, "link", Mock(side_effect=PermissionError("no hard links"))
+    )
 
     assert tooling.fetch(_source(tooling), destination) == destination
     assert destination.read_bytes() == b"PGDMP"
-    assert list(destination.parent.iterdir()) == [destination]
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_a_copy_that_fails_keeps_the_fetched_dump(tooling, monkeypatch, tmp_path):
+    destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
+    monkeypatch.setattr(tooling, "run", _write_archive())
+    monkeypatch.setattr(
+        tooling.os, "link", Mock(side_effect=PermissionError("no hard links"))
+    )
+    monkeypatch.setattr(
+        tooling.shutil, "copyfileobj", Mock(side_effect=OSError("disk full"))
+    )
+
+    with pytest.raises(tooling.DumpError, match="kept at") as refusal:
+        tooling.fetch(_source(tooling), destination)
+
+    [partial] = tmp_path.iterdir()
+    assert partial.name.endswith(".part")
+    assert str(partial) in str(refusal.value)
+    assert partial.read_bytes() == b"PGDMP"
+
+
+def test_a_partial_that_stays_does_not_fail_the_fetch(
+    tooling, monkeypatch, tmp_path, capsys
+):
+    destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
+    monkeypatch.setattr(tooling, "run", _write_archive())
+    unlink = Path.unlink
+
+    def refuse_the_partial(path, *args, **kwargs):
+        if path.name.endswith(".part"):
+            raise PermissionError("locked")
+        unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_the_partial)
+
+    assert tooling.fetch(_source(tooling), destination) == destination
+    assert destination.read_bytes() == b"PGDMP"
+    assert "Could not remove" in capsys.readouterr().err
+
+
+def test_fetch_names_a_new_dump_in_the_dump_directory(
+    tooling, isolated_configuration, tmp_path
+):
+    isolated_configuration.setenv("DUMP_DIR", str(tmp_path))
+    isolated_configuration.setattr(tooling, "production_source", lambda: None)
+    isolated_configuration.setattr(tooling, "fetch_command", lambda source: [])
+    isolated_configuration.setattr(tooling, "run", _write_archive())
+    isolated_configuration.setattr(sys, "argv", ["db_dump.py", "fetch"])
+
+    tooling.main()
+
+    [dump] = tmp_path.iterdir()
+    assert re.fullmatch(r"timetracker-\d{4}-\d{2}-\d{2}T\d{6}Z\.dump", dump.name)
+
+
+def test_fetch_refuses_an_existing_output(tooling, isolated_configuration, tmp_path):
+    existing = tmp_path / "backup.dump"
+    existing.write_bytes(b"BACKUP")
+    isolated_configuration.setattr(tooling, "production_source", lambda: None)
+    isolated_configuration.setattr(
+        sys, "argv", ["db_dump.py", "fetch", "--output", str(existing)]
+    )
+
+    with pytest.raises(SystemExit, match="fetch-dump: .*already exists"):
+        tooling.main()
+
+    assert existing.read_bytes() == b"BACKUP"
 
 
 def test_a_failed_transfer_leaves_no_dump_behind(tooling, monkeypatch, tmp_path):
@@ -158,6 +271,19 @@ def test_a_failed_transfer_leaves_no_dump_behind(tooling, monkeypatch, tmp_path)
 
     with pytest.raises(tooling.DumpError, match="deployed database"):
         tooling.fetch(_source(tooling), destination)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_interrupted_transfer_leaves_no_partial(tooling, monkeypatch, tmp_path):
+    def interrupt(command, **kwargs):
+        kwargs["stdout"].write(b"PGD")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(tooling, "run", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        tooling.fetch(_source(tooling), tmp_path / "timetracker.dump")
 
     assert list(tmp_path.iterdir()) == []
 
@@ -177,15 +303,16 @@ def test_a_container_without_pg_dump_names_the_likely_mistake(
         tooling.fetch(_source(tooling), tmp_path / "timetracker.dump")
 
 
-def test_the_newest_dump_is_used_when_none_is_named(tooling, tmp_path):
-    older = tmp_path / "timetracker-2026-08-01.dump"
-    renamed = tmp_path / "timetracker-2026-08-28-pre-deploy.dump"
-    same_day = tmp_path / "timetracker-2026-08-28.dump"
-    newer = tmp_path / "timetracker-2026-08-28T090000.dump"
-    for dump in (older, renamed, same_day, newer):
+def test_the_last_written_dump_is_used_when_none_is_named(tooling, tmp_path):
+    fetched = tmp_path / "timetracker-2026-08-28T090000Z.dump"
+    named_later = tmp_path / "timetracker-2026-08-28-post-deploy.dump"
+    older = tmp_path / "timetracker-2026-08-29.dump"
+    partial = tmp_path / "timetracker-2026-08-30T000000Z.dump.abc.part"
+    for age, dump in enumerate((older, fetched, named_later, partial)):
         dump.write_bytes(b"PGDMP")
+        os.utime(dump, (1_000_000 + age, 1_000_000 + age))
 
-    assert tooling.newest_dump(tmp_path) == newer
+    assert tooling.newest_dump(tmp_path) == named_later
 
 
 def test_an_empty_dump_directory_says_which_target_fills_it(tooling, tmp_path):

@@ -63,8 +63,8 @@ gate on editing the baseline, and worth running after any migration whose
 result is hard to read off the file; a differing row means a future migration
 would be generated against a baseline the deployment does not have.
 
-Run `make fetch-dump` first. The comparison reads whichever dump is newest, and
-an old one reports drift that has since been deployed. Replacing the history
+Run `make fetch-dump` first. The comparison reads whichever dump was written
+last, and an old one reports drift that has since been deployed. Replacing the history
 again is a larger procedure with its own rehearsal —
 see [Squashing the migration history](migration-squash.md).
 
