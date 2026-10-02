@@ -452,12 +452,21 @@ def change_library_default_device(library: UserLibrary, device: Device | None) -
     return preferences.set_default_device(device)
 
 
+def change_library_conversion_review_hidden(library: UserLibrary, hidden: bool) -> bool:
+    """Hide or show the conversion review."""
+    from games.models import UserLibraryPreferences
+
+    preferences = UserLibraryPreferences.objects.get(library=library)
+    return preferences.set_conversion_review_hidden(hidden)
+
+
 __all__ = [
     "SETTING_NAMESPACE_CHOICES",
     "SettingLockedError",
     "SettingMutation",
     "SettingNamespace",
     "SettingOperation",
+    "change_library_conversion_review_hidden",
     "change_library_default_device",
     "change_site_setting",
     "change_user_setting",

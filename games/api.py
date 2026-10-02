@@ -34,6 +34,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     PlainSerializer,
+    StrictBool,
     WithJsonSchema,
     model_validator,
 )
@@ -151,6 +152,7 @@ from timetracker.settings_commands import (
     SettingLockedError,
     SettingMutation,
     SettingNamespace,
+    change_library_conversion_review_hidden,
     change_library_default_device,
     change_site_setting,
     change_user_setting,
@@ -2047,6 +2049,20 @@ class DefaultDeviceOut(Schema):
     namespace: SettingNamespace
 
 
+class ConversionReviewHiddenIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    value: StrictBool
+
+
+class ConversionReviewHiddenOut(Schema):
+    key: str
+    value: bool
+    source: SettingSource
+    locked: bool
+    namespace: SettingNamespace
+
+
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
     return [
         key
@@ -2163,11 +2179,11 @@ ENDED_DEFAULT_DEVICE = (
 
 @library_router.patch("/default-device", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
-    """Set the current library's default Device, or clear it with null.
+    """Set the library's default Device; null clears.
 
-    The live-settings client substitutes its field key into a URL template, while
-    this endpoint serves only ``default-device``. Add a key-routed endpoint before
-    adding another library preference.
+    The live-settings client fills its field key into
+    ``/api/library/__key__``, so each library preference is one literal
+    route named by its key.
     """
     library = request.user.library
     device = None
@@ -2182,6 +2198,23 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
     return {
         "key": "default-device",
         "value": device.pk if device is not None else None,
+        "source": SettingSource.LIBRARY,
+        "locked": False,
+        "namespace": SettingNamespace.LIBRARY,
+    }
+
+
+@library_router.patch("/conversion-review-hidden", response=ConversionReviewHiddenOut)
+def update_conversion_review_hidden(
+    request, response: HttpResponse, payload: ConversionReviewHiddenIn
+):
+    """Hide or show the conversion review."""
+    change_library_conversion_review_hidden(request.user.library, payload.value)
+    messages.success(request, "Hide this review saved")
+    response[RELOAD_HEADER] = "true"
+    return {
+        "key": "conversion-review-hidden",
+        "value": payload.value,
         "source": SettingSource.LIBRARY,
         "locked": False,
         "namespace": SettingNamespace.LIBRARY,

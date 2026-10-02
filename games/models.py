@@ -2536,6 +2536,7 @@ class UserLibraryPreferences(models.Model):
     )
     #: A device key, never a foreign key.
     default_device_id = models.UUIDField(null=True, blank=True, default=None)
+    conversion_review_hidden = models.BooleanField(default=False)
     updated_at = models.DateTimeField(default=timezone.now)
 
     @property
@@ -2580,6 +2581,14 @@ class UserLibraryPreferences(models.Model):
         self.default_device_id = device_id
         self.updated_at = timezone.now()
         self.save(update_fields=["default_device_id", "updated_at"])
+        return True
+
+    def set_conversion_review_hidden(self, hidden: bool) -> bool:
+        if self.conversion_review_hidden == hidden:
+            return False
+        self.conversion_review_hidden = hidden
+        self.updated_at = timezone.now()
+        self.save(update_fields=["conversion_review_hidden", "updated_at"])
         return True
 
 

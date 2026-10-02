@@ -46,6 +46,7 @@ from games.reads.purchase_figures import (
     valued_in_scope,
 )
 from games.views import stats_links
+from games.views.conversion_review import ConversionReview
 from games.views.session_reclassification import (
     TEMPORARY_NOTE,
     PlaytimeReviewPanel,
@@ -213,7 +214,11 @@ def library(request: HttpRequest) -> HttpResponse:
             customization,
             description="Games currently includes every game in your library. After IGDB integration, this area will contain only games and platforms you customized or created. Devices will remain here.",
         ),
-        SectionedPageSection("purchases", "Purchases", purchases_summary),
+        SectionedPageSection(
+            "purchases",
+            "Purchases",
+            Fragment(purchases_summary, ConversionReview(request, library)),
+        ),
     ]
     content = SectionedPage(
         "Library",
