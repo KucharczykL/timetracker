@@ -74,7 +74,7 @@ events *and* to the head, which events restrict — and resolves mechanically:
 - `RESTRICT` calls `collector.add_dependency(head_model, event_model)`, but
   `Collector.sort()` gives up on any cycle, such as `Game.parent`, and then
   keeps collection order. The raw composite FK is therefore
-  `DEFERRABLE INITIALLY DEFERRED` since `0026` (#1450), like Django's own.
+  `DEFERRABLE INITIALLY DEFERRED` since #1450, like Django's own.
 
 So: deleting a library removes its events and its head, including a populated
 head; deleting a populated head directly raises `RestrictedError`. Both are

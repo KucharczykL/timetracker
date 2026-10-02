@@ -26,7 +26,7 @@ It is the only key in the schema with this property.
 
 ## Decision
 
-Migration `0026` makes the constraint `DEFERRABLE INITIALLY DEFERRED`.
+Migration `defer_library_event_stream_matches_library` makes the constraint `DEFERRABLE INITIALLY DEFERRED`.
 The reverse makes it `NOT DEFERRABLE`.
 
 The fix is on the constraint, not on the purge. The purge is the one
@@ -45,10 +45,11 @@ event: `append` copies `library_id` from the head to each event.
   reason; that reason is gone. #1454 re-mints it.
 - The Collector's self-dependency stays a Django property. Any later
   raw-SQL foreign key must be `DEFERRABLE INITIALLY DEFERRED` too.
-- `make verify-baseline` against a dump from before `0026` reports this
+- `make verify-baseline` against a dump from before that migration reports this
   constraint's definition as drift. Run it with `--migrate`.
-- The purchase stack (#723 and after) holds its own `0026`. This fix lands
-  first; the stack renumbers on its rebase.
+- The migration lands after the purchase stack (#723 and after), as the
+  next number on top of it. The stack's numbers stay fixed, because its
+  specs and its deploy rehearsal name them.
 
 ## Tests
 

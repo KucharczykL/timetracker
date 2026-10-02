@@ -342,7 +342,7 @@ from the `recorded_at` values it just rewrote:
 
 **`LibraryEventStreamHead.id` is left alone.** The composite key
 `library_event_stream_matches_library` was checked at each statement, so the
-head and its events could not be swapped in two `UPDATE`s. Migration `0026`
+head and its events could not be swapped in two `UPDATE`s. Migration `defer_library_event_stream_matches_library`
 defers it (#1450); #1454 re-mints the head.
 
 `aggregate_id` is the load-bearing one: it becomes the `PlayerGame`/`Playthrough`

@@ -870,7 +870,7 @@ def _write_fixture(self, dump_path, output_path):
 
 - [ ] **Step 5.5 (discovered during execution): `LibraryEventStreamHead.id` cannot be reassigned**
 
-> Since `0026` (#1450) the key is deferred; #1454 re-mints the head.
+> Since #1450 the key is deferred; #1454 re-mints the head.
 
 `games_libraryevent`'s composite FK to it
 (`library_event_stream_matches_library`, migration `0023`) is a plain
