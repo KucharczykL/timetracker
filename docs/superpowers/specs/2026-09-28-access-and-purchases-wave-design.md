@@ -775,7 +775,8 @@ standalone page.
 
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
 game, or product · game), Kind, Amount (Free and Unknown as words, the
-valuation beside), Purchased, Refunded, Finished, Created. Facets kind,
+valuation beside; #1463 restores the legacy shape, one price with the
+stated amount in a popover), Purchased, Refunded, Finished, Created. Facets kind,
 amount, price state (Paid, Free, Unknown), purchased, refunded, and access
 and platform through the entry. Tray Edit and Remove; row menu Edit,
 Refund, Remove, the list's own.
@@ -1135,6 +1136,8 @@ runs on it.
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1437, move a purchase to another copy (after P5b)
+- #1463, the purchase amount shows one price again, the original in a
+  popover
 - #1443, remove the one-time Conversion review rows after P5c, keeping
   `conversion_review` and `Category`
 - #1448, remove the conversion pass and its gates at the squash
