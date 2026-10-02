@@ -33,7 +33,7 @@ def release(owned_library, stated_graph):
 
 @pytest.fixture
 def converted(owned_library, release):
-    """An unknown price, a rental, and a plain copy."""
+    """Unknown price, rental, and a plain copy."""
     unknown = record_purchase(
         record_entry(owned_library, release("Tunic")),
         amount=None,

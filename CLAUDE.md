@@ -689,6 +689,19 @@ docs/           — Additional documentation
   (`held_purchases`), and the copy's menu carries their acts
   (`games/views/purchase_menu.py`). Contract is
   [Every purchase write](docs/superpowers/specs/2026-10-01-issue-724-purchase-writes-design.md)
+  #1266 (P5b2): the Purchases list is selectable; `purchase.edit`
+  (kind, price with Keep, day, note; `games/bulk_purchase_edit.py`) and
+  `purchase.remove` share `games/bulk_purchases.py`, and the list's read
+  `purchase_list_rows` lives in `games/reads/purchases.py`.
+  `DescribePurchase` refuses a kind change on a refunded purchase unless
+  the statement takes the refund back. `conversion_review`, a choice
+  field on `PurchaseFilter` and `LibraryEntryFilter` over `Category`
+  (`games/conversion_review.py`), reads the conversion's tags from
+  events; the Library page lists each category's count and link until
+  `UserLibraryPreferences.conversion_review_hidden` hides them (one-time,
+  #1443 removes it). The Library tab's Purchases column prints each held
+  purchase's price. Contract is
+  [Purchases selectable, conversion reviewed](docs/superpowers/specs/2026-10-02-issue-1266-purchases-selectable-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
 `games/endpoints.py` names its columns and three events (stated,
@@ -766,7 +779,8 @@ defect never reached included. `<continuing-batch>` posts the waypoint's form
 on connect, so only Stop is pressed. The Undo reads the act's name out of the
 batch's `source_metadata` and its rows through `undo_rows` -- for
 `EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the
-two reads that answer from events rather than a projection -- and runs as a
+three reads that answer from events rather than a projection
+(`conversion_review` is another) -- and runs as a
 batch of its own. An act's scope is its own
 base narrowed by the statement's filter, never the filter alone, and an
 unreadable filter refuses rather than widening the act --
@@ -810,11 +824,12 @@ its Undo states each changed fact's earlier value, read by
 `batch_fact_changes` in
 `games/reads/playergame_facts.py`; #1256's Undo reads `status_change`. Contract is
 [Edit many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-game-edit-design.md).
-The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py` and
-`bulk_platform_edit.py`; what they share (the "Keep:" placeholder, the
+The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py`,
+`bulk_platform_edit.py`, `bulk_entry_edit.py` and `bulk_purchase_edit.py`; what they share (the "Keep:" placeholder, the
 carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
-imports no act, and `FactChange` is `games/reads/fact_change.py`.
+imports no act, and `FactChange` is `games/reads/fact_change.py`,
+whose `Fact.read` takes the whole event (`payload_fact` reads one key).
 
 **A purchase buys one copy** — the conversion split every legacy bundle
 into one purchase per game, cents split, so each refundable unit is its own

@@ -1,4 +1,4 @@
-"""Purchases edited and removed in bulk, and the Undo of each."""
+"""Bulk purchase edit and removal, and Undo."""
 
 import datetime
 import json
