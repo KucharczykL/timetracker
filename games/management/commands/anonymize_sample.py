@@ -5,7 +5,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,7 @@ from games.events.playersession import (
 from games.events.references import (
     FoundReference,
     Reference,
+    ReferenceKind,
     Resolution,
     capture_reference,
 )
@@ -161,7 +162,7 @@ def _read_path(payload: Mapping, path: KeyPath):
     """Value at path; None when absent."""
     value = payload
     for key in path:
-        #: Dates are never stated inside a list.
+        # Dates are never stated inside a list.
         if isinstance(value, list):
             raise CommandError(f"A dated path crosses a list: {path}.")
         if not isinstance(value, Mapping) or value.get(key) is None:
@@ -199,11 +200,13 @@ def rewrite_path(payload: JsonValue, path: KeyPath, rewrite: LeafRewrite) -> Non
     if rest:
         rewrite_path(value, rest, rewrite)
         return
-    payload[head] = (
-        [None if item is None else _rewrite_text(item, path, rewrite) for item in value]
-        if isinstance(value, list)
-        else _rewrite_text(value, path, rewrite)
-    )
+    if isinstance(value, list):
+        payload[head] = [
+            None if item is None else _rewrite_text(item, path, rewrite)
+            for item in value
+        ]
+    else:
+        payload[head] = _rewrite_text(value, path, rewrite)
 
 
 def _rewrite_text(value: JsonValue, path: KeyPath, rewrite: LeafRewrite) -> str:
@@ -216,11 +219,10 @@ def _rewrite_text(value: JsonValue, path: KeyPath, rewrite: LeafRewrite) -> str:
 def replace_reference(payload: dict, found: FoundReference, value: Reference) -> None:
     """Put `value` where `found` was, in a list too."""
     held = payload[found.key]
-    payload[found.key] = (
-        [value if item is found.value else item for item in held]
-        if isinstance(held, list)
-        else value
-    )
+    if isinstance(held, list):
+        payload[found.key] = [value if item is found.value else item for item in held]
+    else:
+        payload[found.key] = value
 
 
 def renamed(text: str, overrides: Mapping[str, str]) -> str:
@@ -693,7 +695,7 @@ class Command(BaseCommand):
             events, lambda event: event.correlation_id
         )
 
-        def remapped(kind, old_id: UUID, *, subject: str) -> UUID:
+        def remapped(kind: ReferenceKind[Any], old_id: UUID, *, subject: str) -> UUID:
             """A projected row takes its aggregate's id.
 
             A device is re-minted with IDENTITY_MODELS
@@ -818,10 +820,8 @@ class Command(BaseCommand):
         """
         identity = cls._identity_field_name(model)
         dated = any(field.name == "created_at" for field in model._meta.fields)
-        #: Undated rows mint at the epoch.
-        rows = list(
-            model._base_manager.order_by(*(["created_at"] if dated else []), "pk")
-        )
+        ordering = ("created_at", "pk") if dated else ("pk",)
+        rows = list(model._base_manager.order_by(*ordering))
         replacements = {}
         previous_ms = None
         sequence = 0
