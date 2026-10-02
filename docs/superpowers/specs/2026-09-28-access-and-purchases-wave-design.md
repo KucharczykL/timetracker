@@ -378,7 +378,8 @@ Demo, and a beta's access ends `expired` the day the test closes; no
 reader tells prerelease play from the access word, only from the
 Edition. `Edition.kind` lands in M7 beside `Game.kind`. The one beta the
 dump holds, "Diablo 4 Open Beta", is a private Game with one session and
-becomes a prerelease Edition of Diablo IV by hand, not by the pass.
+becomes a prerelease Edition of Diablo IV through #983's merge, not by
+the pass.
 
 ### FilterPreset
 
@@ -991,6 +992,11 @@ inside a member says so in its body and closes with it.
   money on an end.
 - **#782** maps IGDB `game_type` to `Game.kind` one to one and admits the
   remaining words.
+- **#983** merges duplicate private Games into one Game's Editions, the
+  lift of the foreclosure above: it restates `player_game` on runs,
+  records and copies, re-parents add-ons, reconciles the four PlayerGame
+  facts, and merges a demo filed as a Game into a prerelease Edition;
+  after P5c and #654's redirect, in epic #602.
 - **#762** and **#750** read the Purchase projection this wave leaves.
 - **#773** closes with P5 where every legacy field is gone, or keeps what
   remains.
