@@ -12,7 +12,7 @@ from django.contrib.auth.models import User
 from django.http import QueryDict
 from django.template.defaultfilters import truncatechars
 
-from common.components import FormFieldPresentation
+from common.components import FormFieldGroup, FormFieldPresentation
 from common.components.primitives import FormFields, P
 from common.date_time_presentation import (
     DateTimePresentation,
@@ -323,7 +323,11 @@ def offer_edit(
     return Control(
         FormFields(
             form,
-            groups=[price_group()],
+            groups=[
+                FormFieldGroup("What", ("kind",), look="hidden"),
+                price_group(),
+                FormFieldGroup("When", ("purchased", "note"), look="hidden"),
+            ],
             presentations=price_presentations() | hints,
         )
     )

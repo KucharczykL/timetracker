@@ -6,6 +6,7 @@ from django.http import HttpRequest
 from django.middleware.csrf import get_token
 
 from common.components import (
+    Fragment,
     LiveSettingFields,
     Node,
     SettingFieldState,
@@ -105,19 +106,21 @@ def ConversionReview(request: HttpRequest, library: UserLibrary) -> Node | None:
     return SummaryRow(
         label="Conversion review",
         subtitle=REVIEW_SUBTITLE,
-        control=control,
-        detail=SummaryList(
-            *(
-                SummaryRow(
-                    label=row.label,
-                    subtitle=row.reason,
-                    value=SummaryValue(row.count, row.url),
-                    actions=(SummaryAction("Review", row.url),),
-                    dense=True,
+        detail=Fragment(
+            control,
+            SummaryList(
+                *(
+                    SummaryRow(
+                        label=row.label,
+                        subtitle=row.reason,
+                        value=SummaryValue(row.count, row.url),
+                        actions=(SummaryAction("Review", row.url),),
+                        dense=True,
+                    )
+                    for row in rows
                 )
-                for row in rows
             )
-        )
-        if rows
-        else None,
+            if rows
+            else None,
+        ),
     )
