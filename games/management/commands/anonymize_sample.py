@@ -15,7 +15,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
-from django.db.models import GeneratedField, Model
+from django.db.models import GeneratedField, Min, Model
 
 from games.events.historical_playtime import sorted_runs
 from games.events.playersession import (
@@ -531,6 +531,7 @@ class Command(BaseCommand):
             device_offsets=device_offsets,
             library_id=library_id,
         )
+        self._reassign_stream_head(library_id)
 
         return {
             "games": len(all_game_ids),
@@ -755,7 +756,6 @@ class Command(BaseCommand):
                 subject=f"Reference {reference.pk}",
             )
         LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
-        #: TODO(#1454): re-mint LibraryEventStreamHead.id too.
 
         event_moment_by_old_id = {event.pk: event.recorded_at for event in events}
         event_id_replacements = {}
@@ -839,6 +839,20 @@ class Command(BaseCommand):
             LibraryEventReference.objects.filter(pk=old_id).update(id=new_id)
 
         return len(events), sessions_recorded
+
+    @classmethod
+    def _reassign_stream_head(cls, library_id) -> None:
+        """Mint the head at its first event."""
+        head = LibraryEventStreamHead.objects.filter(library_id=library_id).first()
+        #: No head means no events.
+        if head is None:
+            return
+        first_recorded = LibraryEvent.objects.filter(stream_id=head.pk).aggregate(
+            first_recorded=Min("recorded_at")
+        )["first_recorded"]
+        new_id = _mint(first_recorded or FIXED_EPOCH, {"ms": None, "sequence": None})
+        LibraryEventStreamHead.objects.filter(pk=head.pk).update(id=new_id)
+        cls._remap_referrers(LibraryEventStreamHead, {head.pk: new_id})
 
     @staticmethod
     def _identity_field_name(model) -> str:

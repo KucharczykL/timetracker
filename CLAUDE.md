@@ -1360,10 +1360,11 @@ Edition, Release, the event store and ExchangeRate; shifts dates (per-game
 offset), clears free-text notes/names and `source_metadata`, and sanitizes
 audit timestamps; in event payloads it clears every `NoteText`/`NameText` path
 and redraws every `AmountText`, lists included; `--name-overrides` reaches
-edition names too. Edition and Release mint at the epoch; a projected reference
-(an entry) takes its aggregate's new id, a join row's id is re-minted, and any
-other bare id must name an aggregate; a reference, id or payload that does not
-resolve or validate refuses with the event's or reference row's key. All
+edition names too. Edition and Release mint at the epoch, the stream head at
+its first event; a projected reference (an entry) takes its aggregate's new id,
+a join row's id is re-minted, and any other bare id must name an aggregate; a
+reference, id or payload that does not resolve or validate refuses with the
+event's or reference row's key. All
 inside rolled-back transaction, so source DB untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 

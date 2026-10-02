@@ -41,8 +41,8 @@ event: `append` copies `library_id` from the head to each event.
 
 ## Consequences
 
-- `anonymize_sample` keeps the stream head id, a leftover it lists. The
-  key no longer stops a re-mint; #1454 does it.
+- `anonymize_sample` can re-mint the stream head id, because the key no
+  longer stops it ([#1454](2026-10-02-issue-1454-stream-head-remint-design.md)).
 - `anonymize_sample` and `load_sample_data` call
   `connection.check_constraints()`, so a deferred key is checked before the
   dump is written and before the replay.
@@ -60,7 +60,3 @@ event: `append` copies `library_id` from the head to each event.
   events exist.
 - `tests/test_event_models.py`: `pg_constraint` holds no immediate foreign
   key; a cross-library event fails at `check_constraints()`.
-
-## Follow-up issues
-
-- #1454: `anonymize_sample` re-mints the stream head id.

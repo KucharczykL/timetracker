@@ -4,7 +4,8 @@ A migration file that states a schema rather than building up to it is never
 replayed again, so nothing else checks that the end it states is the end that
 ran. This does: it restores a dump of the deployment, optionally carries the
 copy over the way an operator would, builds a second database from the
-migrations alone, and reads both catalogs.
+migrations alone, sends each database through one dump and restore, and reads
+both catalogs.
 
 Any row only one of them holds is drift, and drift here is a future migration
 generated against a baseline the deployment does not have. Nothing is compared
@@ -178,9 +179,12 @@ class Drift:
 
 
 def round_trip(url: str, *, database: str, database_url: str) -> str:
-    """Dump and restore the database over itself."""
+    """Dump and restore the database over itself.
+
+    Full dump: history compare reads rows.
+    """
     with tempfile.TemporaryDirectory() as directory:
-        dump = Path(directory) / "fresh.dump"
+        dump = Path(directory) / f"{database}.dump"
         run([str(client_tool("pg_dump")), "--format=custom", f"--file={dump}", url])
         return db_dump.restore(dump, database=database, database_url=database_url)
 
@@ -296,6 +300,10 @@ def verify(
     #: applied it. This proves that, rather than assuming it -- and it is what
     #: fails first when a dump predates a squash that was never carried over.
     manage("migrate", "--check", database_url=deployed_url)
+    #: A failed restore loses the copy.
+    deployed_url = round_trip(
+        deployed_url, database=DEPLOYED_DATABASE, database_url=database_url
+    )
 
     fresh_url = create_database(FRESH_DATABASE, database_url)
     manage("migrate", database_url=fresh_url)

@@ -54,3 +54,60 @@ def test_a_missing_normalize_file_is_refused_before_the_restore(tooling):
             database_url="postgresql://timetracker@127.0.0.1:1/timetracker",
             normalize=Path("no-such-file.sql"),
         )
+
+
+@pytest.mark.parametrize("write", ["migrate", "record", "normalize"])
+def test_each_database_is_round_tripped_before_the_compare(
+    tooling, monkeypatch, tmp_path, write
+):
+    """Later writes take the trip too."""
+    calls = []
+
+    def restore(dump, *, database, database_url):
+        calls.append(("restore", database))
+        return database
+
+    def manage(*arguments, database_url):
+        calls.append(("manage", arguments[0], database_url))
+
+    def apply_sql(statements, *, database_url):
+        calls.append(("apply_sql", database_url))
+
+    def create_database(database, database_url):
+        calls.append(("create", database))
+        return database
+
+    def round_trip(url, *, database, database_url):
+        calls.append(("round_trip", database))
+        return f"{database}-tripped"
+
+    def compare(deployed_url, fresh_url, *, app):
+        calls.append(("compare", deployed_url, fresh_url))
+        return []
+
+    monkeypatch.setattr(tooling.db_dump, "restore", restore)
+    monkeypatch.setattr(tooling, "manage", manage)
+    monkeypatch.setattr(tooling, "apply_sql", apply_sql)
+    monkeypatch.setattr(tooling, "create_database", create_database)
+    monkeypatch.setattr(tooling, "round_trip", round_trip)
+    monkeypatch.setattr(tooling, "compare", compare)
+    monkeypatch.setattr(tooling, "drop_database", lambda database, url: None)
+    statements = tmp_path / "cutover.sql"
+    statements.write_text("SELECT 1;")
+    values = {"migrate": True, "record": "0001_squashed", "normalize": statements}
+
+    tooling.verify(Path("x.dump"), database_url="unused", **{write: values[write]})
+
+    deployed, fresh = tooling.DEPLOYED_DATABASE, tooling.FRESH_DATABASE
+    trips = [call for call in calls if call[0] == "round_trip"]
+    assert sorted(trips) == sorted([("round_trip", deployed), ("round_trip", fresh)])
+    deployed_writes = [
+        index
+        for index, call in enumerate(calls)
+        if call[0] in {"manage", "apply_sql"} and deployed in call
+    ]
+    assert max(deployed_writes) < calls.index(("round_trip", deployed))
+    assert calls.index(("manage", "migrate", fresh)) < calls.index(
+        ("round_trip", fresh)
+    )
+    assert calls[-1] == ("compare", f"{deployed}-tripped", f"{fresh}-tripped")
