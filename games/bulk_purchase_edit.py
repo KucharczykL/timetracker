@@ -1,4 +1,4 @@
-"""Kind, price, day or note on many purchases."""
+"""Edit many purchases' kind, price, day, note."""
 
 import json
 import uuid
@@ -59,6 +59,7 @@ from games.forms import (
     Keep,
     PrimitiveWidgetsMixin,
     TemporalFormField,
+    TemporalWidget,
     UnsetFieldsForm,
     UnsetWidget,
 )
@@ -90,6 +91,7 @@ class PurchaseEditJson(TypedDict, total=False):
 _KEYS = frozenset(PurchaseEditJson.__optional_keys__)
 
 NOTHING_STATED = "Choose a kind, a price, a day or a note."
+UNKNOWN_DAY = "Unknown day"
 NOT_EDITED_BY_THIS_BATCH = (
     "That purchase was not changed by this batch, so it was left as it is."
 )
@@ -172,7 +174,7 @@ def _nothing(*facts: object) -> bool:
 
 
 def _price(raw: ChoiceValue, value: object) -> StatedPrice:
-    """The command's rules, refused once."""
+    """`check_price` at settle, not per row."""
     if value is None:
         return UNKNOWN_PRICE
     if not isinstance(value, dict) or set(value) != {"amount", "currency"}:
@@ -244,18 +246,23 @@ class BulkPurchaseEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm, PriceFields):
             data, prefix=prefix, user=user, initial={"price": PriceChoice.KEEP.value}
         )
         self.fields["purchased"] = TemporalFormField(
-            presentation=presentation, label="Bought on"
+            presentation=presentation,
+            label="Bought on",
+            widget=UnsetWidget(
+                TemporalWidget(presentation=presentation, label="Bought on"),
+                none_label=UNKNOWN_DAY,
+            ),
         )
         self.order_fields(["kind", "price", "amount", "currency", "purchased", "note"])
         #: Kind and note hint as placeholders.
-        self.keep_hints: Mapping[FieldName, str] = {}
+        self._keep_hints: Mapping[FieldName, str] = {}
         if rows:
             cast(
                 ChoiceSearchSelectWidget, self.fields["kind"].widget
             ).placeholder = keeping(
                 rows, lambda row: row.kind, lambda word: PurchaseKind(word).label
             )
-            self.keep_hints = {
+            self._keep_hints = {
                 "price": keeping(rows, price_words, str),
                 "purchased": keeping(
                     rows,
@@ -268,14 +275,28 @@ class BulkPurchaseEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm, PriceFields):
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean() or {}
-        if (
-            cleaned.get("kind") is None
-            and cleaned.get("price") is PriceChoice.KEEP
-            and cleaned.get("purchased") is None
-            and cleaned.get("note") is KEEP
-        ):
+        if self.errors:
+            return cleaned
+        note: str | Keep = cleaned["note"]
+        statement = PurchaseEditStatement.of(
+            cleaned["kind"],
+            self.price_change(),
+            _day_stated(cleaned["purchased"]),
+            None if note is KEEP else normalised_note(note),
+        )
+        if statement is None:
             raise forms.ValidationError(NOTHING_STATED)
+        self._statement = statement
         return cleaned
+
+    def keep_presentations(self) -> Mapping[FieldName, FormFieldPresentation]:
+        """Each "Keep:" line, under its field."""
+        return {
+            name: FormFieldPresentation(
+                after_control=P(class_="text-type-micro text-body")[hint]
+            )
+            for name, hint in self._keep_hints.items()
+        }
 
     def price_change(self) -> StatedPrice | None:
         """None keeps each row's price."""
@@ -285,13 +306,14 @@ class BulkPurchaseEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm, PriceFields):
 
     def statement(self) -> PurchaseEditStatement:
         """The valid form, as one statement."""
-        note: str | Keep = self.cleaned_data["note"]
-        return PurchaseEditStatement(
-            self.cleaned_data["kind"],
-            self.price_change(),
-            self.cleaned_data["purchased"],
-            None if note is KEEP else normalised_note(note),
-        )
+        return self._statement
+
+
+def _day_stated(cleaned: TemporalValue | Keep | None) -> TemporalValue | None:
+    """Keep keeps; ⊘ states no day."""
+    if cleaned is KEEP:
+        return None
+    return TemporalValue.unknown() if cleaned is None else cast(TemporalValue, cleaned)
 
 
 def _form(
@@ -317,12 +339,6 @@ def offer_edit(
         #: The confirmation states there are no rows.
         return AsksNothing()
     form = _form(library, None, field_name, rows)
-    hints = {
-        name: FormFieldPresentation(
-            after_control=P(class_="text-type-micro text-body")[hint]
-        )
-        for name, hint in form.keep_hints.items()
-    }
     return Control(
         FormFields(
             form,
@@ -331,7 +347,7 @@ def offer_edit(
                 price_group(),
                 FormFieldGroup("When", ("purchased", "note"), look="hidden"),
             ],
-            presentations=price_presentations() | hints,
+            presentations={**price_presentations(), **form.keep_presentations()},
         )
     )
 

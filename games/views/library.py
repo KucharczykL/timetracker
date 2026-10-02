@@ -51,7 +51,7 @@ from games.views.session_reclassification import (
     TEMPORARY_NOTE,
     PlaytimeReviewPanel,
 )
-from timetracker.settings_commands import SettingNamespace
+from timetracker.settings_commands import DEFAULT_DEVICE, SettingNamespace
 
 
 def _actions(
@@ -131,7 +131,7 @@ def library(request: HttpRequest) -> HttpResponse:
         ),
         states={
             "default_device": SettingFieldState(
-                key="default-device",
+                key=DEFAULT_DEVICE,
                 source=default_device_source,
                 show_source=default_device_source != default_device_normal_source,
                 help_text=default_device_help(stored_default),

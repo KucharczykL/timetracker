@@ -1,14 +1,18 @@
-"""The Library page's conversion review and its Hide preference."""
+"""The conversion review and its Hide preference."""
 
 import re
+from decimal import Decimal
 
 import pytest
 from django.urls import reverse
-from entries import record_entry
-from purchases import record_purchase
+from entries import end_entry_access, record_entry, remove_entry
+from purchases import _state, record_purchase
 
+from games.commands.purchase import DescribePurchase, StatedPrice
 from games.conversion_review import ORIGIN, REVIEW_WORDS, Category
+from games.end_ways import EndWay
 from games.models import Game, UserLibraryPreferences
+from games.removal import remove
 from games.toast_middleware import RELOAD_HEADER
 from games.views import conversion_review
 from games.views.conversion_review import REPURCHASED, conversion_review_rows
@@ -92,15 +96,60 @@ def test_a_removed_purchase_leaves_the_count(owned_library, converted):
     assert REVIEW_WORDS[Category.UNKNOWN_PRICE].label not in _rows(owned_library)
 
 
-def test_repurchased_games_count_two_copies(owned_library, release, converted):
-    tunic = release("Outer Wilds")
-    record_entry(owned_library, tunic)
-    record_entry(owned_library, tunic)
+def test_repurchased_counts_live_copies_and_opens_those_games(
+    client, owned_library, release, converted
+):
+    twice = release("Outer Wilds")
+    record_entry(owned_library, twice)
+    record_entry(owned_library, twice)
+    ended = release("Celeste 64")
+    record_entry(owned_library, ended)
+    end_entry_access(record_entry(owned_library, ended), way=EndWay.SOLD)
+    removed = release("Hollow Knight")
+    record_entry(owned_library, removed)
+    remove_entry(record_entry(owned_library, removed))
+    client.force_login(owned_library.user)
 
-    rows = _rows(owned_library)
+    row = _rows(owned_library)[REPURCHASED]
+    listed = client.get(row.url).text
 
-    assert rows[REPURCHASED].count == 1
-    assert rows[REPURCHASED].url.startswith(reverse("games:list_games") + "?")
+    assert row.count == 2
+    assert row.url.startswith(reverse("games:list_games") + "?")
+    assert "Outer Wilds" in listed
+    assert "Celeste 64" in listed
+    assert "Hollow Knight" not in listed
+
+
+def test_an_edit_leaves_a_row_in_its_category(owned_library, converted):
+    unknown, _ = converted
+
+    _state(
+        owned_library,
+        DescribePurchase(purchase_id=unknown.pk, price=StatedPrice(Decimal(5), "EUR")),
+    )
+
+    assert _rows(owned_library)[REVIEW_WORDS[Category.UNKNOWN_PRICE].label].count == 1
+
+
+def test_a_hidden_copy_leaves_both_count_and_link(client, owned_library, stated_graph):
+    seen = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    hidden = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+    for graph in (seen, hidden):
+        record_entry(
+            owned_library,
+            graph.release,
+            access="rented",
+            source_metadata=tagged(Category.RENTAL),
+        )
+    remove(hidden.release)
+    client.force_login(owned_library.user)
+
+    row = _rows(owned_library)[REVIEW_WORDS[Category.RENTAL].label]
+    listed = client.get(row.url).text
+
+    assert row.count == 1
+    assert "Hades" in listed
+    assert "Tunic" not in listed
 
 
 def test_a_library_never_converted_shows_no_review(client, owned_library, release):
@@ -187,7 +236,9 @@ def test_the_route_touches_only_the_viewers_library(
     client.patch(HIDDEN_URL, data={"value": True}, content_type="application/json")
 
     stranger.preferences.refresh_from_db()
+    owned_library.preferences.refresh_from_db()
     assert stranger.preferences.conversion_review_hidden is False
+    assert owned_library.preferences.conversion_review_hidden is True
 
 
 def test_another_librarys_conversion_shows_no_review(
@@ -223,22 +274,18 @@ def test_a_converted_library_with_no_rows_shows_the_control_alone(
 
 
 def test_the_review_reads_a_bounded_number_of_queries(
-    client, owned_library, converted, django_assert_max_num_queries
+    client, owned_library, converted, django_assert_num_queries
 ):
     client.force_login(owned_library.user)
 
-    #: 25 bare, one count per category and Repurchased.
-    with django_assert_max_num_queries(25 + len(REVIEW_WORDS) + 1):
+    #: Twelve categories and Repurchased among them.
+    with django_assert_num_queries(37):
         client.get(reverse("games:library"))
 
 
-@pytest.mark.parametrize(
-    ("hidden", "sentence"),
-    [(True, "Conversion review hidden"), (False, "Conversion review shown")],
-)
-def test_the_route_says_what_it_did(client, owned_library, hidden, sentence):
+def test_the_route_queues_no_toast(client, owned_library):
     client.force_login(owned_library.user)
 
-    client.patch(HIDDEN_URL, data={"value": hidden}, content_type="application/json")
+    client.patch(HIDDEN_URL, data={"value": True}, content_type="application/json")
 
-    assert sentence in client.get(reverse("games:library")).text
+    assert "Conversion review hidden" not in client.get(reverse("games:library")).text

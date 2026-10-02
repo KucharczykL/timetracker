@@ -1,6 +1,7 @@
 """The Library page's conversion review rows."""
 
 from dataclasses import dataclass
+from typing import assert_never
 
 from django.http import HttpRequest
 from django.middleware.csrf import get_token
@@ -50,6 +51,10 @@ class ReviewRow:
     count: int
     url: str
 
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError(f"{self.label}: an empty category has no row")
+
 
 def converted(library: UserLibrary) -> bool:
     """The library holds a conversion event."""
@@ -59,22 +64,27 @@ def converted(library: UserLibrary) -> bool:
 
 
 def conversion_review_rows(library: UserLibrary) -> tuple[ReviewRow, ...]:
-    """One row per non-empty category, and Repurchased."""
+    """One row per non-empty category, Repurchased included."""
     context = filter_query_context_for_library(library)
     rows: list[ReviewRow] = []
     for word in REVIEWED:
         words = REVIEW_WORDS[word]
         criterion = ChoiceCriterion(value=[str(word)], modifier=Modifier.INCLUDES)
-        if words.target is ReviewTarget.PURCHASES:
-            purchases = PurchaseFilter(conversion_review=criterion)
-            count = execute_filter(
-                purchases, library_purchases(library), context
-            ).count()
-            url = filter_url(purchases)
-        else:
-            entries = LibraryEntryFilter(conversion_review=criterion)
-            count = execute_filter(entries, library_entries(library), context).count()
-            url = filter_url(entries)
+        match words.target:
+            case ReviewTarget.PURCHASES:
+                purchases = PurchaseFilter(conversion_review=criterion)
+                count = execute_filter(
+                    purchases, library_purchases(library), context
+                ).count()
+                url = filter_url(purchases)
+            case ReviewTarget.ENTRIES:
+                entries = LibraryEntryFilter(conversion_review=criterion)
+                count = execute_filter(
+                    entries, library_entries(library), context
+                ).count()
+                url = filter_url(entries)
+            case unreached:
+                assert_never(unreached)
         if count:
             rows.append(ReviewRow(words.label, words.reason, count, url))
     repurchased = GameFilter(

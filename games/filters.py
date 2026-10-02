@@ -177,7 +177,7 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
     return handler
 
 
-#: The rows a set of tagged events reaches.
+#: The rows tagged events reach.
 type TaggedRows = Callable[[QuerySet[LibraryEvent, LibraryEvent]], Q]
 
 _REVIEW_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(

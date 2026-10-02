@@ -64,7 +64,7 @@ def purchase_line(purchase: Purchase, presentation: DateTimePresentation) -> Nod
 
 
 def price_line(purchase: Purchase) -> str:
-    """The price; a non-game kind or name leads."""
+    """The price, led by kind or name."""
     if purchase.kind == PurchaseKind.GAME and not purchase.name:
         return price_words(purchase)
     return f"{purchase_label(purchase)} · {price_words(purchase)}"

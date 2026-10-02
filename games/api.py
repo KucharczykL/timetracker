@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Any, Final, NoReturn, assert_never, cast
+from typing import Annotated, Any, Final, Literal, NoReturn, assert_never, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -150,6 +150,7 @@ from games.writes.playthrough import (
 from games.writes.purchase import PurchaseDraft, record_purchase, restate_purchase
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
+    DEFAULT_DEVICE,
     SettingLockedError,
     SettingMutation,
     SettingNamespace,
@@ -2045,13 +2046,13 @@ class DefaultDeviceIn(Schema):
 class LibraryPreferenceOut(Schema):
     """What a library preference's route answers."""
 
-    key: str
-    source: SettingSource
-    locked: bool
-    namespace: SettingNamespace
+    source: Literal[SettingSource.LIBRARY] = SettingSource.LIBRARY
+    locked: Literal[False] = False
+    namespace: Literal[SettingNamespace.LIBRARY] = SettingNamespace.LIBRARY
 
 
 class DefaultDeviceOut(LibraryPreferenceOut):
+    key: Literal["default-device"] = DEFAULT_DEVICE
     value: UUIDv7 | None
 
 
@@ -2062,6 +2063,7 @@ class ConversionReviewHiddenIn(Schema):
 
 
 class ConversionReviewHiddenOut(LibraryPreferenceOut):
+    key: Literal["conversion-review-hidden"] = CONVERSION_REVIEW_HIDDEN
     value: bool
 
 
@@ -2179,7 +2181,7 @@ ENDED_DEFAULT_DEVICE = (
 )
 
 
-@library_router.patch("/default-device", response=DefaultDeviceOut)
+@library_router.patch(f"/{DEFAULT_DEVICE}", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
     """Set the library's default Device; null clears."""
     library = request.user.library
@@ -2192,33 +2194,22 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
             raise RowRefused(ENDED_DEFAULT_DEVICE)
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
-    return {
-        "key": "default-device",
-        "value": device.pk if device is not None else None,
-        "source": SettingSource.LIBRARY,
-        "locked": False,
-        "namespace": SettingNamespace.LIBRARY,
-    }
+    return {"value": device.pk if device is not None else None}
 
 
-@library_router.patch("/conversion-review-hidden", response=ConversionReviewHiddenOut)
+@library_router.patch(
+    f"/{CONVERSION_REVIEW_HIDDEN}", response=ConversionReviewHiddenOut
+)
 def update_conversion_review_hidden(
     request, response: HttpResponse, payload: ConversionReviewHiddenIn
 ):
-    """Hide or show the conversion review."""
+    """Hide or show the conversion review.
+
+    No toast: the reload shows it.
+    """
     change_library_conversion_review_hidden(request.user.library, payload.value)
-    messages.success(
-        request,
-        "Conversion review hidden" if payload.value else "Conversion review shown",
-    )
     response[RELOAD_HEADER] = "true"
-    return {
-        "key": CONVERSION_REVIEW_HIDDEN,
-        "value": payload.value,
-        "source": SettingSource.LIBRARY,
-        "locked": False,
-        "namespace": SettingNamespace.LIBRARY,
-    }
+    return {"value": payload.value}
 
 
 @settings_router.get("/site", response=list[SettingOut])

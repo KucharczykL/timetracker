@@ -1280,7 +1280,7 @@ def test_a_seeded_valuation_that_drifts_is_a_failure(owned_library, game_on):
 
 
 def test_the_review_reads_what_the_conversion_tags(owned_library, game_on):
-    """The review's field against the pass's own metadata."""
+    """The review field against the pass's metadata."""
     rented = game_on("Tunic")
     bundled = in_key_order(game_on("Hades"), game_on("Celeste"))
     legacy(owned_library, rented, ownership_type=LegacyPurchase.RENTED, price=3.0)
@@ -1308,3 +1308,8 @@ def test_the_review_reads_what_the_conversion_tags(owned_library, game_on):
         purchase.entry.player_game.game
         for purchase in Purchase.objects.filter(split.to_q())
     } == set(bundled)
+
+
+def test_a_reconciliation_word_is_never_tagged():
+    with pytest.raises(conversion.ConversionDefect):
+        conversion._metadata([], [Category.SKIPPED_REMOVED_GAME])

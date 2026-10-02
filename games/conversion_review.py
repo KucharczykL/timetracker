@@ -1,4 +1,4 @@
-"""The conversion's review words and where each leads."""
+"""The conversion's review words and their targets."""
 
 from collections.abc import Mapping
 from enum import StrEnum

@@ -139,12 +139,18 @@ def test_includes_only_needs_no_other_word(owned_library, three):
     ) == {unknown}
 
 
-def test_an_unknown_word_is_refused(owned_library, three):
+@pytest.mark.parametrize(
+    "criterion",
+    [
+        ChoiceCriterion(value=["no_such_word"], modifier=Modifier.INCLUDES),
+        ChoiceCriterion(
+            value=[], excludes=["no_such_word"], modifier=Modifier.INCLUDES
+        ),
+    ],
+)
+def test_an_unknown_word_is_refused(owned_library, three, criterion):
     with pytest.raises(FilterError):
-        _purchases(
-            owned_library,
-            ChoiceCriterion(value=["no_such_word"], modifier=Modifier.INCLUDES),
-        )
+        _purchases(owned_library, criterion)
 
 
 def test_every_word_an_event_carries_has_review_words():

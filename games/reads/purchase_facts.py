@@ -42,7 +42,7 @@ def _price(value: object) -> StatedPrice | None:
     if not isinstance(amount, str) or not isinstance(currency, str):
         return None
     try:
-        return StatedPrice(Decimal(amount), currency)
+        return StatedPrice(Decimal(amount), currency).normalized()
     except InvalidOperation:
         return None
 

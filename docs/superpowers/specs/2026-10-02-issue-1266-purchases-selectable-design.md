@@ -14,7 +14,8 @@ through `EventRows(Purchase)`.
   revaluation.
 - `purchase.edit` lives in `games/bulk_purchase_edit.py`. It states kind,
   price, purchase day and note. An empty field keeps the row's value.
-  Price offers Keep, Paid, Free and Unknown. The note's ⊘ states no note.
+  Price offers Keep, Paid, Free and Unknown. The day's ⊘ states an
+  unknown day. The note's ⊘ states no note.
   The day keeps the row's own `purchase_note`. One `DescribePurchase`
   dispatch writes each row.
 
@@ -31,9 +32,9 @@ because the purchase day is the envelope's `effective_time`.
 ## The kind rule
 
 `DescribePurchase` refuses a kind change on a refunded purchase. The same
-statement can take the refund back; then the change passes. The rule
-exists because a `game` refund ends an owned, unended copy, and a refund
-of another kind does not. A kind change would leave that end misread.
+statement can take the refund back; then the change passes. A `game`
+refund ends an owned, unended copy. A refund of another kind does not.
+So a kind change leaves that end misread.
 
 ## The conversion review
 

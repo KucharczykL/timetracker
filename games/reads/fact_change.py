@@ -22,7 +22,7 @@ class FactChange[T]:
     stated: T
 
 
-#: One fact out of one event; None unreadable.
+#: None is unreadable, never a fact.
 type EventRead[T] = Callable[[LibraryEvent], T | None]
 
 
@@ -30,7 +30,8 @@ def payload_fact[T](
     key: PayloadKey, parse: Callable[[object], T | None]
 ) -> EventRead[T]:
     """The fact one payload key states."""
-    return lambda event: parse(event.payload.get(key))
+    #: An absent key is unreadable.
+    return lambda event: parse(event.payload[key]) if key in event.payload else None
 
 
 @dataclass(frozen=True, slots=True)

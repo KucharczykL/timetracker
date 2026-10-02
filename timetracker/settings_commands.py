@@ -3,7 +3,7 @@
 import logging
 import uuid
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, cast
 from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
@@ -437,6 +437,10 @@ def _change_site_display_zone(
     return SiteZoneChange(mutation._replace(calendar=total), tuple(restated))
 
 
+#: The default device preference's key.
+DEFAULT_DEVICE: Final = "default-device"
+
+
 def change_library_default_device(library: UserLibrary, device: Device | None) -> bool:
     """Set a library's optional default Device after enforcing ownership."""
     if device is not None and getattr(device, "library_id", None) != getattr(
@@ -461,6 +465,7 @@ def change_library_conversion_review_hidden(library: UserLibrary, hidden: bool) 
 
 
 __all__ = [
+    "DEFAULT_DEVICE",
     "SETTING_NAMESPACE_CHOICES",
     "SettingLockedError",
     "SettingMutation",

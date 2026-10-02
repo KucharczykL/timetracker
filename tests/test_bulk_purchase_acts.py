@@ -1,23 +1,23 @@
 """Bulk purchase edit and removal, and Undo."""
 
 import datetime
+import html as html_module
 import json
 import logging
 import re
 import uuid
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from bulk_posts import act_url, posted, press, selection
 from django.http import Http404, QueryDict
 from django.urls import reverse
-from entries import record_entry
+from entries import record_entry, remove_entry
 from purchases import record_purchase, refund_purchase, remove_purchase
 
 from common.components.unset_field import unset_input_name
 from common.criteria import FilterError
-from common.date_time_presentation import date_time_presentation_for_user
-from common.temporal_presentation import present_temporal_value
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_parts import Control, EventRows, RowOutcome
 from games.bulk_purchase_edit import (
@@ -25,15 +25,22 @@ from games.bulk_purchase_edit import (
     NOT_EDITED_BY_THIS_BATCH,
     PURCHASE_EDIT,
     PurchaseEditStatement,
+    _form,
 )
 from games.bulk_purchase_edit import NOTHING_STATED as EDIT_NOTHING_STATED
 from games.bulk_purchase_edit import PURCHASE_REMOVED as EDIT_PURCHASE_REMOVED
 from games.bulk_purchases import PURCHASE_GONE
 from games.bulk_removal import REMOVE_PURCHASE
 from games.commands.endpoint import ActStatement
-from games.commands.purchase import KIND_UNDER_A_REFUND, UNKNOWN_PRICE, StatedPrice
+from games.commands.purchase import (
+    ENTRY_REMOVED,
+    KIND_UNDER_A_REFUND,
+    UNKNOWN_PRICE,
+    StatedPrice,
+)
 from games.events.dispatch import CommandRejected, RowUnreadable
-from games.events.purchase import PURCHASE_CREATED
+from games.events.purchase import PURCHASE_CREATED, PURCHASE_PRICE_CHANGED
+from games.forms import ChoiceSearchSelectWidget, TemporalWidget, UnsetWidget
 from games.models import (
     Game,
     LibraryEntry,
@@ -43,6 +50,7 @@ from games.models import (
     PurchaseKind,
 )
 from games.price_fields import AMOUNT_REQUIRED
+from games.reads.events import batch_aggregate_ids
 from games.reads.fact_change import FactChange, _value
 from games.reads.purchase_facts import _PRICE, purchase_fact_changes
 from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
@@ -328,6 +336,18 @@ def test_settling_states_a_cleared_note_and_a_day(owned_library):
     )
 
 
+def test_settling_states_an_unknown_day_through_the_toggle(owned_library):
+    settled = _settle(owned_library, unset_purchased="1")
+
+    assert settled == PurchaseEditStatement(None, None, TemporalValue.unknown(), None)
+
+
+def test_the_toggle_clears_each_rows_day(logged_in, first):
+    _edit(logged_in, first, unset_purchased="1")
+
+    assert _facts(first)[3] is None
+
+
 def test_an_unknown_day_and_price_round_trip():
     statement = PurchaseEditStatement(
         None, UNKNOWN_PRICE, TemporalValue.unknown(), None
@@ -344,18 +364,102 @@ def test_a_carried_price_reads_one_spelling():
     )
 
 
-def test_the_day_field_reads_the_users_date_locale(owned_library, first):
+def test_the_day_field_reads_the_users_date_locale(owned_library):
     change_user_setting(owned_library.user, "DATE_FORMAT_LOCALE", "cs")
-    rows = PURCHASE_EDIT.resolve(owned_library, [first.pk]).rows
 
-    offered = PURCHASE_EDIT.choice.offer(owned_library, rows, CHOICE_FIELD)
+    form = _form(owned_library, None, CHOICE_FIELD)
 
-    assert isinstance(offered, Control)
-    expected = present_temporal_value(
-        first.purchased, date_time_presentation_for_user(owned_library.user)
+    day = cast(UnsetWidget, form.fields["purchased"].widget).widget
+    assert cast(TemporalWidget, day).presentation.locale == "cs"
+
+
+def test_kind_and_note_keep_as_placeholders(owned_library, first, second):
+    rows = PURCHASE_EDIT.resolve(owned_library, [first.pk, second.pk]).rows
+
+    form = _form(owned_library, None, CHOICE_FIELD, rows)
+
+    kind = cast(ChoiceSearchSelectWidget, form.fields["kind"].widget)
+    note = cast(UnsetWidget, form.fields["note"].widget).widget
+    assert kind.placeholder == "Keep: mixed"
+    assert note.attrs["placeholder"] == "Keep: no note"
+
+
+def test_a_chunk_posted_twice_edits_once(logged_in, owned_user, first):
+    url = act_url(PURCHASE_EDIT)
+    fields = posted(logged_in.post(url, {STATEMENT_FIELD: selection(first)}))
+    fields.update(_control(price="paid", amount="5", currency="EUR"))
+    fields.pop(CHOICE_FIELD, None)
+    logged_in.post(url, fields)
+    first.refresh_from_db()
+    restate_purchase(owned_user, first, note="later", correlation_id=uuid.uuid7())
+    events = LibraryEvent.objects.count()
+
+    logged_in.post(url, fields)
+
+    assert LibraryEvent.objects.count() == events
+    assert _facts(first)[4] == "later"
+
+
+def test_a_chunk_posted_twice_removes_once(logged_in, owned_library, first):
+    url = act_url(REMOVE_PURCHASE)
+    fields = posted(logged_in.post(url, {STATEMENT_FIELD: selection(first)}))
+    logged_in.post(url, fields)
+    events = LibraryEvent.objects.count()
+
+    logged_in.post(url, fields)
+
+    assert LibraryEvent.objects.count() == events
+    assert set(
+        batch_aggregate_ids(owned_library, uuid.UUID(fields[TOKEN_FIELD]), "purchase")
+    ) == {first.pk}
+
+
+def test_an_undo_puts_an_unknown_price_back(logged_in, owned_library, second):
+    token = _edit(logged_in, second, price="paid", amount="5", currency="EUR")
+
+    changes = purchase_fact_changes(owned_library, second.pk, uuid.UUID(token))
+    _undo(logged_in, token)
+
+    assert changes.price == FactChange(
+        UNKNOWN_PRICE, StatedPrice(Decimal("5.00"), "EUR")
     )
-    assert date_time_presentation_for_user(owned_library.user).locale == "cs"
-    assert f"Keep: {expected}" in str(offered.node)
+    assert _facts(second)[1:3] == (None, "")
+
+
+def test_an_undo_under_a_removed_copy_is_a_sentence(logged_in, graph, first, copy):
+    other = record_purchase(
+        record_entry(copy.library, graph.release), purchased=first.purchased
+    )
+    fields = posted(
+        logged_in.post(
+            act_url(REMOVE_PURCHASE), {STATEMENT_FIELD: selection(first, other)}
+        )
+    )
+    logged_in.post(act_url(REMOVE_PURCHASE), fields)
+    remove_entry(copy)
+
+    response = logged_in.post(
+        reverse("games:undo_bulk_action", args=[fields[TOKEN_FIELD]]), follow=True
+    )
+
+    first.refresh_from_db()
+    other.refresh_from_db()
+    assert first.removed_at is not None
+    assert other.removed_at is None
+    assert html_module.escape(ENTRY_REMOVED) in response.text
+
+
+def test_a_missing_price_key_is_unreadable(owned_library):
+    event = LibraryEvent(
+        pk=1,
+        library_id=owned_library.pk,
+        sequence=7,
+        event_type=PURCHASE_PRICE_CHANGED.event_type,
+        payload={},
+    )
+
+    with pytest.raises(RowUnreadable):
+        _value(_PRICE, event)
 
 
 def test_a_statement_round_trips():

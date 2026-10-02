@@ -108,7 +108,7 @@ class PriceFields(forms.Form):
 
     def _clean_price(self, cleaned: dict[str, Any]) -> None:
         choice = cleaned.get("price")
-        #: Unknown, No purchase and Keep state no amount.
+        #: Only Paid and Free state an amount.
         if choice not in (PriceChoice.PAID, PriceChoice.FREE):
             ignore_fields(self, "amount", "currency")
             return

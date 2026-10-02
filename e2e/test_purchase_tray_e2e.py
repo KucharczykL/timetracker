@@ -1,4 +1,4 @@
-"""The Purchases list's tray: Edit, Remove, and their Undo."""
+"""The Purchases tray: Edit, Remove, Undo."""
 
 from decimal import Decimal
 
