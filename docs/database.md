@@ -76,9 +76,8 @@ pending migrations before starting the application processes.
 
 PostgreSQL stores several values calculated from other columns:
 
-- `Purchase.price_per_game` divides the converted price, or the original price
-  when no converted price exists, by the number of linked games. A zero game
-  count produces `NULL` rather than a division error.
+- `PlayerSession.effective_day`, `effective_duration` and `sort_instant` give
+  the three timing modes one day, one duration and one order.
 - Each temporal column carries generated lower- and upper-bound columns beside
   it, plus one per part of the value the domain's functions read. See
   [Temporal](temporal.md).

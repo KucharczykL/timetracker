@@ -75,8 +75,7 @@ DUMPED_MODELS = (
 )
 DUMP_LABELS = [model._meta.label for model in DUMPED_MODELS]
 
-# DB-computed columns: the serializer emits them, loaddata discards them.
-# Stripped to keep the fixture clean.
+#: Serialized by dumpdata, discarded by loaddata.
 GENERATED_FIELDS = frozenset(
     field.name
     for model in DUMPED_MODELS
@@ -159,7 +158,7 @@ def _write_path(payload: dict, path: KeyPath, value) -> None:
 
 
 def rewrite_path(payload, path: KeyPath, rewrite: Callable[[Any], Any]) -> None:
-    """Rewrite each value at path; a list fans out."""
+    """Rewrite every value at path, lists included."""
     if isinstance(payload, list):
         for item in payload:
             rewrite_path(item, path, rewrite)

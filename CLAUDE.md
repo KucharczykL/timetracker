@@ -140,7 +140,7 @@ path**, so verify against `make check` before pushing when possible.
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the ten reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
-| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; **not** in `make check`) |
+| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; runs between 0030 and 0035 only, refuses once the table is gone; **not** in `make check`) |
 | Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a figure or row set no reason explains; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
@@ -188,16 +188,15 @@ docs/           — Additional documentation
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
-- **LegacyPurchase** — the old purchase row, on `games_legacypurchase`
-  until P5 deletes it; `verbose_name` "purchase", so screens still say so.
-  No list, filter or statistic reads it, and the builder refuses
-  `legacypurchase`; no purchase route writes it. Game removal
-  recounts it; the currency task, the signals, the sample tools, the
-  ownership audit and the two verify commands still touch it. Ownership type, prices,
-  currency conversion (`converted_price`, `price_per_game` is a
-  `GeneratedField`), M2M to Game. `num_purchases` counts linked games.
-  DLC/SeasonPass/BattlePass must have `related_game`. Its relations
-  have no reverse accessor (`related_name="+"`, migration 0033)
+- **LegacyPurchase** — gone (#736, P5c): migration 0035 drops it. The
+  conversion tooling (`games/backfill/`, `verify_purchase_conversion`)
+  reads it from migration state through `legacy_purchase_model()`
+  (`games/backfill/legacy_model.py`) and refuses once the table is gone;
+  tests build rows on that model through the `legacy_purchase` fixture
+  (`tests/legacy_purchases.py`), which refuses a `transaction=True` test.
+  Each module #1448 removes at the squash says `conversion-tooling`.
+  `RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`. Contract is
+  [The legacy purchase is gone](docs/superpowers/specs/2026-10-02-issue-736-legacy-purchase-drop-design.md)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
   projection since #1274: a device is owned — bought, renamed, sold, lost,
   retired — so the charter moved it inside the boundary. Written only by the
@@ -723,18 +722,17 @@ states: one event, the correction, and a marker that admits no null; its
 columns are a sibling of the stated shape under `EndpointColumnsBase`, so a
 void of one is a type error. An entry's acquisition and a purchase's day are its two.
 
-**Nothing user removes is destroyed** (#944). Six removable models — Game,
-Edition, Release, Platform, LegacyPurchase, FilterPreset —
+**Nothing user removes is destroyed** (#944). Five removable models — Game,
+Edition, Release, Platform, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
 `games/removal.py`; a projection's mark (session, run, record, device,
 entry, purchase) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
 `post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
-Game recounts its purchases. Playtime is no stored total, so a removed Session
-needs nothing beyond its mark.
+Game marks its external references. Playtime is no stored total, so a removed
+Session needs nothing beyond its mark.
 `for_library()`/`visible_to()` call `.alive()`, so removed row leaves every list,
-form, filter and API response at once; plain manager still sees it. LegacyPurchase live
-while any of its games is, or while it names none. Edition and Release read
+form, filter and API response at once; plain manager still sees it. Edition and Release read
 ancestors' marks as well as own, so removed Game hides both and restoring it
 leaves separately removed child out (#966). Only whole-library purge destroys
 anything.
@@ -836,7 +834,7 @@ whose `Fact.read` takes the whole event (`payload_fact` reads one key).
 into one purchase per game, cents split, so each refundable unit is its own
 row and needs no through-model.
 
-**Unset platform/device is NULL**: `Game.platform`, `LegacyPurchase.platform`,
+**Unset platform/device is NULL**: `Game.platform`, `Release.platform`,
 `PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
 removed them). "Unspecified" (platform) and "No device" are render-layer labels
 only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
@@ -844,9 +842,9 @@ only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
 (`_SetCriterion._not_in_q`), and conditional `UniqueConstraint` keeps (name, year)
 unique among platformless games.
 
-**GeneratedField constraint**: `price_per_game` and the projection's
-`effective_day`, `effective_duration` and `sort_instant` are computed by the
-database and cannot be written from application code.
+**GeneratedField constraint**: the projection's `effective_day`,
+`effective_duration` and `sort_instant`, and every temporal bound column, are
+computed by the database and cannot be written from application code.
 
 ### Key patterns
 
@@ -1119,17 +1117,16 @@ Filter presets have no classic views — they live on Ninja API; the UI is
 `<preset-panel>` behind the acts group's Presets segment, which loads and saves
 (#297, #1267).
 
-**Signals** (`games/signals.py`):
-- `pre_save` on LegacyPurchase: snapshots old price/currency for change detection
-- `post_save` on LegacyPurchase: sets `needs_price_update` if price/currency changed
-- `m2m_changed` on LegacyPurchase.games: updates `num_purchases` from live games
-  (`games.removal` recounts after stamp, which fires no signal)
+**Signals** (`games/signals.py`): a new user gets a library, preferences and
+conversion state; a settings write clears the resolver cache on commit; a raw
+delete of a row an event references is refused.
 
 **Background tasks**: django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
 broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
-`cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and converting purchase prices to
-resolved site `DEFAULT_CURRENCY`. One run values legacy rows and
-`PurchaseValuation`s and publishes both. A purchase write that moves a
+`cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and valuing purchases in the
+resolved `DEFAULT_DISPLAY_CURRENCY`. One run values every `PurchaseValuation`
+and publishes the set; a `DatabaseError` fails it and schedules one retry.
+A purchase write that moves a
 value calls `request_revaluation`; the daily recovery requests a library at
 rest with `stale_purchases`.
 
@@ -1352,13 +1349,15 @@ named after what they cover; less obvious ones are `test_paths_return_200.py`
 invariants, round-trip).
 
 **`games/fixtures/sample.yaml.gz`** (the `make loadsample` seed) is **generated,
-anonymized production snapshot** — gzip-compressed (~147 KB vs 1.6 MB raw), do not
+anonymized production snapshot** — gzip-compressed (~950 KB), do not
 hand-edit. Regenerate with `make anonymize-sample` against dedicated restored
-production PostgreSQL database (then `make migrate`). It randomizes prices,
-game↔purchase links, and dates (per-game offset), clears free-text notes/names, and
-sanitizes audit timestamps; in event payloads it clears every `NoteText`/
-`NameText` path and redraws every `AmountText` — all inside rolled-back transaction, so source DB
-untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
+production PostgreSQL database (then `make migrate`). It dumps Platform, Game,
+Edition, Release, the event store and ExchangeRate; shifts dates (per-game
+offset), clears free-text notes/names and `source_metadata`, and sanitizes
+audit timestamps; in event payloads it clears every `NoteText`/`NameText` path
+and redraws every `AmountText`, lists included. Edition and Release mint at the
+epoch; a projected reference (an entry) takes its aggregate's new id. All
+inside rolled-back transaction, so source DB untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, so
 load it into empty dev DB.
 
 **UI assertion is not database assertion.** A custom element may update its own
@@ -1390,8 +1389,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 
 ## Conventions for AI assistants
 
-- **Never write to `GeneratedField`s** (`price_per_game`, `effective_day`,
-  `effective_duration`, `sort_instant`).
+- **Never write to `GeneratedField`s** (`effective_day`, `effective_duration`,
+  `sort_instant`, the temporal bound columns).
 - **One act, one verb** — event type, its command and its projection column share
   one verb, and column is `<act>_at`: nullable `DateTimeField` whose null is live
   state. See [Naming](docs/event-retention.md#naming).
@@ -1490,8 +1489,6 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   POST at same URL (which is what lets `?origin=` ride through confirmation for
   free); write them as one `confirm_and_remove()` call. Anything else that changes
   state is POST-only.
-- **Signals handle side-effects** — do not manually recalculate
-  `LegacyPurchase.num_purchases`.
 - **A list's columns are the person's** — a list column states a `key` and,
   where a person may not turn it off, `hideable=False`; `hidden_by_default`
   starts one off. `ListColumnChoice` holds the choice and

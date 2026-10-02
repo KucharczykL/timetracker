@@ -46,14 +46,14 @@ def legacy_row(library: Model, *games: Model, **facts: Any) -> Any:
 
 
 def link_game(row: Any, game: Model) -> None:
-    """One more game; recounted as the signal did."""
+    """Link one more game; recount."""
     row.games.add(game.pk)
     type(row)._default_manager.filter(pk=row.pk).update(num_purchases=row.games.count())
 
 
 @pytest.fixture
 def legacy_purchase(db):
-    """The historical model, its tables made for this test."""
+    """The historical model, tables made per test."""
     if not connection.in_atomic_block:
         pytest.fail(
             "legacy_purchase needs the test's own transaction: a flush "

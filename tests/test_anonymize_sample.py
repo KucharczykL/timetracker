@@ -732,7 +732,7 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertEqual(secret.name, "Real Secret Title")  # source DB untouched
 
     def test_removed_game_is_dumped_with_its_events(self):
-        """A removed game owes a date offset like any other."""
+        """A removed game owes a date offset."""
         game_purchase = _build_dataset()
         library = game_purchase.library
         shelved = Game.objects.create(library=library, name="Shelved Game")
