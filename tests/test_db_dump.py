@@ -107,16 +107,13 @@ def test_a_dump_is_named_for_its_utc_second(tooling, tmp_path):
     )
 
 
-def _write_archive(content: bytes = b"PGDMP"):
-    def write(command, **kwargs):
-        kwargs["stdout"].write(content)
-
-    return write
+def _write_archive(command, **kwargs):
+    kwargs["stdout"].write(b"PGDMP")
 
 
 def test_a_finished_transfer_leaves_only_the_dump(tooling, monkeypatch, tmp_path):
     destination = tmp_path / "dumps" / "timetracker-2026-08-28T170409Z.dump"
-    monkeypatch.setattr(tooling, "run", _write_archive())
+    monkeypatch.setattr(tooling, "run", _write_archive)
 
     assert tooling.fetch(_source(tooling), destination) == destination
     assert destination.read_bytes() == b"PGDMP"
@@ -182,7 +179,7 @@ def test_concurrent_fetches_never_share_a_partial(tooling, monkeypatch, tmp_path
 
 def test_a_filesystem_without_hard_links_gets_a_copy(tooling, monkeypatch, tmp_path):
     destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
-    monkeypatch.setattr(tooling, "run", _write_archive())
+    monkeypatch.setattr(tooling, "run", _write_archive)
     monkeypatch.setattr(
         tooling.os, "link", Mock(side_effect=PermissionError("no hard links"))
     )
@@ -194,7 +191,7 @@ def test_a_filesystem_without_hard_links_gets_a_copy(tooling, monkeypatch, tmp_p
 
 def test_a_copy_that_fails_keeps_the_fetched_dump(tooling, monkeypatch, tmp_path):
     destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
-    monkeypatch.setattr(tooling, "run", _write_archive())
+    monkeypatch.setattr(tooling, "run", _write_archive)
     monkeypatch.setattr(
         tooling.os, "link", Mock(side_effect=PermissionError("no hard links"))
     )
@@ -215,7 +212,7 @@ def test_a_partial_that_stays_does_not_fail_the_fetch(
     tooling, monkeypatch, tmp_path, capsys
 ):
     destination = tmp_path / "timetracker-2026-08-28T170409Z.dump"
-    monkeypatch.setattr(tooling, "run", _write_archive())
+    monkeypatch.setattr(tooling, "run", _write_archive)
     unlink = Path.unlink
 
     def refuse_the_partial(path, *args, **kwargs):
@@ -236,7 +233,7 @@ def test_fetch_names_a_new_dump_in_the_dump_directory(
     isolated_configuration.setenv("DUMP_DIR", str(tmp_path))
     isolated_configuration.setattr(tooling, "production_source", lambda: None)
     isolated_configuration.setattr(tooling, "fetch_command", lambda source: [])
-    isolated_configuration.setattr(tooling, "run", _write_archive())
+    isolated_configuration.setattr(tooling, "run", _write_archive)
     isolated_configuration.setattr(sys, "argv", ["db_dump.py", "fetch"])
 
     tooling.main()
