@@ -54,3 +54,44 @@ def test_a_missing_normalize_file_is_refused_before_the_restore(tooling):
             database_url="postgresql://timetracker@127.0.0.1:1/timetracker",
             normalize=Path("no-such-file.sql"),
         )
+
+
+def test_each_database_is_round_tripped_before_the_compare(tooling, monkeypatch):
+    """A constraint the copy gains must take the trip."""
+    calls = []
+
+    def restore(dump, *, database, database_url):
+        calls.append(("restore", database))
+        return database
+
+    def manage(*arguments, database_url):
+        calls.append(("manage", arguments[0], database_url))
+
+    def create_database(database, database_url):
+        calls.append(("create", database))
+        return database
+
+    def round_trip(url, *, database, database_url):
+        calls.append(("round_trip", database))
+        return f"{database}-tripped"
+
+    def compare(deployed_url, fresh_url, *, app):
+        calls.append(("compare", deployed_url, fresh_url))
+        return []
+
+    monkeypatch.setattr(tooling.db_dump, "restore", restore)
+    monkeypatch.setattr(tooling, "manage", manage)
+    monkeypatch.setattr(tooling, "create_database", create_database)
+    monkeypatch.setattr(tooling, "round_trip", round_trip)
+    monkeypatch.setattr(tooling, "compare", compare)
+    monkeypatch.setattr(tooling, "drop_database", lambda database, url: None)
+
+    tooling.verify(Path("x.dump"), database_url="unused", migrate=True)
+
+    deployed, fresh = tooling.DEPLOYED_DATABASE, tooling.FRESH_DATABASE
+    trips = [call for call in calls if call[0] == "round_trip"]
+    assert sorted(trips) == sorted([("round_trip", deployed), ("round_trip", fresh)])
+    assert calls.index(("manage", "migrate", deployed)) < calls.index(
+        ("round_trip", deployed)
+    )
+    assert calls[-1] == ("compare", f"{deployed}-tripped", f"{fresh}-tripped")

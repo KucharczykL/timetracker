@@ -871,12 +871,6 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertTrue(
             PurchaseValuation.objects.filter(library=outsider.library).exists()
         )
-        outsider_streams = set(
-            LibraryEvent.objects.filter(library=outsider.library).values_list(
-                "stream_id", flat=True
-            )
-        )
-
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
             call_command(
@@ -891,13 +885,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             item["fields"]["name"] for item in objects if item["model"] == "games.game"
         }
         self.assertNotIn("FOREIGN SECRET GAME", game_names)
-        self.assertFalse(
-            {str(stream) for stream in outsider_streams}
-            & {
-                str(item["pk"])
-                for item in _by_model(objects)["games.libraryeventstreamhead"]
-            }
-        )
+        self.assertEqual(len(_by_model(objects)["games.libraryeventstreamhead"]), 1)
         for item in objects:
             if item["model"] in {
                 "games.device",
@@ -947,6 +935,40 @@ class ReassignedIdentityTest(TransactionTestCase):
                 _uuid_moment(identity(event)),
                 _parsed_moment(event["fields"]["recorded_at"]),
             )
+
+    def test_the_stream_head_mints_at_the_first_event(self):
+        _build_dataset()
+        owner = get_user_model().objects.get(username="sample-source")
+        #: Jittered, still before the epoch.
+        _record(
+            owner,
+            Playthrough.objects.get(player_game__game__name="Game 1"),
+            DurationOnlyTiming(day=date(2005, 3, 1), duration=timedelta(hours=1)),
+        )
+        source_head = owner.library.event_stream_head.pk
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=11, output=output
+            )
+            by_model = _by_model(_load_output(output))
+
+        (head,) = by_model["games.libraryeventstreamhead"]
+        first_event = min(
+            _parsed_moment(event["fields"]["recorded_at"])
+            for event in by_model["games.libraryevent"]
+        )
+        self.assertEqual(UUID(str(head["pk"])).version, 7)
+        self.assertNotEqual(UUID(str(head["pk"])), source_head)
+        self.assertLess(first_event, FIXED_EPOCH)
+        self.assertEqual(_uuid_moment(head["pk"]), first_event)
+        self.assertEqual(
+            {
+                str(event["fields"]["stream"])
+                for event in by_model["games.libraryevent"]
+            },
+            {str(head["pk"])},
+        )
 
     def test_output_preserves_uuid_ordering(self):
         by_model = self._dump()

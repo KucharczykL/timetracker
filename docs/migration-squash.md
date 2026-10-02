@@ -293,12 +293,12 @@ build named them differently and the two schemas would have differed by six
 strings forever. Renaming them on the deployment was one guarded `DO` block;
 entrenching the old names in the baseline would have been permanent.
 
-**Round-trip the fresh build before comparing.** A catalog text is not a
-fixed point under dump and restore: PostgreSQL re-parses a CHECK's
-`(ARRAY[...])::text[]` into per-element casts. The deployment's copy took
-that trip; `verify_baseline.py` sends the fresh build through pg_dump and
-pg_restore too, so a difference is a difference in schema and never in
-spelling.
+**Round-trip both builds before comparing.** Dump and restore rewrite a
+CHECK's `(ARRAY[...])::text[]` into per-element casts once; a second trip
+changes nothing. A restore has taken that trip, but whatever `--migrate`
+or `--normalize` adds afterwards has not. `verify_baseline.py` sends both
+databases through pg_dump and pg_restore after their last write, so a
+difference is a difference in schema and never in spelling.
 
 **Compare catalogs, not `pg_dump` text.** `pg_dump` writes a table's columns in
 the order they were added, so two databases holding the same schema produce
