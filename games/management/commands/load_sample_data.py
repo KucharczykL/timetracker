@@ -12,7 +12,7 @@ from django.core import serializers
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.serializers.base import DeserializationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Model
 
 from common.platform_icons import canonical_icon
@@ -155,6 +155,8 @@ class Command(BaseCommand):
                     StringIO(yaml.safe_dump(loadable, sort_keys=False)),
                 ):
                     deserialized.save(force_insert=True)
+                #: Deferred keys hold before the replay.
+                connection.check_constraints()
             except (DeserializationError, IntegrityError, ValueError) as error:
                 raise CommandError(
                     f"Sample fixture could not be loaded: {error}"

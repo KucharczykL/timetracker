@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        #: Checked at commit, as Django's own keys.
+        # Checked at commit, like Django's own keys.
         migrations.RunSQL(
             sql="ALTER TABLE games_libraryevent\n"
             "    ALTER CONSTRAINT library_event_stream_matches_library\n"

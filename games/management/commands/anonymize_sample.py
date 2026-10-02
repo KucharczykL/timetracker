@@ -328,7 +328,8 @@ class Command(BaseCommand):
         "Residual (accepted) traits of the output: cross-model dates are incoherent "
         "(a session can predate its game's purchase, dates may be in the future); row "
         "counts, per-platform split, currency multiset, real ExchangeRate rows and "
-        "preserved playtimes remain a distributional fingerprint. Fixture keeps prod "
+        "preserved playtimes remain a distributional fingerprint; the stream head "
+        "keeps its real id. Fixture keeps prod "
         "pks; load_sample_data rejects collisions instead of overwriting rows."
     )
 
@@ -415,6 +416,8 @@ class Command(BaseCommand):
                     name_overrides,
                     library_id=library.pk,
                 )
+                #: Deferred keys hold before the dump.
+                connection.check_constraints()
                 call_command(
                     "dumpdata",
                     *DUMP_LABELS,

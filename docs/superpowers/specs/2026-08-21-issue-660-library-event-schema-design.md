@@ -61,7 +61,8 @@ by the database:
   (id, library_id)`.
 
 An event cannot name another library's stream. Django has no composite-FK field,
-so this is named reversible raw SQL in migration `0023`.
+so this is named reversible raw SQL in the schema migration, now part of
+`0001_squashed_0006_remove_session`.
 
 ### `stream` is RESTRICT, `library` is CASCADE
 
@@ -131,15 +132,15 @@ convention for no gain.
 
 ### Rollback is allowed only while the tables are empty
 
-Migration `0023` is reversible so a branch can be abandoned, but reversing it
+The schema migration is reversible so a branch can be abandoned, but reversing it
 once events exist destroys the only copy of that history — projections are
 rebuilt *from* the stream. Its last operation is a guard whose forward direction
 is a no-op and whose reverse raises when either table has rows; being last, a
 reversal hits it before anything is dropped. The migration is atomic on
-PostgreSQL, so a refused reversal leaves the database at `0023`.
+PostgreSQL, so a refused reversal leaves the database where it was.
 
 That guard sits in the unapply path of every migration-rewind test fixture that
-migrates back past `0023`. Those pass because nothing has written an event; a
+migrates back past the schema migration. Those pass because nothing has written an event; a
 fixture that seeds events and then rewinds will hit the guard, which is the
 intended outcome.
 
@@ -222,11 +223,9 @@ reads the eight constraint *names* back from `pg_constraint`, because the
 composite FK is raw SQL that Django's migration state cannot see and nothing
 else would notice a misspelling in it before a rollback attempt.
 
-`tests/test_event_schema_migration.py` drives the migration executor across
-`0022 → 0023`: catalog data unchanged, both tables empty, clean reversal while
-empty, refused reversal once a head or event exists.
+The squash removed the test that drove the executor across this migration.
 
-`make sqlmigrate ARGS="games 0023_library_event_schema"` reads back the emitted
+`make sqlmigrate ARGS="games 0001_squashed_0006_remove_session"` reads back the emitted
 DDL, which is the only place the composite FK and the identity columns' absent
 defaults are visible together.
 

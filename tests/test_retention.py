@@ -41,6 +41,7 @@ from games.models import (
     LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
+    LibraryEventStreamHead,
     Platform,
     PlayerGame,
     PlayerSession,
@@ -567,25 +568,44 @@ def test_purging_a_library_takes_its_projection_rows_with_it(owned_library):
     assert not Game.objects.filter(pk=game.pk).exists()
 
 
-def test_purging_a_library_takes_an_addon_and_its_events(owned_library):
+def track_a_game_with_an_addon(library):
     """A parent key leaves the delete unordered."""
     #: Needs untracked_games, or TrackGame writes nothing.
-    user = owned_library.user
-    main = Game.objects.create(library=owned_library, name="Main")
-    Game.objects.create(
-        library=owned_library, name="DLC", kind=GameKind.DLC, parent=main
-    )
+    main = Game.objects.create(library=library, name="Main")
+    Game.objects.create(library=library, name="DLC", kind=GameKind.DLC, parent=main)
     dispatch(
         TrackGame(game_id=main.pk),
-        actor=user,
-        library=owned_library,
+        actor=library.user,
+        library=library,
         idempotency_key=str(uuid.uuid7()),
     )
+    assert LibraryEvent.objects.filter(library=library).exists()
+
+
+def test_purging_a_library_takes_an_addon_and_its_events(owned_library):
+    track_a_game_with_an_addon(owned_library)
 
     with transaction.atomic(), purging_library():
-        user.delete()
+        owned_library.user.delete()
 
     assert not LibraryEvent.objects.filter(library=owned_library).exists()
+    assert not LibraryEventStreamHead.objects.filter(library=owned_library).exists()
+    assert not Game.objects.filter(library=owned_library).exists()
+
+
+def test_the_purge_command_takes_an_addon(owned_library):
+    """Through the command, committed."""
+    track_a_game_with_an_addon(owned_library)
+    user = owned_library.user
+
+    call_command(
+        "purge_user_library",
+        user=user.username,
+        confirm=user.username,
+        stdout=StringIO(),
+    )
+
+    assert not LibraryEventStreamHead.objects.filter(library=owned_library).exists()
     assert not Game.objects.filter(library=owned_library).exists()
 
 
