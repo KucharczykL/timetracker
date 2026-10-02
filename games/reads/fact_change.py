@@ -22,23 +22,34 @@ class FactChange[T]:
     stated: T
 
 
+#: One fact out of one event; None unreadable.
+type EventRead[T] = Callable[[LibraryEvent], T | None]
+
+
+def payload_fact[T](
+    key: PayloadKey, parse: Callable[[object], T | None]
+) -> EventRead[T]:
+    """The fact one payload key states."""
+    return lambda event: parse(event.payload.get(key))
+
+
 @dataclass(frozen=True, slots=True)
 class Fact[T]:
     """One fact; `initial` None reads the creation."""
 
     created: EventSpec[Any]
     changed: EventSpec[Any]
-    key: PayloadKey
-    read: Callable[[object], T | None]
+    read: EventRead[T]
     initial: T | None = None
 
 
 def _value[T](fact: Fact[T], event: LibraryEvent) -> T:
-    value = fact.read(event.payload.get(fact.key))
+    value = fact.read(event)
     if value is None:
         raise RowUnreadable(
-            f"event {event.pk} at sequence {event.sequence} of library "
-            f"{event.library_id} states {fact.key} {event.payload.get(fact.key)!r}"
+            f"event {event.pk} ({event.event_type}) at sequence {event.sequence} "
+            f"of library {event.library_id} states no readable fact: "
+            f"{event.payload!r}"
         )
     return value
 

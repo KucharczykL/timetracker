@@ -107,6 +107,7 @@ from games import (  # noqa: F401
     bulk_game_edit,
     bulk_platform_edit,
     bulk_playthrough_acts,
+    bulk_purchase_edit,
     bulk_reclassification,
     bulk_removal,
     bulk_session_edit,

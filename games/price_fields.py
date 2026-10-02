@@ -33,6 +33,8 @@ class PriceChoice(StrEnum):
     UNKNOWN = "unknown"
     #: Add to library only: no purchase.
     NONE = "none"
+    #: Bulk Edit only: each row's own.
+    KEEP = "keep"
 
 
 PRICE_LABELS: Mapping[PriceChoice, str] = {
@@ -40,6 +42,7 @@ PRICE_LABELS: Mapping[PriceChoice, str] = {
     PriceChoice.FREE: "Free",
     PriceChoice.UNKNOWN: "Unknown",
     PriceChoice.NONE: "No purchase",
+    PriceChoice.KEEP: "Keep",
 }
 
 #: Literal, so Tailwind finds them.
@@ -159,6 +162,8 @@ class PriceFields(forms.Form):
                 return UNKNOWN_PRICE
             case PriceChoice.NONE:
                 return None
+            case PriceChoice.KEEP:
+                raise ValueError("Keep states no price; read it first.")
 
 
 def price_group() -> FormFieldGroup:

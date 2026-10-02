@@ -149,6 +149,7 @@ class RestatedPurchase(NamedTuple):
     appended: bool
     #: None where no refund act was appended.
     copy_end: CopyEnd | None
+    result: CommandResult
 
 
 def restate_purchase(
@@ -163,6 +164,8 @@ def restate_purchase(
     purchased: ActStatement | None = None,
     refund: Restated[ActStatement] = KEEP,
     correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> RestatedPurchase:
     """One dispatch; KEEP keeps, None voids."""
     with answered(SUBJECT):
@@ -179,12 +182,16 @@ def restate_purchase(
             ),
             actor=actor,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
     if result.outcome is not CommandOutcome.APPENDED:
-        return RestatedPurchase(appended=False, copy_end=None)
+        return RestatedPurchase(appended=False, copy_end=None, result=result)
     event_types = appended_types(result)
     revalue_after(actor, event_types)
-    return RestatedPurchase(appended=True, copy_end=_copy_end_of(event_types))
+    return RestatedPurchase(
+        appended=True, copy_end=_copy_end_of(event_types), result=result
+    )
 
 
 def _copy_end_of(event_types: frozenset[EventType]) -> CopyEnd | None:
@@ -268,9 +275,9 @@ def undo_refund(
             correlation_id=correlation_id,
         )
     if result.outcome is not CommandOutcome.APPENDED:
-        return RestatedPurchase(appended=False, copy_end=None)
+        return RestatedPurchase(appended=False, copy_end=None, result=result)
     return RestatedPurchase(
-        appended=True, copy_end=_copy_end_of(appended_types(result))
+        appended=True, copy_end=_copy_end_of(appended_types(result)), result=result
     )
 
 

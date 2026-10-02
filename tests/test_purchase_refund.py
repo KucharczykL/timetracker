@@ -20,6 +20,7 @@ from games.commands.playergame import RemovePlayerGame
 from games.commands.playersession import UNSTORABLE_NOTE
 from games.commands.purchase import (
     ENTRY_OF_ANOTHER_GAME,
+    KIND_UNDER_A_REFUND,
     MOVE_A_REFUNDED_PURCHASE,
     PLAYER_GAME_REMOVED,
     PURCHASE_AFTER_REFUND,
@@ -28,6 +29,7 @@ from games.commands.purchase import (
     REFUND_BEFORE_PURCHASE,
     REFUNDED_BEFORE_BOUGHT,
     RELEASE_REMOVED,
+    TAKE_REFUND_BACK,
     TOO_PRECISE_AMOUNT,
     CorrectPurchaseRefund,
     DescribePurchase,
@@ -370,15 +372,6 @@ def test_a_second_refund_couples_afresh(owned_library, entry, purchase):
     assert _fresh(entry).access_ended == JULY
 
 
-def test_a_kind_change_keeps_the_end_the_refunds(owned_library, entry, purchase):
-    _dispatch(owned_library, _refund(purchase))
-    _dispatch(owned_library, DescribePurchase(purchase.pk, kind="season_pass"))
-
-    _dispatch(owned_library, _void(purchase))
-
-    assert _fresh(entry).access_end_recorded_at is None
-
-
 def test_an_access_change_keeps_the_end_the_refunds(owned_library, entry, purchase):
     _dispatch(owned_library, _refund(purchase))
     _dispatch(owned_library, DescribeEntry(entry_id=entry.pk, access="borrowed"))
@@ -402,6 +395,26 @@ def test_a_refunded_purchase_does_not_move(owned_library, graph, purchase):
     )
 
     assert refused.sentence == MOVE_A_REFUNDED_PURCHASE
+
+
+def test_a_refunded_purchase_keeps_its_kind(owned_library, purchase):
+    _dispatch(owned_library, _refund(purchase))
+
+    refused = _refused(owned_library, DescribePurchase(purchase.pk, kind="upgrade"))
+
+    assert refused.sentence == KIND_UNDER_A_REFUND
+
+
+def test_a_kind_changes_beside_the_refunds_void(owned_library, entry, purchase):
+    _dispatch(owned_library, _refund(purchase))
+
+    _dispatch(
+        owned_library,
+        DescribePurchase(purchase.pk, kind="upgrade", refund=TAKE_REFUND_BACK),
+    )
+
+    assert _fresh(purchase).kind == "upgrade"
+    assert _fresh(entry).access_end_recorded_at is None
 
 
 def test_a_purchase_day_after_the_refund_is_refused(owned_library, purchase):
@@ -689,7 +702,7 @@ def test_the_write_answers_a_copy_end_left_alone(owned_library, entry, purchase)
 
     restated = _restate(purchase, refund=ActStatement(JUNE))
 
-    assert restated == RestatedPurchase(appended=True, copy_end=CopyEnd.LEFT)
+    assert (restated.appended, restated.copy_end) == (True, CopyEnd.LEFT)
 
 
 # --- the key a refund reads -----------------------------------------------

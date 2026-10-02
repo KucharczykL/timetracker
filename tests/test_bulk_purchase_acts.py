@@ -1,24 +1,45 @@
 """Purchases edited and removed in bulk, and the Undo of each."""
 
+import datetime
 import json
+import logging
 import uuid
+from decimal import Decimal
 
 import pytest
 from bulk_posts import act_url, posted, press, selection
-from django.http import Http404
+from django.http import Http404, QueryDict
 from django.urls import reverse
 from entries import record_entry
-from purchases import record_purchase, remove_purchase
+from purchases import record_purchase, refund_purchase, remove_purchase
 
+from common.components.unset_field import unset_input_name
 from common.criteria import FilterError
 from games.bulk_actions import BULK_ACTIONS
-from games.bulk_parts import EventRows
+from games.bulk_parts import Control, EventRows, RowOutcome
+from games.bulk_purchase_edit import (
+    EDIT_CHOICE,
+    NOT_EDITED_BY_THIS_BATCH,
+    PURCHASE_EDIT,
+    PurchaseEditStatement,
+)
+from games.bulk_purchase_edit import NOTHING_STATED as EDIT_NOTHING_STATED
+from games.bulk_purchase_edit import PURCHASE_REMOVED as EDIT_PURCHASE_REMOVED
 from games.bulk_purchases import PURCHASE_GONE
 from games.bulk_removal import REMOVE_PURCHASE
-from games.models import Game, LibraryEntry, Platform, Purchase
-from games.views.bulk import STATEMENT_FIELD, TOKEN_FIELD
+from games.commands.endpoint import ActStatement
+from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
+from games.events.dispatch import CommandRejected
+from games.models import Game, LibraryEntry, Platform, Purchase, PurchaseKind
+from games.price_fields import AMOUNT_REQUIRED
+from games.reads.fact_change import FactChange
+from games.reads.purchase_facts import purchase_fact_changes
+from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
 from games.writes import revaluation
-from timetracker.temporal import TemporalValue
+from games.writes.answers import CommandFailed
+from games.writes.playergame import new_correlation_id
+from games.writes.purchase import restate_purchase
+from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -185,3 +206,288 @@ def test_an_undo_of_another_librarys_purchase_is_absent(
             idempotency_key=str(uuid.uuid7()),
             correlation_id=uuid.uuid7(),
         )
+
+
+# ── Edit: the question ──────────────────────────────────────────────────────
+
+
+def _control(**answers: str) -> dict[str, str]:
+    """`unset_x` is x's ⊘; `purchased` a day."""
+    fields: dict[str, str] = {}
+    for key, value in answers.items():
+        if key == "purchased":
+            day = datetime.date.fromisoformat(value)
+            name = f"{CHOICE_FIELD}-purchased"
+            fields[temporal_input_name(name, "kind")] = "date"
+            fields[temporal_input_name(name, "start_year")] = str(day.year)
+            fields[temporal_input_name(name, "start_month")] = str(day.month)
+            fields[temporal_input_name(name, "start_day")] = str(day.day)
+        elif key.startswith("unset_"):
+            fields[unset_input_name(f"{CHOICE_FIELD}-{key.removeprefix('unset_')}")] = (
+                value
+            )
+        else:
+            fields[f"{CHOICE_FIELD}-{key}"] = value
+    fields.setdefault(f"{CHOICE_FIELD}-price", "keep")
+    return fields
+
+
+def _settle(owned_library, **answers: str) -> PurchaseEditStatement:
+    post = QueryDict(mutable=True)
+    post.update(_control(**answers))
+    return PurchaseEditStatement.decode(EDIT_CHOICE.settle(owned_library, post))
+
+
+def _edit(client, *purchases, **answers: str) -> str:
+    url = act_url(PURCHASE_EDIT)
+    fields = posted(client.post(url, {STATEMENT_FIELD: selection(*purchases)}))
+    fields.update(_control(**answers))
+    fields.pop(CHOICE_FIELD, None)
+    client.post(url, fields)
+    return fields[TOKEN_FIELD]
+
+
+def _facts(purchase) -> tuple[str, Decimal | None, str, str | None, str]:
+    purchase.refresh_from_db()
+    return (
+        purchase.kind,
+        purchase.amount,
+        purchase.currency,
+        purchase.purchased.canonical if purchase.purchased else None,
+        purchase.note,
+    )
+
+
+def test_edit_is_declared():
+    assert BULK_ACTIONS["purchase.edit"] is PURCHASE_EDIT
+    assert PURCHASE_EDIT.undo_rows == EventRows(Purchase)
+    assert PURCHASE_EDIT.title.many.format(count=2) == "Edit 2 purchases"
+
+
+def test_the_control_keeps_what_the_rows_hold(owned_library, first, second):
+    rows = PURCHASE_EDIT.resolve(owned_library, [first.pk, second.pk]).rows
+
+    offered = PURCHASE_EDIT.choice.offer(owned_library, rows, CHOICE_FIELD)
+
+    assert isinstance(offered, Control)
+    markup = str(offered.node)
+    assert "Keep: mixed" in markup
+    assert 'value="keep"' in markup
+    assert "group/price" in markup
+
+
+def test_the_control_names_one_price_the_rows_share(owned_library, first):
+    rows = PURCHASE_EDIT.resolve(owned_library, [first.pk]).rows
+
+    offered = PURCHASE_EDIT.choice.offer(owned_library, rows, CHOICE_FIELD)
+
+    assert isinstance(offered, Control)
+    assert "Keep: 19.99 EUR" in str(offered.node)
+
+
+def test_settling_refuses_a_form_that_states_nothing(owned_library):
+    with pytest.raises(CommandRejected) as refused:
+        _settle(owned_library, kind="")
+
+    assert refused.value.sentence == EDIT_NOTHING_STATED
+
+
+def test_paid_needs_an_amount(owned_library):
+    with pytest.raises(CommandRejected) as refused:
+        _settle(owned_library, price="paid", amount="", currency="EUR")
+
+    assert AMOUNT_REQUIRED in str(refused.value.sentence)
+
+
+def test_settling_reads_each_price(owned_library):
+    paid = _settle(owned_library, price="paid", amount="12.5", currency="eur")
+    free = _settle(owned_library, price="free", currency="CZK")
+    unknown = _settle(owned_library, price="unknown")
+
+    assert paid.price == StatedPrice(Decimal("12.5"), "EUR")
+    assert free.price == StatedPrice(Decimal(0), "CZK")
+    assert unknown.price == UNKNOWN_PRICE
+
+
+def test_settling_states_a_cleared_note_and_a_day(owned_library):
+    settled = _settle(owned_library, unset_note="1", purchased="2020-05-04")
+
+    assert settled == PurchaseEditStatement(
+        None, None, TemporalValue.parse("2020-05-04"), ""
+    )
+
+
+def test_a_statement_round_trips():
+    statement = PurchaseEditStatement(
+        PurchaseKind.UPGRADE,
+        UNKNOWN_PRICE,
+        TemporalValue.parse("2020-05-04"),
+        "boxed",
+    )
+
+    assert PurchaseEditStatement.decode(statement.encode()) == statement
+
+
+@pytest.mark.parametrize(
+    "carried",
+    [
+        '{"kind": "dlc"}',
+        '{"note": 3}',
+        "{}",
+        '{"status": "x"}',
+        '{"price": {"amount": "x", "currency": "EUR"}}',
+        '{"price": {"amount": 3, "currency": "EUR"}}',
+        '{"price": null}',
+        '{"purchased": "someday"}',
+    ],
+)
+def test_an_unreadable_statement_is_refused(carried):
+    with pytest.raises(CommandRejected):
+        PurchaseEditStatement.decode(carried)
+
+
+# ── Edit and its Undo ───────────────────────────────────────────────────────
+
+
+def test_edit_states_the_facts_and_keeps_empty_fields(logged_in, first, second):
+    _edit(logged_in, first, second, price="free", currency="EUR")
+
+    assert _facts(first) == ("game", Decimal("0.00"), "EUR", "2021-03-01", "")
+    assert _facts(second) == ("season_pass", Decimal("0.00"), "EUR", None, "")
+
+
+def test_edit_states_kind_day_and_note_together(logged_in, first):
+    _edit(logged_in, first, kind="upgrade", purchased="2020-05-04", note="boxed")
+
+    assert _facts(first) == ("upgrade", Decimal("19.99"), "EUR", "2020-05-04", "boxed")
+
+
+def test_a_day_keeps_the_rows_own_note(logged_in, copy):
+    purchase = record_purchase(
+        copy, purchased=TemporalValue.parse("2021-03-01"), purchase_note="receipt"
+    )
+
+    _edit(logged_in, purchase, purchased="2020-05-04")
+
+    purchase.refresh_from_db()
+    assert purchase.purchased == TemporalValue.parse("2020-05-04")
+    assert purchase.purchase_note == "receipt"
+
+
+def test_a_row_already_so_is_unchanged(owned_user, first):
+    outcome = PURCHASE_EDIT.run(
+        owned_user,
+        first,
+        choice=PurchaseEditStatement(None, None, first.purchased, None).encode(),
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=uuid.uuid7(),
+    )
+
+    assert outcome is RowOutcome.UNCHANGED
+
+
+def test_undo_states_every_fact_before_the_batch(logged_in, first, second):
+    token = _edit(
+        logged_in,
+        first,
+        second,
+        kind="upgrade",
+        price="unknown",
+        purchased="2020-05-04",
+        unset_note="1",
+    )
+
+    _undo(logged_in, token)
+
+    assert _facts(first) == ("game", Decimal("19.99"), "EUR", "2021-03-01", "")
+    assert _facts(second) == ("season_pass", None, "", None, "")
+
+
+def _edit_back(owned_user, purchase, token):
+    return PURCHASE_EDIT.inverse(
+        owned_user,
+        purchase.pk,
+        undoes=uuid.UUID(token),
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=uuid.uuid7(),
+    )
+
+
+def test_an_undo_finds_the_facts_already_back(logged_in, owned_user, first):
+    token = _edit(logged_in, first, kind="upgrade")
+    _undo(logged_in, token)
+
+    assert _edit_back(owned_user, first, token) is RowOutcome.UNCHANGED
+
+
+def test_an_undo_writes_over_a_later_change(
+    logged_in, owned_user, first, capture_games_logger
+):
+    token = _edit(logged_in, first, note="boxed")
+    restate_purchase(owned_user, first, note="later", correlation_id=uuid.uuid7())
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        _undo(logged_in, token)
+
+    assert _facts(first)[4] == ""
+    assert any("over later" in record.getMessage() for record in captured.records)
+
+
+def test_an_undo_of_a_batch_that_changed_nothing_is_refused(owned_user, first):
+    with pytest.raises(CommandFailed, match=NOT_EDITED_BY_THIS_BATCH):
+        _edit_back(owned_user, first, str(uuid.uuid7()))
+
+
+def test_an_undo_refuses_a_purchase_removed_since(logged_in, owned_user, first):
+    token = _edit(logged_in, first, kind="upgrade")
+    remove_purchase(first)
+
+    with pytest.raises(CommandFailed, match=EDIT_PURCHASE_REMOVED):
+        _edit_back(owned_user, first, token)
+    assert _facts(first)[0] == "upgrade"
+
+
+def test_a_refunded_purchase_keeps_its_kind_and_the_batch_goes_on(
+    logged_in, first, second
+):
+    refund_purchase(first, TemporalValue.parse("2021-04-01"))
+
+    _edit(logged_in, first, second, kind="upgrade")
+
+    assert _facts(first)[0] == "game"
+    assert _facts(second)[0] == "upgrade"
+
+
+# ── The reader ──────────────────────────────────────────────────────────────
+
+
+def test_the_reader_reads_the_creation_for_each_fact(owned_user, owned_library, copy):
+    purchase = record_purchase(
+        copy,
+        purchased=TemporalValue.parse("2021-03-01"),
+        purchase_note="receipt",
+        note="first",
+    )
+    batch = new_correlation_id()
+    restate_purchase(
+        owned_user,
+        purchase,
+        kind="upgrade",
+        price=UNKNOWN_PRICE,
+        note="second",
+        purchased=ActStatement(TemporalValue.parse("2020-05-04"), "receipt"),
+        correlation_id=batch,
+    )
+
+    changes = purchase_fact_changes(owned_library, purchase.pk, batch)
+
+    assert changes.kind == FactChange(PurchaseKind.GAME, PurchaseKind.UPGRADE)
+    assert changes.price == FactChange(
+        StatedPrice(Decimal("19.99"), "EUR"), UNKNOWN_PRICE
+    )
+    assert changes.purchased == FactChange(
+        ActStatement(TemporalValue.parse("2021-03-01"), "receipt"),
+        ActStatement(TemporalValue.parse("2020-05-04"), "receipt"),
+    )
+    assert changes.note == FactChange("first", "second")

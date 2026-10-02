@@ -441,24 +441,30 @@ def date_time_presentation_for_request(request: HttpRequest) -> DateTimePresenta
     if isinstance(cached, DateTimePresentation):
         return cached
 
+    locale = getattr(request, "_date_format_locale", None)
+    presentation = date_time_presentation_for_user(
+        getattr(request, "user", None),
+        locale=locale if isinstance(locale, str) else None,
+    )
+    setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
+    return presentation
+
+
+def date_time_presentation_for_user(
+    user: object, *, locale: str | None = None
+) -> DateTimePresentation:
+    """The user's presentation in the active zone."""
     active_timezone = django_timezone.get_current_timezone()
     zone = (
         active_timezone
         if isinstance(active_timezone, ZoneInfo)
         else ZoneInfo(django_timezone.get_current_timezone_name())
     )
-    locale = getattr(request, "_date_format_locale", None)
-    profile_id = resolve_str_for_user(getattr(request, "user", None), "DATETIME_FORMAT")
-    display_mode_raw = resolve_str_for_user(
-        getattr(request, "user", None), "SESSION_TIME_ZONE_DISPLAY"
-    )
-    presentation = DateTimePresentation(
+    profile_id = resolve_str_for_user(user, "DATETIME_FORMAT")
+    display_mode_raw = resolve_str_for_user(user, "SESSION_TIME_ZONE_DISPLAY")
+    return DateTimePresentation(
         profile=date_time_format_profile(profile_id),
-        locale=locale
-        if isinstance(locale, str)
-        else get_language() or settings.LANGUAGE_CODE,
+        locale=locale or get_language() or settings.LANGUAGE_CODE,
         timezone=zone,
         session_time_zone_display="own" if display_mode_raw == "own" else "account",
     )
-    setattr(request, _REQUEST_CACHE_ATTRIBUTE, presentation)
-    return presentation

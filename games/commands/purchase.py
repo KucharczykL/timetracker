@@ -102,6 +102,7 @@ REFUNDED_BEFORE_BOUGHT = (
     "This purchase was refunded before it was bought. Check the days."
 )
 REFUND_OVERTAKEN = "This refund changed since; nothing was undone."
+KIND_UNDER_A_REFUND = "Take the refund back before changing what this purchase bought."
 MOVE_A_REFUNDED_PURCHASE = (
     "This purchase was refunded. Take the refund back before moving it to another copy."
 )
@@ -631,6 +632,15 @@ class DescribePurchase(Command):
         )
         events: list[NewEvent] = []
         if kind is not None and kind != purchase.kind:
+            #: A game refund ends its copy.
+            if stated(purchase, PURCHASE_REFUND) is not None and not isinstance(
+                self.refund, RefundTakenBack
+            ):
+                raise CommandRejected(
+                    f"Purchase {purchase.pk} states a refund, which a kind "
+                    f"{purchase.kind} -> {kind} would leave misread.",
+                    sentence=KIND_UNDER_A_REFUND,
+                )
             events.append(purchase_kind_changed(purchase.pk, kind))
         if name is not None and name != purchase.name:
             events.append(purchase_name_changed(purchase.pk, name))
