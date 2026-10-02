@@ -682,9 +682,14 @@ pass (one would refuse the loader tests' synthetic legacy rows and add
 thousands of appends to every load), P4 leaves the fixture legacy since
 every reader still reads legacy rows, and P5, which drops the legacy
 table, ships the regenerated fixture with its loader tests rewritten to
-the new shape. The anonymizer shifts an entry's and a purchase's days as
-it shifts a purchase's today, by the row's own jitter, and randomises
-which entry a purchase names as it randomises the through table today.
+the new shape. The anonymizer shifts an entry's and a purchase's days by the game's
+offset (both aggregates map through `game_id_by_aggregate`), redraws
+amounts, clears names, notes and `source_metadata` (so the sample shows
+no conversion review), and re-mints the Edition, Release and DLC Game
+rows the entry events reference. It does not randomise which copy a
+purchase names: re-pointing would break the refund adjacency
+`refund_owns_the_end` reads and move a purchase to another game's copy,
+and it hides nothing the copies do not already say.
 
 ## Screens and reads
 
@@ -927,7 +932,7 @@ edition word.
 | P5a | #734, #735, the read half of #1266 | every read, since the stats links point into the Purchases list and a member between the two would emit links its own list refuses: `PurchaseFilter` on the projection and the `purchases` mode on it, `purchase_filter`, `purchase_count` and `purchase_price_total` on the new paths, the saved presets rewritten once, the Purchases list reading the projection with the wave's columns and facets and no row act yet, every statistic through entries, purchases and valuations, `stats_links` with their parity tests, #1157's readers, and the parity command that judges the new readers against P4's snapshot (a command of its own, since P5c drops the table `verify_purchase_conversion` reads) |
 | P5b | #724 | every write: the purchase segment on Add to library, Add purchase on a copy, Edit purchase, one-click Refund with sequence-keyed Undo, Remove and Restore through commands, the Purchases list's row menu, Game detail's purchases, and the legacy add, edit, view, Split and Refund routes, `PurchaseForm` and `add_purchase.ts` retired; inside the stack P5a still writes through the legacy form, so a purchase added there shows nowhere until P5b, a state `main` never holds |
 | P5b2 | the rest of #1266 | the Purchases list selectable, tray Edit and Remove (`purchase.edit`, `purchase.remove`, `EventRows`), the Conversion review section with its Hide toggle, and the Library tab's Purchases column |
-| P5c | #736 | `LegacyPurchase`, its tables, routes, signals and float cache dropped, P4's `verify_purchase_conversion` and reconciliation with them, the fixture regenerated |
+| P5c | #736 | `LegacyPurchase`, its tables, routes, signals and float cache dropped and the fixture regenerated; the pass, `verify-purchase-conversion` and its reconciliation **stay**, reading the historical model off migration state and refusing once the drop has run, since `0031` imports the pass and the deploy day needs the rolled-back preflight and a fresh snapshot of that day's dump; #1448 removes them at the squash |
 
 Each member passes the full gate on its own against a fresh database.
 Each gets its own specification and plan before code. An issue delivered
@@ -1028,10 +1033,13 @@ inside a member says so in its body and closes with it.
 One image carries the stack. The container's startup `migrate` runs the
 pass; the pre-deploy dump is the rollback. The pass's migration is
 `RunPython` alone, so the rehearsal on that day's dump is: restore it;
-`make migrate ARGS="games <the migration before the pass>"`; `make
-verify-purchase-conversion ARGS="--user NAME"` (rolled back); `ARGS="--confirm
-NAME"` (committed, reconciliation printed); `make migrate`, which appends
-nothing, proving idempotency on real data; then `make
+`make migrate ARGS="games 0030_purchasevaluation"`; `make
+verify-purchase-conversion ARGS="--user NAME --snapshot S"` (rolled back,
+a fresh legacy snapshot of that day); `ARGS="--confirm NAME"` (committed,
+reconciliation printed); `make migrate ARGS="games
+0034_conversion_review_hidden"`, which appends nothing, proving
+idempotency on real data; `make migrate` (the drop); `make
+verify-purchase-statistics ARGS="--snapshot S"`; then `make
 verify-replay-parity`, `make verify-dump`, `make verify-baseline
 ARGS="--migrate"`. After it: the review surface, the first valuation
 refresh and its printed totals; the fixture already shipped with P5. The valuation
@@ -1099,6 +1107,7 @@ runs on it.
 - #1437, move a purchase to another copy (after P5b)
 - #1443, remove the one-time Conversion review rows after P5c, keeping
   `conversion_review` and `Category`
+- #1448, remove the conversion pass and its gates at the squash
 - #1432, the Library page as the one place for purchase data gaps, later
   a library-wide audit screen that absorbs P5b's review surface and
   #1418's report; after P5b, outside the stack, mockup first
