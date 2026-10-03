@@ -294,6 +294,7 @@ def _record_playtime(library: UserLibrary, *, actor: User, run: Playthrough) -> 
                 provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                 playthrough_ids=(run.pk,),
                 device_id=None,
+                release_id=None,
                 emulated=False,
                 note="",
             )

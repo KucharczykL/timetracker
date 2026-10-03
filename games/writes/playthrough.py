@@ -36,14 +36,17 @@ from games.events.dispatch import (
     RowUnreadable,
     dispatch,
 )
-from games.events.historical_playtime import HISTORICALPLAYTIME_MOVED
+from games.events.historical_playtime import HISTORICALPLAYTIME_MOVED, clears_release
 from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.playersession import PLAYERSESSION_RELEASE_CHANGED
 from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_REMOVED
+from games.events.vocabulary import EventType
 from games.ids import GameId
 from games.models import Game, PlayerGame, Playthrough, UserLibrary
 from games.reads.events import created_aggregate_id, dispatched_events
+from games.reads.historical_playtime_records import library_records
+from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     stated_completion,
@@ -293,7 +296,7 @@ class MovedRun(NamedTuple):
     minted_a_placeholder: bool
     #: The status the endpoints implied on the target.
     status: StatusAnswer = None
-    #: Releases the move cleared.
+    #: Live rows whose Release the move cleared.
     cleared_releases: int = 0
 
 
@@ -377,23 +380,39 @@ def _move(
         return None
     #: Reloads the parent, so the target reads.
     run.refresh_from_db()
-    events = list(dispatched_events(result).values_list("event_type", "payload"))
-    appended = {event_type for event_type, _ in events}
+    events: list[AppendedEvent] = list(
+        dispatched_events(result).values_list("event_type", "aggregate_id", "payload")
+    )
+    appended = {event_type for event_type, _, _ in events}
     return MovedRun(
         source=source,
         target=run.player_game.game,
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
-        cleared_releases=sum(
-            1
-            for event_type, payload in events
-            if event_type == PLAYERSESSION_RELEASE_CHANGED.event_type
-            or (
-                event_type == HISTORICALPLAYTIME_MOVED.event_type
-                and "release" in payload
-            )
-        ),
+        cleared_releases=_live_rows_cleared(actor.library, events),
+    )
+
+
+#: One appended event: type, aggregate, payload.
+type AppendedEvent = tuple[EventType, uuid.UUID, dict[str, object]]
+
+
+def _live_rows_cleared(library: UserLibrary, events: list[AppendedEvent]) -> int:
+    """Live rows the move cleared; removed ones stay unsaid."""
+    sessions = [
+        row_id
+        for event_type, row_id, _ in events
+        if event_type == PLAYERSESSION_RELEASE_CHANGED.event_type
+    ]
+    records = [
+        row_id
+        for event_type, row_id, payload in events
+        if event_type == HISTORICALPLAYTIME_MOVED.event_type and clears_release(payload)
+    ]
+    return (
+        library_sessions(library).filter(pk__in=sessions).count()
+        + library_records(library).filter(pk__in=records).count()
     )
 
 

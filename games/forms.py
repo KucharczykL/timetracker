@@ -71,7 +71,7 @@ from games.commands.playersession import (
 from games.commands.scope import RELEASE_OF_ANOTHER_GAME
 from games.commands.session_reclassification import statement_from_session
 from games.dev_login import prefill_credentials
-from games.end_ways import END_WAY_LABELS, EndWay
+from games.end_ways import END_WAY_LABELS, EndWay, ended_hint
 from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
 from games.models import (
@@ -332,14 +332,16 @@ def device_option(device: Device) -> SearchSelectOption:
         "data": {},
     }
     if device.access_end_way:
-        option["hint"] = END_WAY_LABELS[EndWay(device.access_end_way)]
+        option["hint"] = ended_hint(EndWay(device.access_end_way))
     return option
 
 
 def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
         device_option(device)
-        for device in Device.objects.for_library(library).filter(pk__in=values)
+        for device in Device.objects.for_library(library).filter(
+            pk__in=_parsed_ids(values)
+        )
     ]
 
 
@@ -351,7 +353,7 @@ def release_option(release: Release, ended: EndWay | None) -> SearchSelectOption
         "data": {},
     }
     if ended is not None:
-        option["hint"] = END_WAY_LABELS[ended]
+        option["hint"] = ended_hint(ended)
     return option
 
 
@@ -368,7 +370,7 @@ def held_release_options(values, *, library: UserLibrary) -> list[SearchSelectOp
     #: visible_to would hide a removed held one.
     releases = Release.objects.filter(
         Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
-        pk__in=values,
+        pk__in=_parsed_ids(values),
     )
     return hinted_release_options(
         list(releases.select_related("edition", "platform")), library=library
@@ -1813,8 +1815,8 @@ _STATED_PROVENANCES = (
 class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
     """One record at one game.
 
-    Narrows the offered provenances and devices; every other rule is
-    the command's, so a refusal reads in its words.
+    Narrows provenances, devices and Releases, and refuses another
+    game's Release; every other rule is the command's.
     """
 
     playthroughs = forms.ModelMultipleChoiceField(

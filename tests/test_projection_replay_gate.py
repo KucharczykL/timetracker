@@ -476,6 +476,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         provenance=HistoricalPlaytimeProvenance.ESTIMATED,
         playthrough_ids=(first_run.pk, second_run.pk),
         device_id=None,
+        release_id=None,
         emulated=False,
         note="",
     )
@@ -942,6 +943,7 @@ def build_neighbour(user, library) -> None:
                 provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                 playthrough_ids=(run.pk,),
                 device_id=None,
+                release_id=None,
                 emulated=False,
                 note="",
             )

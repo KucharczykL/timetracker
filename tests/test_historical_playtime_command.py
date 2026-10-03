@@ -90,6 +90,7 @@ A_STATEMENT = HistoricalPlaytimeStatement(
     provenance=HistoricalPlaytimeProvenance.ESTIMATED,
     playthrough_ids=(),
     device_id=None,
+    release_id=None,
     emulated=False,
     note="",
 )

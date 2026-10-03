@@ -117,6 +117,7 @@ def _a_record(owned_user, owned_library, game):
             provenance=HistoricalPlaytimeProvenance.ESTIMATED,
             playthrough_ids=(run.pk,),
             device_id=None,
+            release_id=None,
             emulated=False,
             note="",
         ),

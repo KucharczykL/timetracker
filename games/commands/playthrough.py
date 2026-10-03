@@ -41,7 +41,7 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
-from games.ids import GameId, HistoricalPlaytimeId, PlayerGameId
+from games.ids import GameId, HistoricalPlaytimeId, PlayerGameId, PlayerSessionId
 from games.models import (
     Game,
     HistoricalPlaytime,
@@ -794,7 +794,7 @@ def _records_that_follow(
 
 def _sessions_naming_a_release(
     context: CommandContext, run: Playthrough
-) -> list[uuid.UUID]:
+) -> list[PlayerSessionId]:
     """Sessions naming a Release, removed ones too."""
     return list(
         PlayerSession.objects.filter(

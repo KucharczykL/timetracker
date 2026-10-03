@@ -81,9 +81,13 @@ class Reference(TypedDict):
     detail: str
 
 
+#: Spelled once: the validator and the registry agree.
+RELEASE_KIND: ReferenceKindName = "catalog.release"
+
+
 def _a_release(reference: Reference) -> Reference:
     """Refuse any kind but a Release."""
-    if reference["kind"] != "catalog.release":
+    if reference["kind"] != RELEASE_KIND:
         raise ValueError(f"{reference['kind']!r} is not a release.")
     return reference
 
@@ -246,7 +250,7 @@ def _capture_release(release: Release) -> Reference:
     caller capturing many selects them first.
     """
     return Reference(
-        kind="catalog.release",
+        kind=RELEASE_KIND,
         id=str(release.pk),
         label=release.edition.game.name,
         detail="" if release.platform is None else release.platform.name,
@@ -292,7 +296,7 @@ DEFAULT_REFERENCE_KINDS.register(
 )
 DEFAULT_REFERENCE_KINDS.register(
     ReferenceKind(
-        name="catalog.release",
+        name=RELEASE_KIND,
         model=Release,
         capture=_capture_release,
         resolution=Resolution.REQUIRED,

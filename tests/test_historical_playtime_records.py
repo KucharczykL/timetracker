@@ -39,6 +39,7 @@ def _record(user, game: Game, when: str | None = "2005") -> HistoricalPlaytime:
                 provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                 playthrough_ids=(run.pk,),
                 device_id=None,
+                release_id=None,
                 emulated=False,
                 note="",
             )

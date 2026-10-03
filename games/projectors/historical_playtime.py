@@ -14,6 +14,7 @@ from games.events.historical_playtime import (
     HistoricalPlaytimeCreatedPayload,
     HistoricalPlaytimeMovedPayload,
     HistoricalPlaytimeStatementPayload,
+    clears_release,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
 from games.events.references import referenced_id
@@ -119,7 +120,7 @@ class HistoricalPlaytimes(Projector):
         #: No restated_at: nothing was restated.
         #: A re-applied creation reverts the game.
         payload = cast("HistoricalPlaytimeMovedPayload", event.payload)
-        cleared = {"release_id": None} if "release" in payload else {}
+        cleared = {"release_id": None} if clears_release(payload) else {}
         self.amend(
             HistoricalPlaytime,
             event,

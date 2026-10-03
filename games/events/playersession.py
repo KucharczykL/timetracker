@@ -377,7 +377,7 @@ DEFAULT_EVENT_TYPES.register(PLAYERSESSION_RELEASE_CHANGED)
 
 
 def playersession_release_changed(
-    session_id: uuid.UUID, *, release: Reference | None
+    session_id: uuid.UUID, *, release: ReleaseReference | None
 ) -> NewEvent:
     """A session's Release, or none."""
     return PLAYERSESSION_RELEASE_CHANGED.new(

@@ -252,7 +252,7 @@ def release_game_violations(
 ) -> list[ViolationSentence]:
     """Rows naming a Release of another game.
 
-    A null Release passes a negated lookup, so it is filtered out first.
+    A null Release would match the exclusion, so it is filtered first.
     """
     violations: list[ViolationSentence] = []
     for model, game_path in _RELEASE_GAME_PATHS:

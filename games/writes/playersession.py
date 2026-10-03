@@ -24,6 +24,7 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
+from games.commands.scope import checked_release
 from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
     UndoSessionReclassification,
@@ -31,11 +32,15 @@ from games.commands.session_reclassification import (
 from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandRejected, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
-from games.events.playersession import ZoneName
+from games.events.playersession import PLAYERSESSION_RELEASE_CHANGED, ZoneName
 from games.models import Game, PlayerSession, Playthrough, UserLibrary
 from games.reads.calendar import calendar_day_zone
-from games.reads.events import created_aggregate_id
-from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
+from games.reads.events import created_aggregate_id, dispatched_events
+from games.reads.playthrough_runs import (
+    library_runs,
+    live_ordinary_runs,
+    tracked_game,
+)
 from games.writes.answers import answered
 
 
@@ -105,6 +110,51 @@ def record_session(
     return created_aggregate_id(result)
 
 
+RELEASE_CLEARED_BY_THE_MOVE = (
+    "The session no longer names a release: that one was of its old game."
+)
+
+
+def cleared_a_release(result: CommandResult) -> bool:
+    """Whether a move cleared the session's Release."""
+    return (
+        dispatched_events(result)
+        .filter(event_type=PLAYERSESSION_RELEASE_CHANGED.event_type)
+        .exists()
+    )
+
+
+def refuse_an_unstatable_release(
+    library: UserLibrary,
+    session: PlayerSession,
+    release_id: uuid.UUID | None,
+    playthrough_id: uuid.UUID,
+) -> None:
+    """The Release rule, before any dispatch.
+
+    A move to another game clears the held one, so
+    there the stated one is checked anew.
+    """
+    if release_id is None:
+        return
+    run = (
+        library_runs(library)
+        .select_related("player_game")
+        .filter(pk=playthrough_id)
+        .first()
+    )
+    if run is None:
+        #: The move refuses it, in its own words.
+        return
+    held = session.playthrough.player_game_id == run.player_game_id
+    checked_release(
+        library,
+        release_id,
+        game_id=run.player_game.game_id,
+        held_id=session.release_id if held else None,
+    )
+
+
 def restate_session(
     actor: User,
     session: PlayerSession,
@@ -123,6 +173,9 @@ def restate_session(
     Release follows the move, which clears another game's.
     """
     with answered("session"):
+        refuse_an_unstatable_release(
+            actor.library, session, draft.release_id, draft.playthrough_id
+        )
         _dispatch(
             CorrectSessionTiming(session_id=session.pk, timing=draft.timing),
             actor=actor,

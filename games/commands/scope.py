@@ -12,8 +12,8 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
-from games.ids import GameId
-from games.models import Device, LibraryEntry, Purchase, Release
+from games.ids import GameId, ReleaseId
+from games.models import Device, LibraryEntry, Purchase, Release, UserLibrary
 from games.projections import library_path_of
 from games.reads.releases import held_releases
 
@@ -90,10 +90,20 @@ def visible_row[RowT: Model](
     **lookup: object,
 ) -> RowT:
     """A shared row, or the library's own."""
+    return visible_in(context.library, reads, refusal, **lookup)
+
+
+def visible_in[RowT: Model](
+    library: UserLibrary,
+    reads: QuerySet[RowT],
+    refusal: Refusal,
+    **lookup: object,
+) -> RowT:
+    """`visible_row` for a caller holding no context."""
     path = library_path_of(reads.model)
     if path is None:
         raise TypeError(f"{reads.model.__name__} reaches no library.")
-    visible = Q(**{f"{path}__isnull": True}) | Q(**{path: context.library})
+    visible = Q(**{f"{path}__isnull": True}) | Q(**{path: library})
     try:
         return reads.filter(visible, **lookup).get()
     except ObjectDoesNotExist:
@@ -203,10 +213,14 @@ def library_purchase_row(context: CommandContext, purchase_id: uuid.UUID) -> Pur
     return purchase
 
 
-def visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
+def visible_release(context: CommandContext, release_id: ReleaseId) -> Release:
     """A visible Release, removed or not."""
-    return visible_row(
-        context,
+    return _visible_release(context.library, release_id)
+
+
+def _visible_release(library: UserLibrary, release_id: ReleaseId) -> Release:
+    return visible_in(
+        library,
         Release.objects.select_related("edition__game"),
         Refusal(
             message=(
@@ -230,15 +244,32 @@ def refuse_a_removed_release(release: Release) -> None:
 
 def stated_release(
     context: CommandContext,
-    release_id: uuid.UUID | None,
+    release_id: ReleaseId | None,
     *,
     game_id: GameId,
-    held_id: uuid.UUID | None,
+    held_id: ReleaseId | None,
 ) -> Release | None:
-    """The stated Release; a held one stays."""
+    """The stated Release, under the lock."""
+    return checked_release(
+        context.library, release_id, game_id=game_id, held_id=held_id
+    )
+
+
+def checked_release(
+    library: UserLibrary,
+    release_id: ReleaseId | None,
+    *,
+    game_id: GameId,
+    held_id: ReleaseId | None,
+) -> Release | None:
+    """The Release rule; held skips removal and copy.
+
+    Callers that dispatch several commands run it first, so a
+    refusal writes nothing.
+    """
     if release_id is None:
         return None
-    release = visible_release(context, release_id)
+    release = _visible_release(library, release_id)
     held = release_id == held_id
     if not held:
         refuse_a_removed_release(release)
@@ -248,7 +279,7 @@ def stated_release(
             f"{release.edition.game_id}, not of game {game_id}.",
             sentence=RELEASE_OF_ANOTHER_GAME,
         )
-    if not held and not held_releases(context.library).filter(pk=release.pk).exists():
+    if not held and not held_releases(library).filter(pk=release.pk).exists():
         raise CommandRejected(
             f"This library holds no live copy of release {release.pk}.",
             sentence=NO_COPY_OF_RELEASE,

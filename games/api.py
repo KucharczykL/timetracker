@@ -147,11 +147,14 @@ from games.writes.libraryentry import (
 )
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playersession import (
+    RELEASE_CLEARED_BY_THE_MOVE,
     SessionDraft,
+    cleared_a_release,
     correct_session,
     describe_session,
     move_session,
     record_session,
+    refuse_an_unstatable_release,
 )
 from games.writes.playthrough import (
     RunDraft,
@@ -1218,6 +1221,15 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     stated = payload.dict(exclude_unset=True)
     correlation_id = new_correlation_id()
     try:
+        if "release_id" in stated:
+            #: Before any write: nothing half-done.
+            with answered("session"):
+                refuse_an_unstatable_release(
+                    library,
+                    session,
+                    payload.release_id,
+                    payload.playthrough_id or session.playthrough_id,
+                )
         if payload.timing is not None:
             correct_session(
                 actor,
@@ -1238,9 +1250,11 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
                 correlation_id=correlation_id,
             )
         if payload.playthrough_id is not None:
-            move_session(
+            moved = move_session(
                 actor, session, payload.playthrough_id, correlation_id=correlation_id
             )
+            if "release_id" not in stated and cleared_a_release(moved):
+                messages.info(request, RELEASE_CLEARED_BY_THE_MOVE)
         #: After the move, which clears another game's.
         if "release_id" in stated:
             describe_session(

@@ -109,6 +109,7 @@ def a_record(actor, library, game, *, when="2005", hours=100) -> HistoricalPlayt
             provenance=HistoricalPlaytimeProvenance.ESTIMATED,
             playthrough_ids=(run.pk,),
             device_id=None,
+            release_id=None,
             emulated=False,
             note="",
         ),

@@ -37,3 +37,8 @@ END_WAY_LABELS: Mapping[EndWay, str] = {
 def way_words(way: EndWay) -> str | None:
     """Its label; an unstated way says nothing."""
     return None if way == EndWay.UNSTATED else END_WAY_LABELS[way]
+
+
+def ended_hint(way: EndWay) -> str:
+    """A picker's hint; an unstated way says Ended."""
+    return way_words(way) or "Ended"

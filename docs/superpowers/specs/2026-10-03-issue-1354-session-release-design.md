@@ -27,11 +27,13 @@ dispatch lock:
 
 Check 3 always runs. Checks 2 and 4 skip the held value, the Release
 the row names already. Thus a removed copy or a removed Release leaves
-the row alone. The entry commands share the first three sentences.
+the row alone. The entry commands share the first three checks. A write
+of several dispatches (an edit, a PATCH, a bulk row, its Undo) runs
+`checked_release` before the first, so a refusal writes nothing.
 
 The ownership audit (`release_game_violations`) reports an entry,
 session or record whose Release is of another game. It reads only rows
-that name a Release, because a negated lookup passes a null.
+that name a Release, because a null Release would match the exclusion.
 
 ## Events
 
@@ -48,11 +50,13 @@ that name a Release, because a negated lookup passes a null.
 A move to another game clears the Release. It never refuses.
 `MoveSessionToPlaythrough` appends `release_changed(None)` before
 `moved`. `MovePlaythroughToGame` clears every session of the run,
-removed ones included, and every record. `MovedRun.cleared_releases`
-counts them, and the Edit playthrough toast says the count.
+removed ones included, and every following record that names one.
+`MovedRun.cleared_releases` counts the live rows, and the Edit
+playthrough toast says the count. The move's Undo restores no Release.
 
 The Edit session page and the session PATCH state the Release after
-the move, in a dispatch of its own.
+the move, in a dispatch of its own. A PATCH that moves alone says when
+it cleared a Release.
 
 ## Surfaces
 

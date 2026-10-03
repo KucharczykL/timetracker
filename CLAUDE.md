@@ -535,10 +535,13 @@ docs/           — Additional documentation
   #1354: a session and a record name the Release played on, or none
   (`release`, `RESTRICT`). `stated_release` (`games/commands/scope.py`)
   refuses a new one unseen, removed, of another game, or held by no
-  live copy (`held_releases`); the held value skips the last two.
+  live copy (`held_releases`); the held value skips the removal and
+  copy checks. A write of several dispatches runs `checked_release`
+  first, so a refusal writes nothing.
   `playersession.release_changed`, `DescribeSession(release=StatedRelease)`;
   a move to another game clears it (`MovedRun.cleared_releases`), and
-  `historicalplaytime.moved` carries `release: None` only then. Pickers
+  `historicalplaytime.moved` carries `release: None` only where the
+  record named one; the move's Undo restores none. Pickers
   read `/api/releases/held`, filters `/api/releases/played`; bulk Edit
   restates it in its own dispatch. A demo session (a `prerelease`
   Edition) is never outside its run's dates. Contract is
@@ -611,7 +614,8 @@ docs/           — Additional documentation
   `GET`/`PATCH /api/entries/{id}`; a PATCH states `acquired` and
   `acquisition_note` together or is refused with 422. Two entries on one
   Release are two copies; an entry whose parent or private Release is
-  another library's is `RowUnreadable`, and `entry_game_violations` joins
+  another library's is `RowUnreadable`, and `release_game_violations`
+  (an entry, session or record on another game's Release) joins
   the ownership audit. `games.E015` walks `LIBRARY_PATHS`. #721 states
   an end of access on the stated endpoint (`access_ended`/
   `.access_end_corrected`/`.access_end_voided`, nine `ENTRY_WAYS`,
@@ -1185,7 +1189,7 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `GET /api/session/`, `GET /{id}` — projection rows through
   `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
   instants with zones, `stated_day`, `stated_duration_seconds`, `day`,
-  `duration_seconds`
+  `duration_seconds`, `release_id`
 - `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
   statement told apart by shape) is a correction, `note`/`device_id`/`emulated`
   a description, `playthrough_id` a move, `release_id` a description after
@@ -1195,7 +1199,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   an untracked game lands, and `library_sessions` reads a catalog mark no
   session command reads (#1169)
 - `POST /api/session/` — body `extra="forbid"`: `playthrough_id` and one whole
-  `timing` statement, `device_id`, `note` and `emulated` beside them. Answers
+  `timing` statement, `device_id`, `release_id`, `note` and `emulated`
+  beside them. Answers
   201 and the row. An `Idempotency-Key` header absorbs a repeat; the header
   itself is measured at the route, because the plain `ValueError` no answer
   maps would read as a defect, and nothing else reads the state ahead of it.
@@ -1205,7 +1210,11 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
 - `GET /api/historical-playtime/`, `GET /{id}` — live records through
   `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
-  canonical text beside its two bounds, `playthrough_ids`. No write endpoint
+  canonical text beside its two bounds, `playthrough_ids`, `release_id`. No
+  write endpoint
+- `GET /api/releases/held` — one game's Releases a live copy names, `game_id`
+  and `q`, hinted where every copy ended; `GET /api/releases/played` — the
+  Releases live sessions and records name, labelled by game
 - `GET /api/entries/`, `GET /{id}` — live entries through `readable_entries`,
   `limit`/`offset`, `limit=0` unbounded; `POST /` records one (201 and the
   row, `Idempotency-Key` absorbs a repeat, an untracked game is tracked in

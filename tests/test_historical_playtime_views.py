@@ -70,6 +70,7 @@ def recorded(user, run_ids, **changes) -> HistoricalPlaytime:
         provenance=HistoricalPlaytimeProvenance.ESTIMATED,
         playthrough_ids=tuple(run_ids),
         device_id=None,
+        release_id=None,
         emulated=False,
         note="",
     )._replace(**changes)

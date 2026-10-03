@@ -161,7 +161,7 @@ marker is set. The row is unique on `(id, library)`; a partial index on
 a path that ends elsewhere, and `visible_row` in `games/commands/scope.py`
 resolves a shared row or the library's own through it. So
 `audit_library_ownership` reports an entry naming another library's
-private Release, `entry_game_violations` reports one whose Release is not
+private Release, `release_game_violations` reports one whose Release is not
 its game's, and the swap's refusal sentence can name either.
 
 ### Purchase
@@ -1031,8 +1031,8 @@ inside a member says so in its body and closes with it.
   is its own page, and every page keeps working as one after.
 - **#1358**'s Before start inherits #1354's clause:
   `outside_interval_handler(..., unless=...)` keeps a session on a
-  prerelease Edition out of `outside_playthrough_dates`, on both
-  halves. **#1361**, the toggle that hides demo play from statistics
+  prerelease Edition out of `outside_playthrough_dates`: such a
+  session is never outside its run's dates. **#1361**, the toggle that hides demo play from statistics
   and lists, reads `edition_kind` through the session's and the
   record's `release` column.
 

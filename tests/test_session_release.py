@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from io import StringIO
 
 import pytest
+from django.core.management import call_command
 from django.http import QueryDict
 from django.test import Client
 from django.urls import reverse
@@ -13,16 +15,19 @@ from historical_playtime_posts import posted_record
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row
 
+from common.components.unset_field import unset_input_name
 from common.criteria import BoolCriterion
 from games.bulk_parts import Control
 from games.bulk_session_edit import (
     EditStatement,
+    _release_of,
     edit_back,
     edit_one,
     offer_edit,
     settle_edit,
 )
 from games.bulk_sessions import labelled_session_resolution
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -46,10 +51,12 @@ from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
     statement_from_session,
 )
+from games.end_ways import EndWay
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
     RowNotHeld,
+    RowUnreadable,
     dispatch,
 )
 from games.filters import (
@@ -57,6 +64,7 @@ from games.filters import (
     PlayerSessionFilter,
     filter_query_context_for_library,
 )
+from games.forms import held_release_options
 from games.models import (
     EditionKind,
     Game,
@@ -65,16 +73,18 @@ from games.models import (
     LibraryEvent,
     PlayerSession,
     Playthrough,
+    Release,
 )
 from games.reads.calendar import calendar_day_zone
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
+from games.reads.releases import ended_copy_ways, release_label
 from games.reads.session_organization import organization_counts
 from games.removal import remove
 from games.views.bulk import CHOICE_FIELD
 from games.views.playthrough_writes import moved_sentence
 from games.writes.answers import CommandFailed
-from games.writes.playersession import SessionDraft, restate_session
+from games.writes.playersession import SessionDraft, clone_session, restate_session
 from games.writes.playthrough import RunDraft, restate_run
 from timetracker.temporal import TemporalValue
 
@@ -741,7 +751,7 @@ def test_bulk_edit_states_clears_and_undoes_a_release(
     assert session.release_id == graph.release.pk
 
 
-def test_bulk_undo_refuses_only_a_release_whose_copy_is_gone(
+def test_bulk_undo_refuses_a_gone_copy_before_any_write(
     owned_user, owned_library, graph, entry, run
 ):
     session = a_session(owned_library, run, graph.release)
@@ -761,10 +771,10 @@ def test_bulk_undo_refuses_only_a_release_whose_copy_is_gone(
 
     assert refused.value.message == NO_COPY_OF_RELEASE
     session.refresh_from_db()
-    assert (session.emulated, session.release_id) == (False, other.pk)
+    assert (session.emulated, session.release_id) == (True, other.pk)
 
 
-def test_bulk_edit_refuses_a_release_of_another_game_per_row(
+def test_bulk_edit_refuses_another_games_release_before_any_write(
     owned_user, owned_library, graph, run, other_graph, other_run
 ):
     session = a_session(owned_library, other_run)
@@ -773,10 +783,12 @@ def test_bulk_edit_refuses_a_release_of_another_game_per_row(
         bulk_edit(
             owned_user,
             session,
-            EditStatement(None, None, release=StatedRelease(graph.release.pk)),
+            EditStatement(None, True, release=StatedRelease(graph.release.pk)),
         )
 
     assert refused.value.message == RELEASE_OF_ANOTHER_GAME
+    session.refresh_from_db()
+    assert session.emulated is False
 
 
 def offered(library, rows) -> str:
@@ -796,7 +808,7 @@ def test_the_bulk_release_is_offered_for_one_game_alone(
     several = offered(owned_library, [one, other])
 
     assert f'name="{CHOICE_FIELD}-release"' in single
-    assert "Keep: Unspecified" in single
+    assert f"Keep: {release_label(graph.release)}" in single
     assert f'name="{CHOICE_FIELD}-release"' not in several
 
 
@@ -820,12 +832,32 @@ def post_of(statement: EditStatement) -> QueryDict:
 
 
 @pytest.fixture
-def demo(owned_library, stated_graph):
-    return stated_graph(
-        Game(name="Hades Demo", library=owned_library),
-        owned_library,
-        edition_kind=EditionKind.PRERELEASE,
+def demo(owned_library, graph) -> Release:
+    """A prerelease Edition of the same game."""
+    written = state_catalog_graph(
+        game=graph.game,
+        library=owned_library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                edition=graph.edition,
+                is_default=True,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0",
+                        release=graph.release,
+                        is_default=True,
+                    ),
+                ),
+            ),
+            EditionState(
+                key="edition-1",
+                kind=EditionKind.PRERELEASE,
+                releases=(ReleaseState(key="edition-1-release-0", is_default=True),),
+            ),
+        ],
     )
+    return written.editions[1].releases[0].release
 
 
 def answered(library, criteria) -> set[PlayerSession]:
@@ -841,9 +873,7 @@ def test_a_session_on_a_prerelease_is_never_outside_its_runs_dates(
         started=started, start_recorded_at=timezone.now()
     )
     before = date(2023, 6, 1)
-    on_the_demo = duration_only_row(
-        run, before, timedelta(hours=1), release=demo.release
-    )
+    on_the_demo = duration_only_row(run, before, timedelta(hours=1), release=demo)
     on_the_game = duration_only_row(
         run, before, timedelta(hours=1), release=graph.release
     )
@@ -865,7 +895,7 @@ def test_a_session_on_a_prerelease_is_never_outside_its_runs_dates(
 
 def test_sessions_filter_by_release_and_edition_kind(owned_library, graph, run, demo):
     on_the_demo = duration_only_row(
-        run, date(2023, 6, 1), timedelta(hours=1), release=demo.release
+        run, date(2023, 6, 1), timedelta(hours=1), release=demo
     )
     on_the_game = duration_only_row(
         run, date(2023, 6, 2), timedelta(hours=1), release=graph.release
@@ -888,7 +918,7 @@ def test_sessions_filter_by_release_and_edition_kind(owned_library, graph, run, 
 
 
 def test_records_filter_by_edition_kind(owned_library, graph, run, demo):
-    demo_record = record_row([run], release=demo.release)
+    demo_record = record_row([run], release=demo)
     record_row([run], release=graph.release)
     record_row([run])
 
@@ -900,3 +930,336 @@ def test_records_filter_by_edition_kind(owned_library, graph, run, demo):
     assert set(library_records(owned_library).filter(demos.to_q(context))) == {
         demo_record
     }
+
+
+def test_records_filter_by_release(owned_library, graph, run, demo):
+    on_the_game = record_row([run], release=graph.release)
+    record_row([run], release=demo)
+
+    by_release = HistoricalPlaytimeFilter.from_json(
+        {"release": {"value": [str(graph.release.pk)], "modifier": "INCLUDES"}}
+    )
+    context = filter_query_context_for_library(owned_library)
+
+    assert set(library_records(owned_library).filter(by_release.to_q(context))) == {
+        on_the_game
+    }
+
+
+# ── Review follow-ups ────────────────────────────────────────────────────────
+
+
+def test_a_patch_naming_no_release_keeps_it(client, owned_library, graph, run):
+    session = a_session(owned_library, run, graph.release)
+
+    answer = client.patch(
+        f"/api/session/{session.pk}", {"note": "x"}, content_type="application/json"
+    )
+
+    assert answer.json()["release_id"] == str(graph.release.pk)
+
+
+def test_a_patch_whose_release_refuses_writes_nothing(
+    client, owned_library, graph, run, other_graph, other_run
+):
+    session = a_session(owned_library, run, graph.release)
+    events = LibraryEvent.objects.count()
+
+    answer = client.patch(
+        f"/api/session/{session.pk}",
+        {"playthrough_id": str(other_run.pk), "release_id": str(graph.release.pk)},
+        content_type="application/json",
+    )
+
+    assert answer.status_code == 409
+    assert RELEASE_OF_ANOTHER_GAME in answer.content.decode()
+    assert LibraryEvent.objects.count() == events
+    session.refresh_from_db()
+    assert (session.playthrough_id, session.release_id) == (run.pk, graph.release.pk)
+
+
+def test_a_patch_moving_alone_says_it_cleared_the_release(
+    client, owned_library, graph, run, other_run
+):
+    session = a_session(owned_library, run, graph.release)
+
+    answer = client.patch(
+        f"/api/session/{session.pk}",
+        {"playthrough_id": str(other_run.pk)},
+        content_type="application/json",
+    )
+
+    assert answer.json()["release_id"] is None
+    assert "no longer names a release" in answer.headers["X-Events"]
+
+
+def test_a_patch_naming_an_unseen_release_is_absent(
+    client, owned_library, run, django_user_model, stated_graph
+):
+    session = a_session(owned_library, run)
+    stranger = django_user_model.objects.create_user(username="stranger").library
+    theirs = stated_graph(Game(name="Tunic", library=stranger), stranger)
+
+    answer = client.patch(
+        f"/api/session/{session.pk}",
+        {"release_id": str(theirs.release.pk)},
+        content_type="application/json",
+    )
+
+    assert answer.status_code == 404
+
+
+def test_an_edit_whose_release_refuses_writes_nothing(
+    owned_user, owned_library, graph, run, other_graph, other_run
+):
+    session = a_session(owned_library, run, graph.release)
+    uncopied = second_release(owned_library, other_graph.release)
+    events = LibraryEvent.objects.count()
+
+    with pytest.raises(CommandFailed) as refused:
+        restate_session(
+            owned_user,
+            session,
+            a_draft(other_run, uncopied, note="moved"),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert refused.value.message == NO_COPY_OF_RELEASE
+    assert LibraryEvent.objects.count() == events
+
+
+def test_a_held_release_the_catalog_removed_stays(
+    client, owned_user, owned_library, graph, run
+):
+    session = a_session(owned_library, run, graph.release)
+    state(owned_library, RecordHistoricalPlaytime(a_statement(run, graph.release)))
+    record = HistoricalPlaytime.objects.get()
+    remove(graph.release)
+
+    response = client.post(
+        reverse("games:edit_session", args=[session.pk]),
+        session_post(
+            graph.game,
+            run,
+            release=str(graph.release.pk),
+            started_at="2026-01-01 13:00",
+            ended_at="2026-01-01 14:00",
+            note="kept",
+        ),
+    )
+    state(
+        owned_library,
+        RestateHistoricalPlaytime(
+            record.pk, a_statement(run, graph.release)._replace(note="kept")
+        ),
+    )
+
+    assert response.status_code == 302
+    session.refresh_from_db()
+    record.refresh_from_db()
+    assert (session.note, session.release_id) == ("kept", graph.release.pk)
+    assert (record.note, record.release_id) == ("kept", graph.release.pk)
+
+
+def test_the_reclassify_page_carries_a_release_whose_copy_is_gone(
+    client, owned_library, graph, entry, run
+):
+    session = a_session(owned_library, run, graph.release)
+    remove_entry(entry)
+
+    response = client.post(
+        reverse("games:reclassify_session", args=[session.pk]),
+        posted_record([run.pk], when_year="2026", release=str(graph.release.pk)),
+    )
+
+    assert response.status_code == 302, response.content
+    assert HistoricalPlaytime.objects.get().release_id == graph.release.pk
+
+
+def test_the_record_edit_page_keeps_a_release_whose_copy_is_gone(
+    client, owned_library, graph, entry, run
+):
+    state(owned_library, RecordHistoricalPlaytime(a_statement(run, graph.release)))
+    record = HistoricalPlaytime.objects.get()
+    remove_entry(entry)
+    url = reverse("games:edit_historical_playtime", args=[record.pk])
+
+    response = client.post(
+        url,
+        posted_record(
+            [run.pk], hours="10", when_year="2005", release=str(graph.release.pk)
+        ),
+    )
+
+    assert response.status_code == 302, response.content
+    record.refresh_from_db()
+    assert record.release_id == graph.release.pk
+
+
+def test_moving_a_run_back_restores_no_release(
+    owned_library, graph, run, other_graph, other_run
+):
+    session = a_session(owned_library, run, graph.release)
+    state(
+        owned_library,
+        MovePlaythroughToGame(playthrough_id=run.pk, game_id=other_graph.game.pk),
+    )
+    state(
+        owned_library,
+        MovePlaythroughToGame(playthrough_id=run.pk, game_id=graph.game.pk),
+    )
+
+    session.refresh_from_db()
+    assert session.release_id is None
+
+
+def test_resume_states_no_release(owned_user, owned_library, graph, run):
+    a_session(owned_library, run, graph.release)
+
+    resumed = clone_session(
+        owned_user,
+        graph.game,
+        device_id=None,
+        emulated=False,
+        correlation_id=uuid.uuid7(),
+    )
+
+    assert PlayerSession.objects.get(pk=resumed).release_id is None
+
+
+def test_a_release_with_a_live_copy_beside_an_ended_one_is_not_hinted(
+    owned_library, graph, entry
+):
+    end_entry_access(entry)
+    record_entry(owned_library, graph.release)
+
+    assert ended_copy_ways(owned_library, [graph.release.pk]) == {}
+
+
+def test_the_latest_recorded_end_names_the_hint(owned_library, graph, entry):
+    second = record_entry(owned_library, graph.release)
+    end_entry_access(entry, way=EndWay.SOLD)
+    end_entry_access(second, way=EndWay.LOST)
+
+    assert ended_copy_ways(owned_library, [graph.release.pk]) == {
+        graph.release.pk: EndWay.LOST
+    }
+
+
+def test_an_unstated_end_hints_ended(owned_library, graph, entry):
+    end_entry_access(entry, way=EndWay.UNSTATED)
+
+    (option,) = held_release_options([graph.release.pk], library=owned_library)
+
+    assert option["hint"] == "Ended"
+
+
+def test_a_resolver_ignores_a_value_that_is_no_key(owned_library):
+    assert held_release_options(["not-a-key"], library=owned_library) == []
+
+
+def test_the_played_search_leaves_out_removed_sessions(
+    client, owned_library, graph, run
+):
+    session = a_session(owned_library, run, graph.release)
+    state(owned_library, RemoveSession(session.pk))
+
+    assert client.get("/api/releases/played").json() == []
+
+
+@pytest.mark.parametrize("raw", ['{"release": 7}', '{"release": "no-key"}'])
+def test_a_carried_release_that_is_no_key_refuses(raw):
+    with pytest.raises(CommandRejected):
+        EditStatement.decode(raw)
+
+
+def test_a_recorded_release_with_no_key_is_a_defect():
+    event = LibraryEvent(payload={"release": {"id": "nope"}})
+
+    with pytest.raises(RowUnreadable):
+        _release_of(event)
+
+
+def test_the_bulk_control_states_keeps_and_unsets_a_release(
+    owned_library, graph, entry
+):
+    picked = settle_edit(owned_library, control(release=str(graph.release.pk)))
+    unset = settle_edit(owned_library, control(unset_release="1"))
+
+    assert EditStatement.decode(picked) == EditStatement(
+        None, None, release=StatedRelease(graph.release.pk)
+    )
+    assert EditStatement.decode(unset) == EditStatement(
+        None, None, release=StatedRelease(None)
+    )
+
+
+def test_the_bulk_control_refuses_a_release_with_no_copy(owned_library, entry):
+    uncopied = second_release(owned_library, entry.release)
+
+    with pytest.raises(CommandRejected) as refused:
+        settle_edit(owned_library, control(release=str(uncopied.pk)))
+
+    assert NO_COPY_OF_RELEASE in str(refused.value.sentence)
+
+
+def test_a_record_with_no_copy_of_its_release_is_refused(owned_library, run, entry):
+    uncopied = second_release(owned_library, entry.release)
+
+    refusal = refused(
+        owned_library, RecordHistoricalPlaytime(a_statement(run, uncopied))
+    )
+
+    assert refusal.sentence == NO_COPY_OF_RELEASE
+
+
+def test_the_toast_names_one_cleared_release(
+    owned_user, owned_library, graph, run, other_graph, other_run
+):
+    a_session(owned_library, run, graph.release)
+    gone = a_session(owned_library, run, graph.release)
+    state(owned_library, RemoveSession(gone.pk))
+
+    moved = restate_run(
+        owned_user,
+        run,
+        RunDraft(started=None, completed=None, note="", game_id=other_graph.game.pk),
+        correlation_id=uuid.uuid7(),
+    )
+
+    assert moved is not None
+    assert moved.cleared_releases == 1
+    assert "One session or record no longer names a release of Hades." in (
+        moved_sentence(moved)
+    )
+
+
+def control(**answers) -> QueryDict:
+    names = {
+        key: unset_input_name(f"{CHOICE_FIELD}-{key.removeprefix('unset_')}")
+        if key.startswith("unset_")
+        else f"{CHOICE_FIELD}-{key}"
+        for key in answers
+    }
+    stated = QueryDict(mutable=True)
+    stated.update({names[key]: value for key, value in answers.items()})
+    return stated
+
+
+def test_a_purge_takes_rows_naming_a_private_release(
+    owned_user, owned_library, graph, run
+):
+    a_session(owned_library, run, graph.release)
+    state(owned_library, RecordHistoricalPlaytime(a_statement(run, graph.release)))
+
+    call_command(
+        "purge_user_library",
+        "--user",
+        owned_user.username,
+        "--confirm",
+        owned_user.username,
+        stdout=StringIO(),
+    )
+
+    assert not PlayerSession.objects.exists()
+    assert not Release.objects.filter(pk=graph.release.pk).exists()

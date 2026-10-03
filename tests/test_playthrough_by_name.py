@@ -109,6 +109,7 @@ def _record_on(user, run: Playthrough) -> None:
                 provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                 playthrough_ids=(run.pk,),
                 device_id=None,
+                release_id=None,
                 emulated=False,
                 note="",
             )

@@ -26,11 +26,14 @@ from games.commands.endpoint import ActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
+    RestateHistoricalPlaytime,
 )
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     CorrectedTiming,
+    DescribeSession,
     DurationOnlyTiming,
+    StatedRelease,
     TimedTiming,
 )
 from games.commands.playthrough import (
@@ -256,6 +259,7 @@ def _build_dataset():
                 provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                 playthrough_ids=(run_one.pk,),
                 device_id=None,
+                release_id=None,
                 emulated=False,
                 note="",
             )
@@ -279,6 +283,38 @@ def _build_dataset():
         purchased=TemporalValue.from_day(date(2021, 5, 1)),
     )
     refund_purchase(game_purchase, TemporalValue.from_day(date(2021, 5, 10)))
+    #: A session and a record name the copy's Release.
+    dispatch(
+        DescribeSession(
+            session_id=PlayerSession.objects.filter(
+                playthrough=run_one, removed_at__isnull=True
+            )
+            .earliest("sort_instant")
+            .pk,
+            release=StatedRelease(entry.release_id),
+        ),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="describe-release",
+    )
+    dispatch(
+        RestateHistoricalPlaytime(
+            record_id=HistoricalPlaytime.objects.get().pk,
+            statement=HistoricalPlaytimeStatement(
+                duration=timedelta(hours=3),
+                when="2021-06-05",
+                provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                playthrough_ids=(run_one.pk,),
+                device_id=None,
+                release_id=entry.release_id,
+                emulated=False,
+                note="",
+            ),
+        ),
+        actor=owner,
+        library=owner.library,
+        idempotency_key="restate-release",
+    )
     #: An untracked add-on, tracked by its copy.
     record_purchase(
         record_entry(
@@ -875,6 +911,7 @@ class AnonymizeSampleTest(TransactionTestCase):
                     provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                     playthrough_ids=(foreign_run.pk,),
                     device_id=None,
+                    release_id=None,
                     emulated=False,
                     note="",
                 )
@@ -1111,6 +1148,7 @@ class ReassignedIdentityTest(TransactionTestCase):
                     provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                     playthrough_ids=runs,
                     device_id=None,
+                    release_id=None,
                     emulated=False,
                     note="",
                 )

@@ -1,7 +1,7 @@
 """Events about playtime stated without sittings."""
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import timedelta
 from typing import Annotated, Literal, NotRequired, TypedDict
 
@@ -101,6 +101,8 @@ class HistoricalPlaytimeMovedPayload(TypedDict):
     """The tracked game the run moved to.
 
     `release` is present exactly when the move cleared one.
+    A record has no Release event of its own: a
+    restatement would stamp `restated_at`.
     """
 
     player_game: ReferenceId
@@ -149,7 +151,7 @@ def _statement(
     duration: timedelta,
     provenance: ProvenanceValue,
     device: Reference | None,
-    release: Reference | None,
+    release: ReleaseReference | None,
     emulated: bool,
     note: str,
 ) -> HistoricalPlaytimeStatementPayload:
@@ -180,7 +182,7 @@ def historicalplaytime_created(
     when: TemporalValue,
     provenance: ProvenanceValue,
     device: Reference | None,
-    release: Reference | None,
+    release: ReleaseReference | None,
     emulated: bool,
     note: str,
     record_id: uuid.UUID | None = None,
@@ -217,7 +219,7 @@ def historicalplaytime_restated(
     when: TemporalValue,
     provenance: ProvenanceValue,
     device: Reference | None,
-    release: Reference | None,
+    release: ReleaseReference | None,
     emulated: bool,
     note: str,
 ) -> NewEvent:
@@ -246,6 +248,11 @@ def historicalplaytime_removed(record_id: uuid.UUID) -> NewEvent:
 def historicalplaytime_restored(record_id: uuid.UUID) -> NewEvent:
     """Put a removed record back."""
     return HISTORICALPLAYTIME_RESTORED.new(aggregate_id=record_id, payload={})
+
+
+def clears_release(payload: Mapping[str, object]) -> bool:
+    """Whether a moved payload cleared the Release."""
+    return "release" in payload
 
 
 def historicalplaytime_moved(

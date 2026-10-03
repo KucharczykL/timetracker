@@ -597,7 +597,7 @@ class PlayerSessionFilter(OperatorFilter):
                 "effective_day",
                 "playthrough__started_lower",
                 "playthrough__completed_upper",
-                #: A demo is played before the run.
+                #: Demo play is not the run's.
                 unless=Q(release__edition__kind=EditionKind.PRERELEASE),
             ),
             label="Outside dates",
