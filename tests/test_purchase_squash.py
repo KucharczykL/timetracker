@@ -1,4 +1,4 @@
-"""The squash refuses data the elided passes needed.
+"""The squash refuses data elided passes needed.
 
 The live tables keep their 0018 names, so the
 guard reads them here; `make verify-dump` on a
