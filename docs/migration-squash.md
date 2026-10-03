@@ -7,15 +7,6 @@ deployment over by hand. This is what that cost, and what to do differently.
 Read [Database contract](database.md#schema-and-migrations) for what the
 current baseline carries that no model declares.
 
-## Passes waiting for a squash
-
-`0031_purchase_conversion` is `elidable=True`. It imports
-`games/backfill/purchase.py`, which reads the legacy rows through the
-historical model and draws on `purchase_plan.py`, which holds no
-database access. After P5 the command and `purchase_reconciliation.py`
-go; the pass, its plan and `seeded` in `games/valuations.py` stay until
-a squash elides `0031`, then leave with it.
-
 ## The second squash, 2026-09-16
 
 Done the way the next section asks: `make squash-migrations ARGS="games
@@ -123,6 +114,35 @@ either: with the twelve rows gone and no squash row recorded, `migrate`
 applies the squashed file for real. Fetch the dump after the deploy.
 
 The next migration numbers on from the replaced range: `0019`.
+
+## The fourth squash, 2026-10-03
+
+`make squash-migrations ARGS="games 0019 0036"` ran with the deployment
+at `0036`. Its output keeps `replaces`, through `ruff`. `0029`'s rate copy
+and `0035`'s schedule removal took `elidable=True` on the day; `0031`
+already had it. Fifty-eight operations became thirty-five, one of them a
+`RunPython`. The `RunSQL` in `0026` and `0036` are barriers, so a fresh
+install creates `LegacyPurchase` and drops it.
+
+The squash's first operation is that `RunPython`, `elidable=True`. It
+refuses a database whose `games_purchase` or `games_exchangerate` holds a
+row. Such a database holds none of the eighteen: every dump before
+2026-10-02, and a development database at `0018`. Without the guard, the
+squash drops its rates, its legacy purchases and their conversion. A
+deployment migrates with the image before the squash first. A
+development database is dropped and rebuilt. A database holding some of
+the eighteen takes the originals, and `0031` refuses with the same
+remedy.
+
+`make verify-baseline ARGS="--migrate"` on the 2026-10-02 post-deploy
+dump recorded the squash beside the originals, applied `0037`, and found
+every catalog identical. `make verify-dump` on the 2026-10-01 dump
+stopped at the guard.
+
+Step two (#1472) waits for the deployment to record the squash: the eighteen
+files and `replaces` go, the tests that import `0029` and `0032` by
+module go, and the cutover `DELETE` runs. The next migration after
+`0037` is `0038`.
 
 ## Do it a different way next time
 

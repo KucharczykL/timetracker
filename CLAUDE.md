@@ -144,8 +144,6 @@ static half on uv, and nothing but your `make check` runs the suite.
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the ten reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
-| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; runs between 0030 and 0035; refuses once the table is gone; **not** in `make check`) |
-| Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a figure or row set no reason explains; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -192,13 +190,7 @@ docs/           — Additional documentation
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
-- **LegacyPurchase** — gone (#736, P5c): migration 0035 drops it. The
-  conversion tooling (`games/backfill/`, `verify_purchase_conversion`)
-  reads it from migration state through `legacy_purchase_model()`
-  (`games/backfill/legacy_model.py`) and refuses once the table is gone;
-  tests build rows on that model through the `legacy_purchase` fixture
-  (`tests/legacy_purchases.py`), which refuses a `transaction=True` test.
-  Each module and test #1448 removes at the squash says `conversion-tooling`.
+- **LegacyPurchase** — gone (#736, P5c): migration 0035 dropped it.
   `RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`. Contract is
   [The legacy purchase is gone](docs/superpowers/specs/2026-10-02-issue-736-legacy-purchase-drop-design.md)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
@@ -658,8 +650,7 @@ docs/           — Additional documentation
   copy figures in `games/reads/copy_figures.py`, `StatsSource.ENTRIES`),
   and their links. `GameFilter.purchase_price_total` sums valuations
   through `AggregateSpec.correlated` (`games.E016` walks the path). Migration 0032 rewrote saved
-  presets. `make verify-purchase-statistics` judges every figure
-  against a legacy snapshot (`games/purchase_parity.py`)
+  presets
   ([reads](docs/superpowers/specs/2026-10-01-issue-735-purchase-reads-design.md)).
   Contract is
   [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md).
@@ -676,16 +667,14 @@ docs/           — Additional documentation
   beside its void. `restate_purchase` takes `refund` (`KEEP` keeps, `None`
   voids) and answers `RestatedPurchase` with its `CopyEnd`. Contract is
   [A purchase is refunded](docs/superpowers/specs/2026-10-01-issue-727-purchase-refund-design.md)
-  #723 (P4) converts every `LegacyPurchase` once, out of migration
-  `0031` (`elidable=True`): `games/backfill/purchase_plan.py` plans one
-  copy per (row, game), `games/backfill/purchase.py` states each through
-  the commands' `build` under `conversion:723:<act>:<legacy>:<game>` keys,
-  so a rerun appends nothing and a legacy row changed since (or an act
-  it no longer states) is a listed defect; bundles split by cents, DLC rows get their own `dlc` Game (an
-  infinite one excludes that Game, not the base), passes and upgrades ride the base's
-  owned copy, valuations are `seeded` (own amount in the target currency,
-  else the legacy converted share) beside the standing ones. `purchase_creation_events`
-  and `release_on` are the extracted halves. Contract is
+  #723 (P4) converted every `LegacyPurchase` into these events, one copy
+  per (row, game), under `conversion:723:<act>:<legacy>:<game>` keys:
+  bundles split by cents, DLC rows got their own `dlc` Game, passes and
+  upgrades ride the base's owned copy. The pass ran once, out of a
+  migration since squashed; what it left behind is the events, and the
+  squash refuses a database still holding legacy rows (see
+  [Squashing](docs/migration-squash.md)). `purchase_creation_events` and
+  `release_on` are its extracted halves. Contract is
   [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
   #724 (P5b) moves every purchase write onto the projection. Add to
   library states the game's purchase with the copy (`PriceFields`,
@@ -708,10 +697,8 @@ docs/           — Additional documentation
   the statement takes the refund back. `conversion_review`, a choice
   field on `PurchaseFilter` and `LibraryEntryFilter` over `Category`
   (`games/conversion_review.py`), reads the conversion's tags from
-  events; the Library page lists each category's count and link, and
-  Repurchased games, until `UserLibraryPreferences.conversion_review_hidden`
-  hides them (one-time; #1443 removes the review and its preference, and
-  keeps the field). The Library tab's Purchases column prints each held
+  events; it is the one way to the converted population, so its words
+  stay stable (#1443 took the Library page's review). The Library tab's Purchases column prints each held
   purchase's price. Contract is
   [Purchases selectable, conversion reviewed](docs/superpowers/specs/2026-10-02-issue-1266-purchases-selectable-design.md)
 

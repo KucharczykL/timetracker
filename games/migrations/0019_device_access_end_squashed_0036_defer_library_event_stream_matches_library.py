@@ -9,7 +9,7 @@ from django.db import migrations, models
 import timetracker.temporal
 import timetracker.uuidv7
 
-#: Both tables still hold their 0018 shape here.
+#: Both tables hold their 0018 shape here.
 GUARDED_TABLES = ("games_purchase", "games_exchangerate")
 
 
