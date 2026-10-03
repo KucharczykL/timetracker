@@ -210,10 +210,7 @@ def test_the_status_is_keyed_and_correlated_from_the_move(owned_user, base, dlc)
     _move(owned_user, run, dlc)
 
     moved_event = LibraryEvent.objects.get(event_type=MOVED, aggregate_id=run.pk)
-    status_event = LibraryEvent.objects.get(
-        event_type=STATUS_CHANGED,
-        aggregate_id=PlayerGame.objects.get(game=dlc).pk,
-    )
+    status_event = _status_events(dlc).get()
     assert status_event.correlation_id == moved_event.correlation_id
     assert status_event.idempotency_key == f"{moved_event.idempotency_key}-status"
 
@@ -244,7 +241,7 @@ def test_the_edit_toast_names_the_status(client, owned_user, base, dlc):
         {"game": str(dlc.pk), "started": "2024-01-02", "ended": "", "note": ""},
     )
 
-    assert [str(message) for message in get_messages(response.wsgi_request)] == [
+    assert _toasts(response) == [
         (
             "Moved to Separate Ways. Its empty playthrough was removed. "
             "Separate Ways is now Played."

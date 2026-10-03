@@ -49,9 +49,11 @@ def state_start(
         idempotency_key=idempotency_key,
         source_metadata=source_metadata,
     )
+    if not _stated_now(result):
+        return StatedAct(result, None)
     game = run.player_game.game
     status = implied_by_start(actor.library, game)
-    if not _stated_now(result) or status is None:
+    if status is None:
         return StatedAct(result, None)
     return StatedAct(
         result,
