@@ -7,13 +7,7 @@ Spec: `docs/superpowers/specs/2026-10-03-issue-1448-purchase-conversion-squash-d
 
 - `git rm` the eighteen `games/migrations/00{19..36}_*.py` originals
   (not the squash, not `0037`).
-- Squash: delete the `replaces = [...]` block; keep the eighteen names
-  as `REPLACED` for the guard.
-- Guard: first check, `SELECT EXISTS` on `django_migrations` where
-  `app = 'games'` and `name = ANY(REPLACED)`: raise naming the history.
-  `REMEDY` becomes "migrate through main-9755232, then main-f0b2c89".
-  Test: insert one `0027_purchase` row in the live table, guard raises
-  "recorded"; the purchase test still matches its table.
+- Squash: delete the `replaces = [...]` block. The guard stays as is.
 - `make check-migrations`: no changes.
 
 ## Task 2 — tests
@@ -49,8 +43,6 @@ Spec: `docs/superpowers/specs/2026-10-03-issue-1448-purchase-conversion-squash-d
 - `make verify-baseline DUMP=<post-deploy dump> ARGS="--normalize <abs>/cutover.sql"`,
   no `--migrate`, so `migrate --check` proves nothing is left: identical,
   four `games` history rows on both sides (also proves `replaces` is off).
-- `make verify-dump DUMP=<pre-deploy dump 111945Z>`: stops at the
-  history check.
 - Docs sweep (delete this plan), full `make check`, draft PR.
 
 Gotcha: the post-deploy dump is

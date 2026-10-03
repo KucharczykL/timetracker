@@ -74,16 +74,8 @@ The deployment recorded the squash on 2026-10-03 (`main-f0b2c89`):
   `0032`'s functions; the `decimal_rate` test in
   `tests/test_exchange_rates.py`; the two `0031` tests in
   `tests/test_purchase_squash.py`.
-- A database that recorded any of the eighteen and not the squash now
-  takes the squash. That is every dump before the 2026-10-03 deploy,
-  the pre-deploy rollback dump included, and any worktree database not
-  migrated since. The guard's first check refuses it by its history
-  rows, before any data check, because at `0027` and later
-  `games_purchase` is the projection, not legacy rows.
-- Every refusal names one remedy for a deployment: migrate through
-  `main-9755232`, which takes any earlier history to `0036`, then
-  `main-f0b2c89`, which records the squash. A development database is
-  dropped and rebuilt.
+- Prod is the only database. Its history already records the squash;
+  a development database is dropped and rebuilt.
 - The guard and the schedule removal stay. A fresh install still runs
   them, and the next squash elides them.
 - The cutover `DELETE` of the eighteen history rows runs after the
@@ -98,5 +90,4 @@ The deployment recorded the squash on 2026-10-03 (`main-f0b2c89`):
 Rehearsal, on the post-deploy dump: `make verify-dump` applies
 nothing; `make verify-baseline ARGS="--normalize <cutover.sql>"`, with
 no `--migrate`, passes `migrate --check` after the `DELETE` and finds
-every catalog identical, history included (four `games` rows). The
-pre-deploy dump stops at the history check.
+every catalog identical, history included (four `games` rows).
