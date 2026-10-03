@@ -1,4 +1,4 @@
-"""Run, Release, device, emulated or note, on many sessions."""
+"""Facts set on many sessions."""
 
 import json
 import uuid
@@ -148,7 +148,7 @@ class EditStatement:
     emulated: bool | None
     note: str | None = None
     playthrough: uuid.UUID | None = None
-    #: Its own description: a gone copy refuses it alone.
+    #: Own dispatch; a gone copy refuses alone.
     release: StatedRelease | None = None
 
     def __post_init__(self) -> None:
@@ -313,7 +313,7 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         label=RELEASE_LABEL,
         error_messages={"invalid_choice": NO_COPY_OF_RELEASE},
         widget=UnsetWidget(
-            #: ⊘ states none; the picker holds no none row.
+            #: ⊘ states none; no none row here.
             SearchSelectWidget(
                 search_url=HELD_RELEASE_SEARCH_URL,
                 options_resolver=held_release_options,
@@ -624,7 +624,7 @@ def _emulated_of(event: LibraryEvent) -> bool:
 
 
 def _release_of(event: LibraryEvent) -> StatedRelease:
-    """The Release a created or release_changed payload states."""
+    """The Release a payload states."""
     if "release" not in event.payload:
         raise RowUnreadable(f"event {event.pk} states no release")
     release = event.payload["release"]

@@ -159,7 +159,7 @@ type TimingPayload = Annotated[
 
 @with_config(STRICT_SCHEMA)
 class PlayerSessionCreatedPayload(TypedDict):
-    """The run this session belongs to, and what it states.
+    """A session's run and what it states.
 
     `playthrough` is a bare ReferenceId, not a Reference, as
     `PlaythroughCreatedPayload.player_game` is: a REQUIRED

@@ -211,7 +211,7 @@ def describe_session(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
-    """State note, device, emulated or Release; None is unstated."""
+    """State a fact; None is unstated."""
     with answered("session"):
         return _dispatch(
             DescribeSession(

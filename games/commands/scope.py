@@ -235,10 +235,7 @@ def stated_release(
     game_id: GameId,
     held_id: uuid.UUID | None,
 ) -> Release | None:
-    """The Release a session or record names.
-
-    The held one is kept, removed or uncopied.
-    """
+    """The stated Release; a held one stays."""
     if release_id is None:
         return None
     release = visible_release(context, release_id)

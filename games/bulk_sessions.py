@@ -126,5 +126,5 @@ def release_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
 
 
 def release_words(row: PlayerSession) -> str:
-    """The row's Release, or that none is stated."""
+    """The row's Release, or Not stated."""
     return "Not stated" if row.release is None else release_label(row.release)

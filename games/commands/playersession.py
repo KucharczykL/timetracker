@@ -715,7 +715,7 @@ class StatedRelease(NamedTuple):
 
 @dataclass(frozen=True, slots=True)
 class DescribeSession(Command):
-    """State note, device, emulated or Release; None is unstated."""
+    """State a fact; None is unstated."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_DESCRIBE
     #: A UUID, because Command fingerprints its fields.
@@ -789,7 +789,7 @@ class MoveSessionToPlaythrough(Command):
             return Unchanged("This session already belongs to that playthrough.")
         run = _live_run(context, self.playthrough_id)
         moved = playersession_moved(session.pk, playthrough_id=run.pk)
-        #: A Release belongs to one game; another game clears it.
+        #: Another game's move clears the Release.
         held = _session_run(context, session)
         if session.release_id is None or held.player_game_id == run.player_game_id:
             return [moved]

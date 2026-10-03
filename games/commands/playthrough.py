@@ -747,7 +747,7 @@ def _move_target(context: CommandContext, game_id: GameId) -> MoveTarget:
 
 
 class FollowingRecord(NamedTuple):
-    """A record that moves, and whether it names a Release."""
+    """A moving record and its Release flag."""
 
     record_id: HistoricalPlaytimeId
     names_release: bool
@@ -795,7 +795,7 @@ def _records_that_follow(
 def _sessions_naming_a_release(
     context: CommandContext, run: Playthrough
 ) -> list[uuid.UUID]:
-    """The run's sessions naming a Release, removed too."""
+    """Sessions naming a Release, removed ones too."""
     return list(
         PlayerSession.objects.filter(
             library=context.library, playthrough=run, release__isnull=False
@@ -836,7 +836,7 @@ class MovePlaythroughToGame(Command):
         if isinstance(target, NewlyTracked):
             events.append(target.tracking)
         events.append(playthrough_moved(run.pk, player_game_id=target.player_game_id))
-        #: A Release belongs to one game; the move clears it.
+        #: The move clears every Release.
         events.extend(
             playersession_release_changed(session_id, release=None)
             for session_id in _sessions_naming_a_release(context, run)

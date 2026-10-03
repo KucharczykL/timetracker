@@ -365,7 +365,7 @@ def hinted_release_options(
 
 def held_release_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     """Resolve Release ids; a removed one too."""
-    #: Not visible_to: a held Release may be removed.
+    #: visible_to would hide a removed held one.
     releases = Release.objects.filter(
         Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
         pk__in=values,

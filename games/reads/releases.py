@@ -61,7 +61,7 @@ def held_game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
 def ended_copy_ways(
     library: UserLibrary, release_ids: list[ReleaseId]
 ) -> dict[ReleaseId, EndWay]:
-    """The latest end's way, where every live copy ended."""
+    """Latest end's way where every copy ended."""
     copies = library_entries(library).filter(release_id__in=release_ids)
     latest: dict[ReleaseId, tuple[object, str]] = {}
     unended: set[ReleaseId] = set()

@@ -88,8 +88,7 @@ def _a_release(reference: Reference) -> Reference:
     return reference
 
 
-#: A plain alias: a `type` statement hides the metadata the arity scan
-#: strips, and a key would read as an unsupported reference field.
+#: Plain alias: `type` hides the metadata.
 ReleaseReference = Annotated[Reference, AfterValidator(_a_release)]
 
 

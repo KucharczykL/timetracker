@@ -3253,8 +3253,8 @@ def outside_interval_handler(
     False is the plain negation, and safe: Django guards a negated
     lookup whose right side is a column with ``IS NOT NULL``, so a
     row whose bounds are null answers no rather than falling out of
-    both answers. Hand-writing that branch breaks it. A row ``unless``
-    matches is never outside, so it answers False.
+    both answers. Hand-writing that branch breaks it. ``unless`` rows
+    are never outside.
     """
     outside = Q(**{f"{day_field}__lt": F(lower_field)}) | Q(
         **{f"{day_field}__gt": F(upper_field)}

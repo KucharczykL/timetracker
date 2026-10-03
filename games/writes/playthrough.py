@@ -293,7 +293,7 @@ class MovedRun(NamedTuple):
     minted_a_placeholder: bool
     #: The status the endpoints implied on the target.
     status: StatusAnswer = None
-    #: Sessions and records whose Release the move cleared.
+    #: Releases the move cleared.
     cleared_releases: int = 0
 
 
