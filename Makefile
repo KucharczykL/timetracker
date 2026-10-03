@@ -354,9 +354,7 @@ drop-dump: ensure-postgres
 #   make verify-baseline KEEP=1     -> ... and keep both to look at
 #   make verify-baseline DUMP=path  -> compare that dump instead of the newest
 #
-# ARGS reaches the script, which is how a squash's step two is rehearsed:
-# the cutover's statements run on the copy first -- see
-# docs/migration-squash.md:
+# Step two rehearses its cutover first:
 #
 #   make verify-baseline ARGS="--normalize cutover.sql"
 #
