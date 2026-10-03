@@ -168,7 +168,7 @@ squash-migrations: ensure-postgres
 # Read back the DDL a migration actually emits, for the cases the migration file
 # does not show plainly: raw-SQL operations, and fields whose column definition
 # is decided by the field class rather than the call site.
-# Usage: make sqlmigrate ARGS="games 0023_library_event_schema"
+# Usage: make sqlmigrate ARGS="games 0037_remove_conversion_review_hidden"
 sqlmigrate: ensure-postgres
 	uv run --frozen python manage.py sqlmigrate $(ARGS)
 
@@ -177,7 +177,7 @@ sqlmigrate: ensure-postgres
 # `makemigrations` target, because that target reads ARGS too and this one's
 # ARGS names a migration — the autodetector would take it for an app label.
 #
-# Usage: make migrate ARGS="games 0024_libraryidempotencyrecord"
+# Usage: make migrate ARGS="games 0037_remove_conversion_review_hidden"
 migrate: ensure-postgres
 	uv run --frozen python manage.py makemigrations --noinput
 	uv run --frozen python manage.py migrate $(ARGS)
@@ -347,18 +347,16 @@ drop-dump: ensure-postgres
 # Does the deployment still hold the schema a fresh `migrate` builds? It
 # restores the newest dump, builds a second database from the migrations alone,
 # and reads both catalogs. Any differing row is a future migration generated
-# against a baseline the deployment lacks. This is the gate on editing
-# `games/migrations/0001_initial.py`, which states a schema no migration builds
-# up to any more, and the rehearsal for any later squash.
+# against a baseline the deployment lacks. This is the gate on editing the
+# baseline, and the rehearsal for any later squash.
 #
 #   make verify-baseline            -> compare, drop both copies
 #   make verify-baseline KEEP=1     -> ... and keep both to look at
 #   make verify-baseline DUMP=path  -> compare that dump instead of the newest
 #
-# ARGS reaches the script, which is how a squash is rehearsed on a dump taken
-# before its cutover ran -- see docs/migration-squash.md:
+# Step two rehearses its cutover first:
 #
-#   make verify-baseline ARGS="--normalize cutover.sql --record 0001_squashed"
+#   make verify-baseline ARGS="--normalize cutover.sql"
 #
 # A release the deployment has not applied yet -- a squash with `replaces`
 # among its migrations -- is rehearsed by carrying the copy over first, as the

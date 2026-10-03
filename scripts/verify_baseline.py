@@ -17,7 +17,8 @@ Two options exist for the one case a plain comparison cannot answer, a dump
 taken before a squash was carried over: `--normalize` applies a file of
 statements to the copy first, and `--record` writes the history row the
 operator's `migrate --fake` writes. Both are for rehearsing a squash before it
-reaches the deployment; see `docs/migration-squash.md`. Neither is needed to
+reaches the deployment, and `--normalize` also rehearses a step-two cutover on
+a dump taken after it; see `docs/migration-squash.md`. Neither is needed to
 check a deployment that is already current, which is why neither has a default.
 """
 
@@ -351,7 +352,7 @@ def main() -> None:
     verify_parser.add_argument(
         "--normalize",
         type=Path,
-        help="statements to apply to the copy first, for rehearsing a squash",
+        help="statements to apply to the copy first, for a squash or its cutover",
     )
     verify_parser.add_argument(
         "--record",

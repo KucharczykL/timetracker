@@ -9,10 +9,7 @@ from django.db import migrations, models
 import timetracker.temporal
 import timetracker.uuidv7
 
-REMEDY = (
-    "A deployment migrates with the image before the squash first; "
-    "a development database is dropped and rebuilt."
-)
+REMEDY = "Drop and rebuild this database."
 
 #: Rows each elided pass converted, at 0018.
 UNCONVERTED = (
@@ -53,27 +50,6 @@ def remove_retired_schedule(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    replaces = [
-        ("games", "0019_device_access_end"),
-        ("games", "0020_libraryentry"),
-        ("games", "0021_libraryentry_access_end"),
-        ("games", "0022_entry_way_unstated"),
-        ("games", "0023_entries_mode"),
-        ("games", "0024_game_kind_parent_edition_kind"),
-        ("games", "0025_playergame_excluded_from_dropped"),
-        ("games", "0026_rename_purchase_legacypurchase"),
-        ("games", "0027_purchase"),
-        ("games", "0028_purchase_refund"),
-        ("games", "0029_exchangerate_decimal_rate"),
-        ("games", "0030_purchasevaluation"),
-        ("games", "0031_purchase_conversion"),
-        ("games", "0032_purchase_presets"),
-        ("games", "0033_legacy_purchase_reverse"),
-        ("games", "0034_conversion_review_hidden"),
-        ("games", "0035_delete_legacypurchase"),
-        ("games", "0036_defer_library_event_stream_matches_library"),
-    ]
-
     dependencies = [
         ("django_q", "0019_alter_task_options_alter_ormq_key_alter_ormq_lock_and_more"),
         (

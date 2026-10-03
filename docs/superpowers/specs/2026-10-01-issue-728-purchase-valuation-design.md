@@ -6,9 +6,9 @@ the [Access and Purchases wave](2026-09-28-access-and-purchases-wave-design.md).
 
 ## Exchange rates
 
-`ExchangeRate.rate` is a positive `Decimal(24, 12)`. Migration 0029 copies
-each float through `repr()`, rounded to twelve places, and drops an
-unusable cached rate. It runs in both directions.
+`ExchangeRate.rate` is a positive `Decimal(24, 12)`. A one-time pass
+copied each float through `repr()`, rounded to twelve places, and
+dropped an unusable cached rate. The fourth squash elided it.
 
 `exchange_rate` answers the stored rate, else fetches it with
 `parse_float=Decimal`, quantizes and stores it. It answers `None` when the
