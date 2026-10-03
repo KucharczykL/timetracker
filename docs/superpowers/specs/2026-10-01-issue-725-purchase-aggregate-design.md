@@ -16,7 +16,7 @@ the `library.purchase` stream. No screen reads the row until P5.
 `LegacyPurchase` is the old row, on table `games_legacypurchase`. P5
 deletes it. Its `verbose_name` is "purchase", so the screens keep their
 words. The filter key is `legacypurchase`, because the filter machinery
-finds a filter by model name. Migration 0026 renames the model, its
+finds a filter by model name. The fourth squash renames the model, its
 through table and every index of the two tables. A table rename keeps
 the index names, and the old names collide with the new table's names.
 

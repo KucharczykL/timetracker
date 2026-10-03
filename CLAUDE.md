@@ -190,7 +190,7 @@ docs/           — Additional documentation
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
-- **LegacyPurchase** — gone (#736, P5c): the fourth squash creates and drops it.
+- **LegacyPurchase** — gone (#736, P5c): the fourth squash renames the old `Purchase` to it and drops it.
   `RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`. Contract is
   [The legacy purchase is gone](docs/superpowers/specs/2026-10-02-issue-736-legacy-purchase-drop-design.md)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A

@@ -22,14 +22,11 @@ parent. The reducer sums a correlated subquery over the scoped queryset.
 
 ## Migrations
 
-Migration `0032` rewrites saved presets. A legacy price of 0 became an
-unknown price, so a price criterion that matches 0 is refused. A refund
-day's presence becomes the refund act. An upgrade rides its base copy,
-so `du` states no format. A refused preset stays unchanged and loads
-refused.
-
-Migration `0033` removes every reverse accessor of the legacy model. It
-changes no table.
+A one-time pass rewrote saved presets; the fourth squash elided it. A
+legacy price of 0 became an unknown price, so a price criterion that
+matched 0 was refused. A refund day's presence became the refund act.
+An upgrade rides its base copy, so `du` states no format. A refused
+preset stayed unchanged and loads refused.
 
 ## Statistics
 

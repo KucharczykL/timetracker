@@ -122,22 +122,19 @@ at `0036`. Its output keeps `replaces`; `ruff` formatted it. Four data
 passes were elided: `0029`'s rate copy, `0031`'s purchase conversion,
 `0032`'s preset rewrite and `0035`'s schedule removal. `0029` and
 `0035` took `elidable=True` on the day. Fifty-eight operations became
-thirty-four. The `RunSQL` in `0026` and `0036` are barriers, so a fresh
-install creates `LegacyPurchase` and drops it.
+thirty-four, plus the two guards below. The `RunSQL` in `0026` and
+`0036` are barriers, so a fresh install renames the baseline's
+`Purchase` to `LegacyPurchase` and drops it.
 
 Two `RunPython` operations, both `elidable=True`, open the squash. The
 first refuses a database that would lose data: legacy purchases in
 `games_purchase`, rates in `games_exchangerate`, or a preset in the
-legacy purchase words. Only a database that has applied none of the
-eighteen takes the squash: a dump from before the wave, or a
-development database at `0018`. Without the guard, its legacy
-purchases drop with `DeleteModel`, unconverted, and its purchase
-presets stop loading; stored rates fail the `NOT NULL` column with an
-error that names no remedy. The error names two remedies. A deployment
-migrates with the image before the squash first. A development
-database is dropped and rebuilt; rates are a cache, so deleting them
-also works. The second operation deletes the retired task's schedule
-row, as `0035` did.
+legacy purchase words. While `replaces` stood, only a database that
+had applied none of the eighteen took the squash. Without the guard,
+its legacy purchases would drop with `DeleteModel`, unconverted, its
+purchase presets would stop loading, and stored rates would fail the
+`NOT NULL` column. The second operation deletes the retired task's
+schedule row, as `0035` did.
 
 `make verify-baseline ARGS="--migrate"` on the 2026-10-02 post-deploy
 dump recorded the squash beside the originals, applied `0037`, and
@@ -149,8 +146,8 @@ dump stopped at the guard.
 The deployment ran on the squash (`main-f0b2c89`): startup applied
 `0037` and recorded the squash beside the eighteen originals, 22
 `games` history rows. `make verify-baseline` and
-`make verify-replay-parity` on the post-deploy dump were green; 759 of
-759 purchases rebuilt. Then, in one PR (#1472):
+`make verify-replay-parity` on the post-deploy dump were green; the
+replay rebuilt 759 of 759 purchases. Then, in one PR (#1472):
 
 - The eighteen replaced files went, and `replaces` came off the squash.
 - The tests that imported them by module went: the preset rewrite's,
@@ -158,10 +155,10 @@ The deployment ran on the squash (`main-f0b2c89`): startup applied
 - The guard and the schedule removal stayed. A fresh install runs
   them; the next squash elides them.
 
-One statement follows the step-two deploy. Rehearse it on the
-post-deploy dump with `make verify-baseline ARGS="--normalize
-cutover.sql"`, with no `--migrate`, so `migrate --check` proves that
-nothing is left to apply:
+One statement follows the step-two deploy. Save the block below as
+`cutover.sql` and rehearse it on the post-deploy dump with
+`make verify-baseline ARGS="--normalize cutover.sql"`, with no
+`--migrate`, so `migrate --check` proves that nothing is left to apply:
 
 ```sql
 DELETE FROM django_migrations
@@ -188,10 +185,63 @@ WHERE app = 'games'
   );
 ```
 
-Run it only once the step-two image is up. The earlier image still
-carries `replaces`; without the rows it tries to apply the squash, the
-guard refuses, and the container does not start. Before a rollback to
-that image, put the rows back as the 2026-09-28 step two shows.
+Run it only once the step-two image is up, then read three answers:
+
+```bash
+podman exec -i postgres psql -X --single-transaction -v ON_ERROR_STOP=1 \
+  -U timetracker -d timetracker -f - < cutover.sql
+```
+
+prints `DELETE 18`;
+
+```bash
+podman exec postgres psql -At -U timetracker -d timetracker \
+  -c "SELECT count(*) FROM django_migrations WHERE app = 'games'"
+```
+
+prints `4`; and
+
+```bash
+podman exec timetracker python manage.py migrate --check
+```
+
+exits 0. Django ignores a history row with no file, so a name left out
+of the `DELETE` stays behind silently; the count is the only check.
+
+The earlier image still carries `replaces`. Without the rows it plans
+the squash again, and the guard refuses with
+`games_purchase holds legacy purchases`. Read that error, during a
+rollback, as "put the rows back". Before a rollback to that image, run
+this, which inserts 18 rows and none on a second run:
+
+```sql
+INSERT INTO django_migrations (app, name, applied)
+SELECT 'games', restored.name, now()
+FROM unnest(ARRAY[
+  '0019_device_access_end',
+  '0020_libraryentry',
+  '0021_libraryentry_access_end',
+  '0022_entry_way_unstated',
+  '0023_entries_mode',
+  '0024_game_kind_parent_edition_kind',
+  '0025_playergame_excluded_from_dropped',
+  '0026_rename_purchase_legacypurchase',
+  '0027_purchase',
+  '0028_purchase_refund',
+  '0029_exchangerate_decimal_rate',
+  '0030_purchasevaluation',
+  '0031_purchase_conversion',
+  '0032_purchase_presets',
+  '0033_legacy_purchase_reverse',
+  '0034_conversion_review_hidden',
+  '0035_delete_legacypurchase',
+  '0036_defer_library_event_stream_matches_library'
+]) AS restored (name)
+WHERE NOT EXISTS (
+  SELECT 1 FROM django_migrations
+  WHERE app = 'games' AND django_migrations.name = restored.name
+);
+```
 
 The next migration is `0038`.
 

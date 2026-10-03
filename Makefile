@@ -347,9 +347,8 @@ drop-dump: ensure-postgres
 # Does the deployment still hold the schema a fresh `migrate` builds? It
 # restores the newest dump, builds a second database from the migrations alone,
 # and reads both catalogs. Any differing row is a future migration generated
-# against a baseline the deployment lacks. This is the gate on editing
-# `games/migrations/0001_squashed_0006_remove_session.py`, which states a schema no migration builds
-# up to any more, and the rehearsal for any later squash.
+# against a baseline the deployment lacks. This is the gate on editing the
+# baseline, and the rehearsal for any later squash.
 #
 #   make verify-baseline            -> compare, drop both copies
 #   make verify-baseline KEEP=1     -> ... and keep both to look at

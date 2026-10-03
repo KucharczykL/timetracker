@@ -14,7 +14,7 @@ that pass and its rehearsal.
 - It holds none of the four data passes: the rate copy, the
   conversion, the preset rewrite and the schedule removal.
 - Its `RunSQL` operations are optimizer barriers. A fresh install
-  creates `LegacyPurchase` and drops it.
+  renames the baseline's `Purchase` to `LegacyPurchase` and drops it.
 - Prod is the only database. Its history records the squash. A
   development database is dropped and rebuilt.
 

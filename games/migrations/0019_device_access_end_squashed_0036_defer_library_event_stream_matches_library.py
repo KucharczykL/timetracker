@@ -9,10 +9,7 @@ from django.db import migrations, models
 import timetracker.temporal
 import timetracker.uuidv7
 
-REMEDY = (
-    "A deployment migrates with the image before the squash first; "
-    "a development database is dropped and rebuilt."
-)
+REMEDY = "Drop and rebuild this database."
 
 #: Rows each elided pass converted, at 0018.
 UNCONVERTED = (

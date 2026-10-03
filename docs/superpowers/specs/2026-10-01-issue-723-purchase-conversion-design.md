@@ -9,9 +9,8 @@ the [Access and Purchases wave](2026-09-28-access-and-purchases-wave-design.md).
 
 ## The pass
 
-Migration `0031` runs the pass once; `make verify-purchase-conversion`
-runs it for one library. `legacy_rows(model)` reads the legacy rows
-through the historical model, because P5 removes the live class.
+Migration `0031` ran the pass once, on the 2026-10-02 deploy. The
+fourth squash elided it; its tooling is gone (#1448).
 
 The pass returns at once where no legacy row exists. It refuses when a
 live model declares a column the database lacks, so P5 adds no column to

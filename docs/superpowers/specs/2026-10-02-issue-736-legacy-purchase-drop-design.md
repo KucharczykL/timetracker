@@ -5,9 +5,8 @@ Issue [#736](https://github.com/KucharczykL/timetracker/issues/736), P5c of the
 
 ## The drop
 
-Migration `0035_delete_legacypurchase` deletes `LegacyPurchase` and its
-through table. It also deletes the schedule row of the retired task
-`calculate_price_per_game`. The reverse creates the tables again, empty.
+The fourth squash drops `LegacyPurchase` and its through table, and
+deletes the schedule row of the retired task `calculate_price_per_game`.
 
 The currency task values purchases only. A purchase whose rate the
 source does not have is skipped with a warning. A `DatabaseError`, or a
@@ -18,7 +17,7 @@ schedules one retry.
 
 ## The conversion tooling
 
-Migration 0031 ran the conversion in the deploying image. Its pass,
+The conversion ran once, on the 2026-10-02 deploy. Its pass,
 its verify commands and the legacy test fixture went with the fourth
 squash (#1448), which refuses a database that still holds legacy
 rows.
