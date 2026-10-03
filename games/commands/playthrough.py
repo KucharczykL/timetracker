@@ -40,6 +40,7 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
+from games.ids import GameId, HistoricalPlaytimeId, PlayerGameId
 from games.models import (
     Game,
     HistoricalPlaytimeRun,
@@ -696,17 +697,31 @@ SHARED_REMOVED_RECORD = (
 )
 
 
-class MoveTarget(NamedTuple):
-    """Target row, or events that track it."""
+class HeldTarget(NamedTuple):
+    """A game this library tracks already."""
 
-    player_game_id: uuid.UUID
-    tracking: tuple[NewEvent, ...]
-    #: None for a game this dispatch tracks.
-    tracked: PlayerGame | None
+    row: PlayerGame
+
+    @property
+    def player_game_id(self) -> PlayerGameId:
+        return self.row.pk
 
 
-def _move_target(context: CommandContext, game_id: uuid.UUID) -> MoveTarget:
-    """Tracked row first; shared games lack stamps."""
+class NewlyTracked(NamedTuple):
+    """A game this dispatch starts tracking."""
+
+    tracking: NewEvent
+
+    @property
+    def player_game_id(self) -> PlayerGameId:
+        return self.tracking.aggregate_id
+
+
+type MoveTarget = HeldTarget | NewlyTracked
+
+
+def _move_target(context: CommandContext, game_id: GameId) -> MoveTarget:
+    """Library's mark first; a shared game has none."""
     #: Under dispatch's lock: no concurrent duplicate.
     tracked = PlayerGame.objects.filter(
         library=context.library, game_id=game_id
@@ -718,18 +733,19 @@ def _move_target(context: CommandContext, game_id: uuid.UUID) -> MoveTarget:
                 "until it is restored.",
                 sentence=TARGET_REMOVED,
             )
-        return MoveTarget(tracked.pk, (), tracked)
+        return HeldTarget(tracked)
     game = visible_row(
         context,
         Game.objects.alive(),
         Refusal(message=f"No game {game_id} this library can move a run to."),
         pk=game_id,
     )
-    tracking = tracking_event(game)
-    return MoveTarget(tracking.aggregate_id, (tracking,), None)
+    return NewlyTracked(tracking_event(game))
 
 
-def _records_that_follow(context: CommandContext, run: Playthrough) -> list[uuid.UUID]:
+def _records_that_follow(
+    context: CommandContext, run: Playthrough
+) -> list[HistoricalPlaytimeId]:
     """Records naming only this run; refuse others."""
     record_ids = set(
         HistoricalPlaytimeRun.objects.filter(
@@ -785,16 +801,16 @@ class MovePlaythroughToGame(Command):
             )
         target = _move_target(context, self.game_id)
         records = _records_that_follow(context, run)
-        events: list[NewEvent] = [
-            *target.tracking,
-            playthrough_moved(run.pk, player_game_id=target.player_game_id),
-        ]
+        events: list[NewEvent] = []
+        if isinstance(target, NewlyTracked):
+            events.append(target.tracking)
+        events.append(playthrough_moved(run.pk, player_game_id=target.player_game_id))
         events.extend(
             historicalplaytime_moved(record_id, player_game_id=target.player_game_id)
             for record_id in records
         )
-        if target.tracked is not None:
-            placeholder = placeholder_run(context.library, target.tracked)
+        if isinstance(target, HeldTarget):
+            placeholder = placeholder_run(context.library, target.row)
             if placeholder is not None:
                 events.append(playthrough_removed(placeholder.pk))
         if not _other_live_ordinary_runs(context, run).exists():

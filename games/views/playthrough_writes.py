@@ -15,6 +15,7 @@ from django.http import HttpRequest
 from games.models import Game, Playthrough
 from games.writes.answers import CommandFailed, WriteAnswer
 from games.writes.playthrough import (
+    MovedRun,
     RunDraft,
     record_run,
     remove_run,
@@ -49,21 +50,34 @@ def restate_run_for_request(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
-    game_id: uuid.UUID | None = None,
 ) -> WriteAnswer:
     """State the draft; the refusal on failure."""
     try:
-        restate_run(
-            cast("User", request.user),
-            run,
-            draft,
-            correlation_id=correlation_id,
-            game_id=game_id,
+        moved = restate_run(
+            cast("User", request.user), run, draft, correlation_id=correlation_id
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)
         return WriteAnswer(failure)
+    if moved is not None:
+        messages.info(request, moved_sentence(moved))
     return WriteAnswer(None)
+
+
+def moved_sentence(moved: MovedRun) -> str:
+    """One toast: the move, then each swap."""
+    if moved.tracked_the_target:
+        sentence = f"Moved to {moved.target}, which is now tracked in your library."
+    else:
+        sentence = f"Moved to {moved.target}."
+    if moved.removed_a_placeholder:
+        sentence += " Its empty playthrough was removed."
+    if moved.minted_a_placeholder:
+        sentence += (
+            f" {moved.source} got an empty playthrough, since every tracked "
+            "game keeps one."
+        )
+    return sentence
 
 
 def remove_run_for_request(

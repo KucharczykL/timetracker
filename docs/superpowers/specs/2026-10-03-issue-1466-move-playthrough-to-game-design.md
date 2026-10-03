@@ -54,19 +54,24 @@ occur.
 The Undo of `playthrough.start` and `playthrough.complete` puts back the
 status that the batch changed. `run_game_at_batch` reads the game that
 the run had when the batch wrote. The Undo reads and states the status
-on that game.
+on that game. A removed game gets no status back. A stream with no game
+before the batch reads the current game and logs a warning.
 
 ## The surfaces
 
-`restate_run` takes `game_id`. It dispatches the move first, under the
-correlation id of the description and the endpoints.
+`RunDraft.game_id` states the game; `None` states none. `restate_run`
+refuses a reversed draft first. Then it dispatches the move, under the
+correlation id of the description and the endpoints. It answers a
+`MovedRun`, read from the events of the move.
 
 Edit playthrough sends the game of the form. It locks the game for the
 bucket only. The companion status and the return page use the game of
-the form. The Played box shows by the current game of the run.
+the form. The Played box follows the current game of the run. One info
+toast tells the move, the tracking, and each placeholder swap.
 
-`PATCH /api/playthrough/{id}` takes `game_id`. Thus a run that the form
-cannot show, with a month or a year as its day, can move.
+`PATCH /api/playthrough/{id}` takes `game_id` and refuses a present
+null. Thus a run that the form cannot show, with a month or a year as
+its day, can move.
 
 ## Accepted limits
 

@@ -299,15 +299,43 @@ def _game_at_batch(run: Playthrough, batch_id: uuid.UUID) -> PlayerGame:
     """
     with answered("game"):
         tracked_id = run_game_at_batch(run.library, run.pk, batch_id)
-        if tracked_id is None or tracked_id == run.player_game_id:
+        if tracked_id is None:
+            logger.warning(
+                "[bulk]: playthrough %s of library %s states no game before "
+                "batch %s; its current game is read instead",
+                run.pk,
+                run.library_id,
+                batch_id,
+            )
             return run.player_game
-        return PlayerGame.objects.select_related("game").get(
-            library=run.library, pk=tracked_id
+        if tracked_id == run.player_game_id:
+            return run.player_game
+        tracked = (
+            PlayerGame.objects.select_related("game")
+            .filter(library=run.library, pk=tracked_id)
+            .first()
         )
+        if tracked is None:
+            raise RowUnreadable(
+                f"Playthrough {run.pk} of library {run.library_id} was at "
+                f"tracked game {tracked_id} when batch {batch_id} ran, and the "
+                "library holds no such row."
+            )
+        return tracked
 
 
 def _word_before(tracked: PlayerGame, batch_id: uuid.UUID) -> PlayerGameStatus | None:
-    """Read before the void: a defect leaves nothing half-undone."""
+    """Read before the void: a defect leaves nothing half-undone.
+
+    None for a removed game: no status goes back.
+    """
+    if tracked.removed_at is not None:
+        logger.info(
+            "[bulk]: game %s of library %s was removed, so no status goes back",
+            tracked.game_id,
+            tracked.library_id,
+        )
+        return None
     with answered("game"):
         change = status_change(tracked.library, tracked.pk, batch_id)
     return None if change is None else change.before

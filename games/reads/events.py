@@ -8,6 +8,7 @@ import uuid
 from games.events.dispatch import CommandResult
 from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_MOVED
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
+from games.ids import PlayerGameId, PlaythroughId
 from games.models import LibraryEvent, LibraryEventQuerySet, UserLibrary
 
 
@@ -77,16 +78,17 @@ _RUN_PARENT_TYPES = (PLAYTHROUGH_CREATED.event_type, PLAYTHROUGH_MOVED.event_typ
 
 
 def run_game_at_batch(
-    library: UserLibrary, playthrough_id: uuid.UUID, batch_id: uuid.UUID
-) -> uuid.UUID | None:
+    library: UserLibrary, playthrough_id: PlaythroughId, batch_id: uuid.UUID
+) -> PlayerGameId | None:
     """The run's PlayerGame when the batch wrote.
 
-    None: the stream states none; the row's holds.
+    None: no batch event, or no earlier game.
     """
     events = aggregate_events(library, playthrough_id)
     batch_event = events.filter(correlation_id=batch_id).first()
-    parents = events.filter(event_type__in=_RUN_PARENT_TYPES)
-    if batch_event is not None:
-        parents = parents.filter(sequence__lt=batch_event.sequence)
-    parent = parents.last()
+    if batch_event is None:
+        return None
+    parent = events.filter(
+        event_type__in=_RUN_PARENT_TYPES, sequence__lt=batch_event.sequence
+    ).last()
     return None if parent is None else uuid.UUID(parent.payload["player_game"])

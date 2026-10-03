@@ -316,6 +316,7 @@ def _edited_draft(form: PlaythroughForm, run: Playthrough) -> RunDraft:
         started=_restated_act(form.cleaned_data["started"], stated_start(run)),
         completed=_restated_act(form.cleaned_data["ended"], stated_completion(run)),
         note=form.cleaned_data["note"],
+        game_id=form.cleaned_data["game"].pk,
     )
 
 
@@ -451,11 +452,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         acts = _new_acts(draft, run)
         stated_game: Game = form.cleaned_data["game"]
         answer = restate_run_for_request(
-            request,
-            run,
-            draft,
-            correlation_id=correlation_id,
-            game_id=stated_game.pk,
+            request, run, draft, correlation_id=correlation_id
         )
         if answer.refusal is None:
             _record_companion_status(request, stated_game, acts, form, correlation_id)

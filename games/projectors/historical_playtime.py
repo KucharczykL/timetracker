@@ -114,6 +114,7 @@ class HistoricalPlaytimes(Projector):
 
     def _moved(self, event: RecordedEvent) -> None:
         #: No restated_at: nothing was restated.
+        #: A re-applied creation reverts the game.
         self.amend(
             HistoricalPlaytime,
             event,

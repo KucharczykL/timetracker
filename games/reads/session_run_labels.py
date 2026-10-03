@@ -1,12 +1,11 @@
 """The run name a session row shows."""
 
-import uuid
 from collections.abc import Sequence
 
+from games.ids import PlaythroughId
 from games.models import PlayerSession, PlaythroughKind, UserLibrary
 from games.reads.playthrough_numbering import display_name, numbered_for
 
-type PlaythroughId = uuid.UUID
 type RunLabel = str  # e.g. "Playthrough 2"
 type RunLabels = dict[PlaythroughId, RunLabel]
 

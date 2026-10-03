@@ -28,17 +28,19 @@ from games.events.dispatch import (
     dispatch,
 )
 from games.events.playthrough import playthrough_created
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import (
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
-    LibraryEvent,
     PlayerGame,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
+from games.reads.events import dispatched_events
+from games.removal import remove
 
 pytestmark = [
     pytest.mark.untracked_games,
@@ -143,15 +145,7 @@ def move(run, playthrough, game):
 
 
 def appended_types(result):
-    return list(
-        LibraryEvent.objects.filter(
-            stream_id=result.stream_id,
-            sequence__gte=result.sequences.first,
-            sequence__lte=result.sequences.last,
-        )
-        .order_by("sequence")
-        .values_list("event_type", flat=True)
-    )
+    return list(dispatched_events(result).values_list("event_type", flat=True))
 
 
 def test_the_run_moves_with_its_sessions(owned_library, run, base, dlc):
@@ -185,16 +179,20 @@ def test_a_removed_run_is_refused(owned_library, run, base, dlc):
     removed = named_run(run, owned_library, base, "Gone")
     run(RemovePlaythrough(playthrough_id=removed.pk))
 
-    with pytest.raises(CommandRejected):
+    with pytest.raises(CommandRejected) as refusal:
         move(run, removed, dlc)
+
+    assert "playthrough was removed" in refusal.value.sentence
 
 
 def test_a_run_of_a_removed_game_is_refused(owned_library, run, base, dlc):
     moving = sole_run(owned_library, base)
     run(RemovePlayerGame(game_id=base.pk))
 
-    with pytest.raises(CommandRejected):
+    with pytest.raises(CommandRejected) as refusal:
         move(run, moving, dlc)
+
+    assert "game was removed" in refusal.value.sentence
 
 
 def test_the_bucket_is_refused(owned_user, owned_library, run, base, dlc):
@@ -363,3 +361,45 @@ def test_a_removed_shared_record_names_the_restore(owned_library, run, base, dlc
         move(run, moving, dlc)
 
     assert "Restore" in refusal.value.sentence
+
+
+def test_an_untracked_shared_target_is_tracked(owned_library, run, base):
+    shared = Game.objects.create(library=None, name="Assignment Ada")
+    moving = named_run(run, owned_library, base, "Ada")
+
+    move(run, moving, shared)
+
+    assert live_runs(owned_library, shared) == [moving]
+
+
+def test_an_untracked_removed_catalog_game_is_absent(owned_library, run, base):
+    gone = Game.objects.create(library=owned_library, name="Gone")
+    remove(gone)
+
+    with pytest.raises(RowNotHeld):
+        move(run, named_run(run, owned_library, base, "Gone"), gone)
+
+
+def test_both_placeholders_swap_in_one_dispatch(owned_library, run, base, dlc):
+    result = move(run, sole_run(owned_library, base), dlc)
+
+    assert appended_types(result) == [
+        "library.playthrough.moved",
+        "library.playthrough.removed",
+        "library.playthrough.created",
+    ]
+
+
+def test_a_rebuild_keeps_the_moved_game(owned_library, run, base, dlc):
+    """The creation names the old game; the move wins."""
+    moving = named_run(run, owned_library, base, "DLC")
+    record = record_on(run, owned_library, moving)
+    move(run, moving, dlc)
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert all(table.differing == 0 for table in report.tables)
+    moving.refresh_from_db()
+    record.refresh_from_db()
+    assert moving.player_game == tracked(owned_library, dlc)
+    assert record.player_game == tracked(owned_library, dlc)

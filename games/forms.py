@@ -2237,7 +2237,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     ):
         super().__init__(*args, **kwargs)
         self.library = library
-        #: The imported-history bucket alone.
+        #: Set for the bucket alone.
         self.locked_game = locked_game
         cast(
             forms.ModelChoiceField, self.fields["game"]

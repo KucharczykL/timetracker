@@ -8,6 +8,7 @@ from pydantic import with_config
 from games.events.endpoint import EndpointPayload, endpoint_events
 from games.events.references import STRICT_SCHEMA, ReferenceId
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
+from games.ids import PlayerGameId, PlaythroughId
 from timetracker.temporal import TemporalValue
 
 #: A Literal, not PlaythroughKind, on purpose. Strict validation refuses a
@@ -263,7 +264,7 @@ DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_MOVED)
 
 
 def playthrough_moved(
-    playthrough_id: uuid.UUID, *, player_game_id: uuid.UUID
+    playthrough_id: PlaythroughId, *, player_game_id: PlayerGameId
 ) -> NewEvent:
     """The run belongs to another game now."""
     return PLAYTHROUGH_MOVED.new(

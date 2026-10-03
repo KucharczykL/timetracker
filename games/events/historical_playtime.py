@@ -10,6 +10,7 @@ from pydantic import AfterValidator, Field, with_config
 from games.events.playersession import NoteText
 from games.events.references import STRICT_SCHEMA, Reference, ReferenceId
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
+from games.ids import HistoricalPlaytimeId, PlayerGameId
 from timetracker.temporal import TemporalValue
 
 #: Recorded spelling; not the TextChoices.
@@ -92,7 +93,7 @@ class HistoricalPlaytimeMarkPayload(TypedDict):
 
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeMovedPayload(TypedDict):
-    """The game the record's run moved to."""
+    """The tracked game the run moved to."""
 
     player_game: ReferenceId
 
@@ -234,7 +235,7 @@ def historicalplaytime_restored(record_id: uuid.UUID) -> NewEvent:
 
 
 def historicalplaytime_moved(
-    record_id: uuid.UUID, *, player_game_id: uuid.UUID
+    record_id: HistoricalPlaytimeId, *, player_game_id: PlayerGameId
 ) -> NewEvent:
     """The record follows its run."""
     return HISTORICALPLAYTIME_MOVED.new(

@@ -75,7 +75,7 @@ class Playthroughs(Projector):
             player_game_id=uuid.UUID(event.payload["player_game"]),
         )
 
-    #: The creation handler names three columns, so amendments survive.
+    #: The creation handler names three columns; one is amended too.
     #:
     #: A rebuild inserts the model defaults for the rest, and the events
     #: that follow set the real values. Naming one there would let a
