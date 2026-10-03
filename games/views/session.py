@@ -342,12 +342,14 @@ def _record_played(request: HttpRequest, game: Game) -> None:
 def _session_draft(form: SessionForm, library: UserLibrary) -> SessionDraft:
     """What the valid form states, in the library's calendar."""
     device = form.cleaned_data.get("device")
+    release = form.cleaned_data.get("release")
     return SessionDraft(
         playthrough_id=form.cleaned_data["playthrough"].pk,
         timing=form.timing_statement(calendar_day_zone(library).key),
         device_id=None if device is None else device.pk,
         note=form.cleaned_data["note"],
         emulated=form.cleaned_data["emulated"],
+        release_id=None if release is None else release.pk,
     )
 
 

@@ -142,6 +142,7 @@ def _record(owner, run, timing, *, device=None, note=""):
             device_id=None if device is None else device.pk,
             note=note,
             emulated=False,
+            release_id=None,
         ),
         correlation_id=uuid.uuid7(),
     )

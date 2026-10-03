@@ -49,6 +49,7 @@ from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
     StatedDevice,
+    StatedRelease,
     TimedTiming,
     TimingStatement,
 )
@@ -76,7 +77,13 @@ from games.filters import (
     parse_session_filter,
 )
 from games.formatting import zone_label
-from games.forms import DeviceForm, PlatformForm, device_option, game_option_data
+from games.forms import (
+    DeviceForm,
+    PlatformForm,
+    device_option,
+    game_option_data,
+    release_options,
+)
 from games.models import (
     Device,
     EntryAccess,
@@ -108,7 +115,14 @@ from games.reads.purchases import (
     library_purchases,
     readable_purchases,
 )
-from games.reads.releases import game_releases, matching_releases, release_label
+from games.reads.releases import (
+    game_releases,
+    held_game_releases,
+    matching_releases,
+    played_release_label,
+    played_releases,
+    release_label,
+)
 from games.removal import remove
 from games.sorting import (
     HISTORICAL_PLAYTIME_DEFAULT_SORT,
@@ -769,6 +783,26 @@ def search_releases(request, game_id: UUIDv7, q: str = "", limit: int = 10):
     ]
 
 
+@release_router.get("/held", response=list[PickerOption])
+def search_held_releases(request, game_id: UUIDv7, q: str = "", limit: int = 10):
+    """One Game's Releases a live copy names."""
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.visible_to(library), library, id=game_id)
+    releases = list(matching_releases(held_game_releases(library, game), q)[:limit])
+    return release_options(releases, library=library)
+
+
+@release_router.get("/played", response=list[PickerOption])
+def search_played_releases(request, q: str = "", limit: int = 10):
+    """Releases a live session or record names."""
+    library = cast(User, request.user).library
+    releases = played_releases(library, q)
+    return [
+        {"value": release.pk, "label": played_release_label(release), "data": {}}
+        for release in releases[:limit]
+    ]
+
+
 @release_router.post("/", response={201: CreatedRow})
 def create_release(request, payload: ReleaseIn):
     """A Release on the typed Platform, once."""
@@ -873,6 +907,7 @@ class SessionOut(Schema):
     playthrough_id: UUIDv7
     game: GameOut | None = Field(None, alias="playthrough.player_game.game")
     device: DeviceOut | None = None
+    release_id: UUIDv7 | None = None
     timing_mode: str
     started_at: datetime | None = None
     ended_at: datetime | None = None
@@ -1059,9 +1094,9 @@ class SessionUpdate(Schema):
     """Each named key is one act; an omitted key states nothing.
 
     `timing` is a correction of the whole statement; `note`, `device_id`
-    and `emulated` a description; `playthrough_id` a move. A key the
-    body does not know is refused, so the old `timestamp_end` cannot
-    pass unread.
+    and `emulated` a description; `playthrough_id` a move; `release_id`
+    a description after the move. A key the body does not know is
+    refused, so the old `timestamp_end` cannot pass unread.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1072,6 +1107,8 @@ class SessionUpdate(Schema):
     device_id: UUIDv7 | None = None
     emulated: bool | None = None
     playthrough_id: UUIDv7 | None = None
+    #: Present-null clears the Release.
+    release_id: UUIDv7 | None = None
 
 
 def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
@@ -1110,6 +1147,7 @@ class SessionIn(Schema):
     playthrough_id: UUIDv7
     timing: TimingIn
     device_id: UUIDv7 | None = None
+    release_id: UUIDv7 | None = None
     note: str = ""
     emulated: bool = False
 
@@ -1157,6 +1195,7 @@ def create_session(
                 device_id=payload.device_id,
                 note=payload.note,
                 emulated=payload.emulated,
+                release_id=payload.release_id,
             ),
             correlation_id=new_correlation_id(),
             idempotency_key=stated_key,
@@ -1202,6 +1241,14 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
             move_session(
                 actor, session, payload.playthrough_id, correlation_id=correlation_id
             )
+        #: After the move, which clears another game's.
+        if "release_id" in stated:
+            describe_session(
+                actor,
+                session,
+                release=StatedRelease(payload.release_id),
+                correlation_id=correlation_id,
+            )
     except CommandFailed as failure:
         _answered_or_http(failure)
     #: Read before the message: this scope reads a catalog
@@ -1230,6 +1277,7 @@ class HistoricalPlaytimeOut(Schema):
     when_upper: date | None = None
     provenance: str
     device: DeviceOut | None = None
+    release_id: UUIDv7 | None = None
     emulated: bool
     note: str
     created_at: datetime

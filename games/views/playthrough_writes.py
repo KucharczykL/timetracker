@@ -95,6 +95,15 @@ def moved_sentence(moved: MovedRun) -> str:
             f" {moved.source} got an empty playthrough, since every tracked "
             "game keeps one."
         )
+    if moved.cleared_releases == 1:
+        sentence += (
+            f" One session or record no longer names a release of {moved.source}."
+        )
+    elif moved.cleared_releases > 1:
+        sentence += (
+            f" {moved.cleared_releases} sessions and records no longer name a "
+            f"release of {moved.source}."
+        )
     return sentence
 
 

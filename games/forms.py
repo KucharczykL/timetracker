@@ -86,6 +86,7 @@ from games.models import (
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
+    Release,
     UserLibrary,
 )
 from games.reads.companion_status import played_is_offered
@@ -93,6 +94,7 @@ from games.reads.endpoints import stated
 from games.reads.platform_groups import platform_groups
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
+from games.reads.releases import ended_copy_ways, release_label
 from games.writes.playersession import latest_ordinary_run
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.temporal import (
@@ -338,6 +340,38 @@ def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
         device_option(device)
         for device in Device.objects.for_library(library).filter(pk__in=values)
     ]
+
+
+def release_option(release: Release, ended: EndWay | None) -> SearchSelectOption:
+    """One Release as a picker row."""
+    option: SearchSelectOption = {
+        "value": str(release.pk),
+        "label": release_label(release),
+        "data": {},
+    }
+    if ended is not None:
+        option["hint"] = END_WAY_LABELS[ended]
+    return option
+
+
+def release_options(
+    releases: Sequence[Release], *, library: UserLibrary
+) -> list[SearchSelectOption]:
+    """Rows hinted where every copy ended."""
+    ways = ended_copy_ways(library, [release.pk for release in releases])
+    return [release_option(release, ways.get(release.pk)) for release in releases]
+
+
+def held_release_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
+    """Resolve Release ids; a removed one too."""
+    #: Not visible_to: a held Release may be removed.
+    releases = Release.objects.filter(
+        Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
+        pk__in=values,
+    )
+    return release_options(
+        list(releases.select_related("edition", "platform")), library=library
+    )
 
 
 def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:

@@ -36,8 +36,10 @@ from games.events.dispatch import (
     RowUnreadable,
     dispatch,
 )
+from games.events.historical_playtime import HISTORICALPLAYTIME_MOVED
 from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playersession import PLAYERSESSION_RELEASE_CHANGED
 from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_REMOVED
 from games.ids import GameId
 from games.models import Game, PlayerGame, Playthrough, UserLibrary
@@ -291,6 +293,8 @@ class MovedRun(NamedTuple):
     minted_a_placeholder: bool
     #: The status the endpoints implied on the target.
     status: StatusAnswer = None
+    #: Sessions and records whose Release the move cleared.
+    cleared_releases: int = 0
 
 
 class MovedThenFailed(CommandFailed):
@@ -373,13 +377,23 @@ def _move(
         return None
     #: Reloads the parent, so the target reads.
     run.refresh_from_db()
-    appended = set(dispatched_events(result).values_list("event_type", flat=True))
+    events = list(dispatched_events(result).values_list("event_type", "payload"))
+    appended = {event_type for event_type, _ in events}
     return MovedRun(
         source=source,
         target=run.player_game.game,
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
+        cleared_releases=sum(
+            1
+            for event_type, payload in events
+            if event_type == PLAYERSESSION_RELEASE_CHANGED.event_type
+            or (
+                event_type == HISTORICALPLAYTIME_MOVED.event_type
+                and "release" in payload
+            )
+        ),
     )
 
 

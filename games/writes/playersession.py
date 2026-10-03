@@ -20,6 +20,7 @@ from games.commands.playersession import (
     RemoveSession,
     RestoreSession,
     StatedDevice,
+    StatedRelease,
     TimedTiming,
     TimingStatement,
 )
@@ -46,6 +47,7 @@ class SessionDraft(NamedTuple):
     device_id: uuid.UUID | None
     note: str
     emulated: bool
+    release_id: uuid.UUID | None
 
 
 def _dispatch(
@@ -91,6 +93,7 @@ def record_session(
                 playthrough_id=draft.playthrough_id,
                 timing=draft.timing,
                 device_id=draft.device_id,
+                release_id=draft.release_id,
                 note=draft.note,
                 emulated=draft.emulated,
             ),
@@ -111,12 +114,13 @@ def restate_session(
 ) -> None:
     """State the draft's differences onto a session.
 
-    Three dispatches at most, one fact each, under one correlation:
-    the timing, then the description, then the move. Each answers
-    Unchanged for state the row holds, so a failed submit is finished
-    by submitting again. The description names only the facts that
-    differ, and is not dispatched when none does, since a description
-    stating nothing is refused rather than Unchanged.
+    Four dispatches at most, one fact each, under one correlation:
+    the timing, then the description, then the move, then the Release.
+    Each answers Unchanged for state the row holds, so a failed submit
+    is finished by submitting again. The description names only the
+    facts that differ, and is not dispatched when none does, since a
+    description stating nothing is refused rather than Unchanged. The
+    Release follows the move, which clears another game's.
     """
     with answered("session"):
         _dispatch(
@@ -151,10 +155,22 @@ def restate_session(
                 library=actor.library,
                 correlation_id=correlation_id,
             )
-        if draft.playthrough_id != session.playthrough_id:
+        moves = draft.playthrough_id != session.playthrough_id
+        if moves:
             _dispatch(
                 MoveSessionToPlaythrough(
                     session_id=session.pk, playthrough_id=draft.playthrough_id
+                ),
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+        if draft.release_id != session.release_id or (
+            moves and draft.release_id is not None
+        ):
+            _dispatch(
+                DescribeSession(
+                    session_id=session.pk, release=StatedRelease(draft.release_id)
                 ),
                 actor=actor,
                 library=actor.library,
@@ -190,15 +206,20 @@ def describe_session(
     note: str | None = None,
     device: StatedDevice | None = None,
     emulated: bool | None = None,
+    release: StatedRelease | None = None,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
-    """State note, device or emulated; None is unstated."""
+    """State note, device, emulated or Release; None is unstated."""
     with answered("session"):
         return _dispatch(
             DescribeSession(
-                session_id=session.pk, note=note, device=device, emulated=emulated
+                session_id=session.pk,
+                note=note,
+                device=device,
+                emulated=emulated,
+                release=release,
             ),
             actor=actor,
             library=actor.library,

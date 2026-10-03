@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.test import Client
 from entries import end_entry_access, record_entry, remove_entry, second_release
 
 from games.commands.historical_playtime import (
@@ -45,6 +46,9 @@ from games.models import (
 )
 from games.reads.calendar import calendar_day_zone
 from games.removal import remove
+from games.views.playthrough_writes import moved_sentence
+from games.writes.playersession import SessionDraft, restate_session
+from games.writes.playthrough import RunDraft, restate_run
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -355,3 +359,207 @@ def test_a_run_moved_to_another_game_clears_every_release(
     assert bare.pk not in {event.aggregate_id for event in cleared}
     moved = LibraryEvent.objects.get(event_type="library.historicalplaytime.moved")
     assert moved.payload["release"] is None
+
+
+def a_draft(run, release=None, **changes) -> SessionDraft:
+    return SessionDraft(
+        playthrough_id=run.pk,
+        timing=TimedTiming(
+            started_at=START,
+            ended_at=START + timedelta(hours=1),
+            day_zone=calendar_day_zone(run.library).key,
+        ),
+        device_id=None,
+        note="",
+        emulated=False,
+        release_id=None if release is None else release.pk,
+    )._replace(**changes)
+
+
+def test_an_edit_moving_games_states_the_targets_release_after_the_move(
+    owned_user, owned_library, graph, run, other_graph, other_run
+):
+    session = a_session(owned_library, run, graph.release)
+    correlation_id = uuid.uuid7()
+
+    restate_session(
+        owned_user,
+        session,
+        a_draft(other_run, other_graph.release),
+        correlation_id=correlation_id,
+    )
+
+    session.refresh_from_db()
+    assert session.release_id == other_graph.release.pk
+    assert list(
+        LibraryEvent.objects.filter(correlation_id=correlation_id)
+        .order_by("sequence")
+        .values_list("event_type", flat=True)
+    ) == [
+        "library.playersession.release_changed",
+        "library.playersession.moved",
+        "library.playersession.release_changed",
+    ]
+
+
+def test_an_edit_that_keeps_the_release_states_nothing_about_it(
+    owned_user, owned_library, graph, run
+):
+    session = a_session(owned_library, run, graph.release)
+    correlation_id = uuid.uuid7()
+
+    restate_session(
+        owned_user, session, a_draft(run, graph.release), correlation_id=correlation_id
+    )
+
+    assert not LibraryEvent.objects.filter(correlation_id=correlation_id).exists()
+
+
+def test_a_run_move_counts_the_releases_it_cleared(
+    owned_user, owned_library, graph, run, other_graph, other_run
+):
+    a_session(owned_library, run, graph.release)
+    a_session(owned_library, run)
+    state(owned_library, RecordHistoricalPlaytime(a_statement(run, graph.release)))
+
+    moved = restate_run(
+        owned_user,
+        run,
+        RunDraft(started=None, completed=None, note="", game_id=other_graph.game.pk),
+        correlation_id=uuid.uuid7(),
+    )
+
+    assert moved is not None
+    assert moved.cleared_releases == 2
+    assert "2 sessions and records no longer name a release of Hades." in (
+        moved_sentence(moved)
+    )
+
+
+@pytest.fixture
+def client(owned_user):
+    signed_in = Client()
+    signed_in.force_login(owned_user)
+    return signed_in
+
+
+def test_the_api_records_patches_and_reads_a_release(
+    client, owned_library, graph, run, other_graph, other_run
+):
+    created = client.post(
+        "/api/session/",
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {
+                "day": "2026-01-02",
+                "duration_seconds": 60,
+            },
+            "release_id": str(graph.release.pk),
+        },
+        content_type="application/json",
+    )
+    assert created.status_code == 201, created.content
+    assert created.json()["release_id"] == str(graph.release.pk)
+    session_id = created.json()["id"]
+
+    moved = client.patch(
+        f"/api/session/{session_id}",
+        {
+            "playthrough_id": str(other_run.pk),
+            "release_id": str(other_graph.release.pk),
+        },
+        content_type="application/json",
+    )
+    assert moved.status_code == 200, moved.content
+    assert moved.json()["release_id"] == str(other_graph.release.pk)
+
+    cleared = client.patch(
+        f"/api/session/{session_id}",
+        {"release_id": None},
+        content_type="application/json",
+    )
+    assert cleared.json()["release_id"] is None
+
+
+def test_the_api_answers_a_release_of_another_game_with_its_sentence(
+    client, graph, run, other_graph, other_run
+):
+    answer = client.post(
+        "/api/session/",
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {
+                "day": "2026-01-02",
+                "duration_seconds": 60,
+            },
+            "release_id": str(other_graph.release.pk),
+        },
+        content_type="application/json",
+    )
+
+    assert answer.status_code == 409
+    assert RELEASE_OF_ANOTHER_GAME in answer.content.decode()
+
+
+def test_the_record_api_reads_its_release(client, owned_library, graph, run):
+    state(owned_library, RecordHistoricalPlaytime(a_statement(run, graph.release)))
+
+    answer = client.get("/api/historical-playtime/")
+
+    assert answer.json()["items"][0]["release_id"] == str(graph.release.pk)
+
+
+def test_the_held_search_lists_the_games_releases_a_copy_names(
+    client, owned_library, graph, entry, run, other_graph, other_run
+):
+    uncopied = second_release(owned_library, graph.release)
+
+    answer = client.get(f"/api/releases/held?game_id={graph.game.pk}")
+
+    assert answer.status_code == 200
+    values = [option["value"] for option in answer.json()]
+    assert values == [str(graph.release.pk)]
+    assert str(uncopied.pk) not in values
+    assert "hint" not in answer.json()[0]
+
+
+def test_the_held_search_hints_a_release_whose_copies_all_ended(
+    client, owned_library, graph, entry, run
+):
+    end_entry_access(entry)
+
+    (option,) = client.get(f"/api/releases/held?game_id={graph.game.pk}").json()
+
+    assert option["hint"] == "Returned"
+
+
+def test_the_held_search_answers_another_librarys_game_as_absent(
+    client, django_user_model, stated_graph
+):
+    stranger = django_user_model.objects.create_user(username="stranger").library
+    theirs = stated_graph(Game(name="Tunic", library=stranger), stranger)
+
+    answer = client.get(f"/api/releases/held?game_id={theirs.game.pk}")
+
+    assert answer.status_code == 404
+
+
+def test_the_played_search_lists_the_releases_rows_name_by_game(
+    client, owned_library, graph, entry, run, other_graph, other_run
+):
+    a_session(owned_library, run, graph.release)
+    state(
+        owned_library,
+        RecordHistoricalPlaytime(a_statement(other_run, other_graph.release)),
+    )
+    remove_entry(entry)
+
+    every = client.get("/api/releases/played").json()
+    narrowed = client.get("/api/releases/played?q=cel").json()
+
+    assert [option["value"] for option in every] == [
+        str(other_graph.release.pk),
+        str(graph.release.pk),
+    ]
+    assert every[1]["label"].startswith("Hades · ")
+    assert [option["value"] for option in narrowed] == [str(other_graph.release.pk)]
