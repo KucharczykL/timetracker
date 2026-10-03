@@ -149,7 +149,7 @@ def test_a_refused_status_is_carried_back(owned_user, run, game, monkeypatch):
         raise refusal
 
     monkeypatch.setattr(
-        "games.writes.playthrough_endpoints.record_facts",
+        "games.writes.implied_status.record_facts",
         refuse,
     )
 
@@ -168,7 +168,7 @@ def test_a_status_defect_ends_the_act(owned_user, run, game, monkeypatch):
     def fail(*arguments, **facts):
         raise CommandFailed("The database refused the statement.", 500)
 
-    monkeypatch.setattr("games.writes.playthrough_endpoints.record_facts", fail)
+    monkeypatch.setattr("games.writes.implied_status.record_facts", fail)
 
     with pytest.raises(CommandFailed):
         state_completion(owned_user, run, DAY, correlation_id=new_correlation_id())

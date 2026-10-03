@@ -32,8 +32,31 @@ The events are, in this order:
 
 Thus each tracked game keeps one live ordinary run.
 
-Sessions name the run, so they follow with no event. Statuses do not
-move. Numbering, playtime and the dormancy clock are reads.
+Sessions name the run, so they follow with no event. Numbering,
+playtime and the dormancy clock are reads.
+
+## The status at the target
+
+A run keeps its endpoints when it moves. The endpoints imply a status
+on the target, as they do when an act states them. Thus `restate_run`
+states that status after the move (issue
+[#1476](https://github.com/KucharczykL/timetracker/issues/1476)):
+
+- A stated completion implies Completed.
+- Else a stated start implies Played, where the target is Unplayed.
+- Else the move implies no status.
+
+`implied_status` in `games/writes/implied_status.py` holds this rule.
+`state_implied_status`, in the same module, states the status for the
+move and for the endpoint writer. The status has the correlation id of
+the move. Its idempotency key is the key of the move with `-status`.
+
+The source keeps its status. The move does not unstate an act there.
+
+A refused status does not refuse the move. `MovedRun` carries the
+stated status and the refusal. The toast names the status. A refusal
+is a second toast. The API logs the refusal and answers 204.
+
 
 ## The record event
 

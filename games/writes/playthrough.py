@@ -40,7 +40,13 @@ from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_REMOVED
 from games.ids import GameId
-from games.models import Game, PlayerGame, Playthrough, UserLibrary
+from games.models import (
+    Game,
+    PlayerGame,
+    PlayerGameStatus,
+    Playthrough,
+    UserLibrary,
+)
 from games.reads.events import created_aggregate_id, dispatched_events
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
@@ -48,8 +54,13 @@ from games.reads.playthrough_endpoints import (
     stated_start,
 )
 from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
-from games.writes.answers import answered
+from games.writes.answers import CommandFailed, answered
 from games.writes.endpoint import Act, endpoint_move
+from games.writes.implied_status import (
+    StatusAnswer,
+    implied_status,
+    state_implied_status,
+)
 from games.writes.playergame import track_game
 from timetracker.temporal import TemporalValue
 
@@ -284,6 +295,9 @@ class MovedRun(NamedTuple):
     tracked_the_target: bool
     removed_a_placeholder: bool
     minted_a_placeholder: bool
+    #: The word the endpoints newly stated there.
+    stated_status: PlayerGameStatus | None
+    status_refusal: CommandFailed | None
 
 
 def restate_run(
@@ -313,27 +327,44 @@ def _move(
     *,
     correlation_id: uuid.UUID,
 ) -> MovedRun | None:
-    """Dispatch the move; read what it did."""
+    """Move; state the status the endpoints imply."""
     if game_id is None or game_id == run.player_game.game_id:
         return None
     source = run.player_game.game
+    idempotency_key = str(uuid.uuid7())
     result = _dispatch(
         MovePlaythroughToGame(playthrough_id=run.pk, game_id=game_id),
         actor=actor,
         library=actor.library,
         correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
     )
     if result.outcome is CommandOutcome.UNCHANGED:
         return None
     #: Reloads the parent, so the target reads.
     run.refresh_from_db()
+    target = run.player_game.game
     appended = set(dispatched_events(result).values_list("event_type", flat=True))
+    status = implied_status(run)
+    answer = (
+        StatusAnswer(changed=False, refusal=None)
+        if status is None
+        else state_implied_status(
+            actor,
+            target,
+            status,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+        )
+    )
     return MovedRun(
         source=source,
-        target=run.player_game.game,
+        target=target,
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
+        stated_status=status if answer.changed else None,
+        status_refusal=answer.refusal,
     )
 
 

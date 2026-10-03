@@ -313,7 +313,9 @@ docs/           — Additional documentation
   follow, a record naming the run alone follows through
   `historicalplaytime.moved` (no `restated_at`), one naming another run
   refuses; target's placeholder removed, bare source mints one, bucket
-  refused. Edit playthrough and PATCH `game_id` dispatch it before the
+  refused. `restate_run` then states the status the run's endpoints
+  imply on the target (`games/writes/implied_status.py`, the endpoint
+  writer's rule), keyed `<move key>-status`; source keeps its own. Edit playthrough and PATCH `game_id` dispatch it before the
   description; batch Undo reads the run's game at batch time
   (`run_game_at_batch`). Contract is
   [Move a playthrough](docs/superpowers/specs/2026-10-03-issue-1466-move-playthrough-to-game-design.md). #1012

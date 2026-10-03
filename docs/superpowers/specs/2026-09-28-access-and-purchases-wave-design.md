@@ -1138,7 +1138,9 @@ runs on it.
 - #1437, move a purchase to another copy (after P5b)
 - #1476, a moved run implies no status on its new game (found on
   #1466's first use; the endpoint writer's Played/Completed rule applies at
-  the target)
+  the target); implemented: `games/writes/implied_status.py` holds the rule
+  and the status write both the endpoint acts and the move call, so a
+  status the endpoints imply has one writer
 - #1466, move a playthrough to another game: the conversion's DLC Games
   hold no run the base game recorded before them, and Edit playthrough
   locks the game (filed 2026-10-03 from the DLC as games review). A

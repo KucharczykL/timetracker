@@ -14,13 +14,10 @@ from games.events.dispatch import CommandOutcome, CommandResult
 from games.events.idempotency import IdempotencyKey
 from games.models import PlayerGameStatus, Playthrough
 from games.reads.companion_status import played_is_offered
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
-from games.writes.playergame import record_facts
+from games.writes.answers import CommandFailed
+from games.writes.implied_status import state_implied_status
 from games.writes.playthrough import complete_run, start_run
 from timetracker.temporal import TemporalValue
-
-#: What the status is keyed on, beside the endpoint.
-_STATUS_KEY_SUFFIX = "-status"
 
 
 class StatedAct(NamedTuple):
@@ -121,27 +118,12 @@ def _state_the_status(
     idempotency_key: IdempotencyKey | None,
     source_metadata: SourceMetadata | None,
 ) -> CommandFailed | None:
-    """State the word the act implies; answer a conflict.
-
-    The key comes from the endpoint's, so two posts state it once. A
-    defect rises: nothing was recorded, and a caller that swallowed it
-    would report the row done.
-    """
-    try:
-        record_facts(
-            actor,
-            run.player_game.game,
-            status=status,
-            correlation_id=correlation_id,
-            idempotency_key=(
-                None
-                if idempotency_key is None
-                else f"{idempotency_key}{_STATUS_KEY_SUFFIX}"
-            ),
-            source_metadata=source_metadata,
-        )
-    except CommandFailed as refusal:
-        if refusal.status_code != CONFLICT_STATUS:
-            raise
-        return refusal
-    return None
+    """State the word the act implies; answer a conflict."""
+    return state_implied_status(
+        actor,
+        run.player_game.game,
+        status,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+        source_metadata=source_metadata,
+    ).refusal

@@ -557,7 +557,7 @@ def partial_update_playthrough(
     #: would hand back canonical strings and every key, and
     #: the commands take values.
     stated = payload.model_fields_set
-    restate_run(
+    moved = restate_run(
         cast("User", request.user),
         run,
         RunDraft(
@@ -570,6 +570,15 @@ def partial_update_playthrough(
         ),
         correlation_id=new_correlation_id(),
     )
+    #: The move stands; the word it implies did not.
+    if moved is not None and moved.status_refusal is not None:
+        logger.info(
+            "Playthrough %s of library %s moved to game %s, which kept its status: %s",
+            run.pk,
+            library.pk,
+            moved.target.pk,
+            moved.status_refusal.message,
+        )
     return Status(204, None)
 
 

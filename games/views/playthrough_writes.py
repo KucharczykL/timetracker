@@ -61,6 +61,8 @@ def restate_run_for_request(
         return WriteAnswer(failure)
     if moved is not None:
         messages.info(request, moved_sentence(moved))
+        if moved.status_refusal is not None:
+            messages.error(request, moved.status_refusal.message)
     return WriteAnswer(None)
 
 
@@ -72,6 +74,8 @@ def moved_sentence(moved: MovedRun) -> str:
         sentence = f"Moved to {moved.target}."
     if moved.removed_a_placeholder:
         sentence += " Its empty playthrough was removed."
+    if moved.stated_status is not None:
+        sentence += f" {moved.target} is now {moved.stated_status.label}."
     if moved.minted_a_placeholder:
         sentence += (
             f" {moved.source} got an empty playthrough, since every tracked "
