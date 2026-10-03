@@ -262,7 +262,7 @@ def checked_release(
     game_id: GameId,
     held_id: ReleaseId | None,
 ) -> Release | None:
-    """The Release rule; held skips removal and copy.
+    """The rule; held skips removal and copy.
 
     Callers that dispatch several commands run it first, so a
     refusal writes nothing.

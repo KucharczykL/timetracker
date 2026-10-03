@@ -399,7 +399,7 @@ def _move(
 
 
 def _live_rows_cleared(library: UserLibrary, events: list[AppendedEvent]) -> int:
-    """Live rows the move cleared; removed ones stay unsaid."""
+    """Live rows the move cleared."""
     sessions = [
         row_id
         for event_type, row_id, _ in events

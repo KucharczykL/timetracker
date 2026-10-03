@@ -121,7 +121,7 @@ class HistoricalPlaytimeStatement(NamedTuple):
     provenance: HistoricalPlaytimeProvenance
     playthrough_ids: tuple[uuid.UUID, ...]
     device_id: uuid.UUID | None
-    #: No default: a whole restatement clears an omission.
+    #: No default: an omission would clear it.
     release_id: uuid.UUID | None
     emulated: bool
     note: str

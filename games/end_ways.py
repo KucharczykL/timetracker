@@ -40,5 +40,5 @@ def way_words(way: EndWay) -> str | None:
 
 
 def ended_hint(way: EndWay) -> str:
-    """A picker's hint; an unstated way says Ended."""
+    """Picker hint; unstated says Ended."""
     return way_words(way) or "Ended"

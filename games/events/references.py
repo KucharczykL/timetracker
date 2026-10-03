@@ -81,7 +81,7 @@ class Reference(TypedDict):
     detail: str
 
 
-#: Spelled once: the validator and the registry agree.
+#: Spelled once for validator and registry.
 RELEASE_KIND: ReferenceKindName = "catalog.release"
 
 
