@@ -1136,6 +1136,9 @@ runs on it.
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1437, move a purchase to another copy (after P5b)
+- #1466, move a playthrough to another game: the conversion's DLC Games
+  hold no run the base game recorded before them, and Edit playthrough
+  locks the game (filed 2026-10-03 from the DLC as games review)
 - #1463, the purchase amount shows one price again, the original in a
   popover
 - #1443, remove the one-time Conversion review rows after P5c, keeping
