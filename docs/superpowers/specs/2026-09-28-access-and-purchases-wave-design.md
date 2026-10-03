@@ -1136,6 +1136,9 @@ runs on it.
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1437, move a purchase to another copy (after P5b)
+- #1476, a moved run implies no status on its new game (found on
+  #1466's first use; the endpoint writer's Played/Completed rule applies at
+  the target)
 - #1466, move a playthrough to another game: the conversion's DLC Games
   hold no run the base game recorded before them, and Edit playthrough
   locks the game (filed 2026-10-03 from the DLC as games review). A
