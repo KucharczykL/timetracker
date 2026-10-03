@@ -1,8 +1,4 @@
-"""The status a run's endpoints imply.
-
-One rule and one write, for every act that states an endpoint and
-for the move that carries endpoints to another game.
-"""
+"""The status a run's endpoints imply."""
 
 import uuid
 from typing import NamedTuple
@@ -25,7 +21,7 @@ _STATUS_KEY_SUFFIX = "-status"
 #: What a completion implies, whatever stands.
 IMPLIED_BY_COMPLETION = PlayerGameStatus.COMPLETED
 
-#: Refusals a person caused; the rest are defects.
+#: Refusals a person caused; others are defects.
 #:
 #: A key mismatch is absent: the status key derives
 #: from the act's, so a mismatch is the program's.
@@ -72,12 +68,7 @@ def state_implied_status(
     idempotency_key: IdempotencyKey | None,
     source_metadata: SourceMetadata | None = None,
 ) -> StatusAnswer:
-    """State the status; answer an expected refusal.
-
-    The key derives from the act's. A defect rises: the
-    status recorded nothing, and a caller that swallowed
-    it would report the row done.
-    """
+    """State the status; answer an expected refusal."""
     try:
         result = record_facts(
             actor,

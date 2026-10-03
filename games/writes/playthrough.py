@@ -358,11 +358,7 @@ def _move(
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey,
 ) -> MovedRun | None:
-    """Dispatch the move; read what it did.
-
-    A resubmit lands here as Unchanged, so
-    neither the move nor its status repeats.
-    """
+    """Dispatch the move; read what it did."""
     if game_id is None or game_id == run.player_game.game_id:
         return None
     source = run.player_game.game
