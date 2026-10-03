@@ -1136,6 +1136,16 @@ runs on it.
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1437, move a purchase to another copy (after P5b)
+- #1354, the Release a session or record was played on; ruled 2026-10-03:
+  it adds the full-editions clause to `outside_playthrough_dates` (a
+  prerelease Release is never outside dates); a move to another game
+  clears the Release through `release_changed(None)` in the same
+  dispatch, counted in the answer and restated by the bulk move's Undo,
+  and `historicalplaytime.moved` carries `release: None`; resume carries
+  no Release; a changed Release must name a Release the library holds a
+  live copy on, ended or not, hinted as an ended device is, and nothing
+  checks it again afterwards; Bulk Edit's Release field mirrors the
+  playthrough field
 - #1476, a moved run implies no status on its new game (found on
   #1466's first use; the endpoint writer's Played/Completed rule applies at
   the target); implemented: `games/writes/implied_status.py` holds the rule
