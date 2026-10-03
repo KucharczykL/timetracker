@@ -1,11 +1,11 @@
 """The Historical tab's rows and run names."""
 
-import uuid
 from collections.abc import Iterable, Mapping
 
 from django.db.models import Prefetch
 
 from games.events.dispatch import RowUnreadable
+from games.ids import PlaythroughId
 from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeQuerySet,
@@ -15,7 +15,6 @@ from games.models import (
 from games.reads.historical_playtime_records import readable_records
 from games.reads.playthrough_numbering import display_name, numbered_for
 
-type PlaythroughId = uuid.UUID
 type RunLabel = str  # e.g. "Playthrough 2"
 type RunLabels = Mapping[PlaythroughId, RunLabel]
 

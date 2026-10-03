@@ -63,6 +63,7 @@ def test_the_form_writes_no_row(user, game):
 
 @pytest.mark.django_db
 def test_a_locked_game_refuses_a_different_one(user, game, other_game):
+    """The bucket's lock; an ordinary run is not locked."""
     form = PlaythroughForm(
         {"game": str(other_game.pk), "started": "", "ended": "", "note": ""},
         library=user.library,

@@ -23,6 +23,7 @@ from games.bulk_playthrough_acts import (
 )
 from games.commands.playthrough import (
     CorrectPlaythroughStart,
+    MovePlaythroughToGame,
     StartPlaythrough,
 )
 from games.events.dispatch import CommandRejected, dispatch
@@ -40,7 +41,12 @@ from games.views.bulk import (
     STATEMENT_FIELD,
     TOKEN_FIELD,
 )
-from games.writes.playergame import new_correlation_id, record_facts, track_game
+from games.writes.playergame import (
+    new_correlation_id,
+    record_facts,
+    remove_from_library,
+    track_game,
+)
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -128,6 +134,15 @@ def _status_events(game):
 
 def _statused(game) -> PlayerGameStatus:
     return PlayerGameStatus(PlayerGame.objects.get(game=game).status)
+
+
+def _move(user, library, run, target, key):
+    dispatch(
+        MovePlaythroughToGame(playthrough_id=run.pk, game_id=target.pk),
+        actor=user,
+        library=library,
+        idempotency_key=key,
+    )
 
 
 # ── The day the batch states ─────────────────────────────────────────────────
@@ -318,6 +333,56 @@ def test_an_undo_of_a_completion_puts_an_earlier_word_back(
     run.refresh_from_db()
     assert run.completed is None
     assert _statused(game) == PlayerGameStatus.PLAYED
+
+
+def test_an_undo_after_a_move_puts_the_old_game_s_status_back(
+    client_in, owned_user, owned_library, game, second_game
+):
+    run = tracked_run(owned_library, game)
+    token, _ = _run(client_in, COMPLETE_URL, run)
+    _move(owned_user, owned_library, run, second_game, "move")
+
+    _undo(client_in, token)
+
+    run.refresh_from_db()
+    assert run.completed is None
+    assert _statused(game) == PlayerGameStatus.UNPLAYED
+    assert _statused(second_game) == PlayerGameStatus.UNPLAYED
+
+
+def test_an_undo_reads_the_game_the_batch_found(
+    client_in, owned_user, owned_library, game, second_game
+):
+    """Moved in, stated, moved back: the middle game."""
+    run = tracked_run(owned_library, game)
+    _move(owned_user, owned_library, run, second_game, "there")
+    token, _ = _run(client_in, COMPLETE_URL, run)
+    _move(owned_user, owned_library, run, game, "back")
+    record_facts(
+        owned_user,
+        game,
+        status=PlayerGameStatus.PLAYED,
+        correlation_id=new_correlation_id(),
+    )
+
+    _undo(client_in, token)
+
+    assert _statused(second_game) == PlayerGameStatus.UNPLAYED
+    assert _statused(game) == PlayerGameStatus.PLAYED
+
+
+def test_an_undo_after_the_old_game_left_voids_alone(
+    client_in, owned_user, owned_library, game, second_game
+):
+    run = tracked_run(owned_library, game)
+    token, _ = _run(client_in, COMPLETE_URL, run)
+    _move(owned_user, owned_library, run, second_game, "move")
+    remove_from_library(owned_user, game, correlation_id=new_correlation_id())
+
+    _undo(client_in, token)
+
+    run.refresh_from_db()
+    assert run.completed is None
 
 
 def test_an_undo_leaves_a_status_a_person_changed(

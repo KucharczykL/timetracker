@@ -19,6 +19,7 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    MovePlaythroughToGame,
     RecordPlaythroughByName,
     RemovePlaythrough,
     RestorePlaythrough,
@@ -29,14 +30,18 @@ from games.commands.playthrough import (
 from games.events.append import SourceMetadata
 from games.events.dispatch import (
     Command,
+    CommandOutcome,
     CommandRejected,
     CommandResult,
     RowUnreadable,
     dispatch,
 )
 from games.events.idempotency import IdempotencyKey
+from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_REMOVED
+from games.ids import GameId
 from games.models import Game, PlayerGame, Playthrough, UserLibrary
-from games.reads.events import created_aggregate_id
+from games.reads.events import created_aggregate_id, dispatched_events
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     stated_completion,
@@ -61,6 +66,8 @@ class RunDraft:
     started: ActStatement | None
     completed: ActStatement | None
     note: str
+    #: The run's catalog game; None states none.
+    game_id: GameId | None = None
 
 
 def _dispatch(
@@ -269,21 +276,77 @@ def _statement_order(
     return start_first
 
 
+class MovedRun(NamedTuple):
+    """What a move did beside the run."""
+
+    source: Game
+    target: Game
+    tracked_the_target: bool
+    removed_a_placeholder: bool
+    minted_a_placeholder: bool
+
+
 def restate_run(
     actor: User,
     run: Playthrough,
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
-) -> None:
+) -> MovedRun | None:
     """State the draft's differences onto a run.
 
-    Three dispatches, not one build: each answers Unchanged
-    for state the run holds, so a failed submit is finished
-    by submitting again.
+    One dispatch per fact, so a resubmit finishes.
+    A move goes first; None where none happened.
     """
     with answered("playthrough"):
+        #: Before the move: no act withdraws.
+        _refuse_a_reversed_draft(run, draft)
+        moved = _move(actor, run, draft.game_id, correlation_id=correlation_id)
         _restate(actor, run, draft, correlation_id=correlation_id)
+    return moved
+
+
+def _move(
+    actor: User,
+    run: Playthrough,
+    game_id: GameId | None,
+    *,
+    correlation_id: uuid.UUID,
+) -> MovedRun | None:
+    """Dispatch the move; read what it did."""
+    if game_id is None or game_id == run.player_game.game_id:
+        return None
+    source = run.player_game.game
+    result = _dispatch(
+        MovePlaythroughToGame(playthrough_id=run.pk, game_id=game_id),
+        actor=actor,
+        library=actor.library,
+        correlation_id=correlation_id,
+    )
+    if result.outcome is CommandOutcome.UNCHANGED:
+        return None
+    #: Reloads the parent, so the target reads.
+    run.refresh_from_db()
+    appended = set(dispatched_events(result).values_list("event_type", flat=True))
+    return MovedRun(
+        source=source,
+        target=run.player_game.game,
+        tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
+        removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
+        minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
+    )
+
+
+def _refuse_a_reversed_draft(run: Playthrough, draft: RunDraft) -> None:
+    """Refused up front, because no act withdraws."""
+    if certainly_reversed(
+        earlier=_stated_day(draft.started), later=_stated_day(draft.completed)
+    ):
+        raise CommandRejected(
+            f"The statement about playthrough {run.pk} completes it before it "
+            "began, and no run ends before it begins.",
+            sentence="This run finished before it started. Check the days.",
+        )
 
 
 def _restate(
@@ -296,14 +359,8 @@ def _restate(
     """The statements themselves, inside a caller's answer."""
     started = draft.started
     completed = draft.completed
-    #: Refused up front, because no act withdraws:
-    #: a start commits, then the completion refuses.
-    if certainly_reversed(earlier=_stated_day(started), later=_stated_day(completed)):
-        raise CommandRejected(
-            f"The statement about playthrough {run.pk} completes it before it "
-            "began, and no run ends before it begins.",
-            sentence="This run finished before it started. Check the days.",
-        )
+    #: A start commits, then the completion refuses.
+    _refuse_a_reversed_draft(run, draft)
     if draft.note.strip() != run.note:
         _dispatch(
             DescribePlaythrough(playthrough_id=run.pk, name=None, note=draft.note),
@@ -347,6 +404,11 @@ def record_run(
     two: a refusal after tracking leaves the game tracked
     with no run stated, and stating it again finishes it.
     """
+    if draft.game_id not in (None, game.pk):
+        raise ValueError(
+            f"A draft naming game {draft.game_id} was recorded at game {game.pk}; "
+            "a recorded run names its game once."
+        )
     with answered("playthrough"):
         try:
             recorded = _record_once(actor, game, draft, correlation_id=correlation_id)

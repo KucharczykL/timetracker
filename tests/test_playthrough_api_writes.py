@@ -6,13 +6,25 @@ from datetime import date, timedelta
 import pytest
 from django.contrib.messages import get_messages
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from stated_runs import another_run, state_run
 
 from games.commands.playthrough import ActStatement
-from games.models import Game, PlayerSession, PlayerSessionTimingMode, Playthrough
+from games.models import (
+    Game,
+    LibraryEvent,
+    PlayerSession,
+    PlayerSessionTimingMode,
+    Playthrough,
+    PlaythroughKind,
+)
 from games.removal import remove
 from games.writes.answers import REFUSED_BY_AN_UNREADABLE_ROW
-from games.writes.playergame import new_correlation_id, track_game
+from games.writes.playergame import (
+    new_correlation_id,
+    remove_from_library,
+    track_game,
+)
 from timetracker.temporal import TemporalValue
 
 
@@ -520,3 +532,110 @@ def test_a_row_the_creation_cannot_read_back_is_a_defect(
     assert Playthrough.objects.get(player_game__game=game).name == "New Game Plus"
     messages = [str(message) for message in get_messages(response.wsgi_request)]
     assert "Playthrough recorded" not in messages
+
+
+def _patch_game(client, run, game_id):
+    return client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"game_id": game_id},
+        content_type="application/json",
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_naming_a_game_moves_the_run(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = another_run(user, game)
+    client.force_login(user)
+
+    response = _patch_game(client, run, str(other.pk))
+
+    assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.player_game.game == other
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_naming_a_game_nobody_holds_answers_404(client, user, game):
+    run = another_run(user, game)
+    client.force_login(user)
+
+    response = _patch_game(client, run, str(uuid.uuid7()))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_moving_a_removed_target_answers_409(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    remove_from_library(user, other, correlation_id=new_correlation_id())
+    run = another_run(user, game)
+    client.force_login(user)
+
+    response = _patch_game(client, run, str(other.pk))
+
+    assert response.status_code == 409
+    assert "Restore" in response.json()["detail"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_moving_a_run_a_shared_record_names_answers_409(
+    client, user, owned_library, game
+):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = born_run(game)
+    record_row([run, another_run(user, game)])
+    client.force_login(user)
+
+    response = _patch_game(client, run, str(other.pk))
+
+    assert response.status_code == 409
+    run.refresh_from_db()
+    assert run.player_game.game == game
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_moving_the_bucket_answers_404(client, user, owned_library, game):
+    """No route reads the bucket, so none writes it."""
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=born_run(game).player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        name="Imported history",
+        created_at=timezone.now(),
+    )
+    client.force_login(user)
+
+    response = _patch_game(client, bucket, str(other.pk))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_naming_the_run_s_game_states_the_note_alone(client, user, game):
+    run = another_run(user, game)
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"game_id": str(game.pk), "note": "Same game"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.note == "Same game"
+    assert not LibraryEvent.objects.filter(
+        aggregate_id=run.pk, event_type="library.playthrough.moved"
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_naming_a_null_game_answers_422(client, user, game):
+    client.force_login(user)
+
+    response = _patch_game(client, another_run(user, game), None)
+
+    assert response.status_code == 422

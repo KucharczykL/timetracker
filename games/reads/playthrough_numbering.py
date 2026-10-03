@@ -1,6 +1,5 @@
 """Playthrough N, derived at read time."""
 
-import uuid
 from collections.abc import Iterable
 
 from django.db.models import Case, F, OrderBy, QuerySet, Value, When, Window
@@ -8,11 +7,9 @@ from django.db.models.fields import SmallIntegerField
 from django.db.models.functions import RowNumber
 
 from common.keyset import FieldName, RelationPath, lookup
+from games.ids import PlayerGameId
 from games.models import Playthrough, PlaythroughKind, UserLibrary
 from games.reads.playthrough_activity import activity_clock
-
-#: A tracked game's key, as a caller holds it.
-type PlayerGameId = uuid.UUID
 
 #: The fields that order runs on a screen.
 DISPLAY_ORDER_FIELDS: tuple[FieldName, ...] = (

@@ -11,6 +11,7 @@ from games.commands.endpoint import WayActStatement
 from games.end_ways import EndWay
 from games.endpoints import ENTRY_ACCESS_END
 from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS
+from games.ids import GameId
 from games.models import (
     EntryAccess,
     EntryFormat,
@@ -98,10 +99,6 @@ def taken_back_end(
         EndWay(standing.payload["way"]),
         standing.payload["note"],
     )
-
-
-#: A catalog game's key.
-type GameId = uuid.UUID
 
 
 def copy_end(entry: LibraryEntry) -> StatedEndpoint | None:

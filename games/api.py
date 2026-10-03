@@ -282,6 +282,15 @@ class UpdatePlaythroughIn(Schema):
     started: StatedTemporal = None
     completed: StatedTemporal = None
     note: str = ""
+    #: The catalog game the run moves to.
+    game_id: UUIDv7 | None = None
+
+    @model_validator(mode="after")
+    def a_named_game_states(self) -> UpdatePlaythroughIn:
+        """Null states nothing here, so it is refused."""
+        if "game_id" in self.model_fields_set and self.game_id is None:
+            raise ValueError("game_id states a game, or is left out.")
+        return self
 
 
 class PlaythroughOut(Schema):
@@ -557,6 +566,7 @@ def partial_update_playthrough(
             if "completed" in stated
             else None,
             note=payload.note if "note" in stated else run.note,
+            game_id=payload.game_id,
         ),
         correlation_id=new_correlation_id(),
     )

@@ -304,7 +304,15 @@ docs/           — Additional documentation
   `Playthrough N`, derived at read time by
   `games/reads/playthrough_numbering.py` and stored nowhere, which is why taking
   name away refused on row no number counted across — only taking one away, so
-  save that repeats blank a row was born with still states its note. #1012
+  save that repeats blank a row was born with still states its note. #1466's
+  `MovePlaythroughToGame` states a run's game (`playthrough.moved`): sessions
+  follow, a record naming the run alone follows through
+  `historicalplaytime.moved` (no `restated_at`), one naming another run
+  refuses; target's placeholder removed, bare source mints one, bucket
+  refused. Edit playthrough and PATCH `game_id` dispatch it before the
+  description; batch Undo reads the run's game at batch time
+  (`run_game_at_batch`). Contract is
+  [Move a playthrough](docs/superpowers/specs/2026-10-03-issue-1466-move-playthrough-to-game-design.md). #1012
   renders the first screen: Game detail lists every live ordinary run, numbered
   by `games/reads/playthrough_numbering.py`, and its edit and remove routes name
   the run rather than the legacy row. `Played N times` beside it counts only the

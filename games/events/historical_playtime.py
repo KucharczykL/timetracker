@@ -10,6 +10,7 @@ from pydantic import AfterValidator, Field, with_config
 from games.events.playersession import NoteText
 from games.events.references import STRICT_SCHEMA, Reference, ReferenceId
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
+from games.ids import HistoricalPlaytimeId, PlayerGameId
 from timetracker.temporal import TemporalValue
 
 #: Recorded spelling; not the TextChoices.
@@ -90,6 +91,13 @@ class HistoricalPlaytimeMarkPayload(TypedDict):
     """Removed and restored state nothing more."""
 
 
+@with_config(STRICT_SCHEMA)
+class HistoricalPlaytimeMovedPayload(TypedDict):
+    """The tracked game the run moved to."""
+
+    player_game: ReferenceId
+
+
 HISTORICALPLAYTIME_CREATED = EventSpec(
     "library.historicalplaytime.created",
     aggregate_type="historicalplaytime",
@@ -110,11 +118,17 @@ HISTORICALPLAYTIME_RESTORED = EventSpec(
     aggregate_type="historicalplaytime",
     payload=HistoricalPlaytimeMarkPayload,
 )
+HISTORICALPLAYTIME_MOVED = EventSpec(
+    "library.historicalplaytime.moved",
+    aggregate_type="historicalplaytime",
+    payload=HistoricalPlaytimeMovedPayload,
+)
 for _spec in (
     HISTORICALPLAYTIME_CREATED,
     HISTORICALPLAYTIME_RESTATED,
     HISTORICALPLAYTIME_REMOVED,
     HISTORICALPLAYTIME_RESTORED,
+    HISTORICALPLAYTIME_MOVED,
 ):
     DEFAULT_EVENT_TYPES.register(_spec)
 
@@ -218,3 +232,12 @@ def historicalplaytime_removed(record_id: uuid.UUID) -> NewEvent:
 def historicalplaytime_restored(record_id: uuid.UUID) -> NewEvent:
     """Put a removed record back."""
     return HISTORICALPLAYTIME_RESTORED.new(aggregate_id=record_id, payload={})
+
+
+def historicalplaytime_moved(
+    record_id: HistoricalPlaytimeId, *, player_game_id: PlayerGameId
+) -> NewEvent:
+    """The record follows its run."""
+    return HISTORICALPLAYTIME_MOVED.new(
+        aggregate_id=record_id, payload={"player_game": str(player_game_id)}
+    )

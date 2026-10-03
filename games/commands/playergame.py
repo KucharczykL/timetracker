@@ -63,6 +63,14 @@ def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
     )
 
 
+def tracking_event(game: Game) -> NewEvent:
+    """The row alone; caller supplies the run."""
+    return PLAYERGAME_CREATED.new(
+        aggregate_id=uuid.uuid7(),
+        payload={"game": capture_reference(game)},
+    )
+
+
 def tracking_events(game: Game) -> list[NewEvent]:
     """The pair that tracks a game: row, then run.
 
@@ -70,15 +78,9 @@ def tracking_events(game: Game) -> list[NewEvent]:
     pair directly and a seed that drifted from the command would measure
     a stream no command can produce.
     """
+    tracking = tracking_event(game)
     #: The first act states the default run.
-    tracked_id = uuid.uuid7()
-    return [
-        PLAYERGAME_CREATED.new(
-            aggregate_id=tracked_id,
-            payload={"game": capture_reference(game)},
-        ),
-        playthrough_created(tracked_id),
-    ]
+    return [tracking, playthrough_created(tracking.aggregate_id)]
 
 
 @dataclass(frozen=True, slots=True)

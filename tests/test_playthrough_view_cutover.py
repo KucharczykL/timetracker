@@ -23,6 +23,8 @@ from games.commands.playthrough import ActStatement
 from games.models import (
     Game,
     LibraryEvent,
+    PlayerGame,
+    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -111,6 +113,136 @@ def test_editing_a_run_states_the_difference(client, user, game):
     assert run.note == "read"
     assert run.started == TemporalValue.from_day(date(2026, 1, 2))
     assert run.start_recorded_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_edit_naming_another_game_moves_the_run(client, user, owned_library, game):
+    """The move and the note share one correlation id."""
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = another_run(user, game, note="")
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": "DLC"},
+    )
+
+    run.refresh_from_db()
+    assert run.player_game.game == other
+    assert run.note == "DLC"
+    assert response["Location"] == reverse(
+        "games:view_game", args=[other.pk, other.url_slug]
+    )
+    correlations = set(
+        LibraryEvent.objects.filter(aggregate_id=run.pk)
+        .exclude(event_type="library.playthrough.created")
+        .values_list("correlation_id", flat=True)
+    )
+    assert len(correlations) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_move_with_a_finish_completes_the_target(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = another_run(user, game)
+    client.force_login(user)
+
+    client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(other.pk),
+            "started": "2026-01-02",
+            "ended": "2026-02-03",
+            "note": "",
+            "also_mark_completed": "on",
+        },
+    )
+
+    assert PlayerGame.objects.get(game=other).status == PlayerGameStatus.COMPLETED
+    assert PlayerGame.objects.get(game=game).status == PlayerGameStatus.UNPLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_move_toasts_what_it_did(client, user, owned_library, game):
+    """The source's sole run left; the target's empty one went."""
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = Playthrough.objects.get(player_game__game=game)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": ""},
+    )
+
+    assert [str(message) for message in get_messages(response.wsgi_request)] == [
+        (
+            "Moved to Echoes of the Eye. Its empty playthrough was removed. "
+            "Outer Wilds got an empty playthrough, since every tracked game "
+            "keeps one."
+        )
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_reversed_edit_moves_nothing(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = another_run(user, game)
+    client.force_login(user)
+
+    client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(other.pk),
+            "started": "2026-02-03",
+            "ended": "2026-01-02",
+            "note": "",
+        },
+    )
+
+    run.refresh_from_db()
+    assert run.player_game.game == game
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_move_stays_on_the_page(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = Playthrough.objects.get(player_game__game=game)
+    record_row([run, another_run(user, game)])
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": ""},
+    )
+
+    run.refresh_from_db()
+    assert response.status_code == 409
+    assert run.player_game.game == game
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bucket_s_edit_keeps_its_game(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    born = Playthrough.objects.get(player_game__game=game)
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=born.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        name="Imported history",
+        created_at=timezone.now(),
+    )
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[bucket.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": ""},
+    )
+
+    bucket.refresh_from_db()
+    assert response.status_code == 200
+    assert "stays with its game" in response.content.decode()
+    assert bucket.player_game.game == game
 
 
 @pytest.mark.django_db(transaction=True)

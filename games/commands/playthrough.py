@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import ClassVar, cast
+from typing import ClassVar, NamedTuple, cast
 
 from django.db.models import QuerySet
 
@@ -17,8 +17,8 @@ from games.commands.endpoint import (
     state_endpoint,
     void_endpoint,
 )
-from games.commands.playergame import tracked_game
-from games.commands.scope import Refusal, library_row
+from games.commands.playergame import tracked_game, tracking_event
+from games.commands.scope import Refusal, library_row, visible_row
 from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
 from games.events.dispatch import (
     Command,
@@ -28,9 +28,11 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
+from games.events.historical_playtime import historicalplaytime_moved
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_created,
+    playthrough_moved,
     playthrough_name_changed,
     playthrough_note_changed,
     playthrough_removed,
@@ -38,7 +40,11 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
+from games.ids import GameId, HistoricalPlaytimeId, PlayerGameId
 from games.models import (
+    Game,
+    HistoricalPlaytimeRun,
+    PlayerGame,
     Playthrough,
     PlaythroughKind,
 )
@@ -668,3 +674,145 @@ class RestorePlaythrough(Command):
             )
         _refuse_under_a_removed_game(run)
         return [playthrough_restored(run.pk)]
+
+
+#: The importer's bucket belongs to one game.
+BUCKET_STAYS = (
+    "That is the imported-history bucket, which stays with its game. Move its "
+    "sessions to a playthrough instead."
+)
+TARGET_REMOVED = (
+    "That game was removed from your library. Restore it before moving a "
+    "playthrough to it."
+)
+SHARED_RECORD = (
+    "A historical playtime record names this playthrough beside another one "
+    "of the same game. Edit that record to take this playthrough off it, then "
+    "move it."
+)
+SHARED_REMOVED_RECORD = (
+    "A removed historical playtime record names this playthrough beside "
+    "another one of the same game. Restore it and take this playthrough off "
+    "it, then move it."
+)
+
+
+class HeldTarget(NamedTuple):
+    """A game this library tracks already."""
+
+    row: PlayerGame
+
+    @property
+    def player_game_id(self) -> PlayerGameId:
+        return self.row.pk
+
+
+class NewlyTracked(NamedTuple):
+    """A game this dispatch starts tracking."""
+
+    tracking: NewEvent
+
+    @property
+    def player_game_id(self) -> PlayerGameId:
+        return self.tracking.aggregate_id
+
+
+type MoveTarget = HeldTarget | NewlyTracked
+
+
+def _move_target(context: CommandContext, game_id: GameId) -> MoveTarget:
+    """Library's mark first; a shared game has none."""
+    #: Under dispatch's lock: no concurrent duplicate.
+    tracked = PlayerGame.objects.filter(
+        library=context.library, game_id=game_id
+    ).first()
+    if tracked is not None:
+        if tracked.removed_at is not None:
+            raise CommandRejected(
+                f"This library removed game {game_id}, so no run moves to it "
+                "until it is restored.",
+                sentence=TARGET_REMOVED,
+            )
+        return HeldTarget(tracked)
+    game = visible_row(
+        context,
+        Game.objects.alive(),
+        Refusal(message=f"No game {game_id} this library can move a run to."),
+        pk=game_id,
+    )
+    return NewlyTracked(tracking_event(game))
+
+
+def _records_that_follow(
+    context: CommandContext, run: Playthrough
+) -> list[HistoricalPlaytimeId]:
+    """Records naming only this run; refuse others."""
+    record_ids = set(
+        HistoricalPlaytimeRun.objects.filter(
+            library=context.library, playthrough=run
+        ).values_list("record_id", flat=True)
+    )
+    shared = (
+        HistoricalPlaytimeRun.objects.filter(
+            library=context.library, record_id__in=record_ids
+        )
+        .exclude(playthrough=run)
+        .select_related("record")
+        .first()
+    )
+    if shared is not None:
+        raise CommandRejected(
+            f"Record {shared.record_id} names playthrough {run.pk} beside "
+            f"playthrough {shared.playthrough_id}, and a record belongs to "
+            "one game.",
+            sentence=(
+                SHARED_RECORD
+                if shared.record.removed_at is None
+                else SHARED_REMOVED_RECORD
+            ),
+        )
+    return sorted(record_ids, key=str)
+
+
+@dataclass(frozen=True, slots=True)
+class MovePlaythroughToGame(Command):
+    """State the game a run belongs to."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_MOVE
+    #: UUIDs, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+    #: The catalog game, as CreatePlaythrough names it.
+    game_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        #: Function-local: that module reads this one's registry.
+        from games.reads.playthrough_runs import placeholder_run
+
+        run = library_playthrough(context, self.playthrough_id)
+        #: The no-op before every refusal.
+        if run.player_game.game_id == self.game_id:
+            return Unchanged("This playthrough already belongs to that game.")
+        refuse_unless_live(run)
+        if run.kind != PlaythroughKind.ORDINARY:
+            raise CommandRejected(
+                f"Playthrough {run.pk} is of kind {run.kind}, which holds one "
+                "game's imported sessions.",
+                sentence=BUCKET_STAYS,
+            )
+        target = _move_target(context, self.game_id)
+        records = _records_that_follow(context, run)
+        events: list[NewEvent] = []
+        if isinstance(target, NewlyTracked):
+            events.append(target.tracking)
+        events.append(playthrough_moved(run.pk, player_game_id=target.player_game_id))
+        events.extend(
+            historicalplaytime_moved(record_id, player_game_id=target.player_game_id)
+            for record_id in records
+        )
+        if isinstance(target, HeldTarget):
+            placeholder = placeholder_run(context.library, target.row)
+            if placeholder is not None:
+                events.append(playthrough_removed(placeholder.pk))
+        if not _other_live_ordinary_runs(context, run).exists():
+            events.append(playthrough_created(run.player_game_id))
+        return events

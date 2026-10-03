@@ -6,7 +6,9 @@ From the events: no projection answers these.
 import uuid
 
 from games.events.dispatch import CommandResult
+from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_MOVED
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
+from games.ids import PlayerGameId, PlaythroughId
 from games.models import LibraryEvent, LibraryEventQuerySet, UserLibrary
 
 
@@ -69,3 +71,24 @@ def dispatched_events(result: CommandResult) -> LibraryEventQuerySet:
         stream_id=result.stream_id,
         sequence__range=(result.sequences.first, result.sequences.last),
     ).order_by("sequence")
+
+
+#: The events that state a run's game.
+_RUN_PARENT_TYPES = (PLAYTHROUGH_CREATED.event_type, PLAYTHROUGH_MOVED.event_type)
+
+
+def run_game_at_batch(
+    library: UserLibrary, playthrough_id: PlaythroughId, batch_id: uuid.UUID
+) -> PlayerGameId | None:
+    """The run's PlayerGame when the batch wrote.
+
+    None: no batch event, or no earlier game.
+    """
+    events = aggregate_events(library, playthrough_id)
+    batch_event = events.filter(correlation_id=batch_id).first()
+    if batch_event is None:
+        return None
+    parent = events.filter(
+        event_type__in=_RUN_PARENT_TYPES, sequence__lt=batch_event.sequence
+    ).last()
+    return None if parent is None else uuid.UUID(parent.payload["player_game"])
