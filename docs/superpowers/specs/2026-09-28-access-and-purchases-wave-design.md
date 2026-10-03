@@ -1140,7 +1140,25 @@ runs on it.
   popover
 - #1443, remove the one-time Conversion review rows after P5c, keeping
   `conversion_review` and `Category`
-- #1448, remove the conversion pass and its gates at the squash
+- #1448, remove the conversion pass and its gates at the squash. Ruled
+  2026-10-03, with #1443: one PR, not a stack. It holds #1443, the
+  squash of `0019`–`0036` with `replaces` (`0029` and `0035`
+  `elidable=True`, both data only; `0031` already, its body a refusal
+  naming the squash), and the tooling: `games/backfill/`,
+  `verify-purchase-conversion`, `seeded`, the legacy test fixture and
+  every `conversion-tooling` test, and `verify-purchase-statistics` with
+  `games/purchase_parity.py`, whose only input the rehearsal wrote. The
+  tooling cannot outlive the squash by a PR: a fresh database takes the
+  squashed file, the replaced nodes leave the graph, and
+  `legacy_purchase_model()` cannot render `0034` (measured). The 18
+  replaced files, `replaces` and the cutover `DELETE` wait for the
+  deployment to record the squash and are their own issue, as #1081 was.
+  `games/stats_parity.py` stays. The field, `Category` and its labels
+  stay whatever #1432 does; the reasons and targets go with the rows.
+  The timeless rewrite of this document is the organizer's close-out and
+  lands first; the step-two issue then trims Conversion, Preflight and
+  Deployment to what the events left behind, as the Session conversion's
+  were
 - #1450, `purge-library` fails on an add-on Game with a parent and events
 - #1451, `verify-baseline` round-trips both databases (PR #1460, with
   #1454: the anonymizer re-mints the stream head at its first event)
