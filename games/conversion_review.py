@@ -1,112 +1,24 @@
-"""The conversion's review words and their targets."""
+"""The conversion's review words and labels."""
 
-from collections.abc import Mapping
-from enum import StrEnum
-from typing import Final, NamedTuple
+from typing import Final
+
+from django.db import models
 
 ORIGIN: Final = "conversion"
-#: The Hide preference's key and route.
-CONVERSION_REVIEW_HIDDEN: Final = "conversion-review-hidden"
 
 
-class Category(StrEnum):
-    """The conversion's review words."""
+class Category(models.TextChoices):
+    """Words stored events carry; never remove one."""
 
-    UNKNOWN_PRICE = "unknown_price"
-    EPIC_FREE = "epic_free"
-    RENTAL = "rental"
-    CREATED_RELEASE = "created_release"
-    DEMO_EDITION = "demo_edition"
-    MIXED_INFINITE = "mixed_infinite"
-    ADDON_GAME = "addon_game"
-    QUANTIZED = "quantized"
-    BUNDLE_SPLIT = "bundle_split"
-    HAND_RECORDED_COPY = "hand_recorded_copy"
-    OWN_COPY_FALLBACK = "own_copy_fallback"
-    RENAMED_ADDON = "renamed_addon"
-    SKIPPED_REMOVED_GAME = "skipped_removed_game"
-
-
-class ReviewTarget(StrEnum):
-    """The list a category's link opens."""
-
-    PURCHASES = "purchases"
-    ENTRIES = "entries"
-
-
-class ReviewWords(NamedTuple):
-    label: str
-    reason: str
-    target: ReviewTarget
-
-
-REVIEW_WORDS: Final[Mapping[Category, ReviewWords]] = {
-    Category.UNKNOWN_PRICE: ReviewWords(
-        "Unknown price",
-        "Owned, but recorded without a price.",
-        ReviewTarget.PURCHASES,
-    ),
-    Category.EPIC_FREE: ReviewWords(
-        "Free on Epic",
-        "Owned on Epic without a price, so recorded as free.",
-        ReviewTarget.PURCHASES,
-    ),
-    Category.QUANTIZED: ReviewWords(
-        "Rounded price",
-        "The price had more than two decimal places.",
-        ReviewTarget.PURCHASES,
-    ),
-    Category.RENTAL: ReviewWords(
-        "Rentals",
-        "Recorded as rented; state when the rental ended.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.CREATED_RELEASE: ReviewWords(
-        "New releases",
-        "The conversion added a release for the purchase's platform.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.DEMO_EDITION: ReviewWords(
-        "Demos",
-        "Recorded as a copy of a demo edition.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.MIXED_INFINITE: ReviewWords(
-        "Mixed infinite",
-        "Some purchases of the game were infinite and some were not.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.ADDON_GAME: ReviewWords(
-        "DLC as games",
-        "A DLC purchase became a copy of its own DLC game.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.BUNDLE_SPLIT: ReviewWords(
-        "Split bundles",
-        "One purchase of several games, split by cents.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.HAND_RECORDED_COPY: ReviewWords(
-        "Copies recorded twice",
-        "A copy recorded by hand sits beside a converted one.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.OWN_COPY_FALLBACK: ReviewWords(
-        "Passes without a game copy",
-        "No owned copy of the base game, so the pass got its own.",
-        ReviewTarget.ENTRIES,
-    ),
-    Category.RENAMED_ADDON: ReviewWords(
-        "Renamed DLC",
-        "The DLC's name was taken, so the game's name leads it.",
-        ReviewTarget.ENTRIES,
-    ),
-}
-
-#: Listed by the reconciliation, never tagged.
-RECONCILIATION_ONLY: Final[frozenset[Category]] = frozenset(
-    {Category.SKIPPED_REMOVED_GAME}
-)
-
-#: The words an event can carry.
-REVIEWED: Final[tuple[Category, ...]] = tuple(REVIEW_WORDS)
+    UNKNOWN_PRICE = "unknown_price", "Unknown price"
+    EPIC_FREE = "epic_free", "Free on Epic"
+    QUANTIZED = "quantized", "Rounded price"
+    RENTAL = "rental", "Rentals"
+    CREATED_RELEASE = "created_release", "New releases"
+    DEMO_EDITION = "demo_edition", "Demos"
+    MIXED_INFINITE = "mixed_infinite", "Mixed infinite"
+    ADDON_GAME = "addon_game", "DLC as games"
+    BUNDLE_SPLIT = "bundle_split", "Split bundles"
+    HAND_RECORDED_COPY = "hand_recorded_copy", "Copies recorded twice"
+    OWN_COPY_FALLBACK = "own_copy_fallback", "Passes without a game copy"
+    RENAMED_ADDON = "renamed_addon", "Renamed DLC"

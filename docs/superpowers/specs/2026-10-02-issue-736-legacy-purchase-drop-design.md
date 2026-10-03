@@ -18,39 +18,10 @@ schedules one retry.
 
 ## The conversion tooling
 
-Migration 0031 runs the conversion in the deploying image. Thus the pass,
-`verify_purchase_conversion` and the reconciliation stay until the
-squash (#1448).
-
-They read the model from migration state `0034_conversion_review_hidden`
-through `legacy_purchase_model()` (`games/backfill/legacy_model.py`).
-The historical model takes keys, not instances, and has no signals. `require_legacy_table` raises `LegacyTableGone` when the
-table or the migration state is absent. The command then refuses with
-one sentence.
-
-Tests make legacy rows with the `legacy_purchase` fixture. It creates
-both tables inside the test's transaction, and the rollback removes them.
-It refuses a `transaction=True` test, because a flush cannot empty a
-table that no model declares.
-
-Each module and fixture that #1448 removes has the comment
-`conversion-tooling`.
-
-## The deploy-day rehearsal
-
-Use the dump of that day. Set `DATABASE_URL` to the URL that the restore
-prints, for each step after the first.
-
-1. `make restore-dump`.
-2. `make migrate ARGS="games 0030_purchasevaluation"`.
-3. `make verify-purchase-conversion ARGS="--user X --snapshot S"`.
-4. The same command with `--confirm X`.
-5. `make migrate ARGS="games 0034_conversion_review_hidden"`. It appends
-   no event.
-6. `make migrate`.
-7. `make verify-purchase-statistics ARGS="--user X --snapshot S"`.
-8. `make verify-replay-parity`, `make verify-dump`,
-   `make verify-baseline ARGS="--migrate"`.
+Migration 0031 ran the conversion in the deploying image. Its pass,
+its verify commands and the legacy test fixture went with the fourth
+squash (#1448), which refuses a database that still holds legacy
+rows.
 
 ## The sample fixture
 

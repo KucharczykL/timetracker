@@ -44,43 +44,6 @@ def needs_rate(facts: ValuationInput, target: CurrencyCode) -> bool:
     return facts.currency != target and facts.amount != 0
 
 
-def _checked_rate(
-    facts: ValuationInput, target: CurrencyCode, rate: Decimal | None
-) -> None:
-    rate_needed = needs_rate(facts, target)
-    if rate_needed != (rate is not None):
-        raise ValueError(
-            f"Purchase {facts.purchase_id} in {facts.currency} to {target} "
-            f"takes {'a' if rate_needed else 'no'} rate, given {rate}."
-        )
-    if rate is not None and rate <= 0:
-        raise ValueError(f"Purchase {facts.purchase_id} given rate {rate}.")
-
-
-def _valuation(
-    facts: ValuationInput,
-    target: CurrencyCode,
-    rate: Decimal | None,
-    amount: Decimal,
-    *,
-    library: UserLibrary,
-    version: ConversionVersion,
-    calculated_at: datetime,
-) -> PurchaseValuation:
-    return PurchaseValuation(
-        library=library,
-        purchase_id=facts.purchase_id,
-        target_currency=target,
-        amount=amount.quantize(CENT, rounding=ROUND_HALF_UP),
-        source_amount=facts.amount,
-        source_currency=facts.currency,
-        rate_year=facts.rate_year,
-        rate=rate,
-        version=version,
-        calculated_at=calculated_at,
-    )
-
-
 def value(
     facts: ValuationInput,
     target: CurrencyCode,
@@ -91,46 +54,28 @@ def value(
     calculated_at: datetime,
 ) -> PurchaseValuation:
     """One unsaved valuation, rounded half up once."""
-    _checked_rate(facts, target, rate)
+    rate_needed = needs_rate(facts, target)
+    if rate_needed != (rate is not None):
+        raise ValueError(
+            f"Purchase {facts.purchase_id} in {facts.currency} to {target} "
+            f"takes {'a' if rate_needed else 'no'} rate, given {rate}."
+        )
+    if rate is not None and rate <= 0:
+        raise ValueError(f"Purchase {facts.purchase_id} given rate {rate}.")
     if rate is None:
         amount = facts.amount
     else:
         with localcontext(prec=PRODUCT_PRECISION):
             amount = facts.amount * rate
-    return _valuation(
-        facts,
-        target,
-        rate,
-        amount,
+    return PurchaseValuation(
         library=library,
-        version=version,
-        calculated_at=calculated_at,
-    )
-
-
-def seeded(
-    facts: ValuationInput,
-    target: CurrencyCode,
-    rate: Decimal | None,
-    amount: Decimal,
-    *,
-    library: UserLibrary,
-    version: ConversionVersion,
-    calculated_at: datetime,
-) -> PurchaseValuation:
-    """One unsaved valuation of a known amount."""
-    _checked_rate(facts, target, rate)
-    if rate is None and amount != facts.amount:
-        raise ValueError(
-            f"Purchase {facts.purchase_id} needs no rate, so values at "
-            f"{facts.amount}, not {amount}."
-        )
-    return _valuation(
-        facts,
-        target,
-        rate,
-        amount,
-        library=library,
+        purchase_id=facts.purchase_id,
+        target_currency=target,
+        amount=amount.quantize(CENT, rounding=ROUND_HALF_UP),
+        source_amount=facts.amount,
+        source_currency=facts.currency,
+        rate_year=facts.rate_year,
+        rate=rate,
         version=version,
         calculated_at=calculated_at,
     )

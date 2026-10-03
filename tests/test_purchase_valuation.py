@@ -33,7 +33,7 @@ from games.reads.purchases import (
     valued_purchases,
     with_valuation,
 )
-from games.valuations import ValuationInput, publish_valuations, seeded, value
+from games.valuations import ValuationInput, publish_valuations, value
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
@@ -633,45 +633,3 @@ def test_the_audit_command_runs_the_valuation_check(owned_library):
         )
 
     assert "PurchaseValuation.purchase_id" in output.getvalue()
-
-
-def test_a_seed_carries_its_amount_beside_the_rate(owned_library):
-    facts = _facts("EUR", "10")
-
-    row = seeded(
-        facts,
-        "CZK",
-        Decimal("25.5"),
-        Decimal("250.004"),
-        library=owned_library,
-        version=1,
-        calculated_at=datetime.now(UTC),
-    )
-
-    assert (row.amount, row.rate, row.source_amount) == (
-        Decimal("250.00"),
-        Decimal("25.5"),
-        Decimal(10),
-    )
-
-
-@pytest.mark.parametrize(
-    ("facts", "rate", "amount"),
-    [
-        (_facts("CZK", "10"), None, Decimal(11)),
-        (_facts("CZK"), Decimal(1), Decimal(10)),
-        (_facts("EUR"), None, Decimal(250)),
-    ],
-    ids=["no rate, another amount", "a rate where none is needed", "no rate"],
-)
-def test_a_seed_keeps_the_rate_rule(owned_library, facts, rate, amount):
-    with pytest.raises(ValueError):
-        seeded(
-            facts,
-            "CZK",
-            rate,
-            amount,
-            library=owned_library,
-            version=1,
-            calculated_at=datetime.now(UTC),
-        )

@@ -1,4 +1,3 @@
-import uuid
 from collections.abc import Callable
 from typing import NamedTuple
 
@@ -54,30 +53,19 @@ def _default_release(game: Game) -> Release | None:
     )
 
 
-def identity_taken(
-    library_id: uuid.UUID | None,
-    name: str,
-    platform: Platform | None,
-    year: int | None,
-    *,
-    excluding: uuid.UUID | None = None,
-) -> bool:
-    """A live library Game reads the same."""
-    games = Game.objects.filter(
-        library_id=library_id,
-        name=name,
-        platform=platform,
-        year_released=year,
-        removed_at__isnull=True,
-    )
-    if excluding is not None:
-        games = games.exclude(pk=excluding)
-    return games.exists()
-
-
 def _collides(game: Game, platform: Platform | None, year: int | None) -> bool:
     """Another live Game of this library already reads the same."""
-    return identity_taken(game.library_id, game.name, platform, year, excluding=game.pk)
+    return (
+        Game.objects.filter(
+            library_id=game.library_id,
+            name=game.name,
+            platform=platform,
+            year_released=year,
+            removed_at__isnull=True,
+        )
+        .exclude(pk=game.pk)
+        .exists()
+    )
 
 
 def mirror_legacy_columns(game: Game) -> None:

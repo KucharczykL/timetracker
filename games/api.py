@@ -34,7 +34,6 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     PlainSerializer,
-    StrictBool,
     WithJsonSchema,
     model_validator,
 )
@@ -54,7 +53,6 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.commands.purchase import StatedPrice
-from games.conversion_review import CONVERSION_REVIEW_HIDDEN
 from games.end_ways import EndWay
 from games.events.dispatch import (
     IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -155,7 +153,6 @@ from timetracker.settings_commands import (
     SettingLockedError,
     SettingMutation,
     SettingNamespace,
-    change_library_conversion_review_hidden,
     change_library_default_device,
     change_site_setting,
     change_user_setting,
@@ -2077,17 +2074,6 @@ class DefaultDeviceOut(LibraryPreferenceOut):
     value: UUIDv7 | None
 
 
-class ConversionReviewHiddenIn(Schema):
-    model_config = ConfigDict(extra="forbid")
-
-    value: StrictBool
-
-
-class ConversionReviewHiddenOut(LibraryPreferenceOut):
-    key: Literal["conversion-review-hidden"] = CONVERSION_REVIEW_HIDDEN
-    value: bool
-
-
 def _settings_of_scope(*scopes: SettingScope) -> list[SettingKey]:
     return [
         key
@@ -2216,21 +2202,6 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
     return {"value": device.pk if device is not None else None}
-
-
-@library_router.patch(
-    f"/{CONVERSION_REVIEW_HIDDEN}", response=ConversionReviewHiddenOut
-)
-def update_conversion_review_hidden(
-    request, response: HttpResponse, payload: ConversionReviewHiddenIn
-):
-    """Hide or show the conversion review.
-
-    No toast: the reload shows it.
-    """
-    change_library_conversion_review_hidden(request.user.library, payload.value)
-    response[RELOAD_HEADER] = "true"
-    return {"value": payload.value}
 
 
 @settings_router.get("/site", response=list[SettingOut])
