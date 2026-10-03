@@ -18,7 +18,7 @@ from games.events.dispatch import RowNotHeld, RowUnreadable
 from games.filters import parse_session_filter
 from games.models import PlayerSession, UserLibrary
 from games.reads.player_sessions import library_sessions
-from games.reads.releases import release_label
+from games.reads.releases import stated_release_label
 from games.reads.session_run_labels import every_run_label
 from games.writes.answers import answered
 
@@ -122,4 +122,4 @@ def device_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
 
 
 def release_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
-    return "Not stated" if row.release is None else release_label(row.release)
+    return stated_release_label(row.release) or "Not stated"

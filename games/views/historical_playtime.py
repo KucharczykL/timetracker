@@ -27,6 +27,7 @@ from common.components import (
     RowActionMenu,
     Span,
     TableData,
+    TruncatedText,
     drop_columns,
     make_row,
     paginated_table_content,
@@ -62,6 +63,7 @@ from games.reads.historical_playtime_page import (
     record_run_labels,
     run_labels_for,
 )
+from games.reads.releases import stated_release_label
 from games.sorting import (
     HISTORICAL_PLAYTIME_DEFAULT_SORT,
     HISTORICAL_PLAYTIME_SORTS,
@@ -157,6 +159,7 @@ def historical_playtime_columns(*, sortable: bool) -> list[Column]:
         column("Duration", "duration", priority=2),
         column("Provenance", "provenance", priority=2),
         column("Playthroughs", "playthroughs", priority=1),
+        column("Release", "release", shrinkable=True, hidden_by_default=True),
         column("Device", "device"),
         column("Created", "created", hidden_by_default=True),
     ]
@@ -199,6 +202,7 @@ def historical_playtime_tabledata(
                 tone=PROVENANCE_TONES[record.provenance],
             ),
             _runs_cell(record, labels),
+            TruncatedText(stated_release_label(record.release) or ""),
             record.device.name if record.device else "No device",
             presentation.format(record.created_at, "date"),
         ]
@@ -253,12 +257,14 @@ def _record_summary(
         return row_summary(
             None if "when" in hidden else _when_part(record, presentation),
             duration,
+            None if "release" in hidden else stated_release_label(record.release),
             device,
         )
     return row_summary(
         duration,
         None if "provenance" in hidden else record.get_provenance_display(),
         None if "playthroughs" in hidden else _runs_part(record, labels),
+        None if "release" in hidden else stated_release_label(record.release),
         device,
     )
 

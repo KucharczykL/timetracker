@@ -26,7 +26,7 @@ def test_the_keys_a_person_did_not_post_are_the_ones_they_hid(logged_in, owned_u
     logged_in.post(_url(), {"shown": ["date", "duration"]})
 
     assert hidden_columns(owned_user, "sessions", SESSION_COLUMNS) == frozenset(
-        {"playthrough", "device", "created"}
+        {"playthrough", "device", "release", "created"}
     )
 
 
@@ -46,7 +46,9 @@ def test_posting_a_column_its_default_hides_writes_it_down(logged_in, owned_user
     )
 
     assert ListColumnChoice.objects.get().shown == {"created": True}
-    assert hidden_columns(owned_user, "sessions", SESSION_COLUMNS) == frozenset()
+    assert hidden_columns(owned_user, "sessions", SESSION_COLUMNS) == frozenset(
+        {"release"}
+    )
 
 
 def test_a_column_that_refuses_to_hide_is_never_stored(logged_in, owned_user):

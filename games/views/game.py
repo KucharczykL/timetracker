@@ -1238,7 +1238,7 @@ def _historical_playtime_section(
         run_labels_for(library, records),
         presentation,
         durations,
-        hidden=("name", "created"),
+        hidden=("name", "release", "created"),
         origin=origin,
         caption="Historical playtime of this game",
     )

@@ -71,6 +71,8 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     LibraryEvent,
+    ListColumnChoice,
+    Platform,
     PlayerSession,
     Playthrough,
     Release,
@@ -1263,3 +1265,45 @@ def test_a_purge_takes_rows_naming_a_private_release(
 
     assert not PlayerSession.objects.exists()
     assert not Release.objects.filter(pk=graph.release.pk).exists()
+
+
+# ── The list column ──────────────────────────────────────────────────────────
+
+
+def on_dreamcast(release: Release) -> str:
+    """A label no other page text holds."""
+    Release.objects.filter(pk=release.pk).update(
+        platform=Platform.objects.create(name="Dreamcast", group="Sega")
+    )
+    release.refresh_from_db()
+    return release_label(release)
+
+
+def test_the_sessions_list_hides_the_release_until_chosen(
+    client, owned_user, owned_library, graph, run
+):
+    label = on_dreamcast(graph.release)
+    a_session(owned_library, run, graph.release)
+    url = reverse("games:list_sessions")
+
+    assert label not in client.get(url).content.decode()
+
+    ListColumnChoice.objects.create(
+        user=owned_user, mode="sessions", shown={"release": True}
+    )
+
+    assert label in client.get(url).content.decode()
+
+
+def test_the_historical_list_shows_a_chosen_release(
+    client, owned_user, owned_library, graph, run
+):
+    label = on_dreamcast(graph.release)
+    state(owned_library, RecordHistoricalPlaytime(a_statement(run, graph.release)))
+    url = reverse("games:list_historical_playtime")
+    assert label not in client.get(url).content.decode()
+    ListColumnChoice.objects.create(
+        user=owned_user, mode="historical_playtime", shown={"release": True}
+    )
+
+    assert label in client.get(url).content.decode()

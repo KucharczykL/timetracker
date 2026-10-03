@@ -1151,7 +1151,8 @@ runs on it.
   arity scan strips; the ownership audit's `release_game_violations`
   filters null Releases before its negated lookup; the entry commands
   and the session commands share one set of Release sentences
-- #1486, a Release column on the Sessions and Historical lists (after #1354)
+- #1486, a Release column on the Sessions and Historical lists; delivered
+  by #1354, hidden by default
 - #1487, quick facets for edition kind on the Playtime lists (after #1354)
 - #1476, a moved run implies no status on its new game (found on
   #1466's first use; the endpoint writer's Played/Completed rule applies at

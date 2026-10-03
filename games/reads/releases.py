@@ -127,6 +127,11 @@ def played_release_label(release: Release) -> str:
     return f"{release.edition.game.name} · {release_label(release)}"
 
 
+def stated_release_label(release: Release | None) -> str | None:
+    """The label, or None where none is stated."""
+    return None if release is None else release_label(release)
+
+
 def release_label(release: Release) -> str:
     """Platform, edition words, then year."""
     parts = [platform_words(release)]

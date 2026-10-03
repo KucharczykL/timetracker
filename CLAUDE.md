@@ -543,7 +543,8 @@ docs/           — Additional documentation
   `historicalplaytime.moved` carries `release: None` only where the
   record named one; the move's Undo restores none. Pickers
   read `/api/releases/held`, filters `/api/releases/played`; bulk Edit
-  restates it in its own dispatch. A demo session (a `prerelease`
+  restates it in its own dispatch; both Playtime lists carry a
+  hidden-by-default Release column. A demo session (a `prerelease`
   Edition) is never outside its run's dates. Contract is
   [A session or a record names its Release](docs/superpowers/specs/2026-10-03-issue-1354-session-release-design.md)
 - **HistoricalPlaytime** — fourth projection: playtime a library states

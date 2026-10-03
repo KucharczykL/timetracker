@@ -28,8 +28,8 @@ dispatch lock:
 Check 3 always runs. Checks 2 and 4 skip the held value, the Release
 the row names already. Thus a removed copy or a removed Release leaves
 the row alone. The entry commands share the first three checks. A write
-of several dispatches (an edit, a PATCH, a bulk row, its Undo) runs
-`checked_release` before the first, so a refusal writes nothing.
+of several dispatches runs `checked_release` before the first, so a
+refusal writes nothing.
 
 The ownership audit (`release_game_violations`) reports an entry,
 session or record whose Release is of another game. It reads only rows
@@ -73,5 +73,7 @@ it cleared a Release.
   field.
 - `outside_playthrough_dates` never matches a demo session. A session
   that names no Release still matches.
+- The Sessions and Historical lists carry a Release column, hidden by
+  default.
 - The session API and the record API carry `release_id`.
 - Resume states no Release.
