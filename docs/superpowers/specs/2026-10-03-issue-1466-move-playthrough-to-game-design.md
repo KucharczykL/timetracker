@@ -46,17 +46,35 @@ states that status after the move (issue
 - Else a stated start implies Played, where the target is Unplayed.
 - Else the move implies no status.
 
-`implied_status` in `games/writes/implied_status.py` holds this rule.
-`state_implied_status`, in the same module, states the status for the
-move and for the endpoint writer. The status has the correlation id of
-the move. Its idempotency key is the key of the move with `-status`.
+`games/writes/implied_status.py` holds this rule and the status write.
+The endpoint acts use the same rule and the same write. The status has
+the correlation id of the move. Its idempotency key is the key of the
+move with `-status`.
+
+The move reads the endpoints that the run held before the draft. An
+endpoint that the same draft states gets no status from the move. The
+Edit page states it through its boxes, as on any edit. The Played box
+asks the status again after the move, so it does not replace a
+Completed that the move stated. A PATCH that moves the run and states
+an endpoint states no status for that endpoint.
+
+A second post of the same move is `Unchanged`. Thus the status is not
+stated again.
 
 The source keeps its status. The move does not unstate an act there.
 
-A refused status does not refuse the move. `MovedRun` carries the
-stated status and the refusal. The toast names the status. A refusal
-is a second toast. The API logs the refusal and answers 204.
+A status is `StatusStated`, `StatusRefused` or none. A refused status
+does not refuse the move. Only a conflict that a person caused is a
+refusal: a rejection or a collision. A key mismatch is a defect,
+because the key of the status derives from the key of the move.
 
+`MovedRun.status` carries the answer. The toast names a stated status.
+A refused status is a second toast that tells the person to set the
+status on the page of the game. The API logs a refused status as a
+warning and answers 204.
+
+A failure after the move raises `MovedThenFailed`, which carries the
+`MovedRun`. The Edit page then names the move before the failure.
 
 ## The record event
 

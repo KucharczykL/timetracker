@@ -1,38 +1,65 @@
-"""The status a run's endpoints imply."""
+"""The status a run's endpoints imply.
+
+One rule and one write, for every act that states an endpoint and
+for the move that carries endpoints to another game.
+"""
 
 import uuid
 from typing import NamedTuple
 
 from django.contrib.auth.models import User
 
-from games.events.append import SourceMetadata
-from games.events.dispatch import CommandOutcome
+from games.events.append import SourceMetadata, StreamSequenceMismatch
+from games.events.dispatch import CommandOutcome, CommandRejected
 from games.events.idempotency import IdempotencyKey
-from games.models import Game, PlayerGameStatus, Playthrough
+from games.events.retry import RetryBudgetExhausted
+from games.models import Game, PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.companion_status import played_is_offered
 from games.reads.playthrough_endpoints import stated_completion, stated_start
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
+from games.writes.answers import CommandFailed
 from games.writes.playergame import record_facts
 
 #: What the status is keyed on, beside the act.
 _STATUS_KEY_SUFFIX = "-status"
 
+#: What a completion implies, whatever stands.
+IMPLIED_BY_COMPLETION = PlayerGameStatus.COMPLETED
 
-class StatusAnswer(NamedTuple):
-    """Whether the word changed, or its refusal."""
+#: Refusals a person caused; the rest are defects.
+#:
+#: A key mismatch is absent: the status key derives
+#: from the act's, so a mismatch is the program's.
+_EXPECTED_REFUSALS = (CommandRejected, RetryBudgetExhausted, StreamSequenceMismatch)
 
-    changed: bool
-    refusal: CommandFailed | None
+
+class StatusStated(NamedTuple):
+    """The game now holds this status."""
+
+    status: PlayerGameStatus
+
+
+class StatusRefused(NamedTuple):
+    """The status the act implied, refused."""
+
+    status: PlayerGameStatus
+    refusal: CommandFailed
+
+
+#: None: nothing implied, or the game held it.
+type StatusAnswer = StatusStated | StatusRefused | None
+
+
+def implied_by_start(library: UserLibrary, game: Game) -> PlayerGameStatus | None:
+    """Played where the game is Unplayed."""
+    return PlayerGameStatus.PLAYED if played_is_offered(library, game) else None
 
 
 def implied_status(run: Playthrough) -> PlayerGameStatus | None:
-    """Completed, else Played over Unplayed, else none."""
+    """The status the run's stated endpoints imply."""
     if stated_completion(run) is not None:
-        return PlayerGameStatus.COMPLETED
-    if stated_start(run) is not None and played_is_offered(
-        run.library, run.player_game.game
-    ):
-        return PlayerGameStatus.PLAYED
+        return IMPLIED_BY_COMPLETION
+    if stated_start(run) is not None:
+        return implied_by_start(run.library, run.player_game.game)
     return None
 
 
@@ -45,11 +72,11 @@ def state_implied_status(
     idempotency_key: IdempotencyKey | None,
     source_metadata: SourceMetadata | None = None,
 ) -> StatusAnswer:
-    """Whether the status changed; a conflict answered.
+    """State the status; answer an expected refusal.
 
-    The key comes from the act's, so two posts state it once. A
-    defect rises: nothing was recorded, and a caller that swallowed it
-    would report the row done.
+    The key derives from the act's. A defect rises: the
+    status recorded nothing, and a caller that swallowed
+    it would report the row done.
     """
     try:
         result = record_facts(
@@ -65,9 +92,9 @@ def state_implied_status(
             source_metadata=source_metadata,
         )
     except CommandFailed as refusal:
-        if refusal.status_code != CONFLICT_STATUS:
+        if not isinstance(refusal.__cause__, _EXPECTED_REFUSALS):
             raise
-        return StatusAnswer(changed=False, refusal=refusal)
-    return StatusAnswer(
-        changed=result.outcome is not CommandOutcome.UNCHANGED, refusal=None
-    )
+        return StatusRefused(status, refusal)
+    if result.outcome is CommandOutcome.UNCHANGED:
+        return None
+    return StatusStated(status)

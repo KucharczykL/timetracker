@@ -127,6 +127,7 @@ from games.valuations import CurrencyCode
 from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.endpoint import KEEP, Restated
+from games.writes.implied_status import StatusRefused
 from games.writes.libraryentry import (
     record_entry,
     restate_entry,
@@ -570,14 +571,15 @@ def partial_update_playthrough(
         ),
         correlation_id=new_correlation_id(),
     )
-    #: The move stands; the word it implies did not.
-    if moved is not None and moved.status_refusal is not None:
-        logger.info(
-            "Playthrough %s of library %s moved to game %s, which kept its status: %s",
+    #: Move stood; its status was refused.
+    if moved is not None and isinstance(moved.status, StatusRefused):
+        logger.warning(
+            "Playthrough %s of library %s moved to game %s, which was not marked %s.",
             run.pk,
             library.pk,
             moved.target.pk,
-            moved.status_refusal.message,
+            moved.status.status.value,
+            exc_info=moved.status.refusal,
         )
     return Status(204, None)
 

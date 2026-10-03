@@ -39,6 +39,7 @@ from games.reads.events import aggregate_events, run_game_at_batch
 from games.reads.playergame_facts import status_change
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.writes.answers import answered
+from games.writes.implied_status import StatusRefused
 from games.writes.playergame import record_facts
 from games.writes.playthrough import void_completion, void_start
 from games.writes.playthrough_endpoints import StatedAct, state_completion, state_start
@@ -165,7 +166,7 @@ def _report_a_refused_status(stated: StatedAct, run: Playthrough, name: str) -> 
     Logged, not counted: a refusal here would report a stated endpoint
     as refused.
     """
-    if stated.status_refusal is None:
+    if not isinstance(stated.status, StatusRefused):
         return
     logger.info(
         "[bulk]: %s stated the endpoint of playthrough %s of library %s, and "
@@ -173,7 +174,7 @@ def _report_a_refused_status(stated: StatedAct, run: Playthrough, name: str) -> 
         name,
         run.pk,
         run.library_id,
-        stated.status_refusal.message,
+        stated.status.refusal.message,
     )
 
 
