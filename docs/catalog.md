@@ -6,7 +6,8 @@ and it is the only place either row is created or changed.
 
 - A **Game** is the work.
 - An **Edition** is the shape of that work a person bought: a base game, a
-  Game of the Year cut, a remaster.
+  Game of the Year cut, a Deluxe cut. IGDB's versions. A remaster or a
+  remake is a Game of its own with a parent, as IGDB files it.
 - A **Release** is that Edition on one Platform, on one date.
 
 One call writes all of it. `state_catalog_graph()` takes one Game's whole
