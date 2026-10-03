@@ -190,7 +190,7 @@ docs/           — Additional documentation
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
-- **LegacyPurchase** — gone (#736, P5c): migration 0035 dropped it.
+- **LegacyPurchase** — gone (#736, P5c): the fourth squash creates and drops it.
   `RETIRED_FILTER_MODELS` keeps refusing `legacypurchase`. Contract is
   [The legacy purchase is gone](docs/superpowers/specs/2026-10-02-issue-736-legacy-purchase-drop-design.md)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
@@ -642,7 +642,7 @@ docs/           — Additional documentation
   place, and requires a currency exactly where an amount is; `check_name`
   the column's length and text JSONB cannot store (`check_note` takes the
   notes, the copy's too). A copy a removed Release hides is refused as
-  well. Migration 0026 renames the legacy tables' indexes and constraints
+  well. The fourth squash renames the legacy tables' indexes and constraints
   off the `games_purchase_` prefix. Every command
   but the record resolves through `library_purchase_row`. Writes
   `games/writes/purchase.py`, reads `games/reads/purchases.py` (six marks).
@@ -653,13 +653,13 @@ docs/           — Additional documentation
   compile), the statistics (`games/reads/purchase_figures.py`, and the
   copy figures in `games/reads/copy_figures.py`, `StatsSource.ENTRIES`),
   and their links. `GameFilter.purchase_price_total` sums valuations
-  through `AggregateSpec.correlated` (`games.E016` walks the path). Migration 0032 rewrote saved
+  through `AggregateSpec.correlated` (`games.E016` walks the path). A one-time pass rewrote saved
   presets
   ([reads](docs/superpowers/specs/2026-10-01-issue-735-purchase-reads-design.md)).
   Contract is
   [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md).
   #727 states a refund on the stated endpoint `PURCHASE_REFUND`
-  (`.refunded`, `.refund_corrected`, `.refund_voided`; migration 0028):
+  (`.refunded`, `.refund_corrected`, `.refund_voided`):
   `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund`, and
   `DescribePurchase`'s `refund` (`ActStatement` or `TAKE_REFUND_BACK`),
   chosen by presence under the lock. A `game` refund ends its Owned,

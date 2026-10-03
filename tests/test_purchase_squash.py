@@ -20,7 +20,6 @@ SQUASH = import_module(
     "games.migrations."
     "0019_device_access_end_squashed_0036_defer_library_event_stream_matches_library"
 )
-CONVERSION = import_module("games.migrations.0031_purchase_conversion")
 
 pytestmark = pytest.mark.django_db
 
@@ -90,17 +89,3 @@ def test_the_retired_schedule_goes():
     assert list(Schedule.objects.values_list("func", flat=True)) == [
         "games.tasks.convert_prices"
     ]
-
-
-def _apps(legacy_rows: bool) -> SimpleNamespace:
-    legacy = SimpleNamespace(objects=SimpleNamespace(exists=lambda: legacy_rows))
-    return SimpleNamespace(get_model=lambda app, model: legacy)
-
-
-def test_the_conversion_refuses_legacy_rows():
-    with pytest.raises(RuntimeError, match="image before the squash"):
-        CONVERSION.convert(_apps(legacy_rows=True), None)
-
-
-def test_the_conversion_passes_an_empty_table():
-    CONVERSION.convert(_apps(legacy_rows=False), None)

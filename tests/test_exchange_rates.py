@@ -2,7 +2,6 @@
 
 import json
 from decimal import Decimal
-from importlib import import_module
 from unittest.mock import Mock
 
 import pytest
@@ -11,8 +10,6 @@ from django.db import IntegrityError, transaction
 
 from games import exchange_rates
 from games.models import ExchangeRate
-
-RATE_MIGRATION = import_module("games.migrations.0029_exchangerate_decimal_rate")
 
 
 @pytest.fixture(autouse=True)
@@ -27,13 +24,6 @@ def _answer(text: str) -> Mock:
     response.raise_for_status = Mock()
     response.json = Mock(side_effect=lambda **kwargs: json.loads(text, **kwargs))
     return response
-
-
-def test_the_copy_keeps_the_shortest_spelling():
-    #: The binary expansion rounds up; repr does not.
-    assert RATE_MIGRATION.decimal_rate(23.1234567890125) == Decimal("23.123456789012")
-    assert RATE_MIGRATION.decimal_rate(0.1) == Decimal("0.100000000000")
-    assert RATE_MIGRATION.decimal_rate(25.123456789012345) == Decimal("25.123456789012")
 
 
 @pytest.mark.django_db

@@ -139,19 +139,61 @@ database is dropped and rebuilt; rates are a cache, so deleting them
 also works. The second operation deletes the retired task's schedule
 row, as `0035` did.
 
-A database that has applied some of the eighteen takes the originals.
-`0031` refuses it while legacy purchases exist, with the same two
-remedies.
-
 `make verify-baseline ARGS="--migrate"` on the 2026-10-02 post-deploy
 dump recorded the squash beside the originals, applied `0037`, and
 found every catalog identical. `make verify-dump` on the 2026-10-01
 dump stopped at the guard.
 
-Step two (#1472) waits for the deployment to record the squash: the
-eighteen files and `replaces` go, with the tests that import `0029`,
-`0031` and `0032` by module, and the cutover `DELETE` runs. The next
-migration after `0037` is `0038`.
+## Step two, 2026-10-03
+
+The deployment ran on the squash (`main-f0b2c89`): startup applied
+`0037` and recorded the squash beside the eighteen originals, 22
+`games` history rows. `make verify-baseline` and
+`make verify-replay-parity` on the post-deploy dump were green; 759 of
+759 purchases rebuilt. Then, in one PR (#1472):
+
+- The eighteen replaced files went, and `replaces` came off the squash.
+- The tests that imported them by module went: the preset rewrite's,
+  the rate copy's and the conversion's refusal.
+- The guard and the schedule removal stayed. A fresh install runs
+  them; the next squash elides them.
+
+One statement follows the step-two deploy. Rehearse it on the
+post-deploy dump with `make verify-baseline ARGS="--normalize
+cutover.sql"`, with no `--migrate`, so `migrate --check` proves that
+nothing is left to apply:
+
+```sql
+DELETE FROM django_migrations
+WHERE app = 'games'
+  AND name IN (
+    '0019_device_access_end',
+    '0020_libraryentry',
+    '0021_libraryentry_access_end',
+    '0022_entry_way_unstated',
+    '0023_entries_mode',
+    '0024_game_kind_parent_edition_kind',
+    '0025_playergame_excluded_from_dropped',
+    '0026_rename_purchase_legacypurchase',
+    '0027_purchase',
+    '0028_purchase_refund',
+    '0029_exchangerate_decimal_rate',
+    '0030_purchasevaluation',
+    '0031_purchase_conversion',
+    '0032_purchase_presets',
+    '0033_legacy_purchase_reverse',
+    '0034_conversion_review_hidden',
+    '0035_delete_legacypurchase',
+    '0036_defer_library_event_stream_matches_library'
+  );
+```
+
+Run it only once the step-two image is up. The earlier image still
+carries `replaces`; without the rows it tries to apply the squash, the
+guard refuses, and the container does not start. Before a rollback to
+that image, put the rows back as the 2026-09-28 step two shows.
+
+The next migration is `0038`.
 
 ## Do it a different way next time
 
