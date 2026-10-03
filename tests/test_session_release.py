@@ -4,11 +4,20 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.http import QueryDict
 from django.test import Client
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry, second_release
 from historical_playtime_posts import posted_record
 
+from games.bulk_session_edit import (
+    EditStatement,
+    edit_back,
+    edit_one,
+    offer_edit,
+    settle_edit,
+)
+from games.bulk_sessions import labelled_session_resolution
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -48,7 +57,9 @@ from games.models import (
 )
 from games.reads.calendar import calendar_day_zone
 from games.removal import remove
+from games.views.bulk import CHOICE_FIELD
 from games.views.playthrough_writes import moved_sentence
+from games.writes.answers import CommandFailed
 from games.writes.playersession import SessionDraft, restate_session
 from games.writes.playthrough import RunDraft, restate_run
 
@@ -651,3 +662,138 @@ def test_the_record_form_refuses_another_games_release(
 
     assert response.status_code == 200
     assert RELEASE_OF_ANOTHER_GAME in response.content.decode()
+
+
+# ── Bulk Edit ────────────────────────────────────────────────────────────────
+
+
+def bulk_edit(owned_user, session, statement, batch=None) -> str:
+    return edit_one(
+        owned_user,
+        session,
+        choice=statement.encode(),
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=batch or uuid.uuid7(),
+    )
+
+
+def bulk_undo(owned_user, session, batch) -> str:
+    return edit_back(
+        owned_user,
+        session.pk,
+        undoes=batch,
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=uuid.uuid7(),
+    )
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        EditStatement(None, None, release=StatedRelease(uuid.uuid7())),
+        EditStatement(None, None, release=StatedRelease(None)),
+        EditStatement(None, True, release=StatedRelease(None)),
+    ],
+)
+def test_a_bulk_statement_carries_a_release(statement):
+    assert EditStatement.decode(statement.encode()) == statement
+
+
+def test_bulk_edit_states_clears_and_undoes_a_release(
+    owned_user, owned_library, graph, run
+):
+    session = a_session(owned_library, run)
+    stated = bulk_edit(
+        owned_user,
+        session,
+        EditStatement(None, None, release=StatedRelease(graph.release.pk)),
+    )
+    session.refresh_from_db()
+    assert (stated, session.release_id) == ("moved", graph.release.pk)
+    clearing = uuid.uuid7()
+
+    bulk_edit(
+        owned_user,
+        session,
+        EditStatement(None, None, release=StatedRelease(None)),
+        clearing,
+    )
+    session.refresh_from_db()
+    assert session.release_id is None
+
+    bulk_undo(owned_user, session, clearing)
+    session.refresh_from_db()
+    assert session.release_id == graph.release.pk
+
+
+def test_bulk_undo_refuses_only_a_release_whose_copy_is_gone(
+    owned_user, owned_library, graph, entry, run
+):
+    session = a_session(owned_library, run, graph.release)
+    other = second_release(owned_library, graph.release)
+    record_entry(owned_library, other)
+    batch = uuid.uuid7()
+    bulk_edit(
+        owned_user,
+        session,
+        EditStatement(None, True, release=StatedRelease(other.pk)),
+        batch,
+    )
+    remove_entry(entry)
+
+    with pytest.raises(CommandFailed) as refused:
+        bulk_undo(owned_user, session, batch)
+
+    assert refused.value.message == NO_COPY_OF_RELEASE
+    session.refresh_from_db()
+    assert (session.emulated, session.release_id) == (False, other.pk)
+
+
+def test_bulk_edit_refuses_a_release_of_another_game_per_row(
+    owned_user, owned_library, graph, run, other_graph, other_run
+):
+    session = a_session(owned_library, other_run)
+
+    with pytest.raises(CommandFailed) as refused:
+        bulk_edit(
+            owned_user,
+            session,
+            EditStatement(None, None, release=StatedRelease(graph.release.pk)),
+        )
+
+    assert refused.value.message == RELEASE_OF_ANOTHER_GAME
+
+
+def offered(library, rows) -> str:
+    resolved = labelled_session_resolution(library, [row.pk for row in rows]).rows
+    return str(offer_edit(library, resolved, CHOICE_FIELD).node)
+
+
+def test_the_bulk_release_is_offered_for_one_game_alone(
+    owned_library, graph, run, other_graph, other_run
+):
+    one = a_session(owned_library, run, graph.release)
+    other = a_session(owned_library, other_run)
+
+    single = offered(owned_library, [one])
+    several = offered(owned_library, [one, other])
+
+    assert f'name="{CHOICE_FIELD}-release"' in single
+    assert "Keep: Unspecified" in single
+    assert f'name="{CHOICE_FIELD}-release"' not in several
+
+
+def test_bulk_settle_refuses_a_release_with_no_copy(owned_library, entry):
+    uncopied = second_release(owned_library, entry.release)
+    statement = EditStatement(None, None, release=StatedRelease(uncopied.pk))
+
+    with pytest.raises(CommandRejected) as refused:
+        settle_edit(owned_library, post_of(statement))
+
+    assert refused.value.sentence == NO_COPY_OF_RELEASE
+
+
+def post_of(statement: EditStatement) -> QueryDict:
+    stated = QueryDict(mutable=True)
+    stated[CHOICE_FIELD] = statement.encode()
+    return stated
