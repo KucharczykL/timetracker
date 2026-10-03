@@ -7,7 +7,13 @@ Spec: `docs/superpowers/specs/2026-10-03-issue-1448-purchase-conversion-squash-d
 
 - `git rm` the eighteen `games/migrations/00{19..36}_*.py` originals
   (not the squash, not `0037`).
-- Squash: delete the `replaces = [...]` block.
+- Squash: delete the `replaces = [...]` block; keep the eighteen names
+  as `REPLACED` for the guard.
+- Guard: first check, `SELECT EXISTS` on `django_migrations` where
+  `app = 'games'` and `name = ANY(REPLACED)`: raise naming the history.
+  `REMEDY` becomes "migrate through main-9755232, then main-f0b2c89".
+  Test: insert one `0027_purchase` row in the live table, guard raises
+  "recorded"; the purchase test still matches its table.
 - `make check-migrations`: no changes.
 
 ## Task 2 — tests
@@ -15,12 +21,11 @@ Spec: `docs/superpowers/specs/2026-10-03-issue-1448-purchase-conversion-squash-d
 - `git rm tests/test_purchase_preset_rewrite.py` (module-level import of
   `0032`; every test reads it).
 - `tests/test_exchange_rates.py`: drop `RATE_MIGRATION`, the
-  `import_module` import if unused, and
-  `test_the_copy_keeps_the_shortest_spelling`.
+  `import_module` import, and `test_the_copy_keeps_the_shortest_spelling`.
 - `tests/test_purchase_squash.py`: drop `CONVERSION`, `_apps`,
   `test_the_conversion_refuses_legacy_rows`,
-  `test_the_conversion_passes_an_empty_table`, unused imports.
-- Grep `import_module("games.migrations.00` afterwards: only the squash.
+  `test_the_conversion_passes_an_empty_table`.
+- `git grep -nE 'migrations\.00(19|2[0-9]|3[0-6])_[a-z]'`: no match.
 
 ## Task 3 — docs
 
@@ -30,13 +35,22 @@ Spec: `docs/superpowers/specs/2026-10-03-issue-1448-purchase-conversion-squash-d
   2026-09-28 section. Trim the fourth-squash section's "Step two
   (#1472) waits…" paragraph.
 - CLAUDE.md lines naming `0026`, `0028`, `0032`, `0035`: say the squash.
-- Makefile usage examples naming retired `0023_…`/`0024_…`: current names.
+- Makefile: usage examples at the `sqlmigrate`/`migrate` targets name
+  current migrations; the `verify-baseline` comment names
+  `0001_squashed_0006_remove_session.py` and the step-two
+  `--normalize` example.
 
 ## Task 4 — rehearsal and gate
 
-- Save the `DELETE` as `cutover.sql` in the scratchpad.
-- `make verify-dump DUMP=<post-deploy dump>`: "No migrations to apply".
-- `make verify-baseline DUMP=<post-deploy dump> ARGS="--normalize cutover.sql --migrate"`: identical.
+- Save the `DELETE` as `cutover.sql` in the scratchpad; pass its
+  absolute path (the script resolves against the repo root).
+- `make verify-dump DUMP=<post-deploy dump>`: read "No migrations to
+  apply" in the output (the target checks only the exit code).
+- `make verify-baseline DUMP=<post-deploy dump> ARGS="--normalize <abs>/cutover.sql"`,
+  no `--migrate`, so `migrate --check` proves nothing is left: identical,
+  four `games` history rows on both sides (also proves `replaces` is off).
+- `make verify-dump DUMP=<pre-deploy dump 111945Z>`: stops at the
+  history check.
 - Docs sweep (delete this plan), full `make check`, draft PR.
 
 Gotcha: the post-deploy dump is

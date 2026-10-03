@@ -74,19 +74,29 @@ The deployment recorded the squash on 2026-10-03 (`main-f0b2c89`):
   `0032`'s functions; the `decimal_rate` test in
   `tests/test_exchange_rates.py`; the two `0031` tests in
   `tests/test_purchase_squash.py`.
+- A database that recorded any of the eighteen and not the squash now
+  takes the squash. That is every dump before the 2026-10-03 deploy,
+  the pre-deploy rollback dump included, and any worktree database not
+  migrated since. The guard's first check refuses it by its history
+  rows, before any data check, because at `0027` and later
+  `games_purchase` is the projection, not legacy rows.
+- Every refusal names one remedy for a deployment: migrate through
+  `main-9755232`, which takes any earlier history to `0036`, then
+  `main-f0b2c89`, which records the squash. A development database is
+  dropped and rebuilt.
 - The guard and the schedule removal stay. A fresh install still runs
   them, and the next squash elides them.
-- A database that recorded some of the eighteen and not the squash now
-  takes the squash. The guard refuses one that holds data; any other
-  fails on a table that exists. Only a stale development database holds
-  such a history, and it is dropped and rebuilt.
 - The cutover `DELETE` of the eighteen history rows runs after the
-  step-two image is up, never before: the earlier image still carries
-  `replaces`, and without the rows it applies the squash for real.
-- CLAUDE.md names the squash where it named a replaced file.
+  step-two image is up, never before. Without the rows, the earlier
+  image carries `replaces` and tries to apply the squash; the guard
+  refuses, and the container does not start. A rollback to that image
+  after the `DELETE` puts the eighteen rows back first.
+- CLAUDE.md names the squash where it named a replaced file. The
+  Makefile's usage examples name current migrations.
 - The wave doc is the organizer's.
 
-Rehearsal: `make verify-dump` on the post-deploy dump migrates with
-nothing to apply; `make verify-baseline ARGS="--normalize cutover.sql
---migrate"` on it finds every catalog identical.
-
+Rehearsal, on the post-deploy dump: `make verify-dump` applies
+nothing; `make verify-baseline ARGS="--normalize <cutover.sql>"`, with
+no `--migrate`, passes `migrate --check` after the `DELETE` and finds
+every catalog identical, history included (four `games` rows). The
+pre-deploy dump stops at the history check.
