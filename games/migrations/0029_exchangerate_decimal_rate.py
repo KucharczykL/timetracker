@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
             name="rate_decimal",
             field=models.DecimalField(decimal_places=12, max_digits=24, null=True),
         ),
-        migrations.RunPython(copy_forward, copy_backward),
+        migrations.RunPython(copy_forward, copy_backward, elidable=True),
         migrations.RemoveField(model_name="exchangerate", name="rate"),
         migrations.RenameField(
             model_name="exchangerate", old_name="rate_decimal", new_name="rate"

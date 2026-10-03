@@ -107,7 +107,7 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
 def test_library_page_evaluates_each_summary_count_once(
     client, django_user_model, django_assert_num_queries
 ):
-    """Twenty-five; Playtime counts three, the review one.
+    """Twenty-four; Playtime counts three.
 
     The navbar's calendar read costs nothing here: the user
     and its library arrive in one statement.
@@ -115,7 +115,7 @@ def test_library_page_evaluates_each_summary_count_once(
     owner = django_user_model.objects.create_user(username="query-owner", password="p")
     client.force_login(owner)
 
-    with django_assert_num_queries(25):
+    with django_assert_num_queries(24):
         response = client.get("/tracker/library")
 
     assert response.status_code == 200

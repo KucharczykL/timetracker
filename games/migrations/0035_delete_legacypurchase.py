@@ -21,5 +21,7 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name="LegacyPurchase",
         ),
-        migrations.RunPython(remove_retired_schedule, migrations.RunPython.noop),
+        migrations.RunPython(
+            remove_retired_schedule, migrations.RunPython.noop, elidable=True
+        ),
     ]

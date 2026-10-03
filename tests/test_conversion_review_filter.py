@@ -9,8 +9,7 @@ from purchases import record_purchase, remove_purchase
 from common.criteria import ChoiceCriterion, FilterError, Modifier
 from games.conversion_review import (
     ORIGIN,
-    RECONCILIATION_ONLY,
-    REVIEW_WORDS,
+    REVIEW_LABELS,
     REVIEWED,
     Category,
 )
@@ -143,6 +142,7 @@ def test_includes_only_needs_no_other_word(owned_library, three):
     "criterion",
     [
         ChoiceCriterion(value=["no_such_word"], modifier=Modifier.INCLUDES),
+        ChoiceCriterion(value=["skipped_removed_game"], modifier=Modifier.INCLUDES),
         ChoiceCriterion(
             value=[], excludes=["no_such_word"], modifier=Modifier.INCLUDES
         ),
@@ -153,9 +153,9 @@ def test_an_unknown_word_is_refused(owned_library, three, criterion):
         _purchases(owned_library, criterion)
 
 
-def test_every_word_an_event_carries_has_review_words():
-    assert set(REVIEWED) == set(Category) - RECONCILIATION_ONLY
-    assert set(REVIEW_WORDS) == set(REVIEWED)
+def test_every_word_is_a_choice():
+    assert set(REVIEWED) == set(Category)
+    assert set(REVIEW_LABELS) == set(REVIEWED)
 
 
 def test_a_removed_purchase_still_tags_its_copy(owned_library, copies):
@@ -171,11 +171,12 @@ def test_a_removed_purchase_still_tags_its_copy(owned_library, copies):
     ) == {base}
 
 
-def test_a_skipped_word_is_no_choice():
-    assert Category.SKIPPED_REMOVED_GAME not in REVIEWED
+def test_the_choices_carry_the_labels():
     choices = PurchaseFilter.fields["conversion_review"].choices
     assert choices is not None
-    assert [choice["value"] for choice in choices] == [str(word) for word in REVIEWED]
+    assert [(choice["value"], choice["label"]) for choice in choices] == [
+        (str(word), REVIEW_LABELS[word]) for word in REVIEWED
+    ]
 
 
 def _entries(library, criterion: ChoiceCriterion) -> set[LibraryEntry]:

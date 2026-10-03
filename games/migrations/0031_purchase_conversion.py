@@ -4,10 +4,10 @@ from django.db import migrations
 
 
 def convert(apps, schema_editor):
-    from games.backfill.purchase import convert_purchases, legacy_rows
-
-    #: The historical model outlives the live one.
-    convert_purchases(legacy_rows(apps.get_model("games", "LegacyPurchase")))
+    """Only a partial history reaches this."""
+    raise RuntimeError(
+        "The purchase conversion is gone; drop and rebuild this database."
+    )
 
 
 class Migration(migrations.Migration):

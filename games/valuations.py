@@ -108,34 +108,6 @@ def value(
     )
 
 
-def seeded(
-    facts: ValuationInput,
-    target: CurrencyCode,
-    rate: Decimal | None,
-    amount: Decimal,
-    *,
-    library: UserLibrary,
-    version: ConversionVersion,
-    calculated_at: datetime,
-) -> PurchaseValuation:
-    """One unsaved valuation of a known amount."""
-    _checked_rate(facts, target, rate)
-    if rate is None and amount != facts.amount:
-        raise ValueError(
-            f"Purchase {facts.purchase_id} needs no rate, so values at "
-            f"{facts.amount}, not {amount}."
-        )
-    return _valuation(
-        facts,
-        target,
-        rate,
-        amount,
-        library=library,
-        version=version,
-        calculated_at=calculated_at,
-    )
-
-
 class Valuations(NamedTuple):
     """A run's rows, and inputs lacking a rate."""
 

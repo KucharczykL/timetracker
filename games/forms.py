@@ -273,16 +273,6 @@ class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
         self.initial["default_device"] = default_device
 
 
-class ConversionReviewForm(PrimitiveWidgetsMixin, forms.Form):
-    """The conversion review's Hide checkbox."""
-
-    hidden = forms.BooleanField(label="Hide this review", required=False)
-
-    def __init__(self, *, hidden: bool) -> None:
-        super().__init__(initial={"hidden": hidden})
-        self.fields["hidden"].widget.attrs["data-reload-after-save"] = ""
-
-
 class SingleGameChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, obj) -> str:
         return obj.search_label

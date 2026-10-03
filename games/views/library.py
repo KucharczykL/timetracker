@@ -46,7 +46,6 @@ from games.reads.purchase_figures import (
     valued_in_scope,
 )
 from games.views import stats_links
-from games.views.conversion_review import ConversionReview
 from games.views.session_reclassification import (
     TEMPORARY_NOTE,
     PlaytimeReviewPanel,
@@ -217,7 +216,7 @@ def library(request: HttpRequest) -> HttpResponse:
         SectionedPageSection(
             "purchases",
             "Purchases",
-            Fragment(purchases_summary, ConversionReview(request, library)),
+            purchases_summary,
         ),
     ]
     content = SectionedPage(
