@@ -7,10 +7,10 @@ import yaml
 WORKFLOW_PATH = Path(__file__).parents[1] / ".github/workflows/build-docker.yml"
 
 
-def test_test_job_uses_a_postgresql_18_4_service():
+def test_check_job_uses_a_postgresql_18_4_service():
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
-    test_job = workflow["jobs"]["test"]
-    postgres = test_job["services"]["postgres"]
+    check_job = workflow["jobs"]["check"]
+    postgres = check_job["services"]["postgres"]
 
     assert postgres["image"] == "postgres:18.4"
     assert postgres["env"] == {
@@ -22,14 +22,14 @@ def test_test_job_uses_a_postgresql_18_4_service():
     assert postgres["ports"] == ["5432:5432"]
     assert "pg_isready" in postgres["options"]
     assert (
-        test_job["env"]["DATABASE_URL"]
+        check_job["env"]["DATABASE_URL"]
         == "postgresql://timetracker:timetracker@127.0.0.1:5432/timetracker"
     )
 
 
-def test_test_job_smoke_tests_the_database_url_secret_as_the_image_user():
+def test_check_job_smoke_tests_the_database_url_secret_as_the_image_user():
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
-    steps = workflow["jobs"]["test"]["steps"]
+    steps = workflow["jobs"]["check"]["steps"]
     smoke_test = next(
         step for step in steps if step.get("name") == "Smoke test database URL secret"
     )
@@ -42,9 +42,9 @@ def test_test_job_smoke_tests_the_database_url_secret_as_the_image_user():
     assert "required_database_settings" in smoke_test["run"]
 
 
-def test_test_job_verifies_an_isolated_postgresql_backup_restore():
+def test_check_job_verifies_an_isolated_postgresql_backup_restore():
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
-    steps = workflow["jobs"]["test"]["steps"]
+    steps = workflow["jobs"]["check"]["steps"]
     restore = next(
         step for step in steps if step.get("name") == "Verify PostgreSQL backup restore"
     )
@@ -62,3 +62,14 @@ def test_test_job_verifies_an_isolated_postgresql_backup_restore():
     assert "manage.py migrate --check" in restore["run"]
     assert "dropdb" in restore["run"]
     assert "trap" not in restore["run"]
+
+
+def test_check_job_runs_the_static_half_and_no_test():
+    """The suite runs locally as the merge gate, never on a runner."""
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
+    commands = [step.get("run", "") for step in workflow["jobs"]["check"]["steps"]]
+    assert any(command.strip() == "make check-static" for command in commands)
+    assert not any(command.strip() == "make check" for command in commands)
+    assert not any(
+        "pytest" in command or "playwright" in command for command in commands
+    )
