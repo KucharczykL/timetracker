@@ -15,6 +15,7 @@ from games.events.playersession import (
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
     PLAYERSESSION_RECLASSIFIED,
+    PLAYERSESSION_RELEASE_CHANGED,
     PLAYERSESSION_REMOVED,
     PLAYERSESSION_RESTORED,
     PLAYERSESSION_TIMING_CORRECTED,
@@ -32,6 +33,7 @@ from games.events.playersession import (
     playersession_moved,
     playersession_note_changed,
     playersession_reclassified,
+    playersession_release_changed,
     playersession_removed,
     playersession_restored,
     playersession_timing_corrected,
@@ -709,3 +711,53 @@ def test_the_reclassification_payload_refuses_a_second_key():
             PLAYERSESSION_RECLASSIFIED,
             {"record": str(uuid.uuid7()), "session": str(SESSION)},
         )
+
+
+RELEASE = {
+    "kind": "catalog.release",
+    "id": str(uuid.uuid7()),
+    "label": "Steam",
+    "detail": "",
+}
+
+
+def test_a_creation_names_a_release():
+    payload = a_timed_payload() | {"release": RELEASE}
+
+    assert validated(payload) == payload
+
+
+def test_a_creation_refuses_another_kind_as_its_release():
+    with pytest.raises(PayloadInvalid):
+        validated(a_timed_payload() | {"release": DEVICE})
+
+
+@pytest.mark.parametrize("release", [None, RELEASE])
+def test_a_release_change_round_trips(release):
+    payload = {"release": release}
+
+    assert validated_as(PLAYERSESSION_RELEASE_CHANGED, payload) == payload
+
+
+def test_a_release_change_refuses_another_kind():
+    with pytest.raises(PayloadInvalid):
+        validated_as(PLAYERSESSION_RELEASE_CHANGED, {"release": DEVICE})
+
+
+def test_a_release_change_names_its_reference():
+    assert PLAYERSESSION_RELEASE_CHANGED.event_type == (
+        "library.playersession.release_changed"
+    )
+    fields = DEFAULT_EVENT_TYPES.reference_fields_for(
+        PLAYERSESSION_RELEASE_CHANGED.event_type
+    )
+
+    assert fields == {"release": ReferenceArity.OPTIONAL}
+
+
+def test_a_release_change_happens_on_no_day():
+    event = playersession_release_changed(SESSION, release=RELEASE)
+
+    assert event.aggregate_id == SESSION
+    assert event.effective_time is None
+    assert event.payload == {"release": RELEASE}

@@ -6,6 +6,8 @@ from typing import cast
 import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from historical_playtime_rows import record_row
+from session_rows import timed_row, tracked_run
 
 from games.models import (
     EntryAccess,
@@ -15,7 +17,7 @@ from games.models import (
     PlayerGame,
     Release,
 )
-from games.projections import cross_library_violations, entry_game_violations
+from games.projections import cross_library_violations, release_game_violations
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 
@@ -189,5 +191,29 @@ def test_an_entry_on_another_games_release_is_reported(
         f"LibraryEntry.release: {row.pk} names a Release of Game "
         f"{other.game.pk}, and its PlayerGame tracks Game {graph.game.pk}"
     )
-    assert entry_game_violations([owned_library.pk]) == [sentence]
-    assert entry_game_violations([]) == []
+    assert release_game_violations([owned_library.pk]) == [sentence]
+    assert release_game_violations([]) == []
+
+
+def test_a_session_or_record_on_another_games_release_is_reported(
+    owned_library, graph, stated_graph
+):
+    other = stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+    run = tracked_run(owned_library, graph.game)
+    session = timed_row(run, timezone.now(), None, release=other.release)
+    record = record_row([run], release=other.release)
+
+    tail = f"names a Release of Game {other.game.pk}, and its PlayerGame tracks Game {graph.game.pk}"
+    assert release_game_violations([owned_library.pk]) == [
+        f"PlayerSession.release: {session.pk} {tail}",
+        f"HistoricalPlaytime.release: {record.pk} {tail}",
+    ]
+
+
+def test_a_session_or_record_stating_no_release_is_no_violation(owned_library, graph):
+    run = tracked_run(owned_library, graph.game)
+    timed_row(run, timezone.now(), None)
+    record_row([run])
+    timed_row(run, timezone.now(), None, release=graph.release)
+
+    assert release_game_violations([owned_library.pk]) == []

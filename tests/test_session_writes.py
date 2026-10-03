@@ -74,6 +74,7 @@ def _draft(run, **overrides) -> SessionDraft:
         "device_id": None,
         "note": "",
         "emulated": False,
+        "release_id": None,
     }
     fields.update(overrides)
     return SessionDraft(**fields)

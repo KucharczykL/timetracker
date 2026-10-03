@@ -70,6 +70,7 @@ from games.reads.player_sessions import (
     readable_sessions,
 )
 from games.reads.playthrough_runs import sole_ordinary_run
+from games.reads.releases import stated_release_label
 from games.reads.session_run_labels import every_run_label
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -116,6 +117,7 @@ def session_cells(
     return [
         NameWithIcon(session=session),
         TruncatedText(run_name or ""),
+        TruncatedText(stated_release_label(session.release) or ""),
         session_time_range(session, presentation),
         Duration(
             session.effective_duration,
@@ -177,6 +179,7 @@ def _row_summary(
     device = session.device.name if session.device is not None else None
     return row_summary(
         run_name,
+        None if "release" in hidden else stated_release_label(session.release),
         None if "date" in hidden else session_time_range(session, presentation),
         None if "duration" in hidden else durations.format(session.effective_duration),
         None if "device" in hidden else device,
@@ -189,6 +192,9 @@ SESSION_COLUMNS: list[Column] = [
     #: first, so the grouping key outlives the others.
     Column(
         "Playthrough", "playthrough", shrinkable=True, priority=3, key="playthrough"
+    ),
+    Column(
+        "Release", shrinkable=True, priority=1, key="release", hidden_by_default=True
     ),
     Column("Date", "date", priority=3, key="date"),
     Column("Duration", "duration", priority=2, key="duration"),
@@ -342,12 +348,14 @@ def _record_played(request: HttpRequest, game: Game) -> None:
 def _session_draft(form: SessionForm, library: UserLibrary) -> SessionDraft:
     """What the valid form states, in the library's calendar."""
     device = form.cleaned_data.get("device")
+    release = form.cleaned_data.get("release")
     return SessionDraft(
         playthrough_id=form.cleaned_data["playthrough"].pk,
         timing=form.timing_statement(calendar_day_zone(library).key),
         device_id=None if device is None else device.pk,
         note=form.cleaned_data["note"],
         emulated=form.cleaned_data["emulated"],
+        release_id=None if release is None else release.pk,
     )
 
 

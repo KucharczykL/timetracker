@@ -160,6 +160,7 @@ AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(HistoricalPlaytime, "device"),
     ProjectionReference.on(HistoricalPlaytime, "player_game"),
     ProjectionReference.on(HistoricalPlaytime, "reclassified_from"),
+    ProjectionReference.on(HistoricalPlaytime, "release"),
     ProjectionReference.on(HistoricalPlaytimeRun, "playthrough"),
     ProjectionReference.on(HistoricalPlaytimeRun, "record"),
     ProjectionReference.on(LibraryEntry, "player_game"),
@@ -167,6 +168,7 @@ AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(PlayerGame, "game"),
     ProjectionReference.on(PlayerSession, "device"),
     ProjectionReference.on(PlayerSession, "playthrough"),
+    ProjectionReference.on(PlayerSession, "release"),
     ProjectionReference.on(Playthrough, "player_game"),
     ProjectionReference.on(Purchase, "entry"),
 )
@@ -237,18 +239,36 @@ def cross_library_violations(
     return violations
 
 
-def entry_game_violations(library_ids: Sequence[uuid.UUID]) -> list[ViolationSentence]:
-    """Entries whose Release is not their tracked game's."""
-    rows = (
-        LibraryEntry._base_manager.filter(library_id__in=library_ids)
-        .exclude(release__edition__game=F("player_game__game"))
-        .values_list("pk", "release__edition__game_id", "player_game__game_id")
-    )
-    return [
-        f"LibraryEntry.release: {row_id} names a Release of Game "
-        f"{release_game}, and its PlayerGame tracks Game {tracked_game}"
-        for row_id, release_game, tracked_game in rows
-    ]
+#: Each model naming a Release, and its game's path.
+_RELEASE_GAME_PATHS: tuple[tuple[type[models.Model], str], ...] = (
+    (LibraryEntry, "player_game__game"),
+    (PlayerSession, "playthrough__player_game__game"),
+    (HistoricalPlaytime, "player_game__game"),
+)
+
+
+def release_game_violations(
+    library_ids: Sequence[uuid.UUID],
+) -> list[ViolationSentence]:
+    """Rows naming a Release of another game.
+
+    A null Release would match the exclusion, so it is filtered first.
+    """
+    violations: list[ViolationSentence] = []
+    for model, game_path in _RELEASE_GAME_PATHS:
+        rows = (
+            model._base_manager.filter(
+                library_id__in=library_ids, release__isnull=False
+            )
+            .exclude(release__edition__game=F(game_path))
+            .values_list("pk", "release__edition__game_id", f"{game_path}_id")
+        )
+        violations.extend(
+            f"{model.__name__}.release: {row_id} names a Release of Game "
+            f"{release_game}, and its PlayerGame tracks Game {tracked_game}"
+            for row_id, release_game, tracked_game in rows
+        )
+    return violations
 
 
 def valuation_library_violations(

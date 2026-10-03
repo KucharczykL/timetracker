@@ -19,7 +19,7 @@ from games.models import (
 )
 from games.projections import (
     cross_library_violations,
-    entry_game_violations,
+    release_game_violations,
     valuation_library_violations,
 )
 
@@ -202,6 +202,6 @@ class Command(BaseCommand):
                 f"library {library_id}, device {device_id}"
             )
         violations.extend(cross_library_violations(library_ids))
-        violations.extend(entry_game_violations(library_ids))
+        violations.extend(release_game_violations(library_ids))
         violations.extend(valuation_library_violations(library_ids))
         return violations

@@ -132,6 +132,7 @@ def record_on(run, library, *playthroughs):
                 provenance=HistoricalPlaytimeProvenance.ESTIMATED,
                 playthrough_ids=tuple(item.pk for item in playthroughs),
                 device_id=None,
+                release_id=None,
                 emulated=False,
                 note="",
             )

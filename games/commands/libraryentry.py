@@ -21,7 +21,12 @@ from games.commands.endpoint import (
 )
 from games.commands.playergame import tracking_events
 from games.commands.playersession import check_note
-from games.commands.scope import Refusal, library_entry_row, visible_row
+from games.commands.scope import (
+    RELEASE_OF_ANOTHER_GAME,
+    library_entry_row,
+    refuse_a_removed_release,
+    visible_release,
+)
 from games.end_ways import EndWay
 from games.endpoints import ENTRY_ACCESS_END, ENTRY_ACQUISITION
 from games.events.dispatch import (
@@ -45,7 +50,7 @@ from games.events.libraryentry import (
 from games.events.purchase import purchase_removed, purchase_restored
 from games.events.references import Reference, entry_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import ENTRY_WAYS, LibraryEntry, PlayerGame, Release
+from games.models import ENTRY_WAYS, LibraryEntry, PlayerGame
 from games.reads.endpoints import stated
 from games.reads.purchases import cascaded_purchase_ids, unremoved_purchase_ids
 from games.reads.referrers import blocking_referrer, foreign_referrer
@@ -53,12 +58,6 @@ from timetracker.temporal import TemporalValue
 
 UNKNOWN_ACCESS = "Choose one of the listed access words."
 UNKNOWN_FORMAT = "Choose one of the listed formats."
-RELEASE_REMOVED = (
-    "That release was removed from the catalog. Choose another, or restore it."
-)
-RELEASE_OF_ANOTHER_GAME = (
-    "That release belongs to another game. Choose a release of this one."
-)
 PLAYER_GAME_REMOVED = (
     "That game was removed from your library. Restore it before changing its copies."
 )
@@ -178,31 +177,6 @@ def _refuse_an_acquisition_after_the_end(
         )
 
 
-def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
-    """A visible Release, removed or not."""
-    return visible_row(
-        context,
-        Release.objects.select_related("edition__game"),
-        Refusal(
-            message=(
-                f"No release {release_id} this library can see. A copy names "
-                "a release of its own catalog or the shared one."
-            )
-        ),
-        pk=release_id,
-    )
-
-
-def _refuse_a_removed_release(release: Release) -> None:
-    """Refuse a Release a mark hides."""
-    if not Release.objects.alive().filter(pk=release.pk).exists():
-        raise CommandRejected(
-            f"Release {release.pk} or one of its parents is removed, so no "
-            "copy names it.",
-            sentence=RELEASE_REMOVED,
-        )
-
-
 def _refuse_under_a_removed_game(entry: LibraryEntry) -> None:
     #: Under dispatch's lock; the mark cannot move.
     if entry.player_game.removed_at is not None:
@@ -295,8 +269,8 @@ def entry_creation_events(
     format = check_format(statement.format)
     check_note(statement.note)
     check_note(statement.acquired.note)
-    release = _visible_release(context, statement.release_id)
-    _refuse_a_removed_release(release)
+    release = visible_release(context, statement.release_id)
+    refuse_a_removed_release(release)
     game = release.edition.game
     tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
     tracking: list[NewEvent] = []
@@ -379,7 +353,7 @@ class DescribeEntry(Command):
         release = (
             None
             if self.release_id is None
-            else _visible_release(context, self.release_id)
+            else visible_release(context, self.release_id)
         )
         events: list[NewEvent] = []
         if access is not None and access != entry.access:
@@ -389,7 +363,7 @@ class DescribeEntry(Command):
         if self.note is not None and self.note != entry.note:
             events.append(libraryentry_note_changed(entry.pk, self.note))
         if release is not None and release.pk != entry.release_id:
-            _refuse_a_removed_release(release)
+            refuse_a_removed_release(release)
             if release.edition.game_id != entry.player_game.game_id:
                 raise CommandRejected(
                     f"Release {release.pk} belongs to game "
@@ -471,7 +445,7 @@ class RestoreEntry(Command):
         if entry.removed_at is None:
             return Unchanged(f"Entry {entry.pk} is already in this library.")
         _refuse_under_a_removed_game(entry)
-        _refuse_a_removed_release(entry.release)
+        refuse_a_removed_release(entry.release)
         #: Mirrors the removal's order, reversed.
         return [
             libraryentry_restored(entry.pk),

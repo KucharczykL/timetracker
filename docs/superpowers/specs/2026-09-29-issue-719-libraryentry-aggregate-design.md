@@ -70,7 +70,7 @@ a library. `games.E015` refuses a path that does not end at a library.
 audit joins through it. `visible_row` in `games/commands/scope.py` resolves
 a shared row or the library's own through that path. `TrackGame` uses it.
 `library_entry_row` refuses an entry whose `PlayerGame` or private Release
-is another library's with `RowUnreadable`. `entry_game_violations` reports
+is another library's with `RowUnreadable`. `release_game_violations` reports
 an entry whose Release is not its game's.
 
 ## Referrer registry

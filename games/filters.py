@@ -82,6 +82,7 @@ from games.endpoints import (
     PURCHASE_REFUND,
 )
 from games.models import (
+    EditionKind,
     EntryAccess,
     EntryFormat,
     PlayerSessionTimingMode,
@@ -533,6 +534,8 @@ class GameFilter(OperatorFilter):
 #: A session reaches its game through the run; a game reaches its
 #: sessions the other way round.
 SESSION_GAME: Final = "playthrough__player_game__game"
+#: The Releases a live session or record names.
+PLAYED_RELEASE_SEARCH_URL: Final = "/api/releases/played"
 GAME_SESSIONS: Final = "player_games__playthroughs__sessions"
 GAME_PURCHASES: Final = "player_games__entries__purchases"
 
@@ -557,6 +560,8 @@ class PlayerSessionFilter(OperatorFilter):
     playthrough_kind: ChoiceCriterion | None = None  # the run's kind
     #: The day the run's own dates do not cover.
     outside_playthrough_dates: BoolCriterion | None = None
+    release: UUIDMultiCriterion | None = None  # filters on release_id
+    edition_kind: ChoiceCriterion | None = None  # the Release's Edition
     day: DateCriterion | None = None  # effective_day, the library's calendar
     started: DateCriterion | None = (
         None  # started_at's day in day_zone; null Duration-only
@@ -592,9 +597,13 @@ class PlayerSessionFilter(OperatorFilter):
                 "effective_day",
                 "playthrough__started_lower",
                 "playthrough__completed_upper",
+                #: Demo play is not the run's.
+                unless=Q(release__edition__kind=EditionKind.PRERELEASE),
             ),
             label="Outside dates",
         ),
+        "release": FilterField("release_id", search_url=PLAYED_RELEASE_SEARCH_URL),
+        "edition_kind": FilterField("release__edition__kind", label="Edition kind"),
         "day": FilterField("effective_day", label="Day"),
         "started": FilterField(
             handler=session_day_handler("started_at"),
@@ -965,6 +974,8 @@ class HistoricalPlaytimeFilter(OperatorFilter):
     game: UUIDMultiCriterion | None = None  # player_game__game__id
     provenance: ChoiceCriterion | None = None
     device: UUIDMultiCriterion | None = None  # filters on device_id
+    release: UUIDMultiCriterion | None = None  # filters on release_id
+    edition_kind: ChoiceCriterion | None = None  # the Release's Edition
     emulated: BoolCriterion | None = None
     duration_hours: IntCriterion | None = None
     when: DateCriterion | None = None  # the interval the record states
@@ -982,6 +993,8 @@ class HistoricalPlaytimeFilter(OperatorFilter):
         "game": FilterField("player_game__game__id", search_url="/api/games/search"),
         "provenance": FilterField(),
         "device": FilterField("device_id", search_url="/api/devices/search"),
+        "release": FilterField("release_id", search_url=PLAYED_RELEASE_SEARCH_URL),
+        "edition_kind": FilterField("release__edition__kind", label="Edition kind"),
         "emulated": FilterField(),
         "duration_hours": FilterField(
             handler=duration_hours_handler("duration"),

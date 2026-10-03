@@ -531,6 +531,22 @@ docs/           — Additional documentation
   differ, every read inside 20 ms; page diff attributed in the wave review.
   Contract is
   [Pass the Session replay, statistics and budget gates](docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md)
+
+  #1354: a session and a record name the Release played on, or none
+  (`release`, `RESTRICT`). `stated_release` (`games/commands/scope.py`)
+  refuses a new one unseen, removed, of another game, or held by no
+  live copy (`held_releases`); the held value skips the removal and
+  copy checks. A write of several dispatches runs `checked_release`
+  first, so a refusal writes nothing.
+  `playersession.release_changed`, `DescribeSession(release=StatedRelease)`;
+  a move to another game clears it (`MovedRun.cleared_releases`), and
+  `historicalplaytime.moved` carries `release: None` only where the
+  record named one; the move's Undo restores none. Pickers
+  read `/api/releases/held`, filters `/api/releases/played`; bulk Edit
+  restates it in its own dispatch; both Playtime lists carry a
+  hidden-by-default Release column. A demo session (a `prerelease`
+  Edition) is never outside its run's dates. Contract is
+  [A session or a record names its Release](docs/superpowers/specs/2026-10-03-issue-1354-session-release-design.md)
 - **HistoricalPlaytime** — fourth projection: playtime a library states
   without sittings, written only by `HistoricalPlaytimes` projector.
   `library.historicalplaytime.created`/`.restated` carry one whole-statement
@@ -542,7 +558,7 @@ docs/           — Additional documentation
   envelope's `effective_time`, null unknown, with generated
   `when_lower`/`when_upper` and index `(library, when_lower, id)`. Provenance
   CHECKed: `estimated`, `manually_entered`, `externally_measured`. `release`
-  and `source` reserved, typed `None`. Database admits superset of what
+  names a Release (#1354); `source` reserved, typed `None`. Database admits superset of what
   command admits. `alive()` reads own mark and `player_game`'s; join's derives
   from record's. Commands `Record`/`Restate`/`Remove`/`RestoreHistoricalPlaytime`
   take `HistoricalPlaytimeStatement`, normalised before fingerprint; devices
@@ -599,7 +615,8 @@ docs/           — Additional documentation
   `GET`/`PATCH /api/entries/{id}`; a PATCH states `acquired` and
   `acquisition_note` together or is refused with 422. Two entries on one
   Release are two copies; an entry whose parent or private Release is
-  another library's is `RowUnreadable`, and `entry_game_violations` joins
+  another library's is `RowUnreadable`, and `release_game_violations`
+  (an entry, session or record on another game's Release) joins
   the ownership audit. `games.E015` walks `LIBRARY_PATHS`. #721 states
   an end of access on the stated endpoint (`access_ended`/
   `.access_end_corrected`/`.access_end_voided`, nine `ENTRY_WAYS`,
@@ -1046,7 +1063,8 @@ structured filtering.
   two the run states: `playthrough_kind` (`playthrough__kind`, the bucket's
   word) and `outside_playthrough_dates` (the day below `started_lower` or
   above `completed_upper`, through `outside_interval_handler`; a run stating
-  no endpoint answers no). Both are quick facets. Mode
+  no endpoint answers no, a demo session never). Both are quick facets;
+  `release` and `edition_kind` are builder only. Mode
   key stays `sessions`; model key is `playersession` wherever one is spelled
   (`FILTER_MODE_MODELS`, builder URL, fixtures' `"model"`). `GameFilter`'s
   session aggregates cross `player_games__playthroughs__sessions`;
@@ -1172,16 +1190,18 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `GET /api/session/`, `GET /{id}` — projection rows through
   `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
   instants with zones, `stated_day`, `stated_duration_seconds`, `day`,
-  `duration_seconds`
+  `duration_seconds`, `release_id`
 - `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
   statement told apart by shape) is a correction, `note`/`device_id`/`emulated`
-  a description, `playthrough_id` a move; named key is the act, omitted key
+  a description, `playthrough_id` a move, `release_id` a description after
+  the move; named key is the act, omitted key
   states nothing. A run or device the library does not hold answers 404, from
   the command, and so does the row the read-back refuses: a move onto a run at
   an untracked game lands, and `library_sessions` reads a catalog mark no
   session command reads (#1169)
 - `POST /api/session/` — body `extra="forbid"`: `playthrough_id` and one whole
-  `timing` statement, `device_id`, `note` and `emulated` beside them. Answers
+  `timing` statement, `device_id`, `release_id`, `note` and `emulated`
+  beside them. Answers
   201 and the row. An `Idempotency-Key` header absorbs a repeat; the header
   itself is measured at the route, because the plain `ValueError` no answer
   maps would read as a defect, and nothing else reads the state ahead of it.
@@ -1191,7 +1211,11 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
 - `GET /api/historical-playtime/`, `GET /{id}` — live records through
   `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
-  canonical text beside its two bounds, `playthrough_ids`. No write endpoint
+  canonical text beside its two bounds, `playthrough_ids`, `release_id`. No
+  write endpoint
+- `GET /api/releases/held` — one game's Releases a live copy names, `game_id`
+  and `q`, hinted where every copy ended; `GET /api/releases/played` — the
+  Releases live sessions and records name, labelled by game
 - `GET /api/entries/`, `GET /{id}` — live entries through `readable_entries`,
   `limit`/`offset`, `limit=0` unbounded; `POST /` records one (201 and the
   row, `Idempotency-Key` absorbs a repeat, an untracked game is tracked in

@@ -36,7 +36,10 @@ def library_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
 def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     """The row path the list, the section and the API share."""
     return library_records(library).select_related(
-        "player_game__game__platform", "device"
+        "player_game__game__platform",
+        "device",
+        "release__edition",
+        "release__platform",
     )
 
 

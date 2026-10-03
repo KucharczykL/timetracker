@@ -15,11 +15,13 @@ from games.events.append import lock_stream
 from games.events.dispatch import dispatch
 from games.events.historical_playtime import (
     historicalplaytime_created,
+    historicalplaytime_moved,
     historicalplaytime_removed,
     historicalplaytime_restated,
     historicalplaytime_restored,
 )
 from games.events.rebuild import RebuildMode, rebuild_projections
+from games.events.references import capture_reference
 from games.events.replay import replay
 from games.models import (
     Game,
@@ -201,6 +203,7 @@ def a_created(tracked, runs, **stated):
         when=stated.get("when", TemporalValue.parse("2005")),
         provenance=stated.get("provenance", "estimated"),
         device=stated.get("device"),
+        release=stated.get("release"),
         emulated=stated.get("emulated", False),
         note=stated.get("note", ""),
     )
@@ -223,6 +226,7 @@ def test_a_restatement_marks_the_row_and_a_second_moves_the_mark(
             when=TemporalValue.parse("2005"),
             provenance="estimated",
             device=None,
+            release=None,
             emulated=False,
             note=note,
         )
@@ -250,6 +254,7 @@ def test_a_creation_names_the_session_it_came_from(
         when=TemporalValue.parse("2026-03-05"),
         provenance="manually_entered",
         device=None,
+        release=None,
         emulated=False,
         note="",
         reclassified_from=session.pk,
@@ -290,6 +295,7 @@ def test_the_mapper_names_every_statement_column():
         "when",
         "provenance",
         "device_id",
+        "release_id",
         "emulated",
         "note",
     }
@@ -343,6 +349,7 @@ def test_a_restatement_replaces_the_runs_and_keeps_a_kept_id(
         when=TemporalValue.parse("2006~"),
         provenance="manually_entered",
         device=None,
+        release=None,
         emulated=True,
         note="halved",
     )
@@ -398,6 +405,7 @@ def test_the_projection_replays_from_an_empty_stream(
             when=TemporalValue.unknown(),
             provenance="estimated",
             device=None,
+            release=None,
             emulated=False,
             note="",
         ),
@@ -453,3 +461,23 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
         ("games_purchase", 0, 0, 0),
     ]
     assert HistoricalPlaytimeRun.objects.count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_record_names_its_release_and_a_move_clears_it_only_when_stated(
+    owned_user, owned_library, tracked, run, game, stated_graph
+):
+    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    created = a_created(tracked, [run], release=capture_reference(graph.release))
+    append(owned_library, owned_user, created, key="create")
+    assert HistoricalPlaytime.objects.get().release_id == graph.release.pk
+
+    keeping = historicalplaytime_moved(created.aggregate_id, player_game_id=tracked.pk)
+    append(owned_library, owned_user, keeping, key="move-1")
+    assert HistoricalPlaytime.objects.get().release_id == graph.release.pk
+
+    clearing = historicalplaytime_moved(
+        created.aggregate_id, player_game_id=tracked.pk, clears_release=True
+    )
+    append(owned_library, owned_user, clearing, key="move-2")
+    assert HistoricalPlaytime.objects.get().release_id is None

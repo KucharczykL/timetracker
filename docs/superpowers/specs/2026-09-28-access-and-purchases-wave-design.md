@@ -161,7 +161,7 @@ marker is set. The row is unique on `(id, library)`; a partial index on
 a path that ends elsewhere, and `visible_row` in `games/commands/scope.py`
 resolves a shared row or the library's own through it. So
 `audit_library_ownership` reports an entry naming another library's
-private Release, `entry_game_violations` reports one whose Release is not
+private Release, `release_game_violations` reports one whose Release is not
 its game's, and the swap's refusal sentence can name either.
 
 ### Purchase
@@ -970,11 +970,10 @@ inside a member says so in its body and closes with it.
   is a `resumed` day with bounds, held until the next end clears it,
   which would floor the next end and an acquisition correction and make
   the resumed end correctable again.
-- **Demo play before #1354.** A session is demo play through the
-  Release it names, and no session names one until #1354; until then a
-  demo session is a session on the game's run, counted everywhere.
-  The cost of an earlier answer is a run kind or a session flag that
-  #1354 would then have to reconcile with the Release.
+- **Demo play placed by hand.** A session is demo play through the
+  Release it names (#1354). A session that names none is counted
+  everywhere, as before; the bulk Edit Release field places existing
+  ones. Nothing infers a demo from the game, the run or the day.
 - **A refund of a non-owned entry.** The refund ends access only on an
   Owned entry; a refunded subscription or rental keeps its own end, stated
   by hand.
@@ -987,10 +986,11 @@ inside a member says so in its body and closes with it.
 
 ## Cross-wave handoffs
 
-- **A Release on a session or a record** stays reserved `None`. The picker
-  this wave builds is the one #690 and #705 deferred; #1354 puts it on the
-  session and record forms, with the rule that a session names a Release
-  only where the library holds an entry on it.
+- **A Release on a session or a record** is #1354's: the session and
+  record forms, bulk Edit and both APIs state it, and `stated_release`
+  (`games/commands/scope.py`) refuses a new one the library holds no
+  live copy of. The held value skips that check and the removal check,
+  as a held device does.
 - **Bulk end of access over copies** is #1355, beside #1345, on the
   bulk runner; it reads `latest_end_act` and voids only where the
   batch's own event is still the latest of the end's family, as
@@ -1029,11 +1029,12 @@ inside a member says so in its body and closes with it.
 - **#1385** opens every add and edit form in a modal once #1384 lands,
   Game detail's with #1383's mockups; until then each act the wave adds
   is its own page, and every page keeps working as one after.
-- **#1358**'s Before start reads sessions on full editions once #1354
-  lets a session name a demo Release; #1354 owns that clause, and its
-  bulk Edit Release field is how an existing demo session is placed.
-  Until then a demo session counts as one nobody has placed yet. **#1361**, the toggle that hides demo
-  play from statistics and lists, follows #1354.
+- **#1358**'s Before start inherits #1354's clause:
+  `outside_interval_handler(..., unless=...)` keeps a session on a
+  prerelease Edition out of `outside_playthrough_dates`: such a
+  session is never outside its run's dates. **#1361**, the toggle that hides demo play from statistics
+  and lists, reads `edition_kind` through the session's and the
+  record's `release` column.
 
 ## Deployment
 
@@ -1145,7 +1146,14 @@ runs on it.
   no Release; a changed Release must name a Release the library holds a
   live copy on, ended or not, hinted as an ended device is, and nothing
   checks it again afterwards; Bulk Edit's Release field mirrors the
-  playthrough field
+  playthrough field. Implemented: `ReleaseReference` is a plain
+  `Annotated` alias, since a `type` statement hides the metadata the
+  arity scan strips; the ownership audit's `release_game_violations`
+  filters null Releases before its negated lookup; the entry commands
+  and the session commands share one set of Release sentences
+- #1486, a Release column on the Sessions and Historical lists; delivered
+  by #1354, hidden by default
+- #1487, quick facets for edition kind on the Playtime lists (after #1354)
 - #1476, a moved run implies no status on its new game (found on
   #1466's first use; the endpoint writer's Played/Completed rule applies at
   the target); implemented: `games/writes/implied_status.py` holds the rule

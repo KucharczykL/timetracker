@@ -34,6 +34,7 @@ def _statement(run) -> HistoricalPlaytimeStatement:
         provenance=HistoricalPlaytimeProvenance.ESTIMATED,
         playthrough_ids=(run.pk,),
         device_id=None,
+        release_id=None,
         emulated=False,
         note="",
     )

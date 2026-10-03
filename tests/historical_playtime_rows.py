@@ -12,6 +12,7 @@ from games.models import (
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
     Playthrough,
+    Release,
 )
 
 type CanonicalWhen = str  # e.g. "2020/2022"
@@ -24,6 +25,7 @@ def record_row(
     when: CanonicalWhen | None = None,
     provenance: HistoricalPlaytimeProvenance = HistoricalPlaytimeProvenance.ESTIMATED,
     device: Device | None = None,
+    release: Release | None = None,
     emulated: bool = False,
     note: str = "",
 ) -> HistoricalPlaytime:
@@ -37,6 +39,7 @@ def record_row(
         when=when,
         provenance=provenance,
         device=device,
+        release=release,
         emulated=emulated,
         note=note,
         created_at=timezone.now(),

@@ -18,6 +18,7 @@ from games.events.dispatch import RowNotHeld, RowUnreadable
 from games.filters import parse_session_filter
 from games.models import PlayerSession, UserLibrary
 from games.reads.player_sessions import library_sessions
+from games.reads.releases import stated_release_label
 from games.reads.session_run_labels import every_run_label
 from games.writes.answers import answered
 
@@ -46,7 +47,12 @@ def session_resolution(
     rows = tuple(
         library_sessions(library)
         .filter(pk__in=wanted)
-        .select_related("playthrough__player_game__game", "device")
+        .select_related(
+            "playthrough__player_game__game",
+            "device",
+            "release__edition",
+            "release__platform",
+        )
         .order_by("-sort_instant", "id")
     )
     return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, SESSION_GONE)))
@@ -113,3 +119,7 @@ def session_of(actor: User, session_id: uuid.UUID) -> PlayerSession:
 
 def device_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
     return row.device.name if row.device is not None else "No device"
+
+
+def release_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
+    return stated_release_label(row.release) or "Not stated"

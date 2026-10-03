@@ -81,6 +81,21 @@ class Reference(TypedDict):
     detail: str
 
 
+#: Spelled once for validator and registry.
+RELEASE_KIND: ReferenceKindName = "catalog.release"
+
+
+def _a_release(reference: Reference) -> Reference:
+    """Refuse any kind but a Release."""
+    if reference["kind"] != RELEASE_KIND:
+        raise ValueError(f"{reference['kind']!r} is not a release.")
+    return reference
+
+
+#: Plain alias: `type` hides the metadata.
+ReleaseReference = Annotated[Reference, AfterValidator(_a_release)]
+
+
 class Resolution(StrEnum):
     """Where a replay finds the row."""
 
@@ -235,7 +250,7 @@ def _capture_release(release: Release) -> Reference:
     caller capturing many selects them first.
     """
     return Reference(
-        kind="catalog.release",
+        kind=RELEASE_KIND,
         id=str(release.pk),
         label=release.edition.game.name,
         detail="" if release.platform is None else release.platform.name,
@@ -281,12 +296,17 @@ DEFAULT_REFERENCE_KINDS.register(
 )
 DEFAULT_REFERENCE_KINDS.register(
     ReferenceKind(
-        name="catalog.release",
+        name=RELEASE_KIND,
         model=Release,
         capture=_capture_release,
         resolution=Resolution.REQUIRED,
     )
 )
+
+
+def referenced_id(reference: Reference | None) -> uuid.UUID | None:
+    """The row a reference names, or none."""
+    return None if reference is None else uuid.UUID(reference["id"])
 
 
 def capture_reference(

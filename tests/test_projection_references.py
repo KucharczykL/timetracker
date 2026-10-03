@@ -36,6 +36,7 @@ def test_the_walk_finds_every_outward_reference():
         ("HistoricalPlaytime", "device"),
         ("HistoricalPlaytime", "player_game"),
         ("HistoricalPlaytime", "reclassified_from"),
+        ("HistoricalPlaytime", "release"),
         ("HistoricalPlaytimeRun", "playthrough"),
         ("HistoricalPlaytimeRun", "record"),
         ("LibraryEntry", "player_game"),
@@ -43,6 +44,7 @@ def test_the_walk_finds_every_outward_reference():
         ("PlayerGame", "game"),
         ("PlayerSession", "device"),
         ("PlayerSession", "playthrough"),
+        ("PlayerSession", "release"),
         ("Playthrough", "player_game"),
         ("Purchase", "entry"),
     ]

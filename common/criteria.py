@@ -3242,18 +3242,25 @@ def bool_running_handler(timed_mode: str) -> FieldHandler:
 
 
 def outside_interval_handler(
-    day_field: ORMLookup, lower_field: ORMLookup, upper_field: ORMLookup
+    day_field: ORMLookup,
+    lower_field: ORMLookup,
+    upper_field: ORMLookup,
+    *,
+    unless: Q | None = None,
 ) -> FieldHandler:
     """The interval does not cover the day.
 
     False is the plain negation, and safe: Django guards a negated
     lookup whose right side is a column with ``IS NOT NULL``, so a
     row whose bounds are null answers no rather than falling out of
-    both answers. Hand-writing that branch breaks it.
+    both answers. Hand-writing that branch breaks it. ``unless`` rows
+    are never outside.
     """
     outside = Q(**{f"{day_field}__lt": F(lower_field)}) | Q(
         **{f"{day_field}__gt": F(upper_field)}
     )
+    if unless is not None:
+        outside &= ~unless
     return lambda criterion, context: outside if criterion.value else ~outside
 
 
