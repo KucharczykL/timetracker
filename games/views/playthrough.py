@@ -49,6 +49,7 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.companion_status import played_is_offered
 from games.reads.days import DayInterval
 from games.reads.player_sessions import game_session_days
 from games.reads.playthrough_activity import activity_clock
@@ -407,7 +408,12 @@ def _record_companion_status(
     and wins. Answers are discarded: a
     refused status toasts, and its run stands.
     """
-    if acts.started and form.cleaned_data["also_mark_played"]:
+    #: Asked again: a move may have stated Completed.
+    if (
+        acts.started
+        and form.cleaned_data["also_mark_played"]
+        and played_is_offered(cast(User, request.user).library, game)
+    ):
         record_facts_for_request(
             request,
             game,

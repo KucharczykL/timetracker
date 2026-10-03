@@ -48,8 +48,13 @@ from games.reads.playthrough_endpoints import (
     stated_start,
 )
 from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
-from games.writes.answers import answered
+from games.writes.answers import CommandFailed, answered
 from games.writes.endpoint import Act, endpoint_move
+from games.writes.implied_status import (
+    StatusAnswer,
+    implied_status,
+    state_implied_status,
+)
 from games.writes.playergame import track_game
 from timetracker.temporal import TemporalValue
 
@@ -284,6 +289,21 @@ class MovedRun(NamedTuple):
     tracked_the_target: bool
     removed_a_placeholder: bool
     minted_a_placeholder: bool
+    #: The status the endpoints implied on the target.
+    status: StatusAnswer = None
+
+
+class MovedThenFailed(CommandFailed):
+    """The move landed; a later write failed.
+
+    A subclass, since every caller answers it as the
+    failure. The move rides along, so the page names
+    it rather than calling the whole edit refused.
+    """
+
+    def __init__(self, failure: CommandFailed, moved: MovedRun) -> None:
+        super().__init__(failure.message, failure.status_code)
+        self.moved = moved
 
 
 def restate_run(
@@ -298,11 +318,35 @@ def restate_run(
     One dispatch per fact, so a resubmit finishes.
     A move goes first; None where none happened.
     """
+    #: The status key derives from it.
+    move_key = str(uuid.uuid7())
     with answered("playthrough"):
         #: Before the move: no act withdraws.
         _refuse_a_reversed_draft(run, draft)
-        moved = _move(actor, run, draft.game_id, correlation_id=correlation_id)
-        _restate(actor, run, draft, correlation_id=correlation_id)
+        moved = _move(
+            actor,
+            run,
+            draft.game_id,
+            correlation_id=correlation_id,
+            idempotency_key=move_key,
+        )
+    try:
+        if moved is not None:
+            moved = moved._replace(
+                status=_state_the_moved_status(
+                    actor,
+                    run,
+                    moved.target,
+                    correlation_id=correlation_id,
+                    idempotency_key=move_key,
+                )
+            )
+        with answered("playthrough"):
+            _restate(actor, run, draft, correlation_id=correlation_id)
+    except CommandFailed as failure:
+        if moved is None:
+            raise
+        raise MovedThenFailed(failure, moved) from failure
     return moved
 
 
@@ -312,8 +356,13 @@ def _move(
     game_id: GameId | None,
     *,
     correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey,
 ) -> MovedRun | None:
-    """Dispatch the move; read what it did."""
+    """Dispatch the move; read what it did.
+
+    A resubmit lands here as Unchanged, so
+    neither the move nor its status repeats.
+    """
     if game_id is None or game_id == run.player_game.game_id:
         return None
     source = run.player_game.game
@@ -322,6 +371,7 @@ def _move(
         actor=actor,
         library=actor.library,
         correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
     )
     if result.outcome is CommandOutcome.UNCHANGED:
         return None
@@ -334,6 +384,32 @@ def _move(
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
+    )
+
+
+def _state_the_moved_status(
+    actor: User,
+    run: Playthrough,
+    target: Game,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+) -> StatusAnswer:
+    """The status the endpoints carried there.
+
+    Read before the draft's own endpoints:
+    those state their status through the
+    page's boxes, as on any edit.
+    """
+    status = implied_status(run)
+    if status is None:
+        return None
+    return state_implied_status(
+        actor,
+        target,
+        status,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
     )
 
 

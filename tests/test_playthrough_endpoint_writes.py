@@ -5,7 +5,8 @@ from datetime import date
 import pytest
 
 from games.commands.playergame import TrackGame
-from games.events.dispatch import CommandOutcome, dispatch
+from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.events.idempotency import IdempotencyKeyMismatch
 from games.models import (
     Game,
     LibraryEvent,
@@ -14,6 +15,7 @@ from games.models import (
     Playthrough,
 )
 from games.writes.answers import CommandFailed
+from games.writes.implied_status import StatusRefused, StatusStated
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playthrough_endpoints import state_completion, state_start
 from timetracker.temporal import TemporalValue
@@ -56,7 +58,7 @@ def test_a_start_states_played_on_an_unplayed_game(owned_user, run, game):
     stated = state_start(owned_user, run, DAY, correlation_id=correlation_id)
 
     assert stated.result.outcome is CommandOutcome.APPENDED
-    assert stated.status_refusal is None
+    assert stated.status == StatusStated(PlayerGameStatus.PLAYED)
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
     assert _status_events(game).get().correlation_id == correlation_id
 
@@ -146,17 +148,17 @@ def test_a_refused_status_is_carried_back(owned_user, run, game, monkeypatch):
     refusal = CommandFailed("That game was removed from your library.", 409)
 
     def refuse(*arguments, **facts):
-        raise refusal
+        raise refusal from CommandRejected("removed", sentence=refusal.message)
 
     monkeypatch.setattr(
-        "games.writes.playthrough_endpoints.record_facts",
+        "games.writes.implied_status.record_facts",
         refuse,
     )
 
     stated = state_completion(owned_user, run, DAY, correlation_id=new_correlation_id())
 
     assert stated.result.outcome is CommandOutcome.APPENDED
-    assert stated.status_refusal is refusal
+    assert stated.status == StatusRefused(PlayerGameStatus.COMPLETED, refusal)
     run.refresh_from_db()
     assert run.completed == DAY
 
@@ -168,7 +170,22 @@ def test_a_status_defect_ends_the_act(owned_user, run, game, monkeypatch):
     def fail(*arguments, **facts):
         raise CommandFailed("The database refused the statement.", 500)
 
-    monkeypatch.setattr("games.writes.playthrough_endpoints.record_facts", fail)
+    monkeypatch.setattr("games.writes.implied_status.record_facts", fail)
+
+    with pytest.raises(CommandFailed):
+        state_completion(owned_user, run, DAY, correlation_id=new_correlation_id())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_status_key_mismatch_ends_the_act(owned_user, run, game, monkeypatch):
+    """The key derives from the act's, so a mismatch is a defect."""
+
+    def mismatch(*arguments, **facts):
+        raise CommandFailed("This request cannot be retried.", 409) from (
+            IdempotencyKeyMismatch("act-status")
+        )
+
+    monkeypatch.setattr("games.writes.implied_status.record_facts", mismatch)
 
     with pytest.raises(CommandFailed):
         state_completion(owned_user, run, DAY, correlation_id=new_correlation_id())
