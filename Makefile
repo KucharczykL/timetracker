@@ -519,6 +519,11 @@ check: ensure-python lint format-check typecheck vale ts-check check-icons check
 # before pushing.
 check-fast: ensure-python lint format-check typecheck vale ts-check check-icons check-migrations test-ts test-fast
 
+# The static half of `check`, which is all CI runs: no pytest, no vitest. The
+# suite grew past what a hosted runner finishes in reasonable time, so the full
+# `check` is run locally before a merge and nothing else runs it.
+check-static: ensure-python lint format-check typecheck vale ts-check check-icons check-migrations
+
 date:
 	uv run --frozen python scripts/print_local_time.py
 
