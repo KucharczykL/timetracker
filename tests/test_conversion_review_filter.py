@@ -7,12 +7,7 @@ from entries import record_entry
 from purchases import record_purchase, remove_purchase
 
 from common.criteria import ChoiceCriterion, FilterError, Modifier
-from games.conversion_review import (
-    ORIGIN,
-    REVIEW_LABELS,
-    REVIEWED,
-    Category,
-)
+from games.conversion_review import ORIGIN, Category
 from games.filters import (
     LibraryEntryFilter,
     PurchaseFilter,
@@ -153,11 +148,6 @@ def test_an_unknown_word_is_refused(owned_library, three, criterion):
         _purchases(owned_library, criterion)
 
 
-def test_every_word_is_a_choice():
-    assert set(REVIEWED) == set(Category)
-    assert set(REVIEW_LABELS) == set(REVIEWED)
-
-
 def test_a_removed_purchase_still_tags_its_copy(owned_library, copies):
     base = copies("Tunic")
     remove_purchase(
@@ -175,7 +165,7 @@ def test_the_choices_carry_the_labels():
     choices = PurchaseFilter.fields["conversion_review"].choices
     assert choices is not None
     assert [(choice["value"], choice["label"]) for choice in choices] == [
-        (str(word), REVIEW_LABELS[word]) for word in REVIEWED
+        (word.value, word.label) for word in Category
     ]
 
 

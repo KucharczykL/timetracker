@@ -46,17 +46,9 @@ lists. It reads `LibraryEvent` through `Exists`: the row's key, origin
 `review`. An entry also matches through its purchases' events, removed
 purchases included. The field refuses an unknown word.
 
-The Library page's Purchases section lists one row per category: label,
-reason, count and a link to its rows. A category with no rows is left
-out. "Repurchased games" counts games with two copies or more. The count
-is the target list's own read. An edit does not take a row out of its
-category; a removal does.
-
-"Hide this review" is `UserLibraryPreferences.conversion_review_hidden`,
-set through `PATCH /api/library/conversion-review-hidden`. The page
-reloads after the save. A hidden review reads no row.
-
-The review serves one conversion. #1443 removes it, and keeps the field.
+The Library page listed each category's count and link, with a Hide
+preference. #1443 removed that review and the preference, and kept the
+field.
 
 ## The Library tab
 

@@ -70,7 +70,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
-from games.conversion_review import ORIGIN, REVIEW_LABELS, REVIEWED
+from games.conversion_review import ORIGIN, Category
 from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import (
     DEVICE_ACCESS_END,
@@ -181,9 +181,9 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
 type TaggedRows = Callable[[QuerySet[LibraryEvent, LibraryEvent]], Q]
 
 _REVIEW_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
-    ChoiceMeta(value=str(word), label=REVIEW_LABELS[word]) for word in REVIEWED
+    ChoiceMeta(value=word.value, label=word.label) for word in Category
 )
-_REVIEW_VALUES: Final[frozenset[str]] = frozenset(str(word) for word in REVIEWED)
+_REVIEW_VALUES: Final[frozenset[str]] = frozenset(Category.values)
 
 
 def own_events(events: QuerySet[LibraryEvent, LibraryEvent]) -> Exists:

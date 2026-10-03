@@ -1,13 +1,16 @@
-"""Convert legacy purchases into copies and purchases."""
+"""The retired purchase conversion; refuses to run."""
 
 from django.db import migrations
 
 
 def convert(apps, schema_editor):
-    """Only a partial history reaches this."""
-    raise RuntimeError(
-        "The purchase conversion is gone; drop and rebuild this database."
-    )
+    """Reached only below the squash."""
+    if apps.get_model("games", "LegacyPurchase").objects.exists():
+        raise RuntimeError(
+            "The purchase conversion is gone. A deployment migrates with "
+            "the image before the squash first; a development database is "
+            "dropped and rebuilt."
+        )
 
 
 class Migration(migrations.Migration):

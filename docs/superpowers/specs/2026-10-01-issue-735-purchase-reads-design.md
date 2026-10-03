@@ -50,17 +50,9 @@ count Owned copies. A pass or upgrade has no copy of its own.
 
 ## Parity gate
 
-`legacy_figures(model, library, year)` computes the legacy figures. It
-also runs on the historical model. It counts each legacy row once. Both
-sides state their row sets as one `RowSets`.
-
-A format-2 snapshot scope holds `figures`, `rows` and `amounts`.
-`make verify-purchase-statistics` judges each row set. A key can leave,
-join or repeat. Each `Reason` names the row sets it can move, and how.
-A key is explained only by a reason that holds for it and can cause its
-move. The gate fails on any unexplained row set, and on any figure
-without an attribution. A ratio must equal its value recomputed from the
-judged rows. Each key valued on both sides must match to the cent.
+A parity gate judged every figure against a legacy snapshot on the
+deploy day. The fourth squash removed it with the legacy table
+(#1448).
 
 ## Known differences
 

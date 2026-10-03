@@ -11,28 +11,33 @@ and its rehearsal.
 - `0019_device_access_end_squashed_0036_defer_library_event_stream_matches_library`
   replaces the eighteen files and keeps `replaces`. The originals stay
   until the deployment records the squash (#1472).
-- `0029`'s rate copy, `0031`'s conversion and `0035`'s schedule removal
-  are `elidable=True`. The squash holds none of them.
+- Four data passes are `elidable=True` and the squash holds none:
+  `0029`'s rate copy, `0031`'s conversion, `0032`'s preset rewrite and
+  `0035`'s schedule removal.
 - The `RunSQL` in `0026` and `0036` are optimizer barriers. A fresh
   install creates `LegacyPurchase` and drops it.
 
 ## The guard
 
-- The squash's first operation refuses a database whose
-  `games_purchase` or `games_exchangerate` holds a row. At that point
-  both tables have their `0018` shape.
-- A fresh database holds no row, so it passes. The deployment records
-  the squash and does not run it.
-- A database at `0018` with data takes the squash. Without the guard,
-  the squash drops its rates, its legacy purchases and their
-  conversion. The error names the two remedies: a deployment migrates
-  with the image before the squash first; a development database is
-  dropped and rebuilt.
-- The guard reads raw SQL on `schema_editor.connection`, so a test can
-  call it against the live tables. It is `elidable=True`, so the next
-  squash removes it.
-- A database that holds some of the eighteen takes the originals.
-  `0031` then refuses with the same remedy.
+- The squash's first operation refuses a database that holds legacy
+  purchases, stored rates, or a preset in the legacy purchase words. At
+  that point the tables have their `0018` shape.
+- Only a database that has applied none of the eighteen takes the
+  squash. A fresh one holds no such row and passes. The deployment
+  records the squash and does not run it.
+- Without the guard, legacy purchases drop unconverted, purchase
+  presets stop loading, and stored rates fail a `NOT NULL` column with
+  no remedy. The error names the table and two remedies: a deployment
+  migrates with the image before the squash first; a development
+  database is dropped and rebuilt. Rates are a cache, so deleting them
+  also works.
+- The second operation deletes the retired task's schedule row.
+- Both read raw SQL on `schema_editor.connection`, so a test calls them
+  against the live tables. Both are `elidable=True`, so the next squash
+  removes them.
+- A database that has applied some of the eighteen takes the
+  originals. `0031` refuses it while legacy purchases exist, with the
+  same remedies.
 
 ## Rollback
 
@@ -50,7 +55,7 @@ and its rehearsal.
 
 `games/stats_parity.py`, `PurchaseConversionState`,
 `purchase_creation_events`, `release_on`, and the tests that import
-`0029` and `0032` by module. Those tests leave with the files.
+`0029`, `0031` and `0032` by module. Those tests leave with the files.
 
 ## Rehearsal
 

@@ -9,21 +9,47 @@ from django.db import migrations, models
 import timetracker.temporal
 import timetracker.uuidv7
 
-#: Both tables hold their 0018 shape here.
-GUARDED_TABLES = ("games_purchase", "games_exchangerate")
+REMEDY = (
+    "A deployment migrates with the image before the squash first; "
+    "a development database is dropped and rebuilt."
+)
+
+#: Rows each elided pass converted, at 0018.
+UNCONVERTED = (
+    ("games_purchase", "legacy purchases", "SELECT 1 FROM games_purchase"),
+    (
+        "games_exchangerate",
+        "float rates; they are a cache, so deleting them also works",
+        "SELECT 1 FROM games_exchangerate",
+    ),
+    (
+        "games_filterpreset",
+        "presets in the legacy purchase words",
+        (
+            "SELECT 1 FROM games_filterpreset WHERE mode = 'purchases' "
+            "OR object_filter::text LIKE '%purchase%'"
+        ),
+    ),
+)
+
+RETIRED_TASK = "games.tasks.calculate_price_per_game"
 
 
 def refuse_unconverted_data(apps, schema_editor):
     """Refuse rows the elided passes converted."""
     with schema_editor.connection.cursor() as cursor:
-        for table in GUARDED_TABLES:
-            cursor.execute(f"SELECT EXISTS (SELECT 1 FROM {table})")
+        for table, rows, query in UNCONVERTED:
+            cursor.execute(f"SELECT EXISTS ({query})")
             if cursor.fetchone()[0]:
                 raise RuntimeError(
-                    f"{table} holds rows this squash cannot convert. "
-                    "A deployment migrates with the image before the squash "
-                    "first; a development database: drop and rebuild it."
+                    f"{table} holds {rows}, which this squash cannot convert. {REMEDY}"
                 )
+
+
+def remove_retired_schedule(apps, schema_editor):
+    """The retired task's lingering schedule row."""
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("DELETE FROM django_q_schedule WHERE func = %s", [RETIRED_TASK])
 
 
 class Migration(migrations.Migration):
@@ -59,6 +85,9 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(
             refuse_unconverted_data, migrations.RunPython.noop, elidable=True
+        ),
+        migrations.RunPython(
+            remove_retired_schedule, migrations.RunPython.noop, elidable=True
         ),
         migrations.AddField(
             model_name="device",

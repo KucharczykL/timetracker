@@ -670,11 +670,10 @@ docs/           — Additional documentation
   #723 (P4) converted every `LegacyPurchase` into these events, one copy
   per (row, game), under `conversion:723:<act>:<legacy>:<game>` keys:
   bundles split by cents, DLC rows got their own `dlc` Game, passes and
-  upgrades ride the base's owned copy. The pass ran once, out of a
-  migration since squashed; what it left behind is the events, and the
-  squash refuses a database still holding legacy rows (see
-  [Squashing](docs/migration-squash.md)). `purchase_creation_events` and
-  `release_on` are its extracted halves. Contract is
+  upgrades rode the base's owned copy. The pass ran once, out of a
+  migration since squashed; what it left behind is the events. The
+  squash refuses a database whose legacy purchases, rates or presets it
+  would lose (see [Squashing](docs/migration-squash.md)). Contract is
   [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
   #724 (P5b) moves every purchase write onto the projection. Add to
   library states the game's purchase with the copy (`PriceFields`,
