@@ -7,6 +7,7 @@ from typing import ClassVar, TypedDict, cast
 from games.events.envelope import RecordedEvent
 from games.events.historical_playtime import (
     HISTORICALPLAYTIME_CREATED,
+    HISTORICALPLAYTIME_MOVED,
     HISTORICALPLAYTIME_REMOVED,
     HISTORICALPLAYTIME_RESTATED,
     HISTORICALPLAYTIME_RESTORED,
@@ -111,9 +112,18 @@ class HistoricalPlaytimes(Projector):
     def _restored(self, event: RecordedEvent) -> None:
         self.amend(HistoricalPlaytime, event, removed_at=None)
 
+    def _moved(self, event: RecordedEvent) -> None:
+        #: No restated_at: nothing was restated.
+        self.amend(
+            HistoricalPlaytime,
+            event,
+            player_game_id=uuid.UUID(event.payload["player_game"]),
+        )
+
     handles: ClassVar[HandlerMap] = {
         HISTORICALPLAYTIME_CREATED: _created,
         HISTORICALPLAYTIME_RESTATED: _restated,
         HISTORICALPLAYTIME_REMOVED: _removed,
         HISTORICALPLAYTIME_RESTORED: _restored,
+        HISTORICALPLAYTIME_MOVED: _moved,
     }

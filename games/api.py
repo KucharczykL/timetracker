@@ -282,6 +282,8 @@ class UpdatePlaythroughIn(Schema):
     started: StatedTemporal = None
     completed: StatedTemporal = None
     note: str = ""
+    #: The catalog game the run moves to.
+    game_id: UUIDv7 | None = None
 
 
 class PlaythroughOut(Schema):
@@ -559,6 +561,7 @@ def partial_update_playthrough(
             note=payload.note if "note" in stated else run.note,
         ),
         correlation_id=new_correlation_id(),
+        game_id=payload.game_id,
     )
     return Status(204, None)
 

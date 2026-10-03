@@ -33,9 +33,9 @@ from games.events.playthrough import (
     PLAYTHROUGH_START_EVENTS,
     PLAYTHROUGH_STARTED,
 )
-from games.models import PlayerGameStatus, Playthrough, UserLibrary
+from games.models import PlayerGame, PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.calendar import calendar_today
-from games.reads.events import aggregate_events
+from games.reads.events import aggregate_events, run_game_at_batch
 from games.reads.playergame_facts import status_change
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.writes.answers import answered
@@ -291,14 +291,29 @@ def _refuse_unless_this_batch_wrote_it(
         )
 
 
-def _word_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
+def _game_at_batch(run: Playthrough, batch_id: uuid.UUID) -> PlayerGame:
+    """The game holding the batch's status.
+
+    Not the run's current game: a move since
+    leaves the batch's status on the old one.
+    """
+    with answered("game"):
+        tracked_id = run_game_at_batch(run.library, run.pk, batch_id)
+        if tracked_id is None or tracked_id == run.player_game_id:
+            return run.player_game
+        return PlayerGame.objects.select_related("game").get(
+            library=run.library, pk=tracked_id
+        )
+
+
+def _word_before(tracked: PlayerGame, batch_id: uuid.UUID) -> PlayerGameStatus | None:
     """Read before the void: a defect leaves nothing half-undone."""
     with answered("game"):
-        change = status_change(run.library, run.player_game_id, batch_id)
+        change = status_change(tracked.library, tracked.pk, batch_id)
     return None if change is None else change.before
 
 
-def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> bool:
+def _stated_since(tracked: PlayerGame, batch_id: uuid.UUID, undoing: uuid.UUID) -> bool:
     """Whether anybody but this Undo stated it since.
 
     Two rows at one game share one forward event, so the second row
@@ -307,7 +322,7 @@ def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> 
     """
     events = [
         event
-        for event in aggregate_events(run.library, run.player_game_id)
+        for event in aggregate_events(tracked.library, tracked.pk)
         if event.event_type == PLAYERGAME_STATUS_CHANGED.event_type
     ]
     ours = next((event for event in events if event.correlation_id == batch_id), None)
@@ -321,7 +336,7 @@ def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> 
 
 def _put_the_status_back(
     actor: User,
-    run: Playthrough,
+    tracked: PlayerGame,
     before: PlayerGameStatus | None,
     *,
     undoes: uuid.UUID,
@@ -332,20 +347,20 @@ def _put_the_status_back(
     """State the word that stood before the batch."""
     if before is None:
         return
-    if _stated_since(run, undoes, correlation_id):
+    if _stated_since(tracked, undoes, correlation_id):
         logger.info(
             "[bulk]: %s left game %s of library %s at %s; %s is what the "
             "batch changed it from",
             name,
-            run.player_game.game_id,
-            run.library_id,
-            run.player_game.status,
+            tracked.game_id,
+            tracked.library_id,
+            tracked.status,
             before,
         )
         return
     record_facts(
         actor,
-        run.player_game.game,
+        tracked.game,
         status=before,
         correlation_id=correlation_id,
         idempotency_key=f"{idempotency_key}-status",
@@ -368,7 +383,8 @@ def void_start_one(
             _refuse_unless_this_batch_wrote_it(
                 run, undoes, _START_FAMILY, PLAYTHROUGH_STARTED.event_type
             )
-    before = _word_before(run, undoes)
+    tracked = _game_at_batch(run, undoes)
+    before = _word_before(tracked, undoes)
     outcome = RowOutcome.of(
         void_start(
             actor,
@@ -380,7 +396,7 @@ def void_start_one(
     )
     _put_the_status_back(
         actor,
-        run,
+        tracked,
         before,
         undoes=undoes,
         idempotency_key=idempotency_key,
@@ -405,7 +421,8 @@ def void_completion_one(
             _refuse_unless_this_batch_wrote_it(
                 run, undoes, _COMPLETION_FAMILY, PLAYTHROUGH_COMPLETED.event_type
             )
-    before = _word_before(run, undoes)
+    tracked = _game_at_batch(run, undoes)
+    before = _word_before(tracked, undoes)
     outcome = RowOutcome.of(
         void_completion(
             actor,
@@ -417,7 +434,7 @@ def void_completion_one(
     )
     _put_the_status_back(
         actor,
-        run,
+        tracked,
         before,
         undoes=undoes,
         idempotency_key=idempotency_key,

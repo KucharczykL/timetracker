@@ -8,12 +8,14 @@ import pytest
 
 from games.events.historical_playtime import (
     HISTORICALPLAYTIME_CREATED,
+    HISTORICALPLAYTIME_MOVED,
     HISTORICALPLAYTIME_REMOVED,
     HISTORICALPLAYTIME_RESTATED,
     HISTORICALPLAYTIME_RESTORED,
     HistoricalPlaytimeRunPayload,
     ProvenanceValue,
     historicalplaytime_created,
+    historicalplaytime_moved,
     historicalplaytime_removed,
     historicalplaytime_restated,
     historicalplaytime_restored,
@@ -247,3 +249,28 @@ def test_the_mark_events_carry_nothing():
     assert historicalplaytime_removed(record).payload == {}
     assert historicalplaytime_restored(record).payload == {}
     assert historicalplaytime_removed(record).aggregate_id == record
+
+
+def test_the_move_event_is_in_the_default_vocabulary():
+    registered = DEFAULT_EVENT_TYPES.spec_for("library.historicalplaytime.moved")
+
+    assert registered is HISTORICALPLAYTIME_MOVED
+    assert registered.aggregate_type == "historicalplaytime"
+
+
+def test_the_move_names_the_record_and_the_new_parent():
+    record_id = uuid.uuid7()
+
+    moved = historicalplaytime_moved(record_id, player_game_id=PLAYER_GAME)
+
+    assert moved.aggregate_id == record_id
+    assert moved.payload == {"player_game": str(PLAYER_GAME)}
+    DEFAULT_EVENT_TYPES.validate(moved.spec.event_type, moved.payload)
+
+
+def test_the_move_payload_states_the_parent_alone():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            HISTORICALPLAYTIME_MOVED.event_type,
+            {"player_game": str(PLAYER_GAME), "playthroughs": []},
+        )

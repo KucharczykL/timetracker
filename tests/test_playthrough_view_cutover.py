@@ -114,6 +114,74 @@ def test_editing_a_run_states_the_difference(client, user, game):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_an_edit_naming_another_game_moves_the_run(client, user, owned_library, game):
+    """The move and the note share one correlation id."""
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = another_run(user, game, note="")
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": "DLC"},
+    )
+
+    run.refresh_from_db()
+    assert run.player_game.game == other
+    assert run.note == "DLC"
+    assert response["Location"] == reverse(
+        "games:view_game", args=[other.pk, other.url_slug]
+    )
+    correlations = set(
+        LibraryEvent.objects.filter(aggregate_id=run.pk)
+        .exclude(event_type="library.playthrough.created")
+        .values_list("correlation_id", flat=True)
+    )
+    assert len(correlations) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_move_stays_on_the_page(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = Playthrough.objects.get(player_game__game=game)
+    record_row([run, another_run(user, game)])
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": ""},
+    )
+
+    run.refresh_from_db()
+    assert response.status_code == 409
+    assert run.player_game.game == game
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bucket_s_edit_keeps_its_game(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    born = Playthrough.objects.get(player_game__game=game)
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=born.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        name="Imported history",
+        created_at=timezone.now(),
+    )
+    client.force_login(user)
+
+    response = client.post(
+        reverse("games:edit_playthrough", args=[bucket.pk]),
+        {"game": str(other.pk), "started": "", "ended": "", "note": ""},
+    )
+
+    bucket.refresh_from_db()
+    assert response.status_code == 200
+    assert "stays with its game" in response.content.decode()
+    assert bucket.player_game.game == game
+
+
+@pytest.mark.django_db(transaction=True)
 def test_an_edit_with_no_days_records_no_act(client, user, game):
     """#679's run keeps both acts unrecorded.
 

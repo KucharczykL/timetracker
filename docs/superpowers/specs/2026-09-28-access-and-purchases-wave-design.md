@@ -1138,7 +1138,11 @@ runs on it.
 - #1437, move a purchase to another copy (after P5b)
 - #1466, move a playthrough to another game: the conversion's DLC Games
   hold no run the base game recorded before them, and Edit playthrough
-  locks the game (filed 2026-10-03 from the DLC as games review)
+  locks the game (filed 2026-10-03 from the DLC as games review). A
+  record follows through its own `historicalplaytime.moved`, because a
+  restatement stamps `restated_at` and blocks the reclassification's
+  Undo. A reader that keys a past act on `run.player_game` reads the
+  wrong game after a move: batch Undo reads `run_game_at_batch`.
 - #1463, the purchase amount shows one price again, the original in a
   popover
 - #1468, a refunded purchase shows on neither copy screen: Game detail's

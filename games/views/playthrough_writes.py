@@ -49,11 +49,16 @@ def restate_run_for_request(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
+    game_id: uuid.UUID | None = None,
 ) -> WriteAnswer:
     """State the draft; the refusal on failure."""
     try:
         restate_run(
-            cast("User", request.user), run, draft, correlation_id=correlation_id
+            cast("User", request.user),
+            run,
+            draft,
+            correlation_id=correlation_id,
+            game_id=game_id,
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)

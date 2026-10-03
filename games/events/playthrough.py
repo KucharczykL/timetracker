@@ -244,3 +244,28 @@ def playthrough_removed(playthrough_id: uuid.UUID) -> NewEvent:
 def playthrough_restored(playthrough_id: uuid.UUID) -> NewEvent:
     """The run returns to the lists."""
     return PLAYTHROUGH_RESTORED.new(aggregate_id=playthrough_id, payload={})
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughMovedPayload(TypedDict):
+    """The run's new tracked game; bare id."""
+
+    player_game: ReferenceId
+
+
+PLAYTHROUGH_MOVED = EventSpec(
+    "library.playthrough.moved",
+    aggregate_type="playthrough",
+    payload=PlaythroughMovedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_MOVED)
+
+
+def playthrough_moved(
+    playthrough_id: uuid.UUID, *, player_game_id: uuid.UUID
+) -> NewEvent:
+    """The run belongs to another game now."""
+    return PLAYTHROUGH_MOVED.new(
+        aggregate_id=playthrough_id, payload={"player_game": str(player_game_id)}
+    )

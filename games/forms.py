@@ -2237,8 +2237,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
     ):
         super().__init__(*args, **kwargs)
         self.library = library
-        #: An edit states facts about one run,
-        #: and no command moves a run between games.
+        #: The imported-history bucket alone.
         self.locked_game = locked_game
         cast(
             forms.ModelChoiceField, self.fields["game"]
@@ -2292,8 +2291,8 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
         game = self.cleaned_data["game"]
         if self.locked_game is not None and game.pk != self.locked_game.pk:
             raise forms.ValidationError(
-                "A playthrough stays with its game. Remove this one and add "
-                "it to the other game instead."
+                "The imported-history bucket stays with its game. Move its "
+                "sessions to a playthrough instead."
             )
         return game
 

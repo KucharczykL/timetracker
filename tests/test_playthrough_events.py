@@ -9,6 +9,7 @@ from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
     PLAYTHROUGH_COMPLETION_CORRECTED,
     PLAYTHROUGH_CREATED,
+    PLAYTHROUGH_MOVED,
     PLAYTHROUGH_NAME_CHANGED,
     PLAYTHROUGH_NOTE_CHANGED,
     PLAYTHROUGH_REMOVED,
@@ -19,6 +20,7 @@ from games.events.playthrough import (
     playthrough_completed,
     playthrough_completion_corrected,
     playthrough_created,
+    playthrough_moved,
     playthrough_name_changed,
     playthrough_note_changed,
     playthrough_removed,
@@ -297,3 +299,29 @@ def test_a_creation_event_mints_its_own_identity_by_default():
     second = playthrough_created(uuid.uuid7())
 
     assert first.aggregate_id != second.aggregate_id
+
+
+def test_the_move_event_is_in_the_default_vocabulary():
+    registered = DEFAULT_EVENT_TYPES.spec_for("library.playthrough.moved")
+
+    assert registered is PLAYTHROUGH_MOVED
+    assert registered.aggregate_type == "playthrough"
+
+
+def test_the_move_names_the_run_and_the_new_parent():
+    run_id = uuid.uuid7()
+    tracked_id = uuid.uuid7()
+
+    moved = playthrough_moved(run_id, player_game_id=tracked_id)
+
+    assert moved.aggregate_id == run_id
+    assert moved.payload == {"player_game": str(tracked_id)}
+    DEFAULT_EVENT_TYPES.validate(moved.spec.event_type, moved.payload)
+
+
+def test_the_move_payload_refuses_an_unknown_key():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            PLAYTHROUGH_MOVED.event_type,
+            {"player_game": str(uuid.uuid7()), "kind": "ordinary"},
+        )

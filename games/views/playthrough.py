@@ -45,6 +45,7 @@ from games.models import (
     Game,
     PlayerGameStatus,
     Playthrough,
+    PlaythroughKind,
     UserLibrary,
 )
 from games.ownership import owned_or_404
@@ -437,7 +438,8 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         },
         library=library,
         presentation=date_time_presentation_for_request(request),
-        locked_game=game,
+        #: The command refuses moving the bucket.
+        locked_game=None if run.kind == PlaythroughKind.ORDINARY else game,
         offered_game=game,
     )
     #: The same tail renders an invalid form.
@@ -447,16 +449,21 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         draft = _edited_draft(form, run)
         #: Ahead of the write, which refreshes the run.
         acts = _new_acts(draft, run)
+        stated_game: Game = form.cleaned_data["game"]
         answer = restate_run_for_request(
-            request, run, draft, correlation_id=correlation_id
+            request,
+            run,
+            draft,
+            correlation_id=correlation_id,
+            game_id=stated_game.pk,
         )
         if answer.refusal is None:
-            _record_companion_status(request, game, acts, form, correlation_id)
+            _record_companion_status(request, stated_game, acts, form, correlation_id)
             return redirect(
                 return_url(
                     request,
                     fallback="games:view_game",
-                    fallback_args=[game.id, game.url_slug],
+                    fallback_args=[stated_game.id, stated_game.url_slug],
                 )
             )
         refused_status = answer.refusal.status_code

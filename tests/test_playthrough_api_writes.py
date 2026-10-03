@@ -520,3 +520,34 @@ def test_a_row_the_creation_cannot_read_back_is_a_defect(
     assert Playthrough.objects.get(player_game__game=game).name == "New Game Plus"
     messages = [str(message) for message in get_messages(response.wsgi_request)]
     assert "Playthrough recorded" not in messages
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_naming_a_game_moves_the_run(client, user, owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Echoes of the Eye")
+    run = another_run(user, game)
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"game_id": str(other.pk)},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    run.refresh_from_db()
+    assert run.player_game.game == other
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_patch_naming_a_game_nobody_holds_answers_404(client, user, game):
+    run = another_run(user, game)
+    client.force_login(user)
+
+    response = client.patch(
+        f"/api/playthrough/{run.pk}",
+        {"game_id": str(uuid.uuid7())},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 404

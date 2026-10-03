@@ -19,6 +19,7 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    MovePlaythroughToGame,
     RecordPlaythroughByName,
     RemovePlaythrough,
     RestorePlaythrough,
@@ -275,14 +276,21 @@ def restate_run(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
+    game_id: uuid.UUID | None = None,
 ) -> None:
     """State the draft's differences onto a run.
 
-    Three dispatches, not one build: each answers Unchanged
-    for state the run holds, so a failed submit is finished
-    by submitting again.
+    One dispatch per fact, so a resubmit finishes.
     """
     with answered("playthrough"):
+        if game_id is not None and game_id != run.player_game.game_id:
+            _dispatch(
+                MovePlaythroughToGame(playthrough_id=run.pk, game_id=game_id),
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+            run.refresh_from_db()
         _restate(actor, run, draft, correlation_id=correlation_id)
 
 

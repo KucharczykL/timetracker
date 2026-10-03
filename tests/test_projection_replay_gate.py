@@ -67,6 +67,7 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    MovePlaythroughToGame,
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
@@ -521,6 +522,21 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RemoveHistoricalPlaytime(record_id=restored_record), "remove-record-again")
     run(RestoreHistoricalPlaytime(record_id=restored_record), "restore-record")
 
+    #: A run moved to the second game; its record follows.
+    moving_run = _created_id(
+        run(CreatePlaythrough(game_id=first.pk), "create-run-to-move")
+    )
+    run(
+        RecordHistoricalPlaytime(
+            statement=a_statement._replace(playthrough_ids=(moving_run,))
+        ),
+        "record-on-run-to-move",
+    )
+    run(
+        MovePlaythroughToGame(playthrough_id=moving_run, game_id=second.pk),
+        "move-run",
+    )
+
     #: A session that became a record.
     converted = _created_id(
         run(
@@ -826,7 +842,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of sixty-two types."""
+    """A real stream, short of sixty-four types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -842,7 +858,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 62
+    assert len(missing) == 64
 
 
 def build_neighbour(user, library) -> None:

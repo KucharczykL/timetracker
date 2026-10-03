@@ -23,6 +23,7 @@ from games.bulk_playthrough_acts import (
 )
 from games.commands.playthrough import (
     CorrectPlaythroughStart,
+    MovePlaythroughToGame,
     StartPlaythrough,
 )
 from games.events.dispatch import CommandRejected, dispatch
@@ -318,6 +319,26 @@ def test_an_undo_of_a_completion_puts_an_earlier_word_back(
     run.refresh_from_db()
     assert run.completed is None
     assert _statused(game) == PlayerGameStatus.PLAYED
+
+
+def test_an_undo_after_a_move_puts_the_old_game_s_status_back(
+    client_in, owned_user, owned_library, game, second_game
+):
+    run = tracked_run(owned_library, game)
+    token, _ = _run(client_in, COMPLETE_URL, run)
+    dispatch(
+        MovePlaythroughToGame(playthrough_id=run.pk, game_id=second_game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="move",
+    )
+
+    _undo(client_in, token)
+
+    run.refresh_from_db()
+    assert run.completed is None
+    assert _statused(game) == PlayerGameStatus.UNPLAYED
+    assert _statused(second_game) == PlayerGameStatus.UNPLAYED
 
 
 def test_an_undo_leaves_a_status_a_person_changed(

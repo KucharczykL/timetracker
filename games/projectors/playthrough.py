@@ -10,6 +10,7 @@ from games.events.playthrough import (
     PLAYTHROUGH_COMPLETION_CORRECTED,
     PLAYTHROUGH_COMPLETION_VOIDED,
     PLAYTHROUGH_CREATED,
+    PLAYTHROUGH_MOVED,
     PLAYTHROUGH_NAME_CHANGED,
     PLAYTHROUGH_NOTE_CHANGED,
     PLAYTHROUGH_REMOVED,
@@ -67,13 +68,25 @@ class Playthroughs(Projector):
     def _restored(self, event: RecordedEvent) -> None:
         self.amend(Playthrough, event, removed_at=None)
 
+    def _moved(self, event: RecordedEvent) -> None:
+        self.amend(
+            Playthrough,
+            event,
+            player_game_id=uuid.UUID(event.payload["player_game"]),
+        )
+
     #: The creation handler names three columns, so amendments survive.
     #:
     #: A rebuild inserts the model defaults for the rest, and the events
     #: that follow set the real values. Naming one there would let a
     #: re-applied creation event take an amendment back out, and every
-    #: amended column carries a default, so `_required_columns` exempts
-    #: them and would not report it.
+    #: amended column but one carries a default, so `_required_columns`
+    #: exempts them and would not report it.
+    #:
+    #: The one is `player_game_id`: it has no default, so the creation
+    #: must name it, and a move amends it. A re-applied creation would
+    #: put the old game back; a replay starts from empty tables, so
+    #: none is re-applied after a move.
     handles: ClassVar[HandlerMap] = {
         PLAYTHROUGH_CREATED: _created,
         PLAYTHROUGH_STARTED: _started,
@@ -86,4 +99,5 @@ class Playthroughs(Projector):
         PLAYTHROUGH_COMPLETION_VOIDED: _completion_voided,
         PLAYTHROUGH_REMOVED: _removed,
         PLAYTHROUGH_RESTORED: _restored,
+        PLAYTHROUGH_MOVED: _moved,
     }
