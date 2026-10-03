@@ -12,9 +12,11 @@ from games.events.historical_playtime import (
     HISTORICALPLAYTIME_RESTATED,
     HISTORICALPLAYTIME_RESTORED,
     HistoricalPlaytimeCreatedPayload,
+    HistoricalPlaytimeMovedPayload,
     HistoricalPlaytimeStatementPayload,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
+from games.events.references import referenced_id
 from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -24,7 +26,7 @@ from timetracker.temporal import TemporalValue
 
 
 class StatementColumns(TypedDict):
-    """The seven columns one statement decides.
+    """The eight columns one statement decides.
 
     A TypedDict, so a dropped key is mypy's finding: `amend` would
     keep the old value in silence.
@@ -35,6 +37,7 @@ class StatementColumns(TypedDict):
     when: str | None
     provenance: HistoricalPlaytimeProvenance
     device_id: uuid.UUID | None
+    release_id: uuid.UUID | None
     emulated: bool
     note: str
 
@@ -43,13 +46,13 @@ def columns_for_statement(
     payload: HistoricalPlaytimeStatementPayload, effective_time: TemporalValue | None
 ) -> StatementColumns:
     """Every column, every time."""
-    device = payload["device"]
     return {
         "player_game_id": uuid.UUID(payload["player_game"]),
         "duration": timedelta(seconds=payload["duration_seconds"]),
         "when": None if effective_time is None else effective_time.canonical,
         "provenance": HistoricalPlaytimeProvenance(payload["provenance"]),
-        "device_id": None if device is None else uuid.UUID(device["id"]),
+        "device_id": referenced_id(payload["device"]),
+        "release_id": referenced_id(payload["release"]),
         "emulated": payload["emulated"],
         "note": payload["note"],
     }
@@ -115,10 +118,13 @@ class HistoricalPlaytimes(Projector):
     def _moved(self, event: RecordedEvent) -> None:
         #: No restated_at: nothing was restated.
         #: A re-applied creation reverts the game.
+        payload = cast("HistoricalPlaytimeMovedPayload", event.payload)
+        cleared = {"release_id": None} if "release" in payload else {}
         self.amend(
             HistoricalPlaytime,
             event,
-            player_game_id=uuid.UUID(event.payload["player_game"]),
+            player_game_id=uuid.UUID(payload["player_game"]),
+            **cleared,
         )
 
     handles: ClassVar[HandlerMap] = {

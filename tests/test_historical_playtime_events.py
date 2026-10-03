@@ -37,6 +37,14 @@ DEVICE = {
 }
 
 
+RELEASE = {
+    "kind": "catalog.release",
+    "id": str(uuid.uuid7()),
+    "label": "Steam",
+    "detail": "",
+}
+
+
 SHARED_ID = str(uuid.uuid7())
 
 
@@ -71,6 +79,7 @@ def a_creation(**stated):
             "when": TemporalValue.unknown(),
             "provenance": "estimated",
             "device": None,
+            "release": None,
             "emulated": False,
             "note": "",
         }
@@ -99,6 +108,13 @@ def test_the_event_types_are_spelled_once_and_forever():
 def test_a_statement_round_trips():
     payload = a_statement(device=DEVICE)
     assert validated(payload) == payload
+
+
+def test_a_statement_names_a_release():
+    payload = a_statement(release=RELEASE)
+
+    assert validated(payload) == payload
+    assert a_creation(release=RELEASE).payload["release"] == RELEASE
 
 
 @pytest.mark.parametrize(
@@ -132,7 +148,7 @@ def test_a_statement_round_trips():
         "negative-duration",
         "lax-integer",
         "unknown-provenance",
-        "release-stated",
+        "release-of-another-kind",
         "source-stated",
         "extra-key",
     ],
@@ -192,7 +208,10 @@ def test_the_references_are_enumerated():
     fields = DEFAULT_EVENT_TYPES.reference_fields_for(
         HISTORICALPLAYTIME_CREATED.event_type
     )
-    assert fields == {"device": ReferenceArity.OPTIONAL}
+    assert fields == {
+        "device": ReferenceArity.OPTIONAL,
+        "release": ReferenceArity.OPTIONAL,
+    }
 
 
 def test_the_runs_sort_by_run_text():
@@ -233,6 +252,7 @@ def test_a_restatement_carries_the_same_shape():
         when=TemporalValue.parse("2006"),
         provenance="manually_entered",
         device=DEVICE,
+        release=None,
         emulated=True,
         note="halved",
     )
@@ -273,4 +293,23 @@ def test_the_move_payload_states_the_parent_alone():
         DEFAULT_EVENT_TYPES.validate(
             HISTORICALPLAYTIME_MOVED.event_type,
             {"player_game": str(PLAYER_GAME), "playthroughs": []},
+        )
+
+
+def test_a_move_that_clears_a_release_says_so():
+    record_id = uuid.uuid7()
+
+    moved = historicalplaytime_moved(
+        record_id, player_game_id=PLAYER_GAME, clears_release=True
+    )
+
+    assert moved.payload == {"player_game": str(PLAYER_GAME), "release": None}
+    DEFAULT_EVENT_TYPES.validate(moved.spec.event_type, moved.payload)
+
+
+def test_a_move_states_no_release_it_did_not_clear():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            HISTORICALPLAYTIME_MOVED.event_type,
+            {"player_game": str(PLAYER_GAME), "release": RELEASE},
         )

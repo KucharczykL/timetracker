@@ -10,6 +10,7 @@ from games.commands.historical_playtime import (
     _live_runs,
     created_event,
     normalized_statement,
+    statement_release,
 )
 from games.commands.historical_playtime import (
     _refuse_under_a_removed_parent as _refuse_under_the_records_removed_parent,
@@ -86,6 +87,7 @@ def statement_from_session(
         device_id=session.device_id,
         emulated=session.emulated,
         note=session.note,
+        release_id=session.release_id,
     )
 
 
@@ -152,8 +154,11 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
             device = library_device_row(context, self.statement.device_id)
         else:
             device = library_device(context, self.statement.device_id)
+        release = statement_release(
+            context, self.statement, runs, held_id=session.release_id
+        )
         created = created_event(
-            runs, device, self.statement, reclassified_from=session.pk
+            runs, device, release, self.statement, reclassified_from=session.pk
         )
         return [
             created,
@@ -194,7 +199,7 @@ class UndoSessionReclassification(Command):
             )
         if record is not None and session.removed_at is None:
             raise _drift(context, session, record)
-        #: Whole; one refused leg leaves both live.
+        #: Whole; one refused half leaves both live.
         if record is not None and record.restated_at is not None:
             raise CommandRejected(
                 f"Record {record.pk} was restated after session {session.pk} "

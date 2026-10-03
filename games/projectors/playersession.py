@@ -13,6 +13,7 @@ from games.events.playersession import (
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
     PLAYERSESSION_RECLASSIFIED,
+    PLAYERSESSION_RELEASE_CHANGED,
     PLAYERSESSION_REMOVED,
     PLAYERSESSION_RESTORED,
     PLAYERSESSION_TIMING_CORRECTED,
@@ -21,6 +22,7 @@ from games.events.playersession import (
     instant_from_text,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
+from games.events.references import referenced_id
 from games.models import PlayerSession, PlayerSessionTimingMode
 
 
@@ -87,12 +89,12 @@ class PlayerSessions(Projector):
     def _created(self, event: RecordedEvent) -> None:
         #: Never names the mark, so a removal survives.
         payload = event.payload
-        device = payload["device"]
         self.project(
             PlayerSession,
             event,
             playthrough_id=uuid.UUID(payload["playthrough"]),
-            device_id=None if device is None else uuid.UUID(device["id"]),
+            device_id=referenced_id(payload["device"]),
+            release_id=referenced_id(payload["release"]),
             note=payload["note"],
             emulated=payload["emulated"],
             created_at=event.recorded_at,
@@ -121,11 +123,13 @@ class PlayerSessions(Projector):
         self.amend(PlayerSession, event, note=event.payload["note"])
 
     def _device_changed(self, event: RecordedEvent) -> None:
-        device = event.payload["device"]
         self.amend(
-            PlayerSession,
-            event,
-            device_id=None if device is None else uuid.UUID(device["id"]),
+            PlayerSession, event, device_id=referenced_id(event.payload["device"])
+        )
+
+    def _release_changed(self, event: RecordedEvent) -> None:
+        self.amend(
+            PlayerSession, event, release_id=referenced_id(event.payload["release"])
         )
 
     def _emulated_changed(self, event: RecordedEvent) -> None:
@@ -157,6 +161,7 @@ class PlayerSessions(Projector):
         PLAYERSESSION_NOTE_CHANGED: _note_changed,
         PLAYERSESSION_DEVICE_CHANGED: _device_changed,
         PLAYERSESSION_EMULATED_CHANGED: _emulated_changed,
+        PLAYERSESSION_RELEASE_CHANGED: _release_changed,
         PLAYERSESSION_MOVED: _moved,
         PLAYERSESSION_RECLASSIFIED: _reclassified,
         PLAYERSESSION_REMOVED: _removed,

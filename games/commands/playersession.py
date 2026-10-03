@@ -17,7 +17,12 @@ from games.commands.playthrough import (
     library_playthrough,
     refuse_unless_live,
 )
-from games.commands.scope import Refusal, library_device, library_row
+from games.commands.scope import (
+    Refusal,
+    library_device,
+    library_row,
+    stated_release,
+)
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -37,6 +42,7 @@ from games.events.playersession import (
     playersession_ended,
     playersession_moved,
     playersession_note_changed,
+    playersession_release_changed,
     playersession_removed,
     playersession_restored,
     playersession_timing_corrected,
@@ -563,6 +569,7 @@ class CreateSession(Command):
     playthrough_id: uuid.UUID
     timing: TimingStatement
     device_id: uuid.UUID | None = None
+    release_id: uuid.UUID | None = None
     note: str = ""
     emulated: bool = False
 
@@ -581,6 +588,9 @@ class CreateSession(Command):
                 sentence=INTO_THE_BUCKET,
             )
         device = library_device(context, self.device_id)
+        release = stated_release(
+            context, self.release_id, game_id=run.player_game.game_id, held_id=None
+        )
         payload = timing_payload(self.timing)
         _check_calendar(context, payload)
         return [
@@ -588,7 +598,7 @@ class CreateSession(Command):
                 run.pk,
                 timing=payload,
                 device=None if device is None else capture_reference(device),
-                release=None,
+                release=None if release is None else capture_reference(release),
                 note=self.note,
                 emulated=self.emulated,
             )
@@ -697,9 +707,15 @@ class StatedDevice(NamedTuple):
     device_id: uuid.UUID | None
 
 
+class StatedRelease(NamedTuple):
+    """Release or none; bare None is unstated."""
+
+    release_id: uuid.UUID | None
+
+
 @dataclass(frozen=True, slots=True)
 class DescribeSession(Command):
-    """State note, device or emulated; None is unstated."""
+    """State note, device, emulated or Release; None is unstated."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_DESCRIBE
     #: A UUID, because Command fingerprints its fields.
@@ -707,9 +723,11 @@ class DescribeSession(Command):
     note: str | None = None
     device: StatedDevice | None = None
     emulated: bool | None = None
+    release: StatedRelease | None = None
 
     def __post_init__(self) -> None:
-        if self.note is None and self.device is None and self.emulated is None:
+        stated = (self.note, self.device, self.emulated, self.release)
+        if all(fact is None for fact in stated):
             raise CommandRejected(
                 "DescribeSession states no fact, so it records nothing.",
                 sentence="Say what to change about this session.",
@@ -737,6 +755,19 @@ class DescribeSession(Command):
             events.append(
                 playersession_emulated_changed(session.pk, emulated=self.emulated)
             )
+        if self.release is not None and self.release.release_id != session.release_id:
+            release = stated_release(
+                context,
+                self.release.release_id,
+                game_id=_session_run(context, session).player_game.game_id,
+                held_id=session.release_id,
+            )
+            events.append(
+                playersession_release_changed(
+                    session.pk,
+                    release=None if release is None else capture_reference(release),
+                )
+            )
         if not events:
             return Unchanged("This session already reads so.")
         return events
@@ -757,7 +788,12 @@ class MoveSessionToPlaythrough(Command):
         if session.playthrough_id == self.playthrough_id:
             return Unchanged("This session already belongs to that playthrough.")
         run = _live_run(context, self.playthrough_id)
-        return [playersession_moved(session.pk, playthrough_id=run.pk)]
+        moved = playersession_moved(session.pk, playthrough_id=run.pk)
+        #: A Release belongs to one game; another game clears it.
+        held = _session_run(context, session)
+        if session.release_id is None or held.player_game_id == run.player_game_id:
+            return [moved]
+        return [playersession_release_changed(session.pk, release=None), moved]
 
 
 def _refuse_under_a_removed_parent(

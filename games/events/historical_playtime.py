@@ -8,7 +8,12 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 from pydantic import AfterValidator, Field, with_config
 
 from games.events.playersession import NoteText
-from games.events.references import STRICT_SCHEMA, Reference, ReferenceId
+from games.events.references import (
+    STRICT_SCHEMA,
+    Reference,
+    ReferenceId,
+    ReleaseReference,
+)
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
 from games.ids import HistoricalPlaytimeId, PlayerGameId
 from timetracker.temporal import TemporalValue
@@ -69,7 +74,7 @@ class HistoricalPlaytimeStatementPayload(TypedDict):
     device: Reference | None
     emulated: bool
     note: NoteText
-    release: None
+    release: ReleaseReference | None
     source: None
 
 
@@ -93,9 +98,13 @@ class HistoricalPlaytimeMarkPayload(TypedDict):
 
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeMovedPayload(TypedDict):
-    """The tracked game the run moved to."""
+    """The tracked game the run moved to.
+
+    `release` is present exactly when the move cleared one.
+    """
 
     player_game: ReferenceId
+    release: NotRequired[None]
 
 
 HISTORICALPLAYTIME_CREATED = EventSpec(
@@ -140,6 +149,7 @@ def _statement(
     duration: timedelta,
     provenance: ProvenanceValue,
     device: Reference | None,
+    release: Reference | None,
     emulated: bool,
     note: str,
 ) -> HistoricalPlaytimeStatementPayload:
@@ -152,7 +162,7 @@ def _statement(
         "device": device,
         "emulated": emulated,
         "note": note,
-        "release": None,
+        "release": release,
         "source": None,
     }
 
@@ -170,6 +180,7 @@ def historicalplaytime_created(
     when: TemporalValue,
     provenance: ProvenanceValue,
     device: Reference | None,
+    release: Reference | None,
     emulated: bool,
     note: str,
     record_id: uuid.UUID | None = None,
@@ -183,6 +194,7 @@ def historicalplaytime_created(
             duration=duration,
             provenance=provenance,
             device=device,
+            release=release,
             emulated=emulated,
             note=note,
         )
@@ -205,6 +217,7 @@ def historicalplaytime_restated(
     when: TemporalValue,
     provenance: ProvenanceValue,
     device: Reference | None,
+    release: Reference | None,
     emulated: bool,
     note: str,
 ) -> NewEvent:
@@ -218,6 +231,7 @@ def historicalplaytime_restated(
             duration=duration,
             provenance=provenance,
             device=device,
+            release=release,
             emulated=emulated,
             note=note,
         ),
@@ -235,9 +249,13 @@ def historicalplaytime_restored(record_id: uuid.UUID) -> NewEvent:
 
 
 def historicalplaytime_moved(
-    record_id: HistoricalPlaytimeId, *, player_game_id: PlayerGameId
+    record_id: HistoricalPlaytimeId,
+    *,
+    player_game_id: PlayerGameId,
+    clears_release: bool = False,
 ) -> NewEvent:
     """The record follows its run."""
-    return HISTORICALPLAYTIME_MOVED.new(
-        aggregate_id=record_id, payload={"player_game": str(player_game_id)}
-    )
+    payload: HistoricalPlaytimeMovedPayload = {"player_game": str(player_game_id)}
+    if clears_release:
+        payload["release"] = None
+    return HISTORICALPLAYTIME_MOVED.new(aggregate_id=record_id, payload=payload)

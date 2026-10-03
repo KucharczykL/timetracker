@@ -12,8 +12,20 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
-from games.models import Device, LibraryEntry, Purchase
+from games.ids import GameId
+from games.models import Device, LibraryEntry, Purchase, Release
 from games.projections import library_path_of
+from games.reads.releases import held_releases
+
+RELEASE_REMOVED = (
+    "That release was removed from the catalog. Choose another, or restore it."
+)
+RELEASE_OF_ANOTHER_GAME = (
+    "That release belongs to another game. Choose a release of this one."
+)
+NO_COPY_OF_RELEASE = (
+    "Your library holds no copy of that release. Add it first, or choose another."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,3 +201,59 @@ def library_purchase_row(context: CommandContext, purchase_id: uuid.UUID) -> Pur
         )
     _refuse_a_drifted_entry(context, purchase.entry)
     return purchase
+
+
+def visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
+    """A visible Release, removed or not."""
+    return visible_row(
+        context,
+        Release.objects.select_related("edition__game"),
+        Refusal(
+            message=(
+                f"No release {release_id} this library can see. A fact names "
+                "a release of its own catalog or the shared one."
+            )
+        ),
+        pk=release_id,
+    )
+
+
+def refuse_a_removed_release(release: Release) -> None:
+    """Refuse a Release a mark hides."""
+    if not Release.objects.alive().filter(pk=release.pk).exists():
+        raise CommandRejected(
+            f"Release {release.pk} or one of its parents is removed, so no "
+            "fact names it anew.",
+            sentence=RELEASE_REMOVED,
+        )
+
+
+def stated_release(
+    context: CommandContext,
+    release_id: uuid.UUID | None,
+    *,
+    game_id: GameId,
+    held_id: uuid.UUID | None,
+) -> Release | None:
+    """The Release a session or record names.
+
+    The held one is kept, removed or uncopied.
+    """
+    if release_id is None:
+        return None
+    release = visible_release(context, release_id)
+    held = release_id == held_id
+    if not held:
+        refuse_a_removed_release(release)
+    if release.edition.game_id != game_id:
+        raise CommandRejected(
+            f"Release {release.pk} is a release of game "
+            f"{release.edition.game_id}, not of game {game_id}.",
+            sentence=RELEASE_OF_ANOTHER_GAME,
+        )
+    if not held and not held_releases(context.library).filter(pk=release.pk).exists():
+        raise CommandRejected(
+            f"This library holds no live copy of release {release.pk}.",
+            sentence=NO_COPY_OF_RELEASE,
+        )
+    return release

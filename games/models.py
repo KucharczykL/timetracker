@@ -1644,6 +1644,10 @@ class PlayerSession(ProjectionModel):
         null=True,
         related_name="player_sessions",
     )
+    #: A Release of the run's game; null unstated.
+    release = models.ForeignKey(
+        Release, on_delete=models.RESTRICT, null=True, related_name="+"
+    )
     #: Every column below is stated by the creation event and carries no
     #: default, so `_required_columns` holds the handler to naming it.
     timing_mode = models.CharField(max_length=13, choices=PlayerSessionTimingMode)
@@ -1892,6 +1896,10 @@ class HistoricalPlaytime(ProjectionModel):
         on_delete=models.RESTRICT,
         null=True,
         related_name="historical_playtime",
+    )
+    #: A Release of the record's game; null unstated.
+    release = models.ForeignKey(
+        Release, on_delete=models.RESTRICT, null=True, related_name="+"
     )
     emulated = models.BooleanField()
     note = models.TextField()

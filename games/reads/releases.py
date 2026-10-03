@@ -3,6 +3,7 @@
 from django.db.models import Q, QuerySet
 
 from games.models import Edition, EditionKind, Game, Release, UserLibrary
+from games.reads.entries import library_entries
 from games.reads.unscoped import require_library
 
 UNSPECIFIED_PLATFORM = "Unspecified"
@@ -31,6 +32,11 @@ def game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
         .select_related("edition", "platform")
         .order_by("-edition__is_default", "-is_default", "platform__name", "id")
     )
+
+
+def held_releases(library: UserLibrary) -> QuerySet[Release]:
+    """Releases a live copy of this library names."""
+    return Release.objects.filter(pk__in=library_entries(library).values("release_id"))
 
 
 def matching_releases(releases: QuerySet[Release], query: str) -> QuerySet[Release]:

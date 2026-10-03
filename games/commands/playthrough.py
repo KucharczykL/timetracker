@@ -29,6 +29,7 @@ from games.events.dispatch import (
     RowUnreadable,
 )
 from games.events.historical_playtime import historicalplaytime_moved
+from games.events.playersession import playersession_release_changed
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_created,
@@ -43,8 +44,10 @@ from games.events.vocabulary import NewEvent, Unchanged
 from games.ids import GameId, HistoricalPlaytimeId, PlayerGameId
 from games.models import (
     Game,
+    HistoricalPlaytime,
     HistoricalPlaytimeRun,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
@@ -743,9 +746,16 @@ def _move_target(context: CommandContext, game_id: GameId) -> MoveTarget:
     return NewlyTracked(tracking_event(game))
 
 
+class FollowingRecord(NamedTuple):
+    """A record that moves, and whether it names a Release."""
+
+    record_id: HistoricalPlaytimeId
+    names_release: bool
+
+
 def _records_that_follow(
     context: CommandContext, run: Playthrough
-) -> list[HistoricalPlaytimeId]:
+) -> list[FollowingRecord]:
     """Records naming only this run; refuse others."""
     record_ids = set(
         HistoricalPlaytimeRun.objects.filter(
@@ -771,7 +781,28 @@ def _records_that_follow(
                 else SHARED_REMOVED_RECORD
             ),
         )
-    return sorted(record_ids, key=str)
+    named = set(
+        HistoricalPlaytime.objects.filter(
+            library=context.library, pk__in=record_ids, release__isnull=False
+        ).values_list("pk", flat=True)
+    )
+    return [
+        FollowingRecord(record_id, record_id in named)
+        for record_id in sorted(record_ids, key=str)
+    ]
+
+
+def _sessions_naming_a_release(
+    context: CommandContext, run: Playthrough
+) -> list[uuid.UUID]:
+    """The run's sessions naming a Release, removed too."""
+    return list(
+        PlayerSession.objects.filter(
+            library=context.library, playthrough=run, release__isnull=False
+        )
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -805,9 +836,18 @@ class MovePlaythroughToGame(Command):
         if isinstance(target, NewlyTracked):
             events.append(target.tracking)
         events.append(playthrough_moved(run.pk, player_game_id=target.player_game_id))
+        #: A Release belongs to one game; the move clears it.
         events.extend(
-            historicalplaytime_moved(record_id, player_game_id=target.player_game_id)
-            for record_id in records
+            playersession_release_changed(session_id, release=None)
+            for session_id in _sessions_naming_a_release(context, run)
+        )
+        events.extend(
+            historicalplaytime_moved(
+                record.record_id,
+                player_game_id=target.player_game_id,
+                clears_release=record.names_release,
+            )
+            for record in records
         )
         if isinstance(target, HeldTarget):
             placeholder = placeholder_run(context.library, target.row)

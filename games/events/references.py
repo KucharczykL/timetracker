@@ -81,6 +81,18 @@ class Reference(TypedDict):
     detail: str
 
 
+def _a_release(reference: Reference) -> Reference:
+    """Refuse any kind but a Release."""
+    if reference["kind"] != "catalog.release":
+        raise ValueError(f"{reference['kind']!r} is not a release.")
+    return reference
+
+
+#: A plain alias: a `type` statement hides the metadata the arity scan
+#: strips, and a key would read as an unsupported reference field.
+ReleaseReference = Annotated[Reference, AfterValidator(_a_release)]
+
+
 class Resolution(StrEnum):
     """Where a replay finds the row."""
 
@@ -287,6 +299,11 @@ DEFAULT_REFERENCE_KINDS.register(
         resolution=Resolution.REQUIRED,
     )
 )
+
+
+def referenced_id(reference: Reference | None) -> uuid.UUID | None:
+    """The row a reference names, or none."""
+    return None if reference is None else uuid.UUID(reference["id"])
 
 
 def capture_reference(

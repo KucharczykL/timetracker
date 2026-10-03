@@ -7,7 +7,12 @@ from zoneinfo import ZoneInfo
 
 from pydantic import AfterValidator, Field, with_config
 
-from games.events.references import STRICT_SCHEMA, Reference, ReferenceId
+from games.events.references import (
+    STRICT_SCHEMA,
+    Reference,
+    ReferenceId,
+    ReleaseReference,
+)
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
 from timetracker.temporal import TemporalValue
 
@@ -162,15 +167,13 @@ class PlayerSessionCreatedPayload(TypedDict):
     live table before the first row, so a rebuild of a library that
     lost rows would refuse to run.
 
-    `release` is reserved and always None. A key holding None rather
-    than an absent one, because under `extra="forbid"` the two would
-    be two spellings of one fact. A key added to this payload later
-    is a NotRequired one, since nothing upcasts a recorded payload.
+    A key added to this payload later is a NotRequired one, since
+    nothing upcasts a recorded payload.
     """
 
     playthrough: ReferenceId
     device: Reference | None
-    release: Reference | None
+    release: ReleaseReference | None
     timing: TimingPayload
     note: NoteText
     emulated: bool
@@ -203,7 +206,7 @@ def playersession_created(
     *,
     timing: TimingPayload,
     device: Reference | None,
-    release: Reference | None,
+    release: ReleaseReference | None,
     note: str,
     emulated: bool,
     session_id: uuid.UUID | None = None,
@@ -354,6 +357,31 @@ def playersession_device_changed(
     """A session's device, or none."""
     return PLAYERSESSION_DEVICE_CHANGED.new(
         aggregate_id=session_id, payload={"device": device}
+    )
+
+
+@with_config(STRICT_SCHEMA)
+class PlayerSessionReleaseChangedPayload(TypedDict):
+    """The Release played on, or none."""
+
+    release: ReleaseReference | None
+
+
+PLAYERSESSION_RELEASE_CHANGED = EventSpec(
+    "library.playersession.release_changed",
+    aggregate_type="playersession",
+    payload=PlayerSessionReleaseChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_RELEASE_CHANGED)
+
+
+def playersession_release_changed(
+    session_id: uuid.UUID, *, release: Reference | None
+) -> NewEvent:
+    """A session's Release, or none."""
+    return PLAYERSESSION_RELEASE_CHANGED.new(
+        aggregate_id=session_id, payload={"release": release}
     )
 
 

@@ -15,8 +15,6 @@ from games.commands.libraryentry import (
     ENTRY_REMOVED,
     PLAYER_GAME_REMOVED,
     RECORD_UNDER_REMOVED_GAME,
-    RELEASE_OF_ANOTHER_GAME,
-    RELEASE_REMOVED,
     UNKNOWN_ACCESS,
     UNKNOWN_FORMAT,
     CorrectEntryAcquisition,
@@ -26,6 +24,7 @@ from games.commands.libraryentry import (
     RestoreEntry,
 )
 from games.commands.playergame import RemovePlayerGame
+from games.commands.scope import RELEASE_OF_ANOTHER_GAME, RELEASE_REMOVED
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,

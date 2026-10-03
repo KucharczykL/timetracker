@@ -7,10 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from entries import record_entry, remove_entry
 
-from games.commands.libraryentry import (
-    RELEASE_OF_ANOTHER_GAME,
-    RELEASE_REMOVED,
-)
+from games.commands.scope import RELEASE_OF_ANOTHER_GAME, RELEASE_REMOVED
 from games.models import Game, LibraryEntry, LibraryEvent, Platform, PlayerGame
 from games.removal import remove
 from timetracker.temporal import TemporalValue

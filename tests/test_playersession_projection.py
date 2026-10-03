@@ -25,6 +25,7 @@ from games.events.playersession import (
     playersession_moved,
     playersession_note_changed,
     playersession_reclassified,
+    playersession_release_changed,
     playersession_removed,
     playersession_restored,
     playersession_timing_corrected,
@@ -525,7 +526,7 @@ def append_session(library, actor, run, *, timing, key, **stated):
                     run.pk,
                     timing=timing,
                     device=stated.get("device"),
-                    release=None,
+                    release=stated.get("release"),
                     note=stated.get("note", ""),
                     emulated=stated.get("emulated", False),
                 )
@@ -943,7 +944,7 @@ TIMING_COLUMNS = (
     "day_zone",
 )
 
-DESCRIPTION_COLUMNS = ("note", "device_id", "emulated")
+DESCRIPTION_COLUMNS = ("note", "device_id", "emulated", "release_id")
 
 
 def columns_of(session: PlayerSession, names) -> dict:
@@ -1028,9 +1029,12 @@ def test_a_timing_correction_leaves_the_description_and_the_run(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_each_description_event_writes_its_own_column(owned_user, owned_library, run):
+def test_each_description_event_writes_its_own_column(
+    owned_user, owned_library, run, stated_graph
+):
     old_device = create_device(library=owned_library, name="Steam Deck")
     new_device = create_device(library=owned_library, name="Switch")
+    release = stated_graph(Game(name="Hades", library=owned_library), owned_library)
     append_session(
         owned_library,
         owned_user,
@@ -1054,6 +1058,14 @@ def test_each_description_event_writes_its_own_column(owned_user, owned_library,
         ),
         (playersession_emulated_changed(session.pk, emulated=True), "emulated", True),
         (playersession_device_changed(session.pk, device=None), "device_id", None),
+        (
+            playersession_release_changed(
+                session.pk, release=capture_reference(release.release)
+            ),
+            "release_id",
+            release.release.pk,
+        ),
+        (playersession_release_changed(session.pk, release=None), "release_id", None),
     ]
 
     for index, (event, column, value) in enumerate(steps):
@@ -1380,3 +1392,19 @@ def test_a_replay_reproduces_a_reclassified_session(owned_user, owned_library, r
     replay(owned_library)
 
     assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_creation_writes_the_release(owned_user, owned_library, run, stated_graph):
+    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+
+    append_session(
+        owned_library,
+        owned_user,
+        run,
+        timing=a_timed_statement(),
+        release=capture_reference(graph.release),
+        key="create",
+    )
+
+    assert PlayerSession.objects.get().release_id == graph.release.pk

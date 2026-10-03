@@ -59,6 +59,7 @@ from games.commands.playersession import (
     RemoveSession,
     RestoreSession,
     StatedDevice,
+    StatedRelease,
     TimedTiming,
 )
 from games.commands.playthrough import (
@@ -605,6 +606,44 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             "record-entry-twice",
         )
     )
+    #: A session and a record name a Release; a run move clears both.
+    released_run = _created_id(
+        run(CreatePlaythrough(game_id=first.pk), "create-released-run")
+    )
+    released = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=released_run,
+                timing=TimedTiming(
+                    started_at=noon + timedelta(days=9),
+                    day_zone=zone,
+                    ended_at=noon + timedelta(days=9, hours=1),
+                ),
+                release_id=first_release.pk,
+            ),
+            "create-released-session",
+        )
+    )
+    run(
+        DescribeSession(session_id=released, release=StatedRelease(None)),
+        "unstate-session-release",
+    )
+    run(
+        DescribeSession(session_id=released, release=StatedRelease(first_release.pk)),
+        "state-session-release",
+    )
+    run(
+        RecordHistoricalPlaytime(
+            statement=a_statement._replace(
+                playthrough_ids=(released_run,), release_id=first_release.pk
+            )
+        ),
+        "record-released",
+    )
+    run(
+        MovePlaythroughToGame(playthrough_id=released_run, game_id=second.pk),
+        "move-released-run",
+    )
     #: Tracking pair, then the copy: three events.
     run(
         RecordEntry(
@@ -858,7 +897,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 64
+    assert len(missing) == 65
 
 
 def build_neighbour(user, library) -> None:

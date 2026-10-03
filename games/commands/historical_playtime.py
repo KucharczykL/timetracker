@@ -18,6 +18,7 @@ from games.commands.scope import (
     library_device,
     library_device_row,
     library_row,
+    stated_release,
 )
 from games.events.dispatch import (
     Command,
@@ -44,6 +45,7 @@ from games.models import (
     HistoricalPlaytimeRun,
     Playthrough,
     PlaythroughKind,
+    Release,
 )
 from games.projectors.historical_playtime import (
     StatementColumns,
@@ -121,6 +123,8 @@ class HistoricalPlaytimeStatement(NamedTuple):
     device_id: uuid.UUID | None
     emulated: bool
     note: str
+    #: Defaulted: most callers state no Release.
+    release_id: uuid.UUID | None = None
 
 
 def normalized_statement(
@@ -178,6 +182,22 @@ def _live_runs(
                 sentence=INTO_THE_BUCKET_HISTORICAL,
             )
     return runs
+
+
+def statement_release(
+    context: CommandContext,
+    statement: HistoricalPlaytimeStatement,
+    runs: Sequence[Playthrough],
+    *,
+    held_id: uuid.UUID | None,
+) -> Release | None:
+    """The statement's Release, of the runs' game."""
+    return stated_release(
+        context,
+        statement.release_id,
+        game_id=runs[0].player_game.game_id,
+        held_id=held_id,
+    )
 
 
 def _recorded(provenance: HistoricalPlaytimeProvenance) -> ProvenanceValue:
@@ -248,6 +268,7 @@ def _held_columns(record: HistoricalPlaytime) -> StatementColumns:
         "when": None if record.when is None else record.when.canonical,
         "provenance": HistoricalPlaytimeProvenance(record.provenance),
         "device_id": record.device_id,
+        "release_id": record.release_id,
         "emulated": record.emulated,
         "note": record.note,
     }
@@ -256,6 +277,7 @@ def _held_columns(record: HistoricalPlaytime) -> StatementColumns:
 def created_event(
     runs: Sequence[Playthrough],
     device: Device | None,
+    release: Release | None,
     statement: HistoricalPlaytimeStatement,
     *,
     reclassified_from: uuid.UUID | None = None,
@@ -268,6 +290,7 @@ def created_event(
         when=TemporalValue.parse(statement.when),
         provenance=_recorded(statement.provenance),
         device=None if device is None else capture_reference(device),
+        release=None if release is None else capture_reference(release),
         emulated=statement.emulated,
         note=statement.note,
         reclassified_from=reclassified_from,
@@ -287,7 +310,8 @@ class RecordHistoricalPlaytime(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         runs = _live_runs(context, self.statement)
         device = library_device(context, self.statement.device_id)
-        return [created_event(runs, device, self.statement)]
+        release = statement_release(context, self.statement, runs, held_id=None)
+        return [created_event(runs, device, release, self.statement)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +333,9 @@ class RestateHistoricalPlaytime(Command):
             device = library_device_row(context, self.statement.device_id)
         else:
             device = library_device(context, self.statement.device_id)
+        release = statement_release(
+            context, self.statement, runs, held_id=record.release_id
+        )
         #: Read under dispatch's lock; rows cannot move.
         kept = dict(
             HistoricalPlaytimeRun.objects.filter(
@@ -323,6 +350,7 @@ class RestateHistoricalPlaytime(Command):
             when=TemporalValue.parse(self.statement.when),
             provenance=_recorded(self.statement.provenance),
             device=None if device is None else capture_reference(device),
+            release=None if release is None else capture_reference(release),
             emulated=self.statement.emulated,
             note=self.statement.note,
         )
