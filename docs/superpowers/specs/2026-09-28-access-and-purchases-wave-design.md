@@ -1158,9 +1158,13 @@ runs on it.
   (filed 2026-10-03 from the review; pairs with #1463)
 - #1443, remove the one-time Conversion review rows after P5c, keeping
   `conversion_review` and `Category`
-- #1448, remove the conversion pass and its gates at the squash (with
-  #1443 in PR #1474; step two is #1472: the 18 replaced files, `replaces`,
-  the cutover `DELETE` and this document's trim). Ruled 2026-10-03, with
+- #1448, remove the conversion pass and its gates at the squash: done.
+  PR #1474 (with #1443) deployed as `main-f0b2c89` on 2026-10-03, the
+  squash recorded beside the 18 originals; #1472 (PR #1482,
+  `main-bf1e975`) took the originals and `replaces`, and the 18-row
+  cutover `DELETE` ran the same day, leaving four history rows
+  ([Squashing](../../migration-squash.md), "Step two, 2026-10-03"). The
+  next migration is `0038`. This document's trim is the close-out's. Ruled 2026-10-03, with
   #1443: one PR, not a stack. It holds #1443, the
   squash of `0019`–`0036` with `replaces` (`0029` and `0035`
   `elidable=True`, both data only; `0031` already, its body a refusal
