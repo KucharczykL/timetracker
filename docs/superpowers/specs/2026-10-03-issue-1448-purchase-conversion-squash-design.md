@@ -62,3 +62,31 @@ and its rehearsal.
 `make verify-baseline ARGS="--migrate"` on the 2026-10-02 dump records
 the squash, applies `0037`, and finds every catalog identical.
 `make verify-dump` on the 2026-10-01 dump stops at the guard.
+
+## Step two (#1472)
+
+The deployment recorded the squash on 2026-10-03 (`main-f0b2c89`):
+`0037` applied, 22 `games` history rows, replay parity green.
+
+- The eighteen replaced files go, and `replaces` comes off the squash.
+- The tests that import a replaced file by module go with it:
+  `tests/test_purchase_preset_rewrite.py` whole, since every test reads
+  `0032`'s functions; the `decimal_rate` test in
+  `tests/test_exchange_rates.py`; the two `0031` tests in
+  `tests/test_purchase_squash.py`.
+- The guard and the schedule removal stay. A fresh install still runs
+  them, and the next squash elides them.
+- A database that recorded some of the eighteen and not the squash now
+  takes the squash. The guard refuses one that holds data; any other
+  fails on a table that exists. Only a stale development database holds
+  such a history, and it is dropped and rebuilt.
+- The cutover `DELETE` of the eighteen history rows runs after the
+  step-two image is up, never before: the earlier image still carries
+  `replaces`, and without the rows it applies the squash for real.
+- CLAUDE.md names the squash where it named a replaced file.
+- The wave doc is the organizer's.
+
+Rehearsal: `make verify-dump` on the post-deploy dump migrates with
+nothing to apply; `make verify-baseline ARGS="--normalize cutover.sql
+--migrate"` on it finds every catalog identical.
+
