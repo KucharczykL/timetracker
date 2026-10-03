@@ -82,7 +82,7 @@ from games.forms import (
     PlatformForm,
     device_option,
     game_option_data,
-    release_options,
+    hinted_release_options,
 )
 from games.models import (
     Device,
@@ -789,7 +789,7 @@ def search_held_releases(request, game_id: UUIDv7, q: str = "", limit: int = 10)
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.visible_to(library), library, id=game_id)
     releases = list(matching_releases(held_game_releases(library, game), q)[:limit])
-    return release_options(releases, library=library)
+    return hinted_release_options(releases, library=library)
 
 
 @release_router.get("/played", response=list[PickerOption])

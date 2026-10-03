@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.test import Client
+from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry, second_release
+from historical_playtime_posts import posted_record
 
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
@@ -563,3 +565,89 @@ def test_the_played_search_lists_the_releases_rows_name_by_game(
     ]
     assert every[1]["label"].startswith("Hades · ")
     assert [option["value"] for option in narrowed] == [str(other_graph.release.pk)]
+
+
+def session_post(game, run, **changes) -> dict[str, str]:
+    return {
+        "game": str(game.pk),
+        "playthrough": str(run.pk),
+        "release": "",
+        "started_at": "2026-03-05 12:00",
+        "started_at_zone": "",
+        "ended_at": "",
+        "ended_at_zone": "",
+        "duration": "",
+        "note": "",
+        **changes,
+    }
+
+
+def test_the_session_form_states_a_release(client, graph, run):
+    response = client.post(
+        reverse("games:add_session"),
+        session_post(graph.game, run, release=str(graph.release.pk)),
+    )
+
+    assert response.status_code == 302
+    assert PlayerSession.objects.get().release_id == graph.release.pk
+
+
+def test_the_session_form_refuses_another_games_release(
+    client, graph, run, other_graph, other_run
+):
+    response = client.post(
+        reverse("games:add_session"),
+        session_post(graph.game, run, release=str(other_graph.release.pk)),
+    )
+
+    assert response.status_code == 200
+    assert RELEASE_OF_ANOTHER_GAME in response.content.decode()
+    assert not PlayerSession.objects.exists()
+
+
+def test_the_session_form_keeps_a_held_release_whose_copy_is_gone(
+    client, owned_library, graph, entry, run
+):
+    session = a_session(owned_library, run, graph.release)
+    remove_entry(entry)
+    url = reverse("games:edit_session", args=[session.pk])
+
+    page = client.get(url)
+    assert str(graph.release.pk) in page.content.decode()
+    response = client.post(
+        url,
+        session_post(
+            graph.game,
+            run,
+            release=str(graph.release.pk),
+            started_at="2026-01-01 13:00",
+            ended_at="2026-01-01 14:00",
+            note="kept",
+        ),
+    )
+
+    assert response.status_code == 302
+    session.refresh_from_db()
+    assert (session.note, session.release_id) == ("kept", graph.release.pk)
+
+
+def test_the_record_form_states_a_release(client, graph, run):
+    response = client.post(
+        reverse("games:add_historical_playtime", args=[graph.game.pk]),
+        posted_record([run.pk], when_year="2005", release=str(graph.release.pk)),
+    )
+
+    assert response.status_code == 302
+    assert HistoricalPlaytime.objects.get().release_id == graph.release.pk
+
+
+def test_the_record_form_refuses_another_games_release(
+    client, graph, run, other_graph, other_run
+):
+    response = client.post(
+        reverse("games:add_historical_playtime", args=[graph.game.pk]),
+        posted_record([run.pk], when_year="2005", release=str(other_graph.release.pk)),
+    )
+
+    assert response.status_code == 200
+    assert RELEASE_OF_ANOTHER_GAME in response.content.decode()

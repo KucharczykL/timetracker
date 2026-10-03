@@ -68,6 +68,7 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
+from games.commands.scope import RELEASE_OF_ANOTHER_GAME
 from games.commands.session_reclassification import statement_from_session
 from games.dev_login import prefill_credentials
 from games.end_ways import END_WAY_LABELS, EndWay
@@ -94,7 +95,7 @@ from games.reads.endpoints import stated
 from games.reads.platform_groups import platform_groups
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
-from games.reads.releases import ended_copy_ways, release_label
+from games.reads.releases import ended_copy_ways, held_releases, release_label
 from games.writes.playersession import latest_ordinary_run
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.temporal import (
@@ -354,7 +355,7 @@ def release_option(release: Release, ended: EndWay | None) -> SearchSelectOption
     return option
 
 
-def release_options(
+def hinted_release_options(
     releases: Sequence[Release], *, library: UserLibrary
 ) -> list[SearchSelectOption]:
     """Rows hinted where every copy ended."""
@@ -369,7 +370,7 @@ def held_release_options(values, *, library: UserLibrary) -> list[SearchSelectOp
         Q(edition__game__library__isnull=True) | Q(edition__game__library=library),
         pk__in=values,
     )
-    return release_options(
+    return hinted_release_options(
         list(releases.select_related("edition", "platform")), library=library
     )
 
@@ -404,6 +405,7 @@ def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 #: Where a picker searches a library's devices.
 DEVICE_SEARCH_URL = "/api/devices/search"
+HELD_RELEASE_SEARCH_URL: Final = "/api/releases/held"
 
 #: Where a picker makes the row a person typed.
 DEVICE_CREATE_URL = "/api/devices/"
@@ -1417,6 +1419,26 @@ def _run_choices(library: UserLibrary, game: Game | None) -> list[LabeledChoice]
     ]
 
 
+def release_field(
+    form: forms.Form, *, library: UserLibrary, held: uuid.UUID | None
+) -> None:
+    """Held Releases; the row's own stays."""
+    field = cast(forms.ModelChoiceField, form.fields["release"])
+    releases = held_releases(library)
+    if held is not None:
+        releases = releases | Release.objects.filter(pk=held)
+    field.queryset = releases.select_related("edition")
+    field.widget.options_resolver = partial(held_release_options, library=library)
+
+
+def refuse_another_games_release(
+    form: forms.Form, release: Release, game_id: uuid.UUID
+) -> None:
+    """The command's rule, on the field."""
+    if release.edition.game_id != game_id:
+        form.add_error("release", RELEASE_OF_ANOTHER_GAME)
+
+
 class SessionForm(PrimitiveWidgetsMixin, forms.Form):
     """One session, in the projection's words.
 
@@ -1450,6 +1472,8 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         runs = cast(forms.ModelChoiceField, self.fields["playthrough"])
         runs.queryset = library_runs(library)
         runs.widget.options_resolver = partial(run_options, library=library)
+        held_release = None if instance is None else instance.release_id
+        release_field(self, library=library, held=held_release)
         cast(
             forms.ModelChoiceField, self.fields["device"]
         ).queryset = Device.objects.for_library(library).order_by("name")
@@ -1516,6 +1540,17 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         widget=PlaythroughSelectWidget(game_field="game"),
         label="Playthrough",
     )
+    release = forms.ModelChoiceField(
+        queryset=Release.objects.none(),
+        required=False,
+        label="Release",
+        widget=SearchSelectWidget(
+            search_url=HELD_RELEASE_SEARCH_URL,
+            options_resolver=held_release_options,
+            params={"game_id": {"field": "game"}},
+            none_label="Not stated",
+        ),
+    )
     # started_at/ended_at get DateTimeFieldWidget in __init__ (needs the
     # per-request presentation, unavailable to a class body).
     started_at = AwareDateTimeField(required=False, label="Start")
@@ -1557,6 +1592,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         run = cleaned.get("playthrough")
         if game is not None and run is not None and run.player_game.game_id != game.pk:
             self.add_error("playthrough", "That playthrough is another game's.")
+        release = cleaned.get("release")
+        if game is not None and release is not None:
+            refuse_another_games_release(self, release, game.pk)
         started_at = cleaned.get("started_at")
         ended_at = cleaned.get("ended_at")
         day = cleaned.get("day")
@@ -1606,6 +1644,7 @@ def _session_initial(session: PlayerSession) -> dict[str, Any]:
         "day": session.stated_day,
         "duration": session.stated_duration,
         "device": session.device_id,
+        "release": session.release_id,
         "note": session.note,
         "emulated": session.emulated,
     }
@@ -1783,6 +1822,16 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         widget=CheckboxListWidget,
         label="Playthroughs",
     )
+    release = forms.ModelChoiceField(
+        queryset=Release.objects.none(),
+        required=False,
+        label="Release",
+        widget=SearchSelectWidget(
+            search_url=HELD_RELEASE_SEARCH_URL,
+            options_resolver=held_release_options,
+            none_label="Not stated",
+        ),
+    )
     duration = HoursMinutesField(label="Duration")
     provenance = forms.ChoiceField(widget=RadioListWidget, label="Provenance")
     device = forms.ModelChoiceField(
@@ -1834,11 +1883,19 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         self.fields["when"] = HistoricalWhenField(
             presentation=presentation, label="When"
         )
-        self.order_fields(["playthroughs", "duration", "when", "provenance", "device"])
+        self.order_fields(
+            ["playthroughs", "release", "duration", "when", "provenance", "device"]
+        )
         runs = cast(forms.ModelMultipleChoiceField, self.fields["playthroughs"])
         #: Library-wide; the command refuses the rest.
         runs.queryset = Playthrough.objects.filter(library=library)
         runs.choices = _run_choices(library, game)
+        self.game = game
+        held = record if record is not None else session
+        release_field(
+            self, library=library, held=None if held is None else held.release_id
+        )
+        self.fields["release"].widget.params = {"game_id": {"value": str(game.pk)}}
         provenances = list(_STATED_PROVENANCES)
         if (
             record is not None
@@ -1849,7 +1906,6 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             (choice.value, choice.label) for choice in provenances
         ]
         devices = Device.objects.for_library(library)
-        held = record if record is not None else session
         if held is not None and held.device_id is not None:
             #: The row's own device stays, removed or not.
             devices = devices | Device.objects.filter(
@@ -1863,6 +1919,13 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
 
     def clean_note(self) -> str:
         return self.cleaned_data["note"].replace("\r\n", "\n")
+
+    def clean(self):
+        cleaned = super().clean()
+        release = cleaned.get("release")
+        if release is not None:
+            refuse_another_games_release(self, release, self.game.pk)
+        return cleaned
 
     def _every_duration_part_posted(self) -> bool:
         return all(
@@ -1892,6 +1955,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             duration = held
         when: TemporalValue | None = cleaned["when"]
         device: Device | None = cleaned["device"]
+        release: Release | None = cleaned["release"]
         return HistoricalPlaytimeStatement(
             duration=duration,
             when=None if when is None else when.canonical,
@@ -1900,6 +1964,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             device_id=None if device is None else device.pk,
             emulated=cleaned["emulated"],
             note=cleaned["note"],
+            release_id=None if release is None else release.pk,
         )
 
 
@@ -1942,6 +2007,7 @@ def _record_initial(
             "when": TemporalValue.parse(stated.when),
             "provenance": stated.provenance.value,
             "device": stated.device_id,
+            "release": stated.release_id,
             "emulated": stated.emulated,
             "note": stated.note,
             "submission": uuid.uuid7(),
@@ -1962,6 +2028,7 @@ def _record_initial(
         "when": record.when,
         "provenance": record.provenance,
         "device": record.device_id,
+        "release": record.release_id,
         "emulated": record.emulated,
         "note": record.note,
     }
