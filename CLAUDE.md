@@ -49,9 +49,11 @@ install locations. So `make test-e2e` works on normal Chrome install, no
 **Verification gate:** before declaring done / pushing / opening PR, run full
 `make check` (lint + format-check + mypy + ts-check + vitest + entire pytest
 suite **including `e2e/`**) and confirm green. Never verify with hand-picked
-subset of test files — that is how removed-widget e2e breakage reaches CI. `ARGS`
-is
-for iterating, never for the gate.
+subset of test files — that is how removed-widget e2e breakage reaches `main`.
+`ARGS` is for iterating, never for the gate. **CI runs no test**: its `check`
+job runs `make check-static` (lint, format-check, mypy, vale, ts-check, icon
+and migration drift) because the suite outgrew a hosted runner (30+ minutes).
+The local gate is the only thing between a change and `main`.
 
 **While iterating, use `make check-fast`** — same aggregate minus `e2e/`, which is
 83% of suite's serial wall time (~70s vs ~6.5 min). Explicitly **not** the gate:
@@ -60,11 +62,12 @@ only full `check` catches e2e breakage.
 Suite runs parallel (pytest-xdist), because browser page loads dominate: 2507
 tests take ~55s at 16 workers against ~370s serial. `PYTEST_WORKERS` defaults to
 half the cores, capped at 16 — past that, contention starts flaking
-timing-sensitive e2e tests. **CI takes one worker per vCPU**, capped same way,
-because runner has nothing else on it: measured on `ubuntu-latest` (4 vCPU),
-three runs each, serial 1491s against 696-797s at 4 workers. Halve it there if
-flaky failure appears. Set `PYTEST_WORKERS=0` when debugging — parallel output
-interleaves and `-x` stops only the worker that hit it.
+timing-sensitive e2e tests. A `CI` environment takes one worker per vCPU,
+capped same way, because such a runner has nothing else on it (measured on
+`ubuntu-latest`, 4 vCPU: serial 1491s against 696-797s); no runner runs the
+suite today, the branch stays for one that does. Set `PYTEST_WORKERS=0` when
+debugging — parallel output interleaves and `-x` stops only the worker that
+hit it.
 
 **Several worktrees at once share one lock.** A suite takes every core it is
 given, so two of them at once exhaust the machine rather than finishing
@@ -107,8 +110,8 @@ Outside Nix (Windows, restricted cloud boxes), either route works:
 
 Either way e2e suite needs **system Chrome/Chromium** and, on Linux, the
 `LD_LIBRARY_PATH` greenlet/`pytest-playwright` want (Nix shell sets this; bare
-conda/uv env may need it exported). Non-Nix setups best-effort; **CI runs Nix
-path**, so verify against `make check` before pushing when possible.
+conda/uv env may need it exported). Non-Nix setups best-effort; CI runs the
+static half on uv, and nothing but your `make check` runs the suite.
 
 ## Commands
 
@@ -131,7 +134,8 @@ path**, so verify against `make check` before pushing when possible.
 | Lint prose (docs + code comments) | `make vale` (terminology, over this checkout's changed files; `ARGS=--all` for every tracked file, `ARGS="--since <rev>"` for another base; see [Vocabulary](docs/vocabulary.md)) |
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
-| Lint + format check + mypy + vale + ts-check + vitest + tests | `make check` (CI runs exactly this) |
+| Lint + format check + mypy + vale + ts-check + vitest + tests | `make check` (the merge gate, run locally) |
+| The static half alone: lint + format check + mypy + vale + ts-check + drift checks | `make check-static` (what CI runs; no pytest, no vitest) |
 | Same aggregate minus `e2e/`, for iterating | `make check-fast` (**not** the verification gate) |
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
@@ -1291,8 +1295,9 @@ becomes a TypeScript union whose reader throws on any other value.
 Multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as
 reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor managing
 Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via
-`.github/workflows/build-docker.yml`: `test` job runs `make check`, then
-`build-and-push` builds + pushes image on `main`.
+`.github/workflows/build-docker.yml`: `check` job runs `make check-static`,
+the backup-restore rehearsal and the secret smoke, then `build-and-push`
+builds + pushes image on `main`. No test runs in CI.
 
 **Package manager (pnpm), not npm.** Node 26 does not bundle Corepack: Nix shell
 provides `pnpm_10`, while CI and Docker explicitly install `pnpm@10.33.0` declared

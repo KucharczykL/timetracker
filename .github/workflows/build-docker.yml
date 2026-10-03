@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://timetracker:timetracker@127.0.0.1:5432/timetracker
@@ -59,11 +59,11 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm rebuild @vvago/vale
 
-      - name: Install Playwright browsers
-        run: uv run playwright install --with-deps chromium
-
-      - name: Run checks
-        run: make check
+      # The static half alone. The test suite runs locally as the merge gate
+      # (`make check`, CLAUDE.md "Verification gate"); a hosted runner took
+      # over thirty minutes for it.
+      - name: Run static checks
+        run: make check-static
 
       - name: Verify PostgreSQL backup restore
         run: |
@@ -93,7 +93,7 @@ jobs:
             -c 'from timetracker.database import required_database_settings; assert required_database_settings()["HOST"] == "example.invalid"'
 
   build-and-push:
-    needs: test
+    needs: check
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
