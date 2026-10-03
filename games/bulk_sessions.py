@@ -122,9 +122,4 @@ def device_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
 
 
 def release_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
-    return release_words(row)
-
-
-def release_words(row: PlayerSession) -> str:
-    """The row's Release, or Not stated."""
     return "Not stated" if row.release is None else release_label(row.release)

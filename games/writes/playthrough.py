@@ -357,6 +357,10 @@ def restate_run(
     return moved
 
 
+#: One appended event: type, aggregate, payload.
+type AppendedEvent = tuple[EventType, uuid.UUID, dict[str, object]]
+
+
 def _move(
     actor: User,
     run: Playthrough,
@@ -392,10 +396,6 @@ def _move(
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
         cleared_releases=_live_rows_cleared(actor.library, events),
     )
-
-
-#: One appended event: type, aggregate, payload.
-type AppendedEvent = tuple[EventType, uuid.UUID, dict[str, object]]
 
 
 def _live_rows_cleared(library: UserLibrary, events: list[AppendedEvent]) -> int:

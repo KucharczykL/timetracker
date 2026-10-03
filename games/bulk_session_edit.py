@@ -187,7 +187,9 @@ class EditStatement:
             key = stated["device"]
             if key is not None and not isinstance(key, str):
                 raise statement_unreadable(f"{raw!r} states a device that is no key")
-            device = StatedDevice(None if key is None else _device_key(key))
+            device = StatedDevice(
+                None if key is None else _stated_key(key, sentence=DEVICE_UNREADABLE)
+            )
         emulated = stated.get("emulated")
         #: Present means stated: null is no bool.
         if "emulated" in stated and not isinstance(emulated, bool):
@@ -204,43 +206,27 @@ class EditStatement:
                 raise statement_unreadable(
                     f"{raw!r} states a playthrough that is no key"
                 )
-            playthrough = _run_key(run)
+            playthrough = _stated_key(run, sentence=PLAYTHROUGH_UNREADABLE)
         release: StatedRelease | None = None
         if "release" in stated:
             key = stated["release"]
             if key is not None and not isinstance(key, str):
                 raise statement_unreadable(f"{raw!r} states a release that is no key")
-            release = StatedRelease(None if key is None else _release_key(key))
+            release = StatedRelease(
+                None if key is None else _stated_key(key, sentence=RELEASE_UNREADABLE)
+            )
         stated_facts = (device, emulated, note, playthrough, release)
         if all(fact is None for fact in stated_facts):
             raise statement_unreadable(f"{raw!r} states nothing")
         return cls(device, emulated, note, playthrough, release)
 
 
-def _run_key(stated: str) -> uuid.UUID:
+def _stated_key(stated: str, *, sentence: str) -> uuid.UUID:
     try:
         return uuid.UUID(stated)
     except ValueError as unreadable:
         raise CommandRejected(
-            f"{stated!r} is no uuid: {unreadable}", sentence=PLAYTHROUGH_UNREADABLE
-        ) from unreadable
-
-
-def _release_key(stated: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(stated)
-    except ValueError as unreadable:
-        raise CommandRejected(
-            f"{stated!r} is no uuid: {unreadable}", sentence=RELEASE_UNREADABLE
-        ) from unreadable
-
-
-def _device_key(stated: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(stated)
-    except ValueError as unreadable:
-        raise CommandRejected(
-            f"{stated!r} is no uuid: {unreadable}", sentence=DEVICE_UNREADABLE
+            f"{stated!r} is no uuid: {unreadable}", sentence=sentence
         ) from unreadable
 
 

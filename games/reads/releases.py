@@ -1,10 +1,12 @@
 """Release reads: catalog, held, played."""
 
-import uuid
+from datetime import datetime
+from typing import NamedTuple
 
 from django.db.models import Q, QuerySet
 
 from games.end_ways import EndWay
+from games.ids import ReleaseId
 from games.models import (
     Edition,
     EditionKind,
@@ -17,8 +19,6 @@ from games.reads.entries import library_entries
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
 from games.reads.unscoped import require_library
-
-type ReleaseId = uuid.UUID
 
 UNSPECIFIED_PLATFORM = "Unspecified"
 
@@ -58,23 +58,30 @@ def held_game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
     return game_releases(library, game).filter(pk__in=held_releases(library))
 
 
+class LatestEnd(NamedTuple):
+    """A copy's end: when recorded, which way."""
+
+    recorded_at: datetime
+    way: str
+
+
 def ended_copy_ways(
     library: UserLibrary, release_ids: list[ReleaseId]
 ) -> dict[ReleaseId, EndWay]:
     """Latest-recorded end's way, all copies ended."""
     copies = library_entries(library).filter(release_id__in=release_ids)
-    latest: dict[ReleaseId, tuple[object, str]] = {}
+    latest: dict[ReleaseId, LatestEnd] = {}
     unended: set[ReleaseId] = set()
     for release_id, way, ended_at in copies.values_list(
         "release_id", "access_end_way", "access_end_recorded_at"
     ):
         if ended_at is None:
             unended.add(release_id)
-        elif release_id not in latest or ended_at > latest[release_id][0]:
-            latest[release_id] = (ended_at, way)
+        elif release_id not in latest or ended_at > latest[release_id].recorded_at:
+            latest[release_id] = LatestEnd(ended_at, way)
     return {
-        release_id: EndWay(way)
-        for release_id, (_, way) in latest.items()
+        release_id: EndWay(end.way)
+        for release_id, end in latest.items()
         if release_id not in unended
     }
 
