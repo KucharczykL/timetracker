@@ -1,15 +1,20 @@
 """A session or a record names the Release it was played on."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.http import QueryDict
 from django.test import Client
 from django.urls import reverse
+from django.utils import timezone
 from entries import end_entry_access, record_entry, remove_entry, second_release
 from historical_playtime_posts import posted_record
+from historical_playtime_rows import record_row
+from session_rows import duration_only_row
 
+from common.criteria import BoolCriterion
+from games.bulk_parts import Control
 from games.bulk_session_edit import (
     EditStatement,
     edit_back,
@@ -47,7 +52,13 @@ from games.events.dispatch import (
     RowNotHeld,
     dispatch,
 )
+from games.filters import (
+    HistoricalPlaytimeFilter,
+    PlayerSessionFilter,
+    filter_query_context_for_library,
+)
 from games.models import (
+    EditionKind,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -56,12 +67,16 @@ from games.models import (
     Playthrough,
 )
 from games.reads.calendar import calendar_day_zone
+from games.reads.historical_playtime_records import library_records
+from games.reads.player_sessions import library_sessions
+from games.reads.session_organization import organization_counts
 from games.removal import remove
 from games.views.bulk import CHOICE_FIELD
 from games.views.playthrough_writes import moved_sentence
 from games.writes.answers import CommandFailed
 from games.writes.playersession import SessionDraft, restate_session
 from games.writes.playthrough import RunDraft, restate_run
+from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -766,7 +781,9 @@ def test_bulk_edit_refuses_a_release_of_another_game_per_row(
 
 def offered(library, rows) -> str:
     resolved = labelled_session_resolution(library, [row.pk for row in rows]).rows
-    return str(offer_edit(library, resolved, CHOICE_FIELD).node)
+    offer = offer_edit(library, resolved, CHOICE_FIELD)
+    assert isinstance(offer, Control)
+    return str(offer.node)
 
 
 def test_the_bulk_release_is_offered_for_one_game_alone(
@@ -797,3 +814,89 @@ def post_of(statement: EditStatement) -> QueryDict:
     stated = QueryDict(mutable=True)
     stated[CHOICE_FIELD] = statement.encode()
     return stated
+
+
+# ── Filters ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def demo(owned_library, stated_graph):
+    return stated_graph(
+        Game(name="Hades Demo", library=owned_library),
+        owned_library,
+        edition_kind=EditionKind.PRERELEASE,
+    )
+
+
+def answered(library, criteria) -> set[PlayerSession]:
+    context = filter_query_context_for_library(library)
+    return set(library_sessions(library).filter(criteria.to_q(context)))
+
+
+def test_a_session_on_a_prerelease_is_never_outside_its_runs_dates(
+    owned_library, graph, run, demo
+):
+    started = TemporalValue.from_day(date(2024, 1, 1))
+    Playthrough.objects.filter(pk=run.pk).update(
+        started=started, start_recorded_at=timezone.now()
+    )
+    before = date(2023, 6, 1)
+    on_the_demo = duration_only_row(
+        run, before, timedelta(hours=1), release=demo.release
+    )
+    on_the_game = duration_only_row(
+        run, before, timedelta(hours=1), release=graph.release
+    )
+    unstated = duration_only_row(run, before, timedelta(hours=1))
+
+    outside = answered(
+        owned_library,
+        PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=True)),
+    )
+    inside = answered(
+        owned_library,
+        PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=False)),
+    )
+
+    assert outside == {on_the_game, unstated}
+    assert inside == {on_the_demo}
+    assert organization_counts(owned_library).outside == 2
+
+
+def test_sessions_filter_by_release_and_edition_kind(owned_library, graph, run, demo):
+    on_the_demo = duration_only_row(
+        run, date(2023, 6, 1), timedelta(hours=1), release=demo.release
+    )
+    on_the_game = duration_only_row(
+        run, date(2023, 6, 2), timedelta(hours=1), release=graph.release
+    )
+    unstated = duration_only_row(run, date(2023, 6, 3), timedelta(hours=1))
+
+    by_release = PlayerSessionFilter.from_json(
+        {"release": {"value": [str(graph.release.pk)], "modifier": "INCLUDES"}}
+    )
+    demos = PlayerSessionFilter.from_json(
+        {"edition_kind": {"value": ["prerelease"], "modifier": "INCLUDES"}}
+    )
+    none_stated = PlayerSessionFilter.from_json(
+        {"release": {"value": [], "modifier": "IS_NULL"}}
+    )
+
+    assert answered(owned_library, by_release) == {on_the_game}
+    assert answered(owned_library, demos) == {on_the_demo}
+    assert answered(owned_library, none_stated) == {unstated}
+
+
+def test_records_filter_by_edition_kind(owned_library, graph, run, demo):
+    demo_record = record_row([run], release=demo.release)
+    record_row([run], release=graph.release)
+    record_row([run])
+
+    demos = HistoricalPlaytimeFilter.from_json(
+        {"edition_kind": {"value": ["prerelease"], "modifier": "INCLUDES"}}
+    )
+    context = filter_query_context_for_library(owned_library)
+
+    assert set(library_records(owned_library).filter(demos.to_q(context))) == {
+        demo_record
+    }
