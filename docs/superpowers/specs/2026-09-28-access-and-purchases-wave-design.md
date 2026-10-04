@@ -1137,7 +1137,9 @@ runs on it.
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1437, move a purchase to another copy (after P5b)
-- #1354, the Release a session or record was played on; ruled 2026-10-03:
+- #1354, the Release a session or record was played on: done (PR #1488,
+  merged 2026-10-04), which unblocks #1361 and #1358's Before-start
+  clause; ruled 2026-10-03:
   it adds the full-editions clause to `outside_playthrough_dates` (a
   prerelease Release is never outside dates); a move to another game
   clears the Release through `release_changed(None)` in the same
