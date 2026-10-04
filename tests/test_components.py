@@ -2536,29 +2536,6 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         )
         self.assertNotIn("sticky", result)
 
-    def test_an_open_panel_raises_the_pinned_cell_above_its_siblings(self):
-        """A panel nested in a sticky cell is trapped in that cell's stacking
-        context, so a later row would paint over it unless the host cell
-        outranks its siblings while the panel is open."""
-        result = self._data_table(
-            [components.Column("Name")], [components.make_row("Game")]
-        )
-        cell = self._row_header_cell(self._tbody(result))
-        self.assertIn("has-[[data-pop-over-panel]:not([hidden])]:z-[3]", cell)
-        self.assertIn("has-[[data-menu]:not([hidden])]:z-[3]", cell)
-
-    def test_the_pinned_cell_never_outranks_the_panel_strata(self):
-        """Popovers sit at z-10 and dropdown panels at z-20. A pinned cell that
-        reached either would cover the panels of *other* rows: measured, a cell
-        at z-30 hides an overlapping open menu at 15 of 24 sample points."""
-        from common.components.primitives import PINNED_COLUMN_CLASS
-
-        levels = [
-            int(value) for value in re.findall(r"z-\[(\d+)\]", PINNED_COLUMN_CLASS)
-        ]
-        self.assertTrue(levels, "the pinned class declares no z-index")
-        self.assertLess(max(levels), 10)
-
     def test_the_header_row_carries_the_header_surface(self):
         """The pinned header cell inherits its background from the row, so the
         surface has to live there — on <thead> it resolves to transparent and
@@ -2626,13 +2603,6 @@ class DataTableWidthPolicyTest(SimpleTestCase):
             [components.make_row("Total", "5")],
         )
         self.assertIn("dark:divide-y", result)
-
-    def test_the_pinned_cell_casts_no_filter_shadow(self):
-        """`filter` would make the cell a containing block for the fixed panels
-        it hosts; `box-shadow` has no such side effect."""
-        from common.components.primitives import PINNED_COLUMN_CLASS
-
-        self.assertNotIn("drop-shadow", PINNED_COLUMN_CLASS)
 
     def test_non_data_table_gets_no_scroll_state_container(self):
         result = self._render(

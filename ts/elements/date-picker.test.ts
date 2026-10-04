@@ -116,6 +116,17 @@ describe("date-picker segment typing", () => {
     day.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
     expect(hidden(picker).value).toBe("");
   });
+  it("leaves Escape to whoever hosts the field", () => {
+    const picker = mount();
+    const year = picker.querySelector<HTMLInputElement>('input[data-date-part="year"]')!;
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    year.dispatchEvent(escape);
+    expect(escape.defaultPrevented).toBe(false);
+  });
 });
 
 describe("date-picker paste parsing (#485)", () => {

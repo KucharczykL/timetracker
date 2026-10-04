@@ -638,11 +638,7 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # flips to rtl:text-right, where the scroll start edge is the right one.
 # `bg-inherit` picks up the row's zebra and hover surface — a sticky cell is
 # transparent by default and would let the scrolled content show through it.
-# The cell outranks its sibling pinned cells only while it holds an open panel:
-# a panel nested inside a sticky cell is scoped to that cell's stacking context,
-# so a later row's cell would paint over it. 3 clears the siblings at 2 and
-# stays under the popover (10) and menu (20) strata, which a higher value would
-# cover instead.
+# Panels a cell hosts open in the top layer, above every cell.
 #
 # From md up only, and not by preference: below md the same cell carries
 # SHRINKABLE_COLUMN_CLASS, whose max-w-0 is what lets the name column collapse
@@ -653,12 +649,7 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # viewport where the table has already been cut to two columns.
 PINNED_COLUMN_CLASS = (
     "md:sticky md:start-0 md:z-[2] md:bg-inherit "
-    "md:has-[[data-pop-over-panel]:not([hidden])]:z-[3] "
-    "md:has-[[data-menu]:not([hidden])]:z-[3] "
-    # A box-shadow, never a filter: a filtered cell becomes the containing
-    # block for the fixed panels it hosts. Scoped to a region that actually
-    # has something scrolled behind the column, so a table that fits shows
-    # no shadow. The offset is physical where the trigger and the pin are
+    # The shadow shows only once content scrolls behind the column. The offset is physical where the trigger and the pin are
     # logical, so the direction is mirrored explicitly — otherwise the shadow
     # paints into the table's own edge under rtl instead of over the
     # content sliding beneath it.
@@ -3772,10 +3763,7 @@ def StyledTable(
     #
     # `clip` rather than `hidden`: it clips the same way but is not a scroll
     # container, so the sticky selection line can reach the window instead of
-    # this box. Never add `transform`/`filter`/`contain`/`backdrop-filter`
-    # here — it would make the shell a containing block for the
-    # `position: fixed` dropdown menus and clip them
-    # (see e2e/test_dropdown_clipping_e2e.py).
+    # this box.
     return Div(class_="shadow-md sm:rounded-base overflow-clip")[*inner_children]
 
 

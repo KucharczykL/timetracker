@@ -639,6 +639,7 @@ class SegmentedField {
     segment.addEventListener("keydown", (event) => {
       if (event.key === "Tab") return; // native Tab / Shift+Tab navigation
       if (event.key === "Enter") return; // let the form submit
+      if (event.key === "Escape") return; // the surface stack's, or the host's
       if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
         setSegmentBuffer(segment, "");

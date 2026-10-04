@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./quick-filter-bar.js";
 import { applyUrl } from "./filter-url.js";
+import { openSurfaces } from "./surface-stack.js";
 import {
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
@@ -374,6 +375,25 @@ describe("quick-filter-bar priority-plus overflow", () => {
       fixture.row.querySelectorAll("[data-quick-facet]"),
     ).map((facet) => facet.id);
     expect(rowIds).toEqual(["f1", "f2", "f3"]);
+  });
+});
+
+describe("quick-filter-bar overflow menu", () => {
+  it("closes before its host hides", () => {
+    const fixture = mountOverflow();
+    const menu = document.createElement("drop-down");
+    menu.innerHTML = '<button data-toggle></button><div data-menu popover="manual" hidden></div>';
+    fixture.host.append(menu);
+    menu.querySelector("[data-menu]")!.append(fixture.items);
+    fixture.setRowWidth(300);
+    fixture.bar.layoutOverflow();
+    menu.open();
+    expect(openSurfaces()).toHaveLength(1);
+
+    fixture.setRowWidth(1000);
+    fixture.bar.layoutOverflow();
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 

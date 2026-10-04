@@ -12,6 +12,7 @@
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
+import "./drop-down.js";
 import { applyUrl } from "./filter-url.js";
 import {
   isPlainObject,
@@ -250,6 +251,8 @@ class QuickFilterBarElement extends HTMLElement {
       for (const facet of spilled) overflowItems.appendChild(facet.element);
     }
 
+    // A hidden host would strand its open panel.
+    if (spilled.length === 0) overflowHost.querySelector("drop-down")?.close();
     overflowHost.classList.toggle("hidden", spilled.length === 0);
     const holdsApplied = spilled.some((facet) => facet.applied);
     this.overflowMark?.classList.toggle("invisible", !holdsApplied);

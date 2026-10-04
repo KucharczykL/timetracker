@@ -5,6 +5,7 @@
  * out of reach while nothing is selected.
  */
 
+import "./drop-down.js";
 import { SelectionStatement } from "./selection-statement.js";
 import {
   OverflowItem,
@@ -243,7 +244,10 @@ class SelectionActionsElement extends HTMLElement {
         overflowItems.appendChild(element);
       }
     }
-    overflowHost.classList.toggle("hidden", fitCount === this.acts.length);
+    // A hidden host would strand its open panel.
+    const allFit = fitCount === this.acts.length;
+    if (allFit) overflowHost.querySelector("drop-down")?.close();
+    overflowHost.classList.toggle("hidden", allFit);
   }
 
   private readonly onSubmit = (): void => {
