@@ -22,7 +22,7 @@ function mount(options: {
     <button data-toggle data-year-picker-toggle aria-expanded="false" type="button">
       Choose a year
     </button>
-    <div data-menu data-year-picker-popup hidden role="group" aria-labelledby="year-picker-period">
+    <div data-menu data-year-picker-popup popover="manual" hidden role="group" aria-labelledby="year-picker-period">
       <span id="year-picker-period" data-year-picker-period></span>
       <button data-year-picker-prev type="button"></button>
       <button data-year-picker-next type="button"></button>

@@ -112,7 +112,8 @@ def test_the_panel_is_a_still_surface_around_one_scroller(site):
     classes = panel["attributes"]["class"].split()
     assert len(panel["children"]) == 1
     assert "overflow-y-auto" not in classes
-    assert {"flex", "flex-col", "isolate", "border", "shadow-sm"} <= set(classes)
+    assert {"flex", "flex-col", "border", "shadow-sm"} <= set(classes)
+    assert not {"absolute", "isolate"} & set(classes)
     [scroller] = panel["children"]
     assert {"min-h-0", "overflow-y-auto"} <= set(
         scroller["attributes"]["class"].split()

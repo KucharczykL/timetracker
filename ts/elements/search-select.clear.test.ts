@@ -3,6 +3,7 @@
 // The clear ×: visibility, press, events, focus.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
+import { hosted } from "../test-setup/search-select-host.js";
 import type {
   SearchSelectChangeDetail,
   SearchSelectClearDetail,
@@ -82,11 +83,11 @@ function mount(
     ${ROW_TEMPLATE}
   `;
   if (formFields === undefined) {
-    document.body.appendChild(host);
+    document.body.appendChild(hosted(host));
   } else {
     const form = document.createElement("form");
     form.innerHTML = formFields;
-    form.appendChild(host);
+    form.appendChild(hosted(host));
     document.body.appendChild(form);
   }
   return host;

@@ -11,7 +11,7 @@ const mount = (): HTMLElement => {
       <span data-choice-grid-glyph><svg data-glyph="gog"></svg></span>
       <span data-choice-grid-label>GOG.com</span>
     </button>
-    <div data-menu hidden role="dialog" aria-label="Icon">
+    <div data-menu popover="manual" hidden role="dialog" aria-label="Icon">
       <fieldset>
         <label><input type="radio" name="icon" value="gog" data-choice-label="GOG.com" checked>
           <span data-choice-grid-glyph><svg data-glyph="gog"></svg></span></label>

@@ -261,46 +261,37 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
 
 
 class SearchSelectHostDropdownTest(unittest.TestCase):
-    """host_dropdown=True hosts the form combobox in
-    <drop-down behavior="inline-combobox"> so its panel uses the shared attachMenu
-    open/close/position/dismiss engine (issue #348)."""
+    """The form combobox lives in a drop-down."""
 
     def test_wraps_in_inline_combobox_dropdown(self):
-        html = str(SearchSelect(name="games", host_dropdown=True))
+        html = str(SearchSelect(name="games"))
         self.assertIn("<drop-down", html)
         self.assertIn('behavior="inline-combobox"', html)
 
     def test_search_select_element_is_the_toggle(self):
-        html = str(SearchSelect(name="games", host_dropdown=True))
+        html = str(SearchSelect(name="games"))
         self.assertIn("data-toggle", _tag_around(html, "<search-select"))
 
     def test_panel_is_menu_target_hidden_by_attribute_not_class(self):
-        html = str(SearchSelect(name="games", host_dropdown=True))
+        html = str(SearchSelect(name="games"))
         panel_tag = _tag_around(html, "data-search-select-panel")
         self.assertIn("data-menu", panel_tag)
         # attachMenu owns the `hidden` attribute.
         self.assertIn('hidden=""', panel_tag)
         self.assertNotIn(' hidden"', panel_tag)
 
-    def test_default_is_bare_widget_hidden_by_attribute(self):
-        html = str(SearchSelect(name="games"))
+    def test_panel_personality_is_bare(self):
+        html = str(SearchSelect(name="games", panel=True))
         self.assertNotIn("<drop-down", html)
         self.assertNotIn("data-toggle", html)
-        panel_tag = _tag_around(html, "data-search-select-panel")
-        self.assertIn('hidden=""', panel_tag)
-        self.assertNotIn("data-menu", panel_tag)
 
     def test_media_includes_dropdown_js(self):
-        media = collect_media(SearchSelect(name="games", host_dropdown=True))
+        media = collect_media(SearchSelect(name="games"))
         self.assertIn("dist/elements/drop-down.js", " ".join(media.js))
 
 
 class FilterSelectFieldHostTest(unittest.TestCase):
-    """The default field layout hosts itself in
-    <drop-down behavior="inline-combobox"> so its panel uses the shared attachMenu
-    open/close/position/dismiss engine (issue #354), mirroring
-    SearchSelect(host_dropdown=True). The panel layout stays bare here — its
-    drop-down is supplied a level up by ComboboxDropdown."""
+    """The field layout lives in its own drop-down."""
 
     def test_field_layout_wraps_in_inline_combobox_dropdown(self):
         html = str(FilterSelect(field_name="type"))
@@ -516,9 +507,9 @@ class SearchSelectAriaTest(unittest.TestCase):
         self.assertIn('aria-expanded="false"', input_tag)
         self.assertIn('aria-autocomplete="list"', input_tag)
 
-    def test_always_visible_renders_expanded(self):
+    def test_the_panel_personality_renders_expanded(self):
         input_tag = _tag_around(
-            str(SearchSelect(name="games", always_visible=True)),
+            str(SearchSelect(name="games", panel=True)),
             "data-search-select-search",
         )
         self.assertIn('aria-expanded="true"', input_tag)
@@ -1111,7 +1102,7 @@ def test_default_search_select_keeps_the_field_personality():
     assert 'always-visible="false"' in html
     assert "mt-2 overflow-y-auto" not in html
     panel_tag = _tag_around(html, "data-search-select-panel")
-    assert "top-full" in panel_tag
+    assert 'popover="manual"' in panel_tag
     assert "data-menu-scroll" in _tag_around(html, "data-search-select-options")
 
 

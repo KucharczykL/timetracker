@@ -37,7 +37,7 @@ function mount(): HTMLElement {
       ${segment("year", 4, "YYYY")}${segment("month", 2, "MM")}${segment("day", 2, "DD")}
       <button data-date-picker-calendar-toggle></button>
     </div>
-    <div data-date-range-calendar data-menu hidden>
+    <div data-date-range-calendar data-menu popover="manual" hidden>
       <button data-date-range-prev></button>
       <span data-date-range-month-label></span>
       <button data-date-range-next></button>
@@ -116,6 +116,17 @@ describe("date-picker segment typing", () => {
     day.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
     expect(hidden(picker).value).toBe("");
   });
+  it("leaves Escape to whoever hosts the field", () => {
+    const picker = mount();
+    const year = picker.querySelector<HTMLInputElement>('input[data-date-part="year"]')!;
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    year.dispatchEvent(escape);
+    expect(escape.defaultPrevented).toBe(false);
+  });
 });
 
 describe("date-picker paste parsing (#485)", () => {
@@ -170,6 +181,23 @@ describe("date-picker calendar", () => {
     expect(
       picker.querySelector("[data-date-range-calendar]")!.hasAttribute("hidden"),
     ).toBe(false);
+  });
+
+  it("closes on Escape in a segment, spending the key", () => {
+    const picker = mount();
+    picker
+      .querySelector<HTMLElement>("[data-date-picker-calendar-toggle]")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const popup = picker.querySelector<HTMLElement>("[data-date-range-calendar]")!;
+    expect(popup.hidden).toBe(false);
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    picker.querySelector<HTMLInputElement>('input[data-date-part="year"]')!.dispatchEvent(escape);
+    expect(popup.hidden).toBe(true);
+    expect(escape.defaultPrevented).toBe(true);
   });
 
   it("opens an empty field on the display zone's day (#949)", () => {

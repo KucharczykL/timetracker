@@ -706,12 +706,14 @@ const COLUMNS = [
 // for initWidget (pills + search + options) and the row template setOptions clones.
 function fcOperand(side: "left" | "right"): string {
   return `<div data-fc-${side}>
-    <search-select name="fc-${side}">
-      <div data-search-select-pills></div>
-      <input data-search-select-search />
-      <div data-search-select-options><div data-search-select-no-results></div></div>
-      <template data-search-select-template="row"><div data-search-select-option><span data-search-select-label></span></div></template>
-    </search-select>
+    <drop-down behavior="inline-combobox" placement="bottom-start" submenu="false">
+      <search-select name="fc-${side}" data-toggle>
+        <div data-search-select-pills></div>
+        <input data-search-select-search />
+        <div data-search-select-options data-menu popover="manual" hidden><div data-search-select-no-results></div></div>
+        <template data-search-select-template="row"><div data-search-select-option><span data-search-select-label></span></div></template>
+      </search-select>
+    </drop-down>
   </div>`;
 }
 

@@ -366,3 +366,13 @@ dialog[data-bottom-sheet][data-sheet-state="open"] [data-sheet-panel] {
         );
     }
 }
+
+/* Undo the UA's popover look. */
+@layer base {
+    [popover] {
+        inset: auto;
+        overflow: visible;
+        color: inherit;
+        background-color: transparent;
+    }
+}

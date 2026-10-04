@@ -14,14 +14,11 @@ describe("<drop-down> behavior-owned controller plug point", () => {
     const open = vi.fn();
     const close = vi.fn();
     const focusFirst = vi.fn();
-    const unbind = vi.fn();
-    const bindDocument = vi.fn(() => unbind);
     const controller: MenuController = {
       open,
       close,
       isOpen: () => false,
       focusFirst,
-      bindDocument,
     };
     const createController = vi.fn(() => controller);
     const wire = vi.fn();
@@ -42,18 +39,15 @@ describe("<drop-down> behavior-owned controller plug point", () => {
     expect(createController).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledTimes(1);
     expect(close).toHaveBeenCalledTimes(1);
-    expect(bindDocument).toHaveBeenCalledTimes(1);
     expect(wire).toHaveBeenCalledWith(
       expect.objectContaining({ host, controller }),
     );
 
     host.remove();
     expect(close).toHaveBeenCalledTimes(2);
-    expect(unbind).toHaveBeenCalledTimes(1);
 
     document.body.appendChild(host);
     expect(createController).toHaveBeenCalledTimes(1);
-    expect(bindDocument).toHaveBeenCalledTimes(2);
   });
 
   it("reports a host with no toggle", () => {

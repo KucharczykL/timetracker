@@ -42,7 +42,7 @@ function mount(options: {
     : "<span data-truncated-clip>name</span>";
   host.innerHTML = `${visible}
     <button type="button" data-truncated-reveal></button>
-    <div data-pop-over-panel hidden>
+    <div data-pop-over-panel popover="manual" hidden>
       <div data-pop-over-content>full name</div>
       <div data-pop-over-arrow></div>
     </div>`;

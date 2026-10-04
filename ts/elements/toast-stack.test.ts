@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "../toast.js";
+import { pushSurface } from "./surface-stack.js";
 import "./toast-stack.js";
 
 type Payload = { message: string; type?: string; id?: number | string; duration?: number | null };
@@ -161,6 +162,16 @@ describe("lifecycle", () => {
     vi.advanceTimersByTime(300);
     expect(toasts()).toEqual([]);
     window.removeEventListener("toast-dismissed", dismissed);
+  });
+
+  it("keeps a toast when Escape closed a panel first", () => {
+    show({ message: "stays" });
+    const [toast] = toasts();
+    pushSurface({ host: document.createElement("div"), kind: "panel", close: () => {} });
+    toast.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    expect(toast.classList.contains("opacity-0")).toBe(false);
   });
 
   it("a second dismiss while leaving neither fires nor reschedules", () => {

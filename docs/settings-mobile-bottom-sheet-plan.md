@@ -96,12 +96,11 @@ The sheet must reuse the shell without inheriting that presentation.
 | `Dropdown` trigger/panel ID stamping | Reuse | The ownership and expanded-state contract is already tested. |
 | `<drop-down>.open()` / `.close()` | Reuse | Consumers and responsive teardown get one public API. |
 | Registered behavior lookup | Extend | `behavior="sheet"` may supply a controller instead of configuring `attachMenu`. |
-| Existing `MenuController` shape | Reuse unchanged | `open`, `close`, `isOpen`, `focusFirst`, and `bindDocument` are sufficient; preserving the shape avoids churn in menu/select/combobox behavior. |
+| Existing `MenuController` shape | Reuse unchanged | `open`, `close`, `isOpen` and `focusFirst` are sufficient; preserving the shape avoids churn in menu/select/combobox behavior. |
 | `attachMenu` | Preserve as the default | Existing dropdowns must not enter new modal branches. |
 | `positionAnchored` | Do not use | A sheet is docked to the UA viewport, not positioned relative to its trigger. |
 | Menu roles, roving tabindex, typeahead, arrow navigation | Do not use | These are one ARIA-menu interaction model, not generic popup behavior. |
-| Dropdown single-open notification | Reuse | Opening the sheet should close an already-open dropdown rather than leave it hidden underneath. |
-| `bindPopupDismiss` | Do not use for the sheet | Native dialog cancel handling and a local backdrop hit area are more precise and avoid a second Escape listener. |
+| Surface stack (`surface-stack.ts`) | Push a `modal` surface | Opening the sheet closes every open panel outside it; the stack leaves Escape to the native `cancel`. |
 | Dropdown surface tokens | Reuse | The sheet belongs to the same light/dark overlay family. Geometry remains sheet-specific. |
 | Priority-plus math | Keep for quick filters only | `quick-filter-bar.ts` remains a consumer after settings stops using it. |
 | Existing `<modal-dialog>` behavior | Do not reuse unchanged | It removes throwaway HTMX overlays and does not implement persistent open/close, focus containment, or focus restoration. |
@@ -251,9 +250,8 @@ minimum control height. They do not need chevrons or a selected appearance.
 
 The mobile trigger is a normal-flow grid item that becomes sticky with the
 settings scaffold. It uses an opaque surface and a stacking position above
-static section content but below real floating overlays. Document the exact
-stacking choice beside the existing overlay scale rather than assuming every
-`z-10` consumer has the same role.
+static section content. Floating surfaces open in the top layer above it,
+so it needs no place on a z-scale.
 
 The desktop rail retains the current ownership:
 
@@ -274,7 +272,7 @@ unexplained magic offset across callers.
 
 1. Ignore an open request if the dialog is already open or the navigation is in
    desktop mode.
-2. Notify the existing single-open coordination so anchored dropdowns close.
+2. Push a `modal` surface, so anchored dropdowns outside the sheet close.
 3. Snapshot and lock document scrolling.
 4. Set `aria-expanded="true"` on the trigger.
 5. Call `dialog.showModal()`.
@@ -306,8 +304,8 @@ Backdrop, close-button, and Escape dismissals use the same idempotent close path
 10. Clear closing state and emit `dropdown:hide` exactly once.
 
 The native `cancel` event is the only Escape path. Call `preventDefault()` in
-that handler, then enter the animated close path. Do not also install the
-shared document Escape listener.
+that handler, then enter the animated close path. The surface stack leaves
+Escape alone while a modal surface is on top.
 
 ### Backdrop close
 
@@ -363,9 +361,8 @@ native close and cleanup immediately. No extra public force-close method is
 added to the existing controller interface.
 
 The existing `<drop-down>` reconnection rule persists: element-local listeners
-travel with the subtree, while `bindDocument()` listeners are detached on
-disconnect and rebound on reconnect. The sheet controller must implement that
-same contract and its tests must count listeners/effects across repeated moves.
+travel with the subtree and are never bound twice. The sheet controller's
+tests count listeners and effects across repeated moves.
 
 ## Document scroll-lock contract
 
@@ -467,11 +464,9 @@ Add focused files such as:
 The behavior factory validates that its target is an `HTMLDialogElement` and
 that `[data-sheet-panel]` exists. It implements the complete lifecycle above,
 including local dismissal listeners, animation state, initial focus, scroll
-locking, single-open notification, link navigation, and reconnect-safe document
-binding.
+locking, its `modal` surface, and link navigation.
 
-Export only the smallest existing single-open notification plug point needed by the
-sheet; do not move anchored positioning or menu keyboard code into a new shared
+Do not move anchored positioning or menu keyboard code into a new shared
 module. The sheet emits the already-documented `dropdown:show` and
 `dropdown:hide` events on the host.
 
@@ -674,8 +669,7 @@ The implementation is not complete unless every gate passes:
    geometry, and no unconditional `hidden` competes with native closed state.
 9. **No sticky obstruction.** Anchor destinations land below the mobile trigger.
 10. **No overlay inversion.** Static content remains below the sticky trigger;
-    dropdowns, popovers, the modal sheet, and toasts retain their documented
-    ordering.
+    top-layer surfaces paint over everything else, and toasts sit at z-50.
 11. **No reconnect leaks.** Moving/reconnecting the host never duplicates
     document listeners or close effects.
 12. **No JavaScript-only navigation.** Failed or disabled enhancement leaves the

@@ -550,8 +550,7 @@ class QuickFilterBar(BaseComponent):
         (``ts/elements/quick-filter-bar.ts``). Server-rendered hidden; the
         bar's ResizeObserver layout unhides it while any facet is spilled.
         Facets keep working inside it — the moved nodes are the same
-        elements, and the single-open coordination keeps this menu open when
-        a facet dropdown inside it opens (ancestor check)."""
+        elements, and a facet opening inside keeps this menu open."""
         trigger = EllipsisTrigger(
             [("data-quick-overflow-trigger", "")],
             label=OVERFLOW_LABEL,

@@ -25,6 +25,7 @@ from common.components.custom_elements import (
     _Dropdown,
 )
 from common.components.primitives import (
+    CLOSED_POPOVER,
     ButtonColor,
     ControlButton,
     Div,
@@ -391,15 +392,10 @@ def _preset_button(preset_value: str, preset_label: str) -> Node:
     )[preset_label]
 
 
-# The static (panel) calendar surface: no hidden/absolute/positioning offset —
-# it flows in the document below the field, inside a dropdown dialog that is
-# ALSO OVERLAY_SURFACE_CLASS (frosted). The calendar still carries its own
-# frosted surface (not a flat control color) so it looks the same everywhere
-# the calendar appears, popup or panel — the double-frost-in-dark-mode
-# tradeoff is intentional (issue #485 follow-up option 1). `relative` anchors
-# the frost's `before:inset-0` pseudo-element to this box, not the ancestor
-# dialog (which would otherwise blur the whole dialog, not just the calendar).
-_STATIC_CALENDAR_CLASS = f"mt-2 flex rounded-base border border-default-medium relative {OVERLAY_SURFACE_CLASS}"
+# Frosted too: it looks like the popup.
+_STATIC_CALENDAR_CLASS = (
+    f"mt-2 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}"
+)
 
 
 def date_calendar_shell(
@@ -470,10 +466,10 @@ def date_calendar_shell(
         ]
     )
     return Div(
-        [] if static else [("data-menu", ""), ("hidden", "")],
+        [] if static else [("data-menu", ""), *CLOSED_POPOVER],
         class_=_STATIC_CALENDAR_CLASS
         if static
-        else f"z-20 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}",
+        else f"flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}",
         data_date_range_calendar="",
         data_input_name_prefix=input_name_prefix,
     )[*children]
@@ -522,13 +518,8 @@ def DateRangePicker(
     filter serializer; non-filter callers (e.g. a standalone date picker)
     leave it None and the extra attributes are omitted.
 
-    Hosted in ``<drop-down behavior="date-calendar">`` (issue #485
-    follow-up): the popup's visibility, viewport-aware positioning, and
-    outside-click/Escape dismiss all come from the shared attachMenu engine
-    instead of a bespoke absolute-positioned Div — this is what fixed the
-    calendar overlapping the field on narrow viewports. ``block`` (not the
-    generic inline-flex ``Dropdown()`` wrapper) so the field keeps its full
-    form-column width, matching ``SearchSelect(host_dropdown=True)``."""
+    Its ``<drop-down>`` host opens, positions and dismisses it.
+    ``block`` keeps the full column width."""
     widget_attributes = (
         filter_widget_attributes(path, "date") if path is not None else []
     )
@@ -564,8 +555,7 @@ def DateRangePanel(
     """The dropdown-panel variant of :func:`DateRangePicker`: the
     segmented field (no calendar toggle) above a statically flowing,
     always-visible calendar — for hosting inside a ``ComboboxDropdown``
-    dialog, whose surface can't host the absolute popup (the panel clips
-    overflow and scrolls vertically while open).
+    dialog, which already owns visibility.
 
     Same custom element and hidden ``{prefix}-min``/``{prefix}-max``
     contract. ``data-static-calendar`` is the client discriminator:

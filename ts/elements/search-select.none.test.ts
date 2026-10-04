@@ -3,6 +3,7 @@
 // A pinned row that holds none.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
+import { hosted } from "../test-setup/search-select-host.js";
 import type { SearchSelectChangeDetail, SearchSelectOption } from "./search-select.js";
 
 Element.prototype.scrollIntoView = () => {};
@@ -85,11 +86,11 @@ function mount(options: MountOptions = {}): NoneHost {
   document.body.replaceChildren();
   const host = build(options);
   if (options.formFields === undefined) {
-    document.body.appendChild(host);
+    document.body.appendChild(hosted(host));
   } else {
     const form = document.createElement("form");
     form.innerHTML = options.formFields;
-    form.appendChild(host);
+    form.appendChild(hosted(host));
     document.body.appendChild(form);
   }
   return host;
@@ -319,7 +320,7 @@ describe("<search-select> none: beside answers and dependencies", () => {
       attributes: { "search-url": "/api/devices/search", prefetch: "20" },
     });
     searchBox(host).setAttribute("autofocus", "");
-    document.body.appendChild(host);
+    document.body.appendChild(hosted(host));
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     holdsNone(host);
     expect(document.activeElement).toBe(searchBox(host));

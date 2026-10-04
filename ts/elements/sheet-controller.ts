@@ -6,12 +6,8 @@
  * owns the cross-browser Tab boundary, animation, backdrop gestures, scroll
  * locking, and the close-then-navigate section-link path.
  */
-import {
-  type MenuController,
-  notifyDropdownOpen,
-  OPEN_MENUS_EVENT,
-  type OpenMenuDetail,
-} from "./menu-behavior.js";
+import type { MenuController } from "./menu-behavior.js";
+import { pushSurface, removeSurface, type Surface } from "./surface-stack.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -118,6 +114,8 @@ export function attachSheet(
   let backdropPointer: number | null = null;
   let pendingNavigation: PendingNavigation | null = null;
   let owner: ActiveSheet;
+  // Escape stays with the native cancel.
+  const surface: Surface = { host, kind: "modal", close: () => close() };
 
   const setState = (next: SheetState): void => {
     state = next;
@@ -200,6 +198,7 @@ export function attachSheet(
     toggle.setAttribute("aria-expanded", "false");
     setState("closed");
     unlockDocumentScroll();
+    removeSurface(surface);
     if (activeSheet === owner) activeSheet = null;
     if (wasOpen) {
       host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
@@ -245,7 +244,7 @@ export function attachSheet(
     activeSheet = owner;
     toggle.setAttribute("aria-expanded", "true");
     setState("opening");
-    notifyDropdownOpen(host);
+    pushSurface(surface);
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
     focusFirst();
     openFrame = window.requestAnimationFrame(() => {
@@ -262,11 +261,18 @@ export function attachSheet(
       setState("closed");
       return;
     }
-    if (state === "closing") return;
-    if (!host.isConnected || prefersReducedMotion()) {
+    // A detached sheet never ends its animation.
+    if (!host.isConnected) {
       finishClose();
       return;
     }
+    if (state === "closing") return;
+    if (prefersReducedMotion()) {
+      finishClose();
+      return;
+    }
+    // Inner panels close before the slide.
+    removeSurface(surface);
     setState("closing");
     closeTimer = window.setTimeout(finishClose, CLOSE_FALLBACK_MS);
   };
@@ -331,11 +337,6 @@ export function attachSheet(
     }
   };
   const onNativeClose = (): void => finishClose();
-  const onOtherDropdownOpen = (event: Event): void => {
-    const detail = (event as CustomEvent<OpenMenuDetail>).detail;
-    if (!detail || detail.host === host || host.contains(detail.host)) return;
-    close();
-  };
 
   toggle.addEventListener("click", onToggleClick);
   dialog.addEventListener("cancel", onCancel);
@@ -347,14 +348,7 @@ export function attachSheet(
   dialog.addEventListener("close", onNativeClose);
   panel.addEventListener("transitionend", onPanelTransitionEnd);
 
-  const bindDocument = (): (() => void) => {
-    document.addEventListener(OPEN_MENUS_EVENT, onOtherDropdownOpen);
-    return () => {
-      document.removeEventListener(OPEN_MENUS_EVENT, onOtherDropdownOpen);
-    };
-  };
-
   owner = { host, closeImmediately: finishClose };
 
-  return { open, close, isOpen, focusFirst, bindDocument };
+  return { open, close, isOpen, focusFirst };
 }

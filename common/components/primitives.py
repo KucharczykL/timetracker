@@ -333,8 +333,13 @@ _TruncatedText = custom_element_builder("truncated-text")
 # TruncatedText host inherits font-condensed and renders in a different
 # typeface from every other tooltip on the site. Stating the family here keeps
 # a tooltip looking like a tooltip wherever it is mounted.
+#: An attribute whose value is text.
+type TextAttribute = tuple[str, str]
+#: A closed top-layer panel: hidden, manual popover.
+CLOSED_POPOVER: tuple[TextAttribute, ...] = (("hidden", ""), ("popover", "manual"))
+
 _TOOLTIP_PANEL_CLASS = (
-    f"z-10 inline-block font-sans text-type-body text-heading bg-brand-soft "
+    f"inline-block font-sans text-type-body text-heading bg-brand-soft "
     f"border border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
 )
 
@@ -378,7 +383,7 @@ def _tooltip_panel(
         attributes.append(("aria-hidden", "true"))
     else:
         attributes.extend([("id", id), ("role", "tooltip")])
-    attributes.extend([("hidden", ""), ("class", _TOOLTIP_PANEL_CLASS)])
+    attributes.extend([*CLOSED_POPOVER, ("class", _TOOLTIP_PANEL_CLASS)])
     return Div(attributes)[
         Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
             content
@@ -636,11 +641,6 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # flips to rtl:text-right, where the scroll start edge is the right one.
 # `bg-inherit` picks up the row's zebra and hover surface — a sticky cell is
 # transparent by default and would let the scrolled content show through it.
-# The cell outranks its sibling pinned cells only while it holds an open panel:
-# a panel nested inside a sticky cell is scoped to that cell's stacking context,
-# so a later row's cell would paint over it. 3 clears the siblings at 2 and
-# stays under the popover (10) and menu (20) strata, which a higher value would
-# cover instead.
 #
 # From md up only, and not by preference: below md the same cell carries
 # SHRINKABLE_COLUMN_CLASS, whose max-w-0 is what lets the name column collapse
@@ -651,13 +651,10 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # viewport where the table has already been cut to two columns.
 PINNED_COLUMN_CLASS = (
     "md:sticky md:start-0 md:z-[2] md:bg-inherit "
-    "md:has-[[data-pop-over-panel]:not([hidden])]:z-[3] "
-    "md:has-[[data-menu]:not([hidden])]:z-[3] "
-    # A box-shadow, never a filter: a filtered cell becomes the containing
-    # block for the fixed panels it hosts. Scoped to a region that actually
-    # has something scrolled behind the column, so a table that fits shows
-    # no shadow. The offset is physical where the trigger and the pin are
-    # logical, so the direction is mirrored explicitly — otherwise the shadow
+    # Shadowed once content scrolls behind it.
+    #
+    # The offset is physical where the trigger and the pin are logical,
+    # so the direction is mirrored explicitly — otherwise the shadow
     # paints into the table's own edge under rtl instead of over the
     # content sliding beneath it.
     "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)] "
@@ -1793,7 +1790,7 @@ def YearPicker(
     popup_id = "year-picker-popup"
     period_id = "year-picker-period"
     popup_class = (
-        "absolute z-20 flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
+        "flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
         f"{OVERLAY_SURFACE_CLASS} shadow-sm border border-default-medium"
     )
     picker = _YearPicker(
@@ -1819,7 +1816,7 @@ def YearPicker(
                 ("data-menu", ""),
                 ("data-year-picker-popup", ""),
                 ("id", popup_id),
-                ("hidden", ""),
+                *CLOSED_POPOVER,
                 ("role", "group"),
                 ("aria-labelledby", period_id),
                 ("class", popup_class),
@@ -3698,8 +3695,7 @@ def StyledTable(
         # Only from md up: 19rem is wider than a phone's scrollport, where the
         # browser would clamp it into a meaningless snap position anyway.
         # The scroll-state container type lets the pinned column show its shadow
-        # only while something is scrolled behind it. It is not a containing
-        # block, so the fixed panels inside the table are unaffected.
+        # only while something is scrolled behind it.
         scroll_class = (
             f"{scroll_class} md:scroll-ps-[19rem] md:[container-type:scroll-state]"
         )
@@ -3769,10 +3765,7 @@ def StyledTable(
     #
     # `clip` rather than `hidden`: it clips the same way but is not a scroll
     # container, so the sticky selection line can reach the window instead of
-    # this box. Never add `transform`/`filter`/`contain`/`backdrop-filter`
-    # here — it would make the shell a containing block for the
-    # `position: fixed` dropdown menus and clip them
-    # (see e2e/test_dropdown_clipping_e2e.py).
+    # this box.
     return Div(class_="shadow-md sm:rounded-base overflow-clip")[*inner_children]
 
 

@@ -105,11 +105,12 @@ def test_the_glyph_takes_the_colour_of_the_button_it_sits_in():
     assert "dark:text-white" not in glyph
 
 
-def test_the_panel_sits_on_the_stratum_every_dropdown_shares():
-    """A hand-written surface opens under the row's own selectors."""
+def test_the_panel_opens_in_the_top_layer():
     [panel] = re.findall(r'<div[^>]*role="dialog"[^>]*>', picker())
 
-    assert _classes(panel) >= {"absolute", "z-20", "w-64"}
+    assert 'popover="manual"' in panel
+    assert "w-64" in _classes(panel)
+    assert not {"absolute", "z-20"} & _classes(panel)
 
 
 def test_the_trigger_is_named_and_states_no_visible_word():

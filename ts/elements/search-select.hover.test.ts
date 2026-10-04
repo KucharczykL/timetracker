@@ -2,6 +2,7 @@
 // Hover highlights one row, never scrolling.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
+import { hosted } from "../test-setup/search-select-host.js";
 
 const scrollIntoView = vi.fn();
 Element.prototype.scrollIntoView = scrollIntoView;
@@ -20,7 +21,7 @@ function mount(): { host: HTMLElement; rows: HTMLElement[] } {
       <div data-search-select-option role="option" aria-selected="false" data-value="3" data-label="PC"><span data-search-select-label>PC</span></div>
     </div>
   `;
-  document.body.appendChild(host);
+  document.body.appendChild(hosted(host));
   return {
     host,
     rows: Array.from(host.querySelectorAll<HTMLElement>("[data-search-select-option]")),

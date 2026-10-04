@@ -33,7 +33,6 @@
  */
 
 import { isPresenceModifier } from "./filter-tokens.js";
-import { bindPopupDismiss } from "../utils.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
 import { followPointer } from "../pointer-follow.js";
@@ -214,12 +213,13 @@ const fieldLabel = (container: Element, field: string): string => {
 const dependencySignature = (container: Element, fields: string[]): string =>
   fields.map(field => `${field}=${fieldValue(container, field)}`).join("&");
 
-const initWidget = (containerElement: Element) => {
+/** False until the inner markup is present. */
+const initWidget = (containerElement: Element): boolean => {
   const container = containerElement as SearchSelectContainer;
   const search = container.querySelector<HTMLInputElement>("[data-search-select-search]");
   const options = container.querySelector<HTMLElement>("[data-search-select-options]");
   const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
-  if (!search || !options || !pills) return;
+  if (!search || !options || !pills) return false;
 
   const name = container.getAttribute("name") ?? "";
   const searchUrl = container.getAttribute("search-url");
@@ -268,6 +268,11 @@ const initWidget = (containerElement: Element) => {
     ? container.closest("drop-down")
     : null;
   const delegated = dropdownHost !== null;
+  if (!delegated && !alwaysVisible) {
+    reportClientError("search-select", `${name}: no <drop-down> host; the list never opens`, {
+      toast: false,
+    });
+  }
 
   const noResults = options.querySelector<HTMLElement>("[data-search-select-no-results]");
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -393,12 +398,8 @@ const initWidget = (containerElement: Element) => {
   };
 
   const showPanel = () => {
-    if (!unprompted && (alwaysVisible || hasVisibleContent())) {
-      // The hasVisibleContent gate stays the empty-panel guard: when delegated
-      // it decides whether to open the host at all, so an empty panel never opens.
-      if (dropdownHost) dropdownHost.open();
-      else panel.hidden = false;
-    }
+    // An empty panel never opens its host.
+    if (!unprompted && (alwaysVisible || hasVisibleContent())) dropdownHost?.open();
     syncExpanded();
   };
   const hidePanel = () => {
@@ -407,10 +408,7 @@ const initWidget = (containerElement: Element) => {
     // always-visible panels, which stay open, still lose their phantom active
     // option after a commit). clearHighlight also removes aria-activedescendant.
     clearHighlight();
-    if (!alwaysVisible) {
-      if (dropdownHost) dropdownHost.close();
-      else panel.hidden = true;
-    }
+    if (!alwaysVisible) dropdownHost?.close();
     syncExpanded();
   };
 
@@ -430,6 +428,13 @@ const initWidget = (containerElement: Element) => {
 
   // ── Highlight tracking (filter mode) ──
   let highlightedRow: HTMLElement | null = null;
+
+  // A host close resets the ARIA state.
+  dropdownHost?.addEventListener("dropdown:hide", (event) => {
+    if (event.target !== dropdownHost) return;
+    clearHighlight();
+    syncExpanded();
+  });
 
   // Hover never scrolls; keyboard steps do.
   const highlightOption = (row: HTMLElement | null, { scroll = true } = {}) => {
@@ -1040,7 +1045,7 @@ const initWidget = (containerElement: Element) => {
     if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(key)) return;
     const visible = getVisibleOptions();
     if (visible.length === 0) {
-      if (key === "Escape") hidePanel();
+      if (key === "Escape" && !delegated) hidePanel();
       return;
     }
 
@@ -1083,7 +1088,7 @@ const initWidget = (containerElement: Element) => {
         }
         hidePanel(); // also clears the highlight
       }
-    } else if (key === "Escape") {
+    } else if (key === "Escape" && !delegated) {
       hidePanel(); // also clears the highlight
     }
   });
@@ -1557,15 +1562,7 @@ const initWidget = (containerElement: Element) => {
     });
   }
 
-  // Hosted: the host dismisses; binding double-closes.
-  if (delegated) return null;
-  // Re-callable: a moved row rebinds.
-  return (): (() => void) =>
-    bindPopupDismiss({
-      host: container,
-      isOpen: isPanelOpen,
-      close: hidePanel,
-    });
+  return true;
 };
 
 /** Minimal escape for use inside an attribute-value selector. */
@@ -1686,26 +1683,10 @@ export function readSearchSelect(form: HTMLElement): void {
 
 export class SearchSelectElement extends HTMLElement {
   private initialized = false;
-  private bindDismiss: (() => () => void) | null = null;
-  private cleanup: (() => void) | null = null;
 
   connectedCallback(): void {
-    // Idempotent across DOM moves (the nested filter builder reconciles rows by
-    // re-appending them, which reconnects this element). The inner element
-    // listeners persist with the moved subtree, so re-running initWidget would
-    // double-bind them — instead just re-bind the document dismiss listeners
-    // that disconnectedCallback removed. initWidget returns a binder (standalone),
-    // null (delegated to a <drop-down> host, which owns dismiss), or
-    // undefined when the inner markup isn't present yet (retry on next connect);
-    // only the first two count as initialised.
-    if (!this.initialized) {
-      const bindDismiss = initWidget(this);
-      if (bindDismiss !== undefined) {
-        this.bindDismiss = bindDismiss;
-        this.initialized = true;
-      }
-    }
-    this.cleanup = this.bindDismiss?.() ?? null;
+    // Moved rows keep listeners; wire once.
+    if (!this.initialized) this.initialized = initWidget(this);
   }
 
   /** Programmatically commit a selection without firing a change event.
@@ -1734,13 +1715,6 @@ export class SearchSelectElement extends HTMLElement {
    *  — e.g. the field-comparison right operand (#282). No change event fires. */
   setOptions(options: SearchSelectOption[]): void {
     (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
-  }
-
-  disconnectedCallback(): void {
-    // Drop the document dismiss listeners; the bindDismiss binder is kept so a
-    // reconnection can re-attach them (see above).
-    this.cleanup?.();
-    this.cleanup = null;
   }
 }
 

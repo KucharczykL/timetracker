@@ -72,7 +72,7 @@ function markup(
           <button data-date-picker-calendar-toggle></button>
           <button data-date-time-copy="${copyTo}"></button>
         </div>
-        <div data-date-range-calendar data-menu hidden>
+        <div data-date-range-calendar data-menu popover="manual" hidden>
           <button data-date-range-prev></button>
           <span data-date-range-month-label></span>
           <button data-date-range-next></button>

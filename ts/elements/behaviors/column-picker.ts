@@ -9,8 +9,7 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 // - `keepOpenOnTab`, so Tab moves to Apply instead of dismissing the panel.
 //   The shared focus-leave handler closes it when focus leaves.
 //
-// The fixed position that the clipping table shell needs, outside-click and
-// Escape dismissal, and single-open coordination are the attachMenu engine.
+// The top layer escapes the clipping shell.
 registerBehavior("column-picker", {
   menuOptions: () => ({
     itemSelector: "[data-column-picker-no-items]",

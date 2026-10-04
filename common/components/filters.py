@@ -589,7 +589,6 @@ def _fc_operand(
             option_groups=_fc_option_groups(columns) if columns else None,
             selected=selected,
             multi_select=False,
-            host_dropdown=True,
             placeholder="column…",
             dynamic_options=dynamic,
         )
@@ -1030,11 +1029,6 @@ def FilterFieldPicker(
             multi_select=False,
             placeholder=placeholder,
             id=id,
-            # Host in <drop-down behavior="inline-combobox"> like every other
-            # combobox (issue #348). Cloned per leaf row by <filter-group>'s
-            # buildFieldCell, exactly as the set value widgets are — attachMenu
-            # owns open/close/positioning (fixed + flip, escaping the row's
-            # overflow/stacking context).
-            host_dropdown=True,
+            # Cloned per leaf row by <filter-group>'s buildFieldCell.
         )
     ]

@@ -37,6 +37,7 @@ from common.components.core import (
     as_children,
 )
 from common.components.primitives import (
+    CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
     ICON_BUTTON_SIZE_CLASS,
     MICRO_LABEL_CLASS,
@@ -61,6 +62,7 @@ from common.components.primitives import (
     SelectionScope,
     Span,
     Template,
+    TextAttribute,
     Ul,
     custom_element_builder,
     shaped,
@@ -825,25 +827,11 @@ _Dropdown = custom_element_builder("drop-down")
 # variant="outline" is the bordered toggle, variant="plain" the borderless
 # navbar trigger. Corners come from the toggle's own shape= either way.
 
-# Panel: white (light) / frosted (dark). Clips horizontally; scrolls vertically
-# when the positioner caps its height (overflow-y lives here, not inline on the
-# JS geometry). Outline adds a border; otherwise a shadow.
-# NB: the dark-mode backdrop blur lives on a `::before` layer, NOT the panel.
-# A non-`none` backdrop-filter makes its element the containing block for `fixed`
-# descendants — so blurring the panel itself would (a) re-anchor the `fixed`
-# submenu flyouts relative to the panel and (b) make them count toward the
-# panel's overflow, growing a transient scrollbar that mis-anchored low submenus.
-# Putting the filter on a childless `::before` keeps the frosted look while
-# leaving the panel filter-free, so submenus still resolve against the viewport.
 # The one overlay look every floating surface shares.
-OVERLAY_SURFACE_CLASS = (
-    "bg-surface-overlay text-type-body "
-    "before:content-[''] before:absolute before:inset-0 before:-z-10 "
-    "before:rounded-[inherit] dark:before:backdrop-blur-xl"
-)
+OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"
 #: The surface never scrolls, so its blur stays put.
 _DROPDOWN_PANEL_CLASS = (
-    "absolute z-20 isolate flex flex-col rounded-base p-2 "
+    "flex flex-col rounded-base p-2 "
     f"border border-default-medium shadow-sm {OVERLAY_SURFACE_CLASS}"
 )
 #: The one child that scrolls the content.
@@ -974,7 +962,7 @@ class DropdownContractWarning(UserWarning):
     precisely and callers can filter/escalate it independently."""
 
 
-def _stamp(element: Element, contract: list[tuple[str, str]], id: str) -> Element:
+def _stamp(element: Element, contract: list[TextAttribute], id: str) -> Element:
     """Return a clone of `element` carrying `contract`, preserving its other attrs
     (class, data-*, …) and media. Warns on each reserved-key collision."""
     reserved = {key for key, _ in contract}
@@ -1012,14 +1000,15 @@ def _stamp_target_contract(
 ) -> Element:
     """Stamp the panel hook/id and ordinary dropdown visibility contract.
 
-    Anchored panels begin with ``hidden``. A native ``<dialog>`` is already
-    hidden while closed, so the sheet opts out and lets ``showModal``/``close``
-    remain its sole visibility source. An explicit accessible name/labelled-by
-    supplied by a richer dialog target is preserved.
+    Anchored panels begin ``hidden`` as manual popovers. A native
+    ``<dialog>`` is already hidden while closed, so the sheet opts out and
+    lets ``showModal``/``close`` remain its sole visibility source. An
+    explicit accessible name/labelled-by supplied by a richer dialog target
+    is preserved.
     """
     contract = [("data-menu", ""), ("id", id)]
     if initially_hidden:
-        contract.append(("hidden", ""))
+        contract.extend(CLOSED_POPOVER)
     if not any(
         key in {"aria-label", "aria-labelledby"} for key, _ in target.attributes
     ):
@@ -1312,14 +1301,14 @@ def BottomSheet(
         Div(
             data_sheet_panel="",
             class_=(
-                "relative isolate flex w-full max-h-[min(80dvh,32rem)] flex-col "
+                "flex w-full max-h-[min(80dvh,32rem)] flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
             ),
         )[
             Div(
                 class_=(
-                    "relative z-10 flex shrink-0 items-center justify-between gap-4 "
+                    "flex shrink-0 items-center justify-between gap-4 "
                     "border-b border-default-medium bg-surface-overlay px-4 py-3"
                 )
             )[

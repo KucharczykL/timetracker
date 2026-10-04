@@ -2,6 +2,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectionStatement } from "./selection-statement.js";
 import { storageKeyFor } from "./selection-storage.js";
+import {
+  openSurfaces,
+  pushSurface,
+  resetSurfacesForTests,
+} from "./surface-stack.js";
 // Importing the module defines <selectable-table>.
 import "./selectable-table.js";
 
@@ -414,6 +419,20 @@ describe("the selection", () => {
   });
 });
 
+describe("hiding the line", () => {
+  it("closes a panel open inside it", () => {
+    const element = mount(["a", "b"]);
+    tick(element, 0);
+    const menu = document.createElement("drop-down");
+    menu.innerHTML = '<button data-toggle>More</button><div data-menu popover="manual" hidden></div>';
+    element.querySelector("[data-selection-controls]")!.append(menu);
+    menu.open();
+    element.querySelector<HTMLElement>("[data-selection-clear]")!.click();
+    expect(menu.querySelector<HTMLElement>("[data-menu]")!.hidden).toBe(true);
+    expect(openSurfaces()).toEqual([]);
+  });
+});
+
 describe("Escape", () => {
   it("clears the selection", async () => {
     const element = mount(["a", "b"]);
@@ -425,18 +444,16 @@ describe("Escape", () => {
     expect(announcement(element)).toBe("Selection cleared.");
   });
 
-  it("waits for the whole press, so a document-level closer is heard", async () => {
+  it("keeps the selection when the press closed a surface", () => {
     const element = mount(["a", "b"]);
     tick(element, 0);
-    // A tooltip and the date pickers close from a listener on the document,
-    // which runs after this element's own.
-    const closer = (event: Event) => event.preventDefault();
-    document.addEventListener("keydown", closer);
+    let closed = false;
+    pushSurface({ host: document.createElement("div"), kind: "hint", close: () => (closed = true) });
     element.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
     );
-    await settled();
-    document.removeEventListener("keydown", closer);
+    resetSurfacesForTests();
+    expect(closed).toBe(true);
     expect(checkboxes(element)[0].checked).toBe(true);
   });
 

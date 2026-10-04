@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
+import { openSurfaces, resetSurfacesForTests } from "./surface-stack.js";
 
 let reducedMotion = true;
 let previousShowModal: typeof HTMLDialogElement.prototype.showModal;
@@ -102,6 +103,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetSurfacesForTests();
   document.body.replaceChildren();
   document.documentElement.removeAttribute("style");
   document.body.removeAttribute("style");
@@ -145,6 +147,7 @@ describe('drop-down behavior="sheet"', () => {
     expect(document.documentElement.style.overflow).toBe("");
     expect(document.body.style.position).toBe("");
     expect(error).toHaveBeenCalledOnce();
+    expect(openSurfaces()).toEqual([]);
   });
 
   it("ignores programmatic opening while its trigger surface is hidden", () => {
@@ -296,14 +299,79 @@ describe('drop-down behavior="sheet"', () => {
     expect(body.getAttribute("style")).toBe(before.body);
   });
 
+  it("is a modal surface from open to every close", () => {
+    const { host, toggle, dialog, closeButton } = mountSheet();
+    toggle.click();
+    expect(openSurfaces()).toEqual([expect.objectContaining({ host, kind: "modal" })]);
+    closeButton.click();
+    expect(openSurfaces()).toEqual([]);
+
+    toggle.click();
+    dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
+    expect(openSurfaces()).toEqual([]);
+
+    toggle.click();
+    dialog.dispatchEvent(new Event("close"));
+    expect(openSurfaces()).toEqual([]);
+  });
+
+  it("closes a dropdown outside the sheet as it opens", () => {
+    const { toggle } = mountSheet();
+    const outside = document.createElement("drop-down");
+    outside.innerHTML = '<button data-toggle>Menu</button><div data-menu popover="manual" hidden></div>';
+    document.body.append(outside);
+    outside.open();
+    toggle.click();
+    expect(outside.querySelector<HTMLElement>("[data-menu]")!.hidden).toBe(true);
+    expect(openSurfaces().map((surface) => surface.kind)).toEqual(["modal"]);
+  });
+
+  it("keeps a dropdown inside the sheet open", () => {
+    const { toggle, panel } = mountSheet();
+    const inside = document.createElement("drop-down");
+    inside.innerHTML = '<button data-toggle>Pick</button><div data-menu popover="manual" hidden></div>';
+    panel.append(inside);
+    toggle.click();
+    inside.open();
+    expect(openSurfaces().map((surface) => surface.kind)).toEqual(["modal", "panel"]);
+  });
+
   it("performs immediate cleanup when disconnected while open", () => {
     const { host, toggle, dialog } = mountSheet();
     toggle.click();
     host.remove();
 
+    expect(openSurfaces()).toEqual([]);
     expect(dialog.open).toBe(false);
     expect(document.documentElement.style.overflow).toBe("");
     expect(document.body.style.position).toBe("");
+  });
+
+  it("performs immediate cleanup when disconnected while closing", () => {
+    reducedMotion = false;
+    vi.useFakeTimers();
+    const { host, toggle, dialog, closeButton } = mountSheet();
+    toggle.click();
+    closeButton.click();
+    expect(dialog.dataset.sheetState).toBe("closing");
+    host.remove();
+
+    expect(dialog.open).toBe(false);
+    expect(openSurfaces()).toEqual([]);
+    expect(document.documentElement.style.overflow).toBe("");
+  });
+
+  it("closes a panel inside as its slide starts", () => {
+    reducedMotion = false;
+    vi.useFakeTimers();
+    const { toggle, panel, closeButton } = mountSheet();
+    const inside = document.createElement("drop-down");
+    inside.innerHTML = '<button data-toggle>Pick</button><div data-menu popover="manual" hidden></div>';
+    panel.append(inside);
+    toggle.click();
+    inside.open();
+    closeButton.click();
+    expect(inside.querySelector<HTMLElement>("[data-menu]")!.hidden).toBe(true);
   });
 
   it("fully closes a sibling sheet before taking over its scroll lock", () => {

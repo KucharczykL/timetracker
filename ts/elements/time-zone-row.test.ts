@@ -27,7 +27,7 @@ function mount({
   withPicker?: boolean;
 } = {}): HTMLElement {
   const picker = withPicker
-    ? `<search-select name="timestamp_start_timezone_picker">
+    ? `<search-select name="timestamp_start_timezone_picker" always-visible="true">
         <div data-search-select-pills></div>
         <input data-search-select-search />
         <div data-search-select-options></div>

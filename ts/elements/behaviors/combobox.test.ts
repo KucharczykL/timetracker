@@ -21,7 +21,7 @@ function mountComboboxDropdown(): DropdownElement {
   host.setAttribute("submenu", "false");
   host.innerHTML = `
     <button data-toggle aria-expanded="false" type="button">Load preset</button>
-    <div data-menu hidden role="dialog" aria-label="Load preset">
+    <div data-menu popover="manual" hidden role="dialog" aria-label="Load preset">
       <search-select name="preset" multi="false" always-visible="true"
                      search-url="/api/presets/?mode=games" prefetch="100">
         <div data-search-select-pills></div>

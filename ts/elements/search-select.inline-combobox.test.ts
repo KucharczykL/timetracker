@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define("search-select")
 import "./drop-down.js"; // side effect: define <drop-down> + register inline-combobox
+import { openSurfaces } from "./surface-stack.js";
+import { hosted, press } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -9,7 +11,7 @@ Element.prototype.scrollIntoView = () => {};
 // (issue #348): the panel is the drop-down's [data-menu], toggled via the `hidden`
 // attribute by attachMenu; the <search-select> element is the [data-toggle] anchor;
 // its own search input is the trigger (focus opens). This mirrors the markup
-// SearchSelect(host_dropdown=True) emits.
+// SearchSelect emits.
 function mount(): HTMLElement {
   const host = document.createElement("drop-down");
   host.setAttribute("behavior", "inline-combobox");
@@ -19,7 +21,7 @@ function mount(): HTMLElement {
     <search-select name="game" multi="false" data-toggle>
       <div data-search-select-pills></div>
       <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
-      <div data-search-select-options data-menu hidden role="listbox" tabindex="-1">
+      <div data-search-select-options data-menu popover="manual" hidden role="listbox" tabindex="-1">
         <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
         <div data-search-select-option data-value="2" data-label="Two" role="option" aria-selected="false"><span data-search-select-label>Two</span></div>
         <div data-search-select-no-results role="presentation" class="hidden">No results</div>
@@ -86,37 +88,93 @@ describe("<search-select> hosted in <drop-down behavior=inline-combobox> (#348)"
     expect(isOpen(host)).toBe(false);
   });
 
-  it("closes on an outside click", () => {
+  it("stays open on a press in its own input", () => {
+    const host = mount();
+    searchOf(host).focus();
+    press(searchOf(host));
+    expect(isOpen(host)).toBe(true);
+  });
+
+  it("closes on an outside press", () => {
     const host = mount();
     searchOf(host).focus();
     expect(isOpen(host)).toBe(true);
-    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const init = { bubbles: true, composed: true, isPrimary: true, button: 0, pointerId: 1 };
+    document.body.dispatchEvent(new PointerEvent("pointerdown", init));
+    document.body.dispatchEvent(new PointerEvent("pointerup", init));
     expect(isOpen(host)).toBe(false);
   });
 });
 
-describe("<search-select> inside an unrelated <drop-down>", () => {
+describe("<search-select> inside another <drop-down>", () => {
   beforeEach(() => document.body.replaceChildren());
 
-  it("opens its own panel, not the outer menu", () => {
+  it("opens its own panel above the outer one", () => {
+    const widget = document.createElement("search-select");
+    widget.setAttribute("name", "game");
+    widget.setAttribute("multi", "false");
+    widget.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" aria-expanded="false" />
+      <div data-search-select-options hidden role="listbox">
+        <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
+      </div>`;
     const outer = document.createElement("drop-down");
     outer.innerHTML = `
       <button data-toggle>Menu</button>
-      <div data-menu>
-        <search-select name="game" multi="false">
-          <div data-search-select-pills></div>
-          <input data-search-select-search role="combobox" aria-expanded="false" />
-          <div data-search-select-options hidden role="listbox">
-            <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
-          </div>
-        </search-select>
-      </div>`;
-    document.body.appendChild(outer);
+      <div data-menu popover="manual" hidden></div>`;
     const outerMenu = outer.querySelector<HTMLElement>(":scope > [data-menu]")!;
+    outerMenu.append(hosted(widget));
+    document.body.appendChild(outer);
     outer.open();
 
     searchOf(outer).focus();
     expect(panelOf(outer).hidden).toBe(false);
     expect(outerMenu.hidden).toBe(false);
+    expect(openSurfaces()).toHaveLength(2);
+  });
+
+  it("resets its state when the outer panel closes, not before", () => {
+    const widget = document.createElement("search-select");
+    widget.setAttribute("name", "game");
+    widget.setAttribute("multi", "false");
+    widget.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" aria-expanded="false" />
+      <div data-search-select-options hidden role="listbox">
+        <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
+        <drop-down id="nested"><button data-toggle>x</button><div data-menu popover="manual" hidden></div></drop-down>
+      </div>`;
+    const outer = document.createElement("drop-down");
+    outer.innerHTML = `<button data-toggle>Menu</button><div data-menu popover="manual" hidden></div>`;
+    outer.querySelector(":scope > [data-menu]")!.append(hosted(widget));
+    document.body.appendChild(outer);
+    outer.open();
+    searchOf(outer).focus();
+    expect(searchOf(outer).getAttribute("aria-expanded")).toBe("true");
+
+    const nested = outer.querySelector<HTMLElement & { open(): void; close(): void }>("#nested")!;
+    nested.open();
+    nested.close();
+    expect(searchOf(outer).hasAttribute("aria-activedescendant")).toBe(true);
+
+    (outer as HTMLElement & { close(): void }).close();
+    expect(searchOf(outer).getAttribute("aria-expanded")).toBe("false");
+    expect(searchOf(outer).hasAttribute("aria-activedescendant")).toBe(false);
+  });
+});
+
+describe("<search-select> with no host", () => {
+  it("reports that its list never opens", () => {
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const widget = document.createElement("search-select");
+    widget.setAttribute("name", "orphan");
+    widget.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" />
+      <div data-search-select-options hidden role="listbox"></div>`;
+    document.body.replaceChildren(widget);
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("orphan: no <drop-down> host"));
+    report.mockRestore();
   });
 });

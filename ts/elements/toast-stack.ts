@@ -355,7 +355,8 @@ class ToastStackElement extends HTMLElement {
     wrapper.tabIndex = 0;
     wrapper.addEventListener("click", () => this.store.dismissToast(toast.id));
     wrapper.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") return;
+      // A panel the stack closed spent it.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // Spent: the press dismissed this toast and nothing else.
       event.preventDefault();
       this.store.dismissToast(toast.id);

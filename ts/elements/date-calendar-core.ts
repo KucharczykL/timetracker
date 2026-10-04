@@ -165,7 +165,7 @@ let calendarIdCounter = 0;
  * see date-calendar.ts), open()/close() delegated to the closest
  * `<drop-down>`, the toggle's click handler, and resyncing aria-expanded
  * when attachMenu closes the popup for a reason this element didn't
- * initiate (outside click, Escape, Tab, another dropdown opening).
+ * initiate (outside press, Escape, Tab, another panel opening).
  *
  * `staticAlways` (the DateRangePanel variant) skips the host entirely — it
  * lives inside a DIFFERENT, unrelated `<drop-down>` (the quick-facet's own

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import { readFilterSelect } from "./search-select.js"; // also: customElements.define
+import { hosted } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -18,7 +19,7 @@ function mountSingle(): SearchSelectLike {
     <input data-search-select-search />
     <div data-search-select-options></div>
   `;
-  document.body.appendChild(host); // connectedCallback → initWidget
+  document.body.appendChild(hosted(host)); // connectedCallback → initWidget
   return host;
 }
 
@@ -38,7 +39,7 @@ function mountFilter(pills: string): HTMLElement {
     <input data-search-select-search />
     <div data-search-select-options></div>
   `;
-  document.body.appendChild(host);
+  document.body.appendChild(hosted(host));
   return host;
 }
 

@@ -143,7 +143,7 @@ class RealComponentMediaTest(unittest.TestCase):
 
         self.assertEqual(
             collect_media(SearchSelect(name="games")).js,
-            ("dist/elements/search-select.js",),
+            ("dist/elements/drop-down.js", "dist/elements/search-select.js"),
         )
 
     def test_filter_select_declares_its_script(self):

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./quick-filter-bar.js";
 import { applyUrl } from "./filter-url.js";
+import { openSurfaces } from "./surface-stack.js";
 import {
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
@@ -146,7 +147,7 @@ describe("<quick-filter-bar>", () => {
     const { form, navigate } = mount(`
       <drop-down behavior="combobox">
         <button data-toggle type="button">Game</button>
-        <div data-menu hidden>
+        <div data-menu popover="manual" hidden>
           ${setFacet("game", includePill("1", "Outer Wilds"))}
         </div>
       </drop-down>`);
@@ -270,9 +271,11 @@ function mountOverflow(
           ${facet("f2")}
           ${facet("f3")}
           <div class="hidden" data-quick-overflow>
-            <button data-quick-overflow-trigger aria-label="More filters"></button>
+            <drop-down>
+              <button data-toggle data-quick-overflow-trigger aria-label="More filters"></button>
+              <div data-menu popover="manual" hidden><div data-quick-overflow-items></div></div>
+            </drop-down>
             <span class="invisible" data-quick-overflow-mark></span>
-            <div data-quick-overflow-items></div>
           </div>
           <div id="group"></div>
         </div>
@@ -374,6 +377,22 @@ describe("quick-filter-bar priority-plus overflow", () => {
       fixture.row.querySelectorAll("[data-quick-facet]"),
     ).map((facet) => facet.id);
     expect(rowIds).toEqual(["f1", "f2", "f3"]);
+  });
+});
+
+describe("quick-filter-bar overflow menu", () => {
+  it("closes before its host hides", () => {
+    const fixture = mountOverflow();
+    const menu = fixture.host.querySelector("drop-down")!;
+    fixture.setRowWidth(300);
+    fixture.bar.layoutOverflow();
+    menu.open();
+    expect(openSurfaces()).toHaveLength(1);
+
+    fixture.setRowWidth(1000);
+    fixture.bar.layoutOverflow();
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 

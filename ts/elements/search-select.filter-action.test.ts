@@ -4,6 +4,7 @@
 // (e.g. "delete") can never clone an exclude pill.
 import { describe, it, expect, beforeEach } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
+import { hosted } from "../test-setup/search-select-host.js";
 import type { SearchSelectChangeDetail, SearchSelectActionDetail } from "./search-select.js";
 
 Element.prototype.scrollIntoView = () => {};
@@ -33,7 +34,7 @@ function mountFilter(rows: string): HTMLElement {
     <template data-search-select-template="pill-include"><span data-pill data-search-select-type="include"><span data-search-select-label></span><button data-pill-remove></button></span></template>
     <template data-search-select-template="pill-exclude"><span data-pill data-search-select-type="exclude"><span data-search-select-label></span><button data-pill-remove></button></span></template>
   `;
-  document.body.appendChild(host);
+  document.body.appendChild(hosted(host));
   return host;
 }
 

@@ -351,8 +351,7 @@ OCCLUSION = """
 def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
     authenticated_page: Page, live_server, populated
 ):
-    """The defect this phase had to solve: a panel nested in a sticky cell is
-    scoped to that cell's stacking context, so later rows paint over it.
+    """Later rows never cover the cell's tooltip.
 
     Purchases renders its first cell through `PurchaseName` → `TruncatedText`
     with `reveal="auto"`, so the tooltip exists only while the name is actually
@@ -409,29 +408,10 @@ def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
     assert occluded == 0, f"{occluded}/{total} points occluded"
 
 
-def test_the_open_panel_raises_its_host_cell_and_releases_it(
-    authenticated_page: Page, live_server, populated
-):
-    """The elevation is keyed off the `hidden` attribute. If a panel ever hides
-    itself with a class instead, the selector goes blind and the occlusion
-    above comes back silently."""
-    page = authenticated_page
-    _open(page, live_server, "games:list_purchases", NARROW)
-    cell = page.locator("tbody tr th").first
-    assert cell.evaluate("(node) => getComputedStyle(node).zIndex") == "2"
-    page.locator("tbody tr th truncated-text").first.hover()
-    page.locator("tbody tr th [data-pop-over-panel]").first.wait_for(state="visible")
-    assert cell.evaluate("(node) => getComputedStyle(node).zIndex") == "3"
-    page.mouse.move(0, 0)
-    page.locator("tbody tr th [data-pop-over-panel]").first.wait_for(state="hidden")
-    assert cell.evaluate("(node) => getComputedStyle(node).zIndex") == "2"
-
-
 def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
     authenticated_page: Page, live_server, populated
 ):
-    """The other direction: the pin must stay under the panel strata, or it
-    covers the menus of the rows it overlaps.
+    """The pin never covers other rows' menus.
 
     This one has to be staged. The menu needs JavaScript, and with JavaScript
     the table never overflows, so the pinned column never slides over anything

@@ -119,11 +119,7 @@ def DatePicker(
     the container is additionally a labeled ``role="group"`` (the other
     segments have no individual ``<label>`` of their own).
 
-    Hosted in ``<drop-down behavior="date-calendar">`` (issue #485
-    follow-up): the popup's visibility, viewport-aware positioning, and
-    outside-click/Escape dismiss all come from the shared attachMenu engine
-    instead of a bespoke absolute-positioned Div — this is what fixed the
-    calendar overlapping the field on narrow viewports."""
+    Its ``<drop-down>`` host opens, positions and dismisses it."""
     picker = _DatePicker(class_="relative")[
         DatePickerField(
             presentation=presentation,
