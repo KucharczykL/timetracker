@@ -182,6 +182,9 @@ whose `close` moved focus itself.
 
 ## Mobile
 
+- The layer centres a modal at every width. The bottom-sheet look is an
+  opt-in per modal (`data-bottom-sheet`), chosen case by case; no width
+  switches a modal to a sheet.
 - The scroll lock fixes the body, because iOS Safari scrolls under
   `overflow: hidden` alone. One lock for the stack keeps a lower modal from
   restoring the page under a higher one.
