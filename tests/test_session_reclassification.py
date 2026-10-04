@@ -1,6 +1,7 @@
 """A session becomes a historical playtime record."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -236,7 +237,7 @@ def test_a_running_timed_session_is_refused(owned_user, owned_library, run):
         run,
         TimedTiming(started_at=START, day_zone="Europe/Prague"),
     )
-    stated = statement_from_session(session)._replace(duration=AN_HOUR)
+    stated = replace(statement_from_session(session), duration=AN_HOUR)
 
     refusal = refused(
         owned_library,
@@ -286,8 +287,8 @@ def test_a_run_of_another_game_is_refused(
     owned_user, owned_library, run, other_game_run
 ):
     session = a_duration_only(owned_library, owned_user, run)
-    elsewhere = statement_from_session(session)._replace(
-        playthrough_ids=(other_game_run.pk,)
+    elsewhere = replace(
+        statement_from_session(session), playthrough_ids=(other_game_run.pk,)
     )
 
     refusal = refused(
@@ -305,8 +306,8 @@ def test_two_games_are_refused_before_the_session_is_read(
     owned_user, owned_library, run, other_game_run
 ):
     session = a_duration_only(owned_library, owned_user, run)
-    both = statement_from_session(session)._replace(
-        playthrough_ids=(run.pk, other_game_run.pk)
+    both = replace(
+        statement_from_session(session), playthrough_ids=(run.pk, other_game_run.pk)
     )
 
     refusal = refused(
@@ -322,8 +323,8 @@ def test_a_sibling_run_of_the_same_game_is_admitted(
     owned_user, owned_library, run, second_run
 ):
     session = a_duration_only(owned_library, owned_user, run)
-    both = statement_from_session(session)._replace(
-        playthrough_ids=(run.pk, second_run.pk)
+    both = replace(
+        statement_from_session(session), playthrough_ids=(run.pk, second_run.pk)
     )
 
     record = convert(owned_library, owned_user, session, both)
@@ -352,7 +353,7 @@ def test_a_removed_device_named_anew_is_refused(owned_user, owned_library, run):
     other = create_device(library=owned_library, name="PSP")
     session = a_duration_only(owned_library, owned_user, run, device_id=device.pk)
     remove_device(other)
-    swapped = statement_from_session(session)._replace(device_id=other.pk)
+    swapped = replace(statement_from_session(session), device_id=other.pk)
 
     refusal = refused(
         owned_library,
@@ -376,7 +377,7 @@ def test_a_bucket_session_converts_onto_an_ordinary_run(owned_user, owned_librar
     )
     #: A row; nothing records onto the bucket.
     session = duration_only_row(bucket, A_DAY, timedelta(hours=9))
-    onto_the_run = statement_from_session(session)._replace(playthrough_ids=(run.pk,))
+    onto_the_run = replace(statement_from_session(session), playthrough_ids=(run.pk,))
 
     record = convert(owned_library, owned_user, session, onto_the_run)
 
@@ -688,7 +689,7 @@ def test_an_undo_after_a_restatement_is_refused_whole(owned_user, owned_library,
         owned_library,
         owned_user,
         record,
-        statement_from_session(session)._replace(note="edited since"),
+        replace(statement_from_session(session), note="edited since"),
     )
     before = LibraryEvent.objects.count()
 
@@ -714,7 +715,7 @@ def test_a_restated_record_removed_by_hand_does_not_block_the_undo(
         owned_library,
         owned_user,
         record,
-        statement_from_session(session)._replace(note="edited since"),
+        replace(statement_from_session(session), note="edited since"),
     )
     dispatch(
         RemoveHistoricalPlaytime(record_id=record.pk),

@@ -31,7 +31,7 @@ from games.endpoint_fields import (
 )
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
-from games.events.vocabulary import EventSpec, EventType
+from games.events.vocabulary import DefinitionSite, EventSpec, EventType
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -45,8 +45,6 @@ type BoundHandler = Callable[[RecordedEvent], None]
 type HandlerMap = Mapping[EventSpec[Any], Callable[..., None]]
 #: One handler and the family it speaks for, so a failure can say which.
 type FamilyHandler = tuple[ProjectorFamily, BoundHandler]
-#: Where a projector was defined, as (module, qualified name).
-type DefinitionSite = tuple[str, str]  # ("games.projectors.journal", "Journal")
 #: One column, under both the names a caller may use.
 type ColumnNames = tuple[str, str]  # ("library", "library_id")
 

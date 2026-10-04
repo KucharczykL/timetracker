@@ -49,7 +49,9 @@ non-canonical id, a non-positive duration, an unknown provenance, a non-null
 `RecordHistoricalPlaytime(statement)`, `RestateHistoricalPlaytime(record_id,
 statement)`, `RemoveHistoricalPlaytime(record_id)` and
 `RestoreHistoricalPlaytime(record_id)`. The statement is
-`HistoricalPlaytimeStatement`, a `NamedTuple` of duration, `when` text,
+`HistoricalPlaytimeStatement`, a `FingerprintedValue` dataclass (see
+[value objects](2026-10-04-issue-1489-stated-wrappers-nominal-design.md)) of
+duration, `when` text,
 provenance, playthrough ids, device id, emulated flag and note.
 
 `__post_init__` normalises the statement before the fingerprint: note

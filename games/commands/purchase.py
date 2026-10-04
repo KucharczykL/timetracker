@@ -3,7 +3,7 @@
 import re
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import StrEnum
 from typing import ClassVar, Final, NamedTuple, cast, get_args
@@ -33,6 +33,7 @@ from games.events.dispatch import (
     CommandRejected,
     RowUnreadable,
 )
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.libraryentry import (
     ENTRY_ACCESS_END_EVENTS,
     LibraryEntryAccessEndPayload,
@@ -118,15 +119,18 @@ LARGEST_AMOUNT = (
 _CURRENCY = re.compile(CURRENCY_CODE)
 
 
-class StatedPrice(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatedPrice(FingerprintedValue):
     """Amount and currency; blank exactly when unknown."""
+
+    fingerprint_word: ClassVar[FingerprintWord] = "stated_price"
 
     amount: Decimal | None
     currency: str
 
     def normalized(self) -> StatedPrice:
         """One spelling, so restatements fingerprint alike."""
-        return self._replace(currency=self.currency.strip().upper())
+        return replace(self, currency=self.currency.strip().upper())
 
 
 UNKNOWN_PRICE = StatedPrice(None, "")
@@ -160,7 +164,7 @@ def check_name(name: str) -> str:
 
 def check_price(price: StatedPrice) -> StatedPrice:
     """The stated price, or a refusal."""
-    amount, currency = price
+    amount, currency = price.amount, price.currency
     if amount is None:
         if currency:
             raise CommandRejected(

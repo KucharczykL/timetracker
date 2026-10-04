@@ -45,13 +45,10 @@ from games.events.idempotency import (
     idempotent_append,
 )
 from games.events.retry import run_in_transaction
-from games.events.vocabulary import NewEvent, Unchanged
+from games.events.vocabulary import DefinitionSite, NewEvent, Unchanged
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, UserLibrary
 from timetracker.uuidv7 import parse_uuidv7
-
-#: Where a command class was defined, as (module, qualified name).
-type DefinitionSite = tuple[str, str]  # ("games.commands.session", "CreateSession")
 
 #: A command's stable domain symbol.
 type CommandNameValue = str  # "library.playergame.track"

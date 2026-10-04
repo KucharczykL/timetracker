@@ -2,6 +2,7 @@
 
 import itertools
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from datetime import timezone as dt_timezone
 from functools import lru_cache
@@ -25,6 +26,7 @@ from games.commands.playersession import (
     RestoreSession,
     SessionNotHeld,
     StatedDevice,
+    StatedRelease,
     TimedTiming,
 )
 from games.commands.playthrough import (
@@ -101,15 +103,15 @@ A_CORRECTED = CorrectedTiming(
 
 
 def a_timed(**stated) -> TimedTiming:
-    return A_TIMED._replace(**stated)
+    return replace(A_TIMED, **stated)
 
 
 def a_duration_only(**stated) -> DurationOnlyTiming:
-    return A_DURATION_ONLY._replace(**stated)
+    return replace(A_DURATION_ONLY, **stated)
 
 
 def a_corrected(**stated) -> CorrectedTiming:
-    return A_CORRECTED._replace(**stated)
+    return replace(A_CORRECTED, **stated)
 
 
 def record(library, actor, run, timing, *, key=None, **stated) -> PlayerSession:
@@ -1550,6 +1552,16 @@ def test_stating_no_device_is_a_different_statement(
             device=StatedDevice(None),
             key="one",
         )
+
+
+def test_a_stated_device_is_no_stated_release():
+    key = uuid.uuid7()
+
+    assert StatedDevice(key) != StatedRelease(key)
+    assert StatedDevice(None) != StatedRelease(None)
+    assert StatedDevice(key) != (key,)
+    with pytest.raises(TypeError):
+        (_unpacked,) = StatedDevice(key)  # type: ignore[misc]
 
 
 # --- Moving a session to another playthrough ---------------------------------

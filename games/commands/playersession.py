@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from functools import lru_cache
 from typing import ClassVar, NamedTuple, assert_never
@@ -31,6 +31,7 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.playersession import (
     TimingPayload,
     ZoneName,
@@ -82,15 +83,11 @@ INTO_THE_BUCKET = (
 DURATION_RESOLUTION = timedelta(seconds=1)
 
 
-class TimedTiming(NamedTuple):
-    """An exact start, an end once there is one, no override.
+@dataclass(frozen=True, slots=True)
+class TimedTiming(FingerprintedValue):
+    """An exact start, an end once there is one, no override."""
 
-    A NamedTuple, so the idempotency fingerprint encodes it as an
-    array: a dataclass reaches the encoder's fallback and raises.
-    The array carries no tag, so the three statements are told
-    apart by their length alone -- a fourth one with five fields
-    would fingerprint as this one and replay as it.
-    """
+    fingerprint_word: ClassVar[FingerprintWord] = "timed_timing"
 
     started_at: datetime
     #: The zone this library counts the session's day in.
@@ -101,15 +98,21 @@ class TimedTiming(NamedTuple):
     ended_at_zone: str | None = None
 
 
-class DurationOnlyTiming(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class DurationOnlyTiming(FingerprintedValue):
     """A written calendar day and a duration. No instants."""
+
+    fingerprint_word: ClassVar[FingerprintWord] = "duration_only_timing"
 
     day: date
     duration: timedelta
 
 
-class CorrectedTiming(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class CorrectedTiming(FingerprintedValue):
     """Both instants, and a duration that replaces the elapsed time."""
+
+    fingerprint_word: ClassVar[FingerprintWord] = "corrected_timing"
 
     started_at: datetime
     ended_at: datetime
@@ -336,7 +339,8 @@ def _stated_zones[Statement: (TimedTiming, CorrectedTiming)](
     timing: Statement,
 ) -> Statement:
     """One spelling per zone; blank day zone stays blank."""
-    return timing._replace(
+    return replace(
+        timing,
         day_zone=(timing.day_zone or "").strip(),
         started_at_zone=_stated_zone(timing.started_at_zone),
         ended_at_zone=_stated_zone(timing.ended_at_zone),
@@ -701,14 +705,20 @@ class CorrectSessionTiming(Command):
         return [playersession_timing_corrected(session.pk, timing=payload)]
 
 
-class StatedDevice(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatedDevice(FingerprintedValue):
     """Device or none; bare None is unstated."""
+
+    fingerprint_word: ClassVar[FingerprintWord] = "stated_device"
 
     device_id: uuid.UUID | None
 
 
-class StatedRelease(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatedRelease(FingerprintedValue):
     """Release or none; bare None is unstated."""
+
+    fingerprint_word: ClassVar[FingerprintWord] = "stated_release"
 
     release_id: uuid.UUID | None
 

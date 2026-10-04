@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import ClassVar, cast, get_args
 
@@ -219,7 +219,7 @@ class EndDeviceAccess(Command):
         return state_endpoint(
             device,
             DEVICE_ACCESS_END,
-            self.statement._replace(way=EndWay(way)),
+            replace(self.statement, way=EndWay(way)),
             sentences=_access_end_sentences(device.pk),
             before_event=partial(_refuse_a_removed_device, device),
         )
@@ -242,7 +242,7 @@ class CorrectDeviceAccessEnd(Command):
         return correct_endpoint(
             device,
             DEVICE_ACCESS_END,
-            self.statement._replace(way=EndWay(way)),
+            replace(self.statement, way=EndWay(way)),
             sentences=_access_end_sentences(device.pk),
             before_event=partial(_refuse_a_removed_device, device),
         )

@@ -4,6 +4,7 @@ import html as html_module
 import json
 import logging
 import uuid
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import NamedTuple
 
@@ -929,7 +930,7 @@ def test_a_record_restated_since_is_named_and_the_rest_are_undone(
     restate_historical_playtime(
         owned_user,
         moved,
-        statement_from_session(sessions[0])._replace(note="Counted again."),
+        replace(statement_from_session(sessions[0]), note="Counted again."),
         correlation_id=uuid.uuid7(),
     )
 

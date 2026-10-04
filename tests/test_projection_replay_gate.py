@@ -5,6 +5,7 @@ fixture would otherwise write projection rows no event states.
 """
 
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, NamedTuple
@@ -486,7 +487,8 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(
         RestateHistoricalPlaytime(
             record_id=restated_record,
-            statement=a_statement._replace(
+            statement=replace(
+                a_statement,
                 duration=timedelta(hours=50),
                 when="2005-06~",
                 provenance=HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
@@ -501,8 +503,8 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     removed_record = _created_id(
         run(
             RecordHistoricalPlaytime(
-                statement=a_statement._replace(
-                    when=None, playthrough_ids=(first_run.pk,)
+                statement=replace(
+                    a_statement, when=None, playthrough_ids=(first_run.pk,)
                 )
             ),
             "record-to-remove",
@@ -512,7 +514,8 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     restored_record = _created_id(
         run(
             RecordHistoricalPlaytime(
-                statement=a_statement._replace(
+                statement=replace(
+                    a_statement,
                     when="2006/2007",
                     provenance=HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED,
                     playthrough_ids=(first_run.pk,),
@@ -530,7 +533,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     )
     run(
         RecordHistoricalPlaytime(
-            statement=a_statement._replace(playthrough_ids=(moving_run,))
+            statement=replace(a_statement, playthrough_ids=(moving_run,))
         ),
         "record-on-run-to-move",
     )
@@ -635,8 +638,10 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     )
     run(
         RecordHistoricalPlaytime(
-            statement=a_statement._replace(
-                playthrough_ids=(released_run,), release_id=first_release.pk
+            statement=replace(
+                a_statement,
+                playthrough_ids=(released_run,),
+                release_id=first_release.pk,
             )
         ),
         "record-released",
