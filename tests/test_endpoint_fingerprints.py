@@ -251,10 +251,18 @@ RECORDED: dict[str, str] = {
     "describe_session": (
         "888b5d7e18c2403242f9c9fe79cb530f86041fbe1f2b6647cc38616cf73a1983"
     ),
-    "create_timed_session": "07510c52e199fb6bbc12f96791e329d714e15f2cbdfbec4611424de395b15fb1",
-    "create_duration_only_session": "af2b3846e52d6ac1e6bfdc9a48989fd6fba19026388c75345cbc4631bcbc9bab",
-    "create_corrected_session": "538e8bde512e330ea5c74a7972d2064fce13a73f56c541fc67e060c8d84fe5d6",
-    "record_historical_playtime": "8b944a87b58091b5244c42417916c81e76e67f9bcaed5ed51e0b1bb346f67c53",
+    "create_timed_session": (
+        "07510c52e199fb6bbc12f96791e329d714e15f2cbdfbec4611424de395b15fb1"
+    ),
+    "create_duration_only_session": (
+        "af2b3846e52d6ac1e6bfdc9a48989fd6fba19026388c75345cbc4631bcbc9bab"
+    ),
+    "create_corrected_session": (
+        "538e8bde512e330ea5c74a7972d2064fce13a73f56c541fc67e060c8d84fe5d6"
+    ),
+    "record_historical_playtime": (
+        "8b944a87b58091b5244c42417916c81e76e67f9bcaed5ed51e0b1bb346f67c53"
+    ),
     "describe_session_to_none": (
         "0db9ea775239b97d760c9f04c3be5a5b0e2b3449246ece939432a8a854b4e0fa"
     ),

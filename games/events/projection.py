@@ -45,7 +45,6 @@ type BoundHandler = Callable[[RecordedEvent], None]
 type HandlerMap = Mapping[EventSpec[Any], Callable[..., None]]
 #: One handler and the family it speaks for, so a failure can say which.
 type FamilyHandler = tuple[ProjectorFamily, BoundHandler]
-#: Where a projector was defined, as (module, qualified name).
 #: One column, under both the names a caller may use.
 type ColumnNames = tuple[str, str]  # ("library", "library_id")
 

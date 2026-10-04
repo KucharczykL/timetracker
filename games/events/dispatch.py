@@ -50,8 +50,6 @@ from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEvent, UserLibrary
 from timetracker.uuidv7 import parse_uuidv7
 
-#: Where a command class was defined, as (module, qualified name).
-
 #: A command's stable domain symbol.
 type CommandNameValue = str  # "library.playergame.track"
 
