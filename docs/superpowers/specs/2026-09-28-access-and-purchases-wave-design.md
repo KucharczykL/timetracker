@@ -996,16 +996,17 @@ inside a member says so in its body and closes with it.
   live copy of. The held value skips that check and the removal check,
   as a held device does.
 - **Bulk end of access over copies** is #1355, beside #1345, on the
-  bulk runner. Its Undo reads the row's events through the shared
-  guard `refuse_unless_this_batch_wrote_it`
-  (`games/bulk_endpoint_undo.py`), not `latest_end_act`: the guard
-  needs the batch's own event too. A latest void passes, so a second
-  Undo is already so; a resume, correction or later end refuses. The
-  guard raises `CommandRejected`, so each caller wraps it in
-  `answered`. #1345 declares the device act on
-  `access_end_choice(DEVICE_WAYS)`, whose form leads with a blank
-  required way; its Undo calls the guard with
-  `DEVICE_ACCESS_END_EVENTS`. **A platform across many copies** is #1382, which
+  bulk runner. Its Undo dispatches `UndoEntryAccessEnd`, which calls
+  the shared guard `refuse_unless_this_batch_wrote_it`
+  (`games/commands/batch_undo.py`) inside `build`, under the stream
+  lock: a check before the dispatch lets a correction land between
+  check and void. The guard reads the row's events, not
+  `latest_end_act`, because it needs the batch's own event too. A void
+  or resume after the batch's statement passes, so a second Undo is
+  already so; a correction or later end refuses. #1345 adds
+  `UndoDeviceAccessEnd` on the same guard and declares its act on
+  `AccessEndQuestion(DEVICE_WAYS)`, whose form leads with a blank
+  required way. **A platform across many copies** is #1382, which
   resolves each game's Release on the platform and refuses a row whose
   game holds none, never creating one.
 - **#1344** swaps the device's `endpoint_events(...)` for

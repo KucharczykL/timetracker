@@ -22,6 +22,7 @@ from games.commands.libraryentry import (
     RemoveEntry,
     RestoreEntry,
     ResumeEntryAccess,
+    UndoEntryAccessEnd,
     VoidEntryAccessEnd,
 )
 from games.commands.playersession import (
@@ -40,6 +41,8 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     StartPlaythrough,
+    UndoPlaythroughCompletion,
+    UndoPlaythroughStart,
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
 )
@@ -68,6 +71,7 @@ ENTRY = uuid.UUID("01890000-0000-7000-8000-000000000004")
 PURCHASE = uuid.UUID("01890000-0000-7000-8000-000000000005")
 SESSION = uuid.UUID("01890000-0000-7000-8000-000000000006")
 DEVICE = uuid.UUID("01890000-0000-7000-8000-000000000007")
+BATCH = uuid.UUID("01890000-0000-7000-8000-000000000008")
 MAY = TemporalValue.parse("2021-05")
 NOON = datetime(2021, 5, 1, 12, tzinfo=UTC)
 
@@ -79,6 +83,8 @@ COMMANDS: dict[str, Command] = {
         playthrough_id=RUN, when=MAY, note="done"
     ),
     "void_start": VoidPlaythroughStart(playthrough_id=RUN),
+    "undo_start": UndoPlaythroughStart(playthrough_id=RUN, batch_id=BATCH),
+    "undo_completion": UndoPlaythroughCompletion(playthrough_id=RUN, batch_id=BATCH),
     "void_completion": VoidPlaythroughCompletion(playthrough_id=RUN),
     #: Moved when CreateDevice gained access_end.
     "create_device": CreateDevice(name="Deck", type="Handheld"),
@@ -108,6 +114,7 @@ COMMANDS: dict[str, Command] = {
         entry_id=ENTRY, statement=WayActStatement(None, EndWay.EXPIRED, "")
     ),
     "void_entry_access_end": VoidEntryAccessEnd(entry_id=ENTRY),
+    "undo_entry_access_end": UndoEntryAccessEnd(entry_id=ENTRY, batch_id=BATCH),
     "resume_entry_access": ResumeEntryAccess(
         entry_id=ENTRY, statement=ActStatement(MAY, "back")
     ),
@@ -185,6 +192,13 @@ COMMANDS: dict[str, Command] = {
 }
 
 RECORDED: dict[str, str] = {
+    "undo_start": "715a5cd5243ea9764650abd999034f81fd3655453654412b5488e606da058297",
+    "undo_completion": (
+        "0a385c044a7d71957c9a8b4ca565350f77b793a0567492ed0cc86e1a67f82296"
+    ),
+    "undo_entry_access_end": (
+        "41cfafd565bba6125066b385459609dff0cdf608ea9feeb7a4b1c6a580c0a2e4"
+    ),
     "correct_entry_access_end": (
         "c21467c527ae301865354f28bec92531384614be6657b1b2df4b2087a93a0103"
     ),

@@ -5,14 +5,12 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
 
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
 from common.components import Div, Input, P
 from games.bulk_actions import BulkAction
-from games.bulk_endpoint_undo import UndoSentences, refuse_unless_this_batch_wrote_it
 from games.bulk_parts import (
     ActTitle,
     AsksNothing,
@@ -27,13 +25,8 @@ from games.bulk_parts import (
 )
 from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
-from games.events.endpoint import EndpointEvents
 from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_STATUS_CHANGED
-from games.events.playthrough import (
-    PLAYTHROUGH_COMPLETION_EVENTS,
-    PLAYTHROUGH_START_EVENTS,
-)
 from games.models import PlayerGame, PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.events import aggregate_events, run_game_at_batch
@@ -41,7 +34,7 @@ from games.reads.playergame_facts import status_change
 from games.writes.answers import answered
 from games.writes.implied_status import StatusRefused
 from games.writes.playergame import record_facts
-from games.writes.playthrough import void_completion, void_start
+from games.writes.playthrough import undo_completion, undo_start
 from games.writes.playthrough_endpoints import StatedAct, state_completion, state_start
 from timetracker.temporal import TemporalValue
 
@@ -222,19 +215,6 @@ def complete_one(
 
 # ── Backward ─────────────────────────────────────────────────────────────────
 
-#: What one row's Undo refuses.
-NOT_STATED_BY_THIS_BATCH = (
-    "That playthrough was not recorded by this batch, so it was left as it is."
-)
-CHANGED_SINCE = (
-    "That playthrough has been recorded again since this batch, so it was "
-    "left as it is. Correct it by hand instead."
-)
-
-RUN_UNDO = UndoSentences(
-    not_stated=NOT_STATED_BY_THIS_BATCH, changed_since=CHANGED_SINCE
-)
-
 
 def _row(actor: User, run_id: uuid.UUID) -> Playthrough:
     """The row an Undo speaks about.
@@ -254,19 +234,6 @@ def _row(actor: User, run_id: uuid.UUID) -> Playthrough:
                 "the batch's inverse has no row to take a record back from."
             )
         return row
-
-
-def _refuse_unless_this_batch_wrote_it(
-    run: Playthrough, batch_id: uuid.UUID, endpoint_events: EndpointEvents[Any]
-) -> None:
-    with answered("playthrough"):
-        refuse_unless_this_batch_wrote_it(
-            aggregate_events(run.library, run.pk),
-            endpoint_events,
-            batch_id=batch_id,
-            row_description=f"playthrough {run.pk}",
-            sentences=RUN_UNDO,
-        )
 
 
 def _game_at_batch(run: Playthrough, batch_id: uuid.UUID) -> PlayerGame:
@@ -384,13 +351,13 @@ def void_start_one(
 ) -> RowOutcome:
     """The run states no start; the game as it stood."""
     run = _row(actor, run_id)
-    _refuse_unless_this_batch_wrote_it(run, undoes, PLAYTHROUGH_START_EVENTS)
     tracked = _game_at_batch(run, undoes)
     before = _word_before(tracked, undoes)
     outcome = RowOutcome.of(
-        void_start(
+        undo_start(
             actor,
             run,
+            batch_id=undoes,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(START_RUNS.name),
@@ -418,13 +385,13 @@ def void_completion_one(
 ) -> RowOutcome:
     """The run states no completion; the game as it stood."""
     run = _row(actor, run_id)
-    _refuse_unless_this_batch_wrote_it(run, undoes, PLAYTHROUGH_COMPLETION_EVENTS)
     tracked = _game_at_batch(run, undoes)
     before = _word_before(tracked, undoes)
     outcome = RowOutcome.of(
-        void_completion(
+        undo_completion(
             actor,
             run,
+            batch_id=undoes,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(COMPLETE_RUNS.name),

@@ -2,7 +2,7 @@
 
 Issue #1355, a member of the
 [Access and Purchases wave](2026-09-28-access-and-purchases-wave-design.md).
-#1345 declares the device act on the same module.
+#1345 will declare the device act on the same module.
 
 ## The act
 
@@ -10,7 +10,7 @@ Issue #1355, a member of the
 tab's selection tray, because the row menu offers "I no longer have it"
 first. The tray button reads **I no longer have them…**. The heading
 reads **I no longer have these {count} copies**. The submit reads
-**Save**. The done toast is the runner's tally sentence.
+**Save**. The toast is the runner's tally.
 
 The confirmation asks one statement for every row: **What happened**,
 **When** and **Note**, as on the per-copy page. What happened starts at
@@ -28,37 +28,45 @@ marker, and says that they will be left as they are.
 `games/bulk_access_end.py` imports no act module. It holds:
 
 - `encode_access_end` and `decode_access_end(raw, ways)` over
-  `WayActStatement`. The wire form is JSON `{"when", "way", "note"}`.
-  Null `when` is the unknown day. Decode refuses a missing key, a way
-  outside `ways`, and a day or note that it cannot read.
+  `WayActStatement`. The wire form is JSON `{"when", "way", "note"}`
+  (`AccessEndJson`). Null `when` is the unknown day, and decodes to
+  `TemporalValue.unknown()`. Decode refuses a missing or unknown key, a
+  way that is no text or is outside `ways`, and a day or note that it
+  cannot read.
 - `BulkAccessEndForm`, built from a `ways` tuple. Where `ways` holds
   `EndWay.UNSTATED`, that way leads and is selected. Where it does not
   (`DEVICE_WAYS`), a blank first choice leads, and the required field
   refuses it.
-- `access_end_choice(ways)`, the act's `BulkChoice`. The settled
+- `AccessEndQuestion(ways)`: its `choice()` is the act's `BulkChoice`,
+  and its `decode` reads the settled value, so offer and run read one
+  way set. The settled
   statement carries the day, so a confirmation posted twice replays one
   payload under one key.
 
 ## The Undo
 
-`refuse_unless_this_batch_wrote_it` (`games/bulk_endpoint_undo.py`)
-reads a row's events of one endpoint family, in append order:
+The inverse dispatches `UndoEntryAccessEnd(entry_id, batch_id)`. Its
+`build` calls `refuse_unless_this_batch_wrote_it`
+(`games/commands/batch_undo.py`) under the stream lock, so no act can
+land between the check and the void. The guard reads the row's events
+of one endpoint family:
 
-1. The latest is a void: pass. The void command then answers
-   `Unchanged`. This covers a second Undo press and a void by hand.
-2. The batch stated no event of the family: refuse.
-3. The latest is not the batch's last statement: refuse. This covers a
-   resume, a correction and a later end.
+1. The batch wrote no statement of the family: refuse.
+2. The batch's last statement is the latest: pass.
+3. The latest is a void or a resume: pass. The void then answers
+   `Unchanged`. This covers a second Undo press, a void by hand and a
+   copy held again.
+4. Any other latest act: refuse. This covers a correction and a later
+   end.
 
-Each act gives its two sentences as `UndoSentences`. The guard raises
-`CommandRejected`, so the caller wraps it in `answered`. The
-playthrough start and completion acts call the same guard.
-
-The inverse voids through `void_entry_access_end`. A removed copy is
-refused by `VoidEntryAccessEnd`.
+Each command gives its two sentences as `UndoSentences`.
+`UndoPlaythroughStart` and `UndoPlaythroughCompletion` call the same
+guard. After the guard, each command voids as its Void command does:
+`VoidEntryAccessEnd`'s rules refuse a removed copy, or a copy under a
+removed game.
 
 ## Known consequence
 
 An Owned copy can end in a batch, and its game purchase can be refunded
 after that. The refund writes no end, because one stands. The batch's
-Undo then leaves the copy held. The one-click Undo does the same.
+Undo then leaves the copy held.

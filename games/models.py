@@ -26,7 +26,7 @@ from common.keyset import FieldName, RelationPath, lookup
 from common.naming import name_key
 from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
-from games.end_ways import EndWay
+from games.end_ways import EndWay, EndWays
 from games.endpoint_fields import (
     EndpointColumns,
     OpeningEndpointColumns,
@@ -1276,7 +1276,7 @@ def library_identity_constraint() -> models.UniqueConstraint:
 
 
 #: How a device leaves the library's hands.
-DEVICE_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
+DEVICE_WAYS: EndWays = (
     EndWay.SOLD,
     EndWay.LOST,
     EndWay.GIVEN_AWAY,
@@ -2018,7 +2018,7 @@ ENTRY_ACQUISITION_COLUMNS = OpeningEndpointColumns(
 )
 
 #: How a copy leaves the library's hands.
-ENTRY_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
+ENTRY_WAYS: EndWays = (
     EndWay.UNSTATED,
     EndWay.RETURNED,
     EndWay.EXPIRED,

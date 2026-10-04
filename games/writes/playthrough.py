@@ -24,8 +24,8 @@ from games.commands.playthrough import (
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
-    VoidPlaythroughCompletion,
-    VoidPlaythroughStart,
+    UndoPlaythroughCompletion,
+    UndoPlaythroughStart,
 )
 from games.events.append import SourceMetadata
 from games.events.dispatch import (
@@ -568,18 +568,19 @@ def _record_once(
     return created_aggregate_id(result)
 
 
-def void_start(
+def undo_start(
     actor: User,
     run: Playthrough,
     *,
+    batch_id: uuid.UUID,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
-    """Take back the record that the run began."""
+    """Void a batch's start, still latest."""
     with answered("playthrough"):
         return _dispatch(
-            VoidPlaythroughStart(playthrough_id=run.pk),
+            UndoPlaythroughStart(playthrough_id=run.pk, batch_id=batch_id),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
@@ -588,18 +589,19 @@ def void_start(
         )
 
 
-def void_completion(
+def undo_completion(
     actor: User,
     run: Playthrough,
     *,
+    batch_id: uuid.UUID,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
-    """Take back the record that the run finished."""
+    """Void a batch's completion, still latest."""
     with answered("playthrough"):
         return _dispatch(
-            VoidPlaythroughCompletion(playthrough_id=run.pk),
+            UndoPlaythroughCompletion(playthrough_id=run.pk, batch_id=batch_id),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,

@@ -1,4 +1,4 @@
-"""The one question both end acts ask."""
+"""The one question an end act asks."""
 
 from datetime import date
 from zoneinfo import ZoneInfo
@@ -11,11 +11,12 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.bulk_access_end import (
+    AccessEndQuestion,
     BulkAccessEndForm,
-    access_end_choice,
     decode_access_end,
     encode_access_end,
 )
+from games.bulk_parts import AsksNothing
 from games.commands.endpoint import WayActStatement
 from games.end_ways import EndWay
 from games.events.dispatch import CommandRejected
@@ -71,9 +72,11 @@ def test_a_statement_survives_its_own_encoding(when):
         '{"way": "sold", "note": ""}',
         '{"when": null, "way": "sold", "note": "", "extra": 1}',
         '{"when": null, "way": "nonsense", "note": ""}',
+        '{"when": null, "way": ["sold"], "note": ""}',
         '{"when": null, "way": "sold", "note": 5}',
         '{"when": 5, "way": "sold", "note": ""}',
         '{"when": "someday", "way": "sold", "note": ""}',
+        '{"when": "", "way": "sold", "note": ""}',
     ],
 )
 def test_an_unreadable_statement_is_refused(raw):
@@ -106,7 +109,7 @@ def test_the_device_form_refuses_no_way():
 
 @pytest.mark.django_db
 def test_settling_is_idempotent(owned_library):
-    choice = access_end_choice(ENTRY_WAYS)
+    choice = AccessEndQuestion(ENTRY_WAYS).choice()
     name = f"{CHOICE_FIELD}-ended"
     once = choice.settle(
         owned_library,
@@ -128,9 +131,16 @@ def test_settling_is_idempotent(owned_library):
 
 @pytest.mark.django_db
 def test_settling_refuses_an_invalid_form_by_label(owned_library):
-    choice = access_end_choice(DEVICE_WAYS)
+    choice = AccessEndQuestion(DEVICE_WAYS).choice()
 
     with pytest.raises(CommandRejected) as refused:
         choice.settle(owned_library, _post(**{f"{CHOICE_FIELD}-way": ""}))
 
     assert refused.value.sentence.startswith("What happened:")
+
+
+@pytest.mark.django_db
+def test_no_rows_asks_nothing(owned_library):
+    offered = AccessEndQuestion(ENTRY_WAYS).choice().offer(owned_library, [], "choice")
+
+    assert isinstance(offered, AsksNothing)

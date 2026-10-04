@@ -2,15 +2,13 @@
 
 import uuid
 from collections.abc import Sequence
-from functools import partial
 
 from django.contrib.auth.models import User
 
 from common.temporal_presentation import present_temporal_value
-from games.bulk_access_end import access_end_choice, decode_access_end
+from games.bulk_access_end import AccessEndQuestion
 from games.bulk_actions import BulkAction
 from games.bulk_edit import settled
-from games.bulk_endpoint_undo import UndoSentences, refuse_unless_this_batch_wrote_it
 from games.bulk_entries import (
     ENTRY_PREVIEW,
     entry_resolution,
@@ -27,15 +25,13 @@ from games.bulk_parts import (
 )
 from games.events.append import SourceMetadata
 from games.events.idempotency import IdempotencyKey
-from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS
 from games.models import ENTRY_WAYS, LibraryEntry
 from games.reads.entries import copy_end
-from games.reads.events import aggregate_events
 from games.writes.answers import answered
 from games.writes.libraryentry import (
     SUBJECT,
     end_entry_access,
-    void_entry_access_end,
+    undo_entry_access_end,
 )
 
 ENDED_ONE = "One of these copies has already ended, so it will be left as it is."
@@ -43,10 +39,7 @@ ENDED_MANY = (
     "{count} of these copies have already ended, so they will be left as they are."
 )
 
-ENTRY_UNDO = UndoSentences(
-    not_stated="That copy was not ended by this batch, so it was left as it is.",
-    changed_since="That copy has changed since this batch, so it was left as it is.",
-)
+ENTRY_END_QUESTION = AccessEndQuestion(ENTRY_WAYS)
 
 #: A held copy's Ended cell.
 _HELD = "–"
@@ -88,7 +81,7 @@ def end_one(
     with answered(SUBJECT):
         statement = settled(
             choice,
-            partial(decode_access_end, ways=ENTRY_WAYS),
+            ENTRY_END_QUESTION.decode,
             act_name=ENTRY_END.name,
             row_description=f"LibraryEntry {entry.pk} of library {actor.library.pk}",
         )
@@ -112,20 +105,13 @@ def end_back(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """Void the end, where still the batch's."""
+    """Void the end unless another act wrote it."""
     entry = removed_entry(actor, entry_id)
-    with answered(SUBJECT):
-        refuse_unless_this_batch_wrote_it(
-            aggregate_events(actor.library, entry_id),
-            ENTRY_ACCESS_END_EVENTS,
-            batch_id=undoes,
-            row_description=f"LibraryEntry {entry_id} of library {entry.library_id}",
-            sentences=ENTRY_UNDO,
-        )
     return RowOutcome.of(
-        void_entry_access_end(
+        undo_entry_access_end(
             actor,
             entry,
+            batch_id=undoes,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(),
@@ -149,6 +135,6 @@ ENTRY_END = BulkAction(
     run=end_one,
     inverse=end_back,
     preview=END_PREVIEW,
-    choice=access_end_choice(ENTRY_WAYS),
+    choice=ENTRY_END_QUESTION.choice(),
     caution=already_ended,
 )

@@ -14,15 +14,16 @@ from session_rows import tracked_run
 
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_playthrough_acts import (
-    CHANGED_SINCE,
     COMPLETE_RUNS,
     DAY_UNREADABLE,
-    NOT_STATED_BY_THIS_BATCH,
     START_RUNS,
     DayStatement,
     settle_day,
+    void_completion_one,
+    void_start_one,
 )
 from games.commands.playthrough import (
+    RUN_UNDO,
     CorrectPlaythroughStart,
     MovePlaythroughToGame,
     StartPlaythrough,
@@ -42,6 +43,7 @@ from games.views.bulk import (
     STATEMENT_FIELD,
     TOKEN_FIELD,
 )
+from games.writes.answers import CommandFailed
 from games.writes.playergame import (
     new_correlation_id,
     record_facts,
@@ -442,7 +444,7 @@ def test_a_corrected_endpoint_refuses_the_undo(
 
     run.refresh_from_db()
     assert run.started == OTHER_DAY
-    assert CHANGED_SINCE in said(undone)
+    assert RUN_UNDO.changed_since in said(undone)
 
 
 def test_a_restated_endpoint_refuses_the_undo(
@@ -463,7 +465,7 @@ def test_a_restated_endpoint_refuses_the_undo(
 
     run.refresh_from_db()
     assert run.started == OTHER_DAY
-    assert CHANGED_SINCE in said(undone)
+    assert RUN_UNDO.changed_since in said(undone)
 
 
 def test_a_stream_with_no_creation_ends_the_undo_before_the_void(
@@ -505,9 +507,7 @@ def test_a_row_of_another_batch_states_its_own_sentence(
     )
     #: A batch that states nothing about this row, so its Undo has
     #: nothing of its own to take back.
-    from games.bulk_playthrough_acts import void_start_one
-
-    with pytest.raises(Exception) as refused:
+    with pytest.raises(CommandFailed) as refused:
         void_start_one(
             owned_user,
             run.pk,
@@ -516,24 +516,35 @@ def test_a_row_of_another_batch_states_its_own_sentence(
             correlation_id=uuid.uuid7(),
         )
 
-    assert NOT_STATED_BY_THIS_BATCH in str(refused.value.message)
+    assert RUN_UNDO.not_stated in str(refused.value.message)
     run.refresh_from_db()
     assert run.started == OTHER_DAY
 
 
-def test_a_start_stated_with_no_event_refuses_the_undo(
-    client_in, owned_user, owned_library, game
+@pytest.mark.parametrize(
+    ("inverse", "columns"),
+    [
+        (void_start_one, {"started": OTHER_DAY, "start_recorded_at": True}),
+        (
+            void_completion_one,
+            {"completed": OTHER_DAY, "completion_recorded_at": True},
+        ),
+    ],
+)
+def test_an_endpoint_stated_with_no_event_refuses_the_undo(
+    owned_user, owned_library, game, inverse, columns
 ):
     """A marker no event wrote is no batch's."""
-    from games.bulk_playthrough_acts import void_start_one
-
     run = tracked_run(owned_library, game)
     Playthrough.objects.filter(pk=run.pk).update(
-        started=OTHER_DAY, start_recorded_at=timezone.now()
+        **{
+            name: timezone.now() if value is True else value
+            for name, value in columns.items()
+        }
     )
 
-    with pytest.raises(Exception) as refused:
-        void_start_one(
+    with pytest.raises(CommandFailed) as refused:
+        inverse(
             owned_user,
             run.pk,
             undoes=uuid.uuid7(),
@@ -541,6 +552,9 @@ def test_a_start_stated_with_no_event_refuses_the_undo(
             correlation_id=uuid.uuid7(),
         )
 
-    assert NOT_STATED_BY_THIS_BATCH in str(refused.value.message)
+    assert refused.value.message == RUN_UNDO.not_stated
+    assert refused.value.status_code == 409
     run.refresh_from_db()
-    assert run.started == OTHER_DAY
+    for name, value in columns.items():
+        if value is not True:
+            assert getattr(run, name) == value

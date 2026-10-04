@@ -1,4 +1,4 @@
-"""The one rule an endpoint's batch Undo reads."""
+"""The rule an endpoint's batch Undo reads."""
 
 import uuid
 from datetime import date
@@ -7,7 +7,7 @@ import pytest
 from django.db import transaction
 from entries import record_entry
 
-from games.bulk_endpoint_undo import UndoSentences, refuse_unless_this_batch_wrote_it
+from games.commands.batch_undo import UndoSentences, refuse_unless_this_batch_wrote_it
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import (
     CorrectEntryAccessEnd,
@@ -19,7 +19,6 @@ from games.end_ways import EndWay
 from games.events.dispatch import Command, CommandRejected, append_command
 from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS
 from games.models import Game, LibraryEntry, Platform, UserLibrary
-from games.reads.events import aggregate_events
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -51,7 +50,8 @@ def _state(library: UserLibrary, command: Command, batch: uuid.UUID) -> None:
 
 def _judge(library: UserLibrary, copy: LibraryEntry, batch: uuid.UUID) -> None:
     refuse_unless_this_batch_wrote_it(
-        aggregate_events(library, copy.pk),
+        library,
+        copy.pk,
         ENTRY_ACCESS_END_EVENTS,
         batch_id=batch,
         row_description=f"entry {copy.pk}",
@@ -108,7 +108,8 @@ def test_a_correction_since_is_refused(owned_library, copy):
     assert refused.value.sentence == "changed since"
 
 
-def test_a_resume_since_is_refused(owned_library, copy):
+def test_a_resume_since_passes(owned_library, copy):
+    """The copy is held again: already so."""
     batch = uuid.uuid7()
     _state(owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), batch)
     _state(
@@ -120,10 +121,19 @@ def test_a_resume_since_is_refused(owned_library, copy):
         uuid.uuid7(),
     )
 
-    with pytest.raises(CommandRejected) as refused:
-        _judge(owned_library, copy, batch)
+    _judge(owned_library, copy, batch)
 
-    assert refused.value.sentence == "changed since"
+
+def test_a_void_the_batch_never_preceded_is_refused(owned_library, copy):
+    _state(
+        owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), uuid.uuid7()
+    )
+    _state(owned_library, VoidEntryAccessEnd(entry_id=copy.pk), uuid.uuid7())
+
+    with pytest.raises(CommandRejected) as refused:
+        _judge(owned_library, copy, uuid.uuid7())
+
+    assert refused.value.sentence == "not ours"
 
 
 def test_a_later_end_is_refused(owned_library, copy):
