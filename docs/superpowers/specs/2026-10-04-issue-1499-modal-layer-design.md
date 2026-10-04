@@ -91,7 +91,25 @@ window event "modal-layer:change" on every change of the top modal
 ### Scroll lock
 
 One lock for the stack. The first modal takes the snapshot and fixes the
-body; the last modal restores it. A modal in between changes nothing.
+body; the last finish restores it. A leave holds the lock, so the page does
+not move behind a sheet that slides out. A modal in between changes nothing.
+
+### Backdrops
+
+Only the top modal dims. On each change the layer sets `data-modal-covered`
+on every stacked dialog below the top and clears it on the top one. A rule in
+`common/input.css`, after the sheet's backdrop rules, fades a covered
+dialog's `::backdrop` to opacity 0 over the 200 ms the sheet already uses.
+Thus two stacked modals dim the page once, at 70 %. When the top modal's close
+starts, the one below is top again: its backdrop fades in while the leaving
+one's fades out.
+
+### While the last modal leaves
+
+`isModalOpen()` is false from the start of the last modal's close, but the
+dialog stays `:modal` until finish (at most the sheet's 250 ms fallback). In
+that window `<toast-stack>` already hosts the toasts and is still inert. This
+is accepted: nothing interactive opens during a leave.
 
 ### Surface stack
 
@@ -163,6 +181,10 @@ whose `close` moved focus itself.
 - Android's back gesture raises `cancel` on the top modal: the same path as
   Escape.
 
+- Stacked sheets: the upper slides over the lower, which stays dimmed under
+  the one backdrop. A press on the visible part of the lower one lands on
+  the upper backdrop and closes the upper one only.
+
 ## Measured in Chromium
 
 1. Escape on a focused element in a modal dialog whose keydown calls
@@ -191,7 +213,8 @@ whose `close` moved focus itself.
 - vitest toast stack: re-hosts on change, back on last close, a new toast
   lands in the top modal, the region wears `modal_region_class`.
 - vitest layer: a `pointercancel` between down and up on the backdrop
-  closes nothing.
+  closes nothing; `data-modal-covered` marks every stacked dialog but the
+  top and moves at close start; the scroll lock holds through a leave.
 - vitest sheet: the existing cases, with three rewritten. "Fully closes a
   sibling sheet" becomes "two sheets nest and the last close restores the
   page style". The failed-open case asserts the report, not `console.error`.

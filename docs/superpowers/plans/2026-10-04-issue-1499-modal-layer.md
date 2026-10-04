@@ -58,6 +58,9 @@ section. Add `ts/test-setup/modal-layer.ts` registering
 `afterEach(resetModalLayerForTests)` beside the surface-stack one.
 
 Gotchas:
+- On every change, set `data-modal-covered` on stacked dialogs below the top,
+  clear it on the top and on any leaving/closed dialog.
+- Scroll lock releases at finish only, never at close start.
 - Change event must fire on close start (leave) and on finish only if the
   top changed; dedupe by comparing previous `topModal()`.
 - Close-above in `close()` uses each above modal's immediate finish, not its
@@ -68,7 +71,9 @@ Gotchas:
 
 - `common/input.css`: move the viewport hit-area block from
   `dialog[data-bottom-sheet]` to `dialog[data-modal]` (+ `[open]` flex,
-  `align-items: center`); sheet keeps `align-items: flex-end`, backdrop and
+  `align-items: center`); `dialog[data-modal]::backdrop` opacity transition
+  200 ms; `dialog[data-modal][data-modal-covered]::backdrop { opacity: 0 }`
+  placed after the sheet's backdrop rules (equal specificity); sheet keeps `align-items: flex-end`, backdrop and
   slide.
 - `common/components/custom_elements.py` `BottomSheet`: add `data-modal`,
   rename `data-sheet-dismiss` → `data-modal-dismiss`.
@@ -112,6 +117,9 @@ Gotchas:
   dismiss click removes it.
 
 ## Task 8: docs
+
+- `gh issue comment` #1384 and #1094: top-edge region under a modal;
+  `isModalOpen()` false from the last close's start; backdrops dim once.
 
 - #544 spec: single-open sentence and toast limit.
 - CLAUDE.md top-layer bullet: one line on `modal-layer.ts`.
