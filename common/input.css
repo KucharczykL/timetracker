@@ -298,11 +298,12 @@
     }
 }
 
-/* Native modal bottom sheet. The dialog is the transparent viewport hit area;
-   its child panel owns the visible surface, so a press on panel padding never
-   masquerades as a backdrop press. Visibility itself remains native
-   showModal()/close() state — never a competing hidden/open class. */
-dialog[data-bottom-sheet] {
+/* A modal dialog is a transparent viewport hit area; its child panel owns
+   the visible surface, so a press on panel padding never masquerades as a
+   backdrop press. Visibility stays native showModal()/close() state. No
+   transform, filter or contain: a fixed child (the toast region) must use
+   the viewport. */
+dialog[data-modal] {
     position: fixed;
     inset: 0;
     width: 100%;
@@ -314,22 +315,33 @@ dialog[data-bottom-sheet] {
     padding: 0;
     border: 0;
     /* clip, not hidden: hidden makes the dialog a scroll container, and
-       showModal()'s initial focus then scrolls the translated-down panel into
-       view — cancelling the slide-up and racing the transform on the way back. */
+       showModal()'s initial focus then scrolls a translated panel into view. */
     overflow: clip;
     color: inherit;
     background: transparent;
 }
 
-dialog[data-bottom-sheet][open] {
+dialog[data-modal][open] {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
 }
 
-dialog[data-bottom-sheet]::backdrop {
+dialog[data-modal]::backdrop {
     @apply bg-dark-backdrop/70;
+}
+
+/* Bottom sheet: bottom alignment, backdrop fade, slide. */
+dialog[data-bottom-sheet][open] {
+    align-items: flex-end;
+}
+
+dialog[data-bottom-sheet]::backdrop {
     opacity: 0;
+}
+
+/* Only a close fades, so an uncover is instant. */
+dialog[data-bottom-sheet][data-sheet-state="closing"]::backdrop {
     transition: opacity 200ms ease-out;
 }
 
@@ -347,8 +359,19 @@ dialog[data-bottom-sheet][data-sheet-state="open"] [data-sheet-panel] {
     transform: translateY(0);
 }
 
+/* Nested modals: only the topmost shown one dims. */
+dialog[data-modal][data-modal-covered]::backdrop {
+    opacity: 0;
+    transition: none;
+}
+
+dialog[data-modal][data-modal-over]:not([data-modal-covered])::backdrop {
+    opacity: 1;
+    transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    dialog[data-bottom-sheet]::backdrop,
+    dialog[data-bottom-sheet][data-sheet-state="closing"]::backdrop,
     dialog[data-bottom-sheet] [data-sheet-panel] {
         transition: none;
     }

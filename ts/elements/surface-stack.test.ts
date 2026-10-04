@@ -102,6 +102,23 @@ describe("single open", () => {
     expect(openSurfaces()[0]).toBe(modal);
   });
 
+  it("keeps an open modal when a modal outside it opens", () => {
+    const lower = surface("lower", host(), "modal");
+    const upper = surface("upper", host(), "modal");
+    pushSurface(lower);
+    pushSurface(upper);
+    expect(closed).toEqual([]);
+    expect(openSurfaces()).toEqual([lower, upper]);
+  });
+
+  it("keeps an open modal when a panel outside it opens", () => {
+    const modal = surface("modal", host(), "modal");
+    pushSurface(modal);
+    pushSurface(surface("panel", host()));
+    expect(closed).toEqual([]);
+    expect(openSurfaces()[0]).toBe(modal);
+  });
+
   it("moves nothing on a second push", () => {
     const first = surface("first", host());
     pushSurface(first);

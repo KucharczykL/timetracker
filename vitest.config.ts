@@ -10,7 +10,12 @@ export default defineConfig({
   test: {
     include: ["ts/**/*.test.ts"],
     environment: "node",
-    // jsdom lacks the Popover API.
-    setupFiles: ["ts/test-setup/popover.ts", "ts/test-setup/surface-stack.ts"],
+    // jsdom lacks the Popover API and dialog methods.
+    setupFiles: [
+      "ts/test-setup/popover.ts",
+      "ts/test-setup/dialog.ts",
+      "ts/test-setup/surface-stack.ts",
+      "ts/test-setup/modal-layer.ts",
+    ],
   },
 });

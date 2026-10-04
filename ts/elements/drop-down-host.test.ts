@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Host callers import drop-down.js; page order varies.
@@ -9,7 +9,7 @@ const SOURCE_ROOT = "ts";
 const HOST_LOOKUP = /\b(?:closest|querySelector)\s*(?:<[^>]*>)?\(\s*["']drop-down["']\s*\)/;
 //: A bare import; type-only ones are erased.
 const HOST_IMPORT = /^import\s+["'][^"']*\/drop-down\.js["'];/m;
-const RELATIVE_IMPORT = /^import\s+(?:[^"']*\sfrom\s+)?["']\.\/([^"']+)\.js["'];/gm;
+const RELATIVE_IMPORT = /^import\s+(?:[^"']*\sfrom\s+)?["'](\.\.?\/[^"']+)\.js["'];/gm;
 const KNOWN_CALLERS = [
   "date-calendar-core.ts",
   "search-field.ts",
@@ -25,12 +25,17 @@ function sourceModules(directory: string): string[] {
   });
 }
 
-//: drop-down.ts and its imports; exempt, would cycle.
+//: drop-down.ts and everything it imports; exempt, would cycle.
 function dropdownOwnModules(): Set<string> {
-  const source = readFileSync(join(SOURCE_ROOT, "elements", "drop-down.ts"), "utf8");
-  const own = new Set([join(SOURCE_ROOT, "elements", "drop-down.ts")]);
-  for (const match of source.matchAll(RELATIVE_IMPORT)) {
-    own.add(join(SOURCE_ROOT, "elements", `${match[1]}.ts`));
+  const own = new Set<string>();
+  const pending = [join(SOURCE_ROOT, "elements", "drop-down.ts")];
+  while (pending.length > 0) {
+    const path = pending.pop()!;
+    if (own.has(path)) continue;
+    own.add(path);
+    for (const match of readFileSync(path, "utf8").matchAll(RELATIVE_IMPORT)) {
+      pending.push(join(dirname(path), `${match[1]}.ts`));
+    }
   }
   return own;
 }
@@ -53,6 +58,7 @@ describe("<drop-down> host dependency", () => {
     expect(dropdownOwnModules()).toContain(
       join(SOURCE_ROOT, "elements", "behaviors", "inline-combobox.ts"),
     );
+    expect(dropdownOwnModules()).toContain(join(SOURCE_ROOT, "elements", "modal-layer.ts"));
   });
 
   it("every host caller imports it bare", () => {

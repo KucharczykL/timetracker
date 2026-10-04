@@ -130,9 +130,13 @@ export function pushSurface(surface: Surface): void {
   if (surfaces.includes(surface)) return;
   listen();
   try {
-    // Single open closes even an unrelated modal.
+    // A modal leaves only by its own act.
     if (surface.kind !== "hint") {
-      dismissAll(surfaces.filter((open) => !open.host.contains(surface.host)));
+      dismissAll(
+        surfaces.filter(
+          (open) => open.kind !== "modal" && !open.host.contains(surface.host),
+        ),
+      );
     }
   } finally {
     surfaces.push(surface);

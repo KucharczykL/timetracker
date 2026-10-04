@@ -454,7 +454,7 @@ def test_mobile_section_sheet_navigation_and_dismissal(live_server, page: Page):
     trigger = nav_host.locator("[data-section-nav-trigger]")
     dialog = nav_host.locator("dialog[data-bottom-sheet]")
     panel = dialog.locator("[data-sheet-panel]")
-    close_button = dialog.locator("[data-sheet-dismiss]")
+    close_button = dialog.locator("[data-modal-dismiss]")
     links = dialog.locator("[data-section-nav-item] a")
 
     # The compact control travels as a sticky grid item on a reachable scroll.

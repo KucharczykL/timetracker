@@ -1286,7 +1286,7 @@ def BottomSheet(
     title_id = f"{id}-title"
     close_button = ControlButton(
         [
-            ("data-sheet-dismiss", ""),
+            ("data-modal-dismiss", ""),
             ("aria-label", close_label),
             ("class", "shrink-0 focus:ring-inset"),
         ],
@@ -1294,6 +1294,7 @@ def BottomSheet(
     )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
     target = Dialog(
         [
+            ("data-modal", ""),
             ("data-bottom-sheet", ""),
             ("aria-labelledby", title_id),
         ],
