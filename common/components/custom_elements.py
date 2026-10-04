@@ -1269,6 +1269,48 @@ def Dropdown(
     )
 
 
+type ModalAlign = Literal["center", "end"]
+
+#: A transparent hit area; the panel is visible.
+#: No transform/filter/contain: toast region needs viewport.
+#: clip: hidden lets focus scroll the panel.
+_MODAL_DIALOG_CLASS = (
+    "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-clip "
+    "border-0 bg-transparent p-0 text-inherit open:flex open:justify-center "
+    "backdrop:bg-dark-backdrop/70 "
+    # Only the topmost shown modal dims.
+    "data-modal-covered:backdrop:opacity-0! "
+    "data-modal-covered:backdrop:transition-none! "
+    "data-modal-over:not-data-modal-covered:backdrop:opacity-100! "
+    "data-modal-over:backdrop:transition-none!"
+)
+_MODAL_ALIGN_CLASS: dict[ModalAlign, str] = {
+    "center": "open:items-center",
+    "end": "open:items-end",
+}
+
+
+def modal_dialog_class(*, align: ModalAlign = "center") -> str:
+    """The classes every ``<dialog data-modal>`` wears."""
+    return f"{_MODAL_DIALOG_CLASS} {_MODAL_ALIGN_CLASS[align]}"
+
+
+#: Only a close fades; uncovering stays instant.
+_SHEET_DIALOG_CLASS = (
+    "group/sheet backdrop:opacity-0 "
+    "data-[sheet-state=opening]:backdrop:opacity-100 "
+    "data-[sheet-state=open]:backdrop:opacity-100 "
+    "motion-safe:data-[sheet-state=closing]:backdrop:transition-opacity "
+    "motion-safe:data-[sheet-state=closing]:backdrop:duration-200 "
+    "motion-safe:data-[sheet-state=closing]:backdrop:ease-out"
+)
+#: The slide; the controller waits on translate.
+_SHEET_PANEL_MOTION_CLASS = (
+    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0 "
+    "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
+)
+
+
 def BottomSheet(
     *,
     trigger_element: Element,
@@ -1297,6 +1339,7 @@ def BottomSheet(
             ("data-modal", ""),
             ("data-bottom-sheet", ""),
             ("aria-labelledby", title_id),
+            ("class", f"{modal_dialog_class(align='end')} {_SHEET_DIALOG_CLASS}"),
         ],
     )[
         Div(
@@ -1304,7 +1347,7 @@ def BottomSheet(
             class_=(
                 "flex w-full max-h-[min(80dvh,32rem)] flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
-                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
+                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
         )[
             Div(

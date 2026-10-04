@@ -1,57 +1,89 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
 import { ownChild } from "./own-child.js";
-import { pushSurface, removeSurface, type ModalSurface } from "./surface-stack.js";
+import {
+  isInvalidState,
+  pushSurface,
+  removeSurface,
+  type ModalSurface,
+} from "./surface-stack.js";
 
-export const MODAL_CHANGE = "modal-layer:change";
+export const MODAL_CHANGE = "modal-layer:change" as const;
+
+declare global {
+  interface WindowEventMap {
+    [MODAL_CHANGE]: Event;
+  }
+}
+
+/** Calls the layer's finish exactly once. */
+export type FinishLeave = () => void;
 
 export interface ModalOptions {
   /** The surface host; defaults to the dialog. */
   host?: HTMLElement;
   initialFocus?: () => HTMLElement | null;
-  /** True: it calls finish itself. */
-  leave?: (finish: () => void) => boolean;
-  /** Escape, backdrop and dismiss control. */
+  /** Must call finish, now or later. */
+  leave?: (finish: FinishLeave) => void;
+  /** Escape, backdrop, dismiss control; default close. */
   dismiss?: () => void;
   /** Runs last, after focus return. */
   onClosed?: () => void;
 }
 
+export type ModalState = "closed" | "open" | "leaving";
+
 export interface Modal {
+  /** False when refused; true when open. */
   open(opener?: HTMLElement | null): boolean;
   close(): void;
+  /** False while leaving. */
   isOpen(): boolean;
+  state(): ModalState;
   focusInitial(): void;
 }
 
-type ModalState = "closed" | "open" | "leaving";
+/** Bumped on every open and finish. */
+type Generation = number;
+type PointerId = number;
+type TimerHandle = number;
 
 interface Entry {
   readonly dialog: HTMLDialogElement;
-  readonly host: HTMLElement;
   readonly options: ModalOptions;
   readonly surface: ModalSurface;
   state: ModalState;
   opener: HTMLElement | null;
-  /** Bumped on every open and finish. */
-  generation: number;
+  generation: Generation;
+  /** The layer's cap on a leave. */
+  leaveLimit: TimerHandle;
   focusInitial(): void;
 }
 
+// A leave past this is a defect.
+const LEAVE_LIMIT_MS = 1_000;
+
+const LOCKED_HTML_STYLES = ["overflow", "overscrollBehavior", "scrollBehavior"] as const;
+const LOCKED_BODY_STYLES = [
+  "position",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "width",
+  "overflow",
+  "paddingRight",
+] as const;
+type LockedStyle =
+  | (typeof LOCKED_HTML_STYLES)[number]
+  | (typeof LOCKED_BODY_STYLES)[number];
+type StyleValues = Readonly<Partial<Record<LockedStyle, string>>>;
+
 interface ScrollLockSnapshot {
-  x: number;
-  y: number;
-  htmlOverflow: string;
-  htmlOverscrollBehavior: string;
-  htmlScrollBehavior: string;
-  bodyPosition: string;
-  bodyTop: string;
-  bodyRight: string;
-  bodyBottom: string;
-  bodyLeft: string;
-  bodyWidth: string;
-  bodyOverflow: string;
-  bodyPaddingRight: string;
+  readonly scrollLeft: number;
+  readonly scrollTop: number;
+  readonly html: StyleValues;
+  readonly body: StyleValues;
 }
 
 const attached = new WeakSet<HTMLDialogElement>();
@@ -77,6 +109,10 @@ function nearestDialog(target: EventTarget | null): HTMLDialogElement | null {
   return target instanceof Element ? target.closest("dialog") : null;
 }
 
+function report(detail: string): void {
+  reportClientError("modal-layer", detail, { toast: false });
+}
+
 function notifyChange(): void {
   const top = topModal();
   if (top === lastTop) return;
@@ -92,26 +128,30 @@ function markBackdrops(): void {
   });
 }
 
+function captureStyles(
+  element: HTMLElement,
+  names: readonly LockedStyle[],
+): StyleValues {
+  return Object.fromEntries(names.map((name) => [name, element.style[name]]));
+}
+
+function restoreStyles(element: HTMLElement, values: StyleValues): void {
+  for (const [name, value] of Object.entries(values)) {
+    element.style[name as LockedStyle] = value;
+  }
+}
+
 function lockDocumentScroll(): void {
   if (scrollLock) return;
   const html = document.documentElement;
   const body = document.body;
-  const x = window.scrollX;
-  const y = window.scrollY;
+  const scrollLeft = window.scrollX;
+  const scrollTop = window.scrollY;
   scrollLock = {
-    x,
-    y,
-    htmlOverflow: html.style.overflow,
-    htmlOverscrollBehavior: html.style.overscrollBehavior,
-    htmlScrollBehavior: html.style.scrollBehavior,
-    bodyPosition: body.style.position,
-    bodyTop: body.style.top,
-    bodyRight: body.style.right,
-    bodyBottom: body.style.bottom,
-    bodyLeft: body.style.left,
-    bodyWidth: body.style.width,
-    bodyOverflow: body.style.overflow,
-    bodyPaddingRight: body.style.paddingRight,
+    scrollLeft,
+    scrollTop,
+    html: captureStyles(html, LOCKED_HTML_STYLES),
+    body: captureStyles(body, LOCKED_BODY_STYLES),
   };
   const scrollbarWidth = Math.max(0, window.innerWidth - html.clientWidth);
   const bodyPadding = Number.parseFloat(getComputedStyle(body).paddingRight) || 0;
@@ -119,10 +159,10 @@ function lockDocumentScroll(): void {
   html.style.overscrollBehavior = "none";
   // iOS scrolls under overflow: hidden alone.
   body.style.position = "fixed";
-  body.style.top = `-${y}px`;
+  body.style.top = `-${scrollTop}px`;
   body.style.right = "0";
   body.style.bottom = "auto";
-  body.style.left = `-${x}px`;
+  body.style.left = `-${scrollLeft}px`;
   body.style.width = "100%";
   body.style.overflow = "hidden";
   if (scrollbarWidth > 0) {
@@ -135,21 +175,12 @@ function unlockDocumentScroll(): void {
   if (!snapshot) return;
   scrollLock = null;
   const html = document.documentElement;
-  const body = document.body;
-  html.style.overflow = snapshot.htmlOverflow;
-  html.style.overscrollBehavior = snapshot.htmlOverscrollBehavior;
+  restoreStyles(html, snapshot.html);
+  restoreStyles(document.body, snapshot.body);
   // Restore instantly despite smooth scrolling.
   html.style.scrollBehavior = "auto";
-  body.style.position = snapshot.bodyPosition;
-  body.style.top = snapshot.bodyTop;
-  body.style.right = snapshot.bodyRight;
-  body.style.bottom = snapshot.bodyBottom;
-  body.style.left = snapshot.bodyLeft;
-  body.style.width = snapshot.bodyWidth;
-  body.style.overflow = snapshot.bodyOverflow;
-  body.style.paddingRight = snapshot.bodyPaddingRight;
-  window.scrollTo(snapshot.x, snapshot.y);
-  html.style.scrollBehavior = snapshot.htmlScrollBehavior;
+  window.scrollTo(snapshot.scrollLeft, snapshot.scrollTop);
+  html.style.scrollBehavior = snapshot.html.scrollBehavior ?? "";
 }
 
 function finishRemoved(): void {
@@ -190,7 +221,7 @@ function isReachable(element: HTMLElement): boolean {
   return element.isConnected && !element.closest("[hidden], [inert]");
 }
 
-/** The opener, else an enclosing drop-down's toggle. */
+/** The opener, else a reachable drop-down toggle. */
 function focusReturnTarget(opener: HTMLElement | null): HTMLElement | null {
   if (!opener) return null;
   if (isReachable(opener)) return opener;
@@ -230,6 +261,7 @@ function finish(entry: Entry): void {
   closeAbove(entry);
   entry.state = "closed";
   entry.generation += 1;
+  window.clearTimeout(entry.leaveLimit);
   if (entry.dialog.open) entry.dialog.close();
   const index = shown.indexOf(entry);
   if (index !== -1) shown.splice(index, 1);
@@ -243,7 +275,19 @@ function finish(entry: Entry): void {
   }
   returnFocus(entry);
   notifyChange();
-  entry.options.onClosed?.();
+  // A throwing hook spares the rest.
+  try {
+    entry.options.onClosed?.();
+  } catch (error) {
+    report(`onClosed threw: ${String(error)}`);
+  }
+}
+
+function refuseOpen(entry: Entry, detail: string): false {
+  entry.opener = null;
+  if (shown.length === 0) unlockDocumentScroll();
+  report(detail);
+  return false;
 }
 
 function open(entry: Entry, opener: HTMLElement | null | undefined): boolean {
@@ -251,20 +295,22 @@ function open(entry: Entry, opener: HTMLElement | null | undefined): boolean {
   if (entry.state === "leaving" || shown.some((other) => other.state === "leaving")) {
     return false;
   }
-  if (!entry.host.isConnected || !entry.dialog.isConnected) return false;
+  if (!entry.surface.host.isConnected || !entry.dialog.isConnected) return false;
   const active = document.activeElement;
   entry.opener = opener ?? (active instanceof HTMLElement ? active : null);
   lockDocumentScroll();
   try {
     entry.dialog.showModal();
   } catch (error) {
-    entry.opener = null;
-    if (shown.length === 0) unlockDocumentScroll();
-    reportClientError("modal-layer", `showModal refused: ${String(error)}`, {
-      toast: false,
-    });
-    return false;
+    if (!isInvalidState(error)) {
+      entry.opener = null;
+      if (shown.length === 0) unlockDocumentScroll();
+      throw error;
+    }
+    return refuseOpen(entry, `showModal refused: ${String(error)}`);
   }
+  // A cancelled beforetoggle returns quietly.
+  if (!entry.dialog.open) return refuseOpen(entry, "showModal left the dialog closed");
   entry.state = "open";
   entry.generation += 1;
   shown.push(entry);
@@ -280,7 +326,7 @@ function close(entry: Entry): void {
   if (entry.state === "closed") return;
   if (entry.state === "leaving") {
     // A detached host never ends its leave.
-    if (!entry.host.isConnected) finish(entry);
+    if (!entry.surface.host.isConnected) finish(entry);
     return;
   }
   closeAbove(entry);
@@ -290,15 +336,25 @@ function close(entry: Entry): void {
   markBackdrops();
   notifyChange();
   const leave = entry.options.leave;
-  if (!entry.host.isConnected || !leave) {
+  if (!entry.surface.host.isConnected || !leave) {
     finish(entry);
     return;
   }
   const generation = entry.generation;
-  const finishThisClose = (): void => {
+  const finishThisClose: FinishLeave = () => {
     if (entry.generation === generation && entry.state === "leaving") finish(entry);
   };
-  if (!leave(finishThisClose)) finishThisClose();
+  entry.leaveLimit = window.setTimeout(() => {
+    if (entry.generation !== generation || entry.state !== "leaving") return;
+    report("leave never called finish");
+    finish(entry);
+  }, LEAVE_LIMIT_MS);
+  try {
+    leave(finishThisClose);
+  } catch (error) {
+    report(`leave threw: ${String(error)}`);
+    finishThisClose();
+  }
 }
 
 export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {}): Modal {
@@ -309,16 +365,16 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     throw new TypeError("attachModal: this dialog already has a modal.");
   }
   attached.add(dialog);
-  let backdropPointer: number | null = null;
+  let backdropPointer: PointerId | null = null;
 
   const entry: Entry = {
     dialog,
-    host: options.host ?? dialog,
     options,
     surface: { host: options.host ?? dialog, kind: "modal", close: () => close(entry) },
     state: "closed",
     opener: null,
     generation: 0,
+    leaveLimit: 0,
     focusInitial: () => {
       const target =
         options.initialFocus?.() ??
@@ -337,6 +393,7 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
 
   dialog.addEventListener("cancel", (event) => {
     if (event.target !== dialog) return;
+    // Not cancelable: the browser closes it.
     event.preventDefault();
     dismiss();
   });
@@ -379,6 +436,7 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     open: (opener) => open(entry, opener),
     close: () => close(entry),
     isOpen: () => entry.state === "open",
+    state: () => entry.state,
     focusInitial: () => entry.focusInitial(),
   };
 }
@@ -387,6 +445,9 @@ export function resetModalLayerForTests(): void {
   for (const entry of shown) {
     entry.state = "closed";
     entry.generation += 1;
+    window.clearTimeout(entry.leaveLimit);
+    removeSurface(entry.surface);
+    if (entry.dialog.open) entry.dialog.close();
   }
   shown.length = 0;
   lastTop = null;

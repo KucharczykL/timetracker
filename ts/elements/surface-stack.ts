@@ -3,8 +3,9 @@
 // A surface is an open panel, hint or modal. The stack holds them
 // in opening order and owns the only dismissal listeners, on window:
 // Escape closes the topmost surface, and a press outside closes every
-// surface above the one pressed in. Panels render in the top layer as manual
-// popovers, so no ancestor clips them and no z-index orders them.
+// surface above the one pressed in. A modal is exempt from both and from
+// single open: the modal layer closes it. Panels render in the top layer
+// as manual popovers, so no ancestor clips them and no z-index orders them.
 import { reportClientError } from "../client-errors.js";
 
 interface SurfaceBase {
@@ -130,7 +131,7 @@ export function pushSurface(surface: Surface): void {
   if (surfaces.includes(surface)) return;
   listen();
   try {
-    // A modal leaves only by its own act.
+    // Single open spares modals; they nest.
     if (surface.kind !== "hint") {
       dismissAll(
         surfaces.filter(
@@ -160,7 +161,7 @@ function isShowing(panel: HTMLElement): boolean {
   return panel.matches(":popover-open");
 }
 
-function isInvalidState(error: unknown): boolean {
+export function isInvalidState(error: unknown): boolean {
   return error instanceof DOMException && error.name === "InvalidStateError";
 }
 

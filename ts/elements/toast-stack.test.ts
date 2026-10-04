@@ -433,4 +433,38 @@ describe("under a modal", () => {
     show({ message: "Saved" });
     expect(toasts()[0].closest("dialog")).toBe(dialog);
   });
+
+  it("moves the toasts back when their dialog leaves the document", async () => {
+    show({ message: "Undo it", type: "error" });
+    const { dialog, modal } = mountModal();
+    modal.open();
+    dialog.remove();
+    await Promise.resolve();
+    const stack = document.querySelector("toast-stack")!;
+    expect(toasts()[0].parentElement).toBe(stack);
+    show({ message: "Next" });
+    expect(toasts().map((toast) => toast.parentElement)).toEqual([stack, stack]);
+  });
+
+  it("moves the toasts back when the last leave starts", () => {
+    show({ message: "Saved" });
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("data-modal", "");
+    document.body.append(dialog);
+    const modal = attachModal(dialog, { leave: () => {} });
+    modal.open();
+    modal.close();
+    expect(dialog.open).toBe(true);
+    expect(toasts()[0].parentElement).toBe(document.querySelector("toast-stack"));
+  });
+
+  it("takes its toasts back when it leaves the document", () => {
+    show({ message: "Saved" });
+    const { dialog, modal } = mountModal();
+    modal.open();
+    const stack = document.querySelector("toast-stack")!;
+    stack.remove();
+    expect(region(dialog)).toBeNull();
+    expect(stack.querySelectorAll("[data-toast-id]")).toHaveLength(1);
+  });
 });

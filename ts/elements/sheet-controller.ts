@@ -1,6 +1,6 @@
 /** The bottom sheet's slide and lifecycle events. */
 import type { MenuController } from "./menu-behavior.js";
-import { attachModal } from "./modal-layer.js";
+import { attachModal, type FinishLeave } from "./modal-layer.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -8,6 +8,11 @@ interface PendingNavigation {
   hash: string;
   destination: HTMLElement;
   focusTarget: HTMLElement;
+}
+
+interface PendingLeave {
+  finish: FinishLeave;
+  timer: number;
 }
 
 const CLOSE_FALLBACK_MS = 250;
@@ -63,25 +68,32 @@ export function attachSheet(
     throw new TypeError('drop-down behavior="sheet" requires [data-sheet-panel].');
   }
 
-  let state: SheetState = "closed";
-  let closeTimer = 0;
+  let entered = false;
   let openFrame = 0;
-  let finishLeave: (() => void) | null = null;
+  let pendingLeave: PendingLeave | null = null;
   let pendingNavigation: PendingNavigation | null = null;
 
-  const setState = (next: SheetState): void => {
-    state = next;
-    dialog.dataset.sheetState = next;
+  const sheetState = (): SheetState => {
+    switch (modal.state()) {
+      case "closed":
+        return "closed";
+      case "leaving":
+        return "closing";
+      case "open":
+        return entered ? "open" : "opening";
+    }
+  };
+  const render = (): void => {
+    dialog.dataset.sheetState = sheetState();
   };
 
   const clearMotion = (): void => {
     window.cancelAnimationFrame(openFrame);
     openFrame = 0;
-    window.clearTimeout(closeTimer);
-    closeTimer = 0;
-    finishLeave = null;
+    if (pendingLeave) window.clearTimeout(pendingLeave.timer);
+    pendingLeave = null;
+    entered = false;
   };
-  setState("closed");
 
   const modal = attachModal(dialog, {
     host,
@@ -90,36 +102,39 @@ export function attachSheet(
       dialog.querySelector<HTMLElement>("nav a[href]") ??
       dialog.querySelector<HTMLElement>("[data-modal-dismiss]"),
     leave: (finish) => {
-      if (prefersReducedMotion()) return false;
+      if (prefersReducedMotion()) {
+        finish();
+        return;
+      }
       window.cancelAnimationFrame(openFrame);
-      setState("closing");
-      finishLeave = finish;
-      closeTimer = window.setTimeout(finish, CLOSE_FALLBACK_MS);
-      return true;
+      pendingLeave = { finish, timer: window.setTimeout(finish, CLOSE_FALLBACK_MS) };
+      render();
     },
     onClosed: () => {
       const navigation = pendingNavigation;
       pendingNavigation = null;
       clearMotion();
       toggle.setAttribute("aria-expanded", "false");
-      setState("closed");
+      render();
       host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
       if (navigation) navigateTo(navigation);
     },
   });
+  render();
 
   const open = (): void => {
-    if (state !== "closed") return;
+    if (modal.state() !== "closed") return;
     // A hidden trigger: the sheet is unavailable.
     if (!host.isConnected || toggle.closest("[hidden], [inert]")) return;
     // Safari does not focus a clicked button.
     if (!modal.open(toggle)) return;
     toggle.setAttribute("aria-expanded", "true");
-    setState("opening");
+    render();
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
     openFrame = window.requestAnimationFrame(() => {
       openFrame = 0;
-      if (state === "opening") setState("open");
+      entered = true;
+      render();
     });
   };
 
@@ -139,12 +154,9 @@ export function attachSheet(
     close();
   });
   panel.addEventListener("transitionend", (event) => {
-    if (
-      state === "closing" &&
-      event.target === panel &&
-      event.propertyName === "transform"
-    ) {
-      finishLeave?.();
+    // Tailwind's translate-y animates translate.
+    if (event.target === panel && event.propertyName === "translate") {
+      pendingLeave?.finish();
     }
   });
 

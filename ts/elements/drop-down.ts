@@ -13,7 +13,6 @@ import "./behaviors/column-picker.js";
 import "./behaviors/date-calendar.js";
 import "./behaviors/sheet.js";
 
-
 // The one generic dropdown element. A registered behavior may provide its own
 // controller (the modal sheet does); otherwise attachMenu owns the usual
 // open/close/position/keyboard behavior. The element reads no type-specific

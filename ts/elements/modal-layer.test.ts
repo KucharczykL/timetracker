@@ -24,6 +24,7 @@ beforeEach(() => {
 afterEach(() => {
   window.removeEventListener(MODAL_CHANGE, countChange);
   vi.useRealTimers();
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
   document.body.removeAttribute("style");
   document.documentElement.removeAttribute("style");
@@ -181,10 +182,9 @@ describe("nesting", () => {
   });
 
   it("closes a modal opened above a closing one before it leaves", () => {
-    vi.useFakeTimers();
     const lower = mountDialog();
     const upper = mountDialog(lower);
-    const lowerModal = modalOn(lower, { leave: () => true });
+    const lowerModal = modalOn(lower, { leave: () => {} });
     lowerModal.open();
     modalOn(upper).open();
     lowerModal.close();
@@ -211,7 +211,6 @@ describe("scroll lock", () => {
     const modal = modalOn(mountDialog(), {
       leave: (done) => {
         finish = done;
-        return true;
       },
     });
     modal.open();
@@ -427,7 +426,6 @@ describe("leave", () => {
     const modal = modalOn(dialog, {
       leave: (done) => {
         finish = done;
-        return true;
       },
       onClosed,
     });
@@ -443,16 +441,16 @@ describe("leave", () => {
     expect(onClosed).toHaveBeenCalledOnce();
   });
 
-  it("finishes at once when leave answers false", () => {
+  it("finishes at once when leave calls finish at once", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave: () => false });
+    const modal = modalOn(dialog, { leave: (done) => done() });
     modal.open();
     modal.close();
     expect(dialog.open).toBe(false);
   });
 
   it("ignores close during a leave", () => {
-    const leave = vi.fn(() => true);
+    const leave = vi.fn();
     const dialog = mountDialog();
     const modal = modalOn(dialog, { leave });
     modal.open();
@@ -464,7 +462,7 @@ describe("leave", () => {
 
   it("finishes a leave when the host is gone", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave: () => true });
+    const modal = modalOn(dialog, { leave: () => {} });
     modal.open();
     modal.close();
     dialog.remove();
@@ -474,7 +472,7 @@ describe("leave", () => {
   });
 
   it("skips leave for a disconnected host", () => {
-    const leave = vi.fn(() => true);
+    const leave = vi.fn();
     const dialog = mountDialog();
     const modal = modalOn(dialog, { leave });
     modal.open();
@@ -485,7 +483,7 @@ describe("leave", () => {
   });
 
   it("refuses to open while a modal leaves", () => {
-    const leaving = modalOn(mountDialog(), { leave: () => true });
+    const leaving = modalOn(mountDialog(), { leave: () => {} });
     leaving.open();
     leaving.close();
     expect(modalOn(mountDialog()).open()).toBe(false);
@@ -497,7 +495,6 @@ describe("leave", () => {
     const modal = modalOn(dialog, {
       leave: (done) => {
         finish = done;
-        return true;
       },
     });
     modal.open();
@@ -574,7 +571,6 @@ describe("backdrops", () => {
     const upperModal = modalOn(upper, {
       leave: (done) => {
         finish = done;
-        return true;
       },
     });
     lowerModal.open();
@@ -611,7 +607,6 @@ describe("change events", () => {
     const modal = modalOn(mountDialog(), {
       leave: (done) => {
         finish = done;
-        return true;
       },
     });
     modal.open();
@@ -634,10 +629,213 @@ describe("surface stack", () => {
         removeSurface(panel);
       },
     };
-    const modal = modalOn(dialog, { leave: () => true });
+    const modal = modalOn(dialog, { leave: () => {} });
     modal.open();
     pushSurface(panel);
     modal.close();
     expect(closePanel).toHaveBeenCalledOnce();
+  });
+});
+
+function silenceReports(): ReturnType<typeof vi.spyOn> {
+  return vi.spyOn(console, "error").mockImplementation(() => {});
+}
+
+describe("failure paths", () => {
+  it("reports and finishes a leave that throws", () => {
+    const logged = silenceReports();
+    const modal = modalOn(mountDialog(), {
+      leave: () => {
+        throw new Error("broken slide");
+      },
+    });
+    modal.open();
+    modal.close();
+    expect(modal.state()).toBe("closed");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("leave threw"));
+    expect(modalOn(mountDialog()).open()).toBe(true);
+  });
+
+  it("finishes a leave that never calls finish", () => {
+    vi.useFakeTimers();
+    const logged = silenceReports();
+    const dialog = mountDialog();
+    const modal = modalOn(dialog, { leave: () => {} });
+    modal.open();
+    modal.close();
+    expect(dialog.open).toBe(true);
+    vi.advanceTimersByTime(1_000);
+    expect(modal.state()).toBe("closed");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("never called finish"));
+  });
+
+  it("refuses a showModal that leaves the dialog closed", () => {
+    const logged = silenceReports();
+    const dialog = mountDialog();
+    vi.spyOn(dialog, "showModal").mockImplementation(() => {});
+    const modal = modalOn(dialog);
+    expect(modal.open()).toBe(false);
+    expect(modal.state()).toBe("closed");
+    expect(document.body.style.position).toBe("");
+    expect(openSurfaces()).toEqual([]);
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("left the dialog closed"));
+  });
+
+  it("rethrows a showModal error that is no refusal", () => {
+    const dialog = mountDialog();
+    vi.spyOn(dialog, "showModal").mockImplementation(() => {
+      throw new TypeError("defect");
+    });
+    expect(() => modalOn(dialog).open()).toThrow(TypeError);
+    expect(document.body.style.position).toBe("");
+  });
+
+  it("keeps the page lock when a nested open is refused", () => {
+    silenceReports();
+    const lower = modalOn(mountDialog());
+    lower.open();
+    const refused = mountDialog();
+    refused.setAttribute("open", "");
+    expect(modalOn(refused).open()).toBe(false);
+    expect(document.body.style.position).toBe("fixed");
+    expect(lower.isOpen()).toBe(true);
+  });
+
+  it("closes the rest when an onClosed throws", () => {
+    const logged = silenceReports();
+    const lower = modalOn(mountDialog());
+    const upper = modalOn(mountDialog(), {
+      onClosed: () => {
+        throw new Error("broken hook");
+      },
+    });
+    lower.open();
+    upper.open();
+    lower.close();
+    expect(upper.state()).toBe("closed");
+    expect(lower.state()).toBe("closed");
+    expect(document.body.style.position).toBe("");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("onClosed threw"));
+  });
+
+  it("finishes on a cancel the browser will not let it veto", () => {
+    vi.useFakeTimers();
+    const dialog = mountDialog();
+    const dismiss = vi.fn();
+    const onClosed = vi.fn();
+    const modal = modalOn(dialog, { dismiss, onClosed });
+    modal.open();
+    dialog.dispatchEvent(new Event("cancel", { cancelable: false }));
+    // The browser then closes the dialog.
+    dialog.close();
+    vi.runAllTimers();
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(modal.state()).toBe("closed");
+    expect(onClosed).toHaveBeenCalledOnce();
+  });
+});
+
+describe("removal of a stack", () => {
+  it("finishes a lower dialog and the one inside it, topmost first", async () => {
+    const closed: string[] = [];
+    const lower = mountDialog();
+    const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
+    modalOn(lower, { onClosed: () => closed.push("lower") }).open();
+    modalOn(upper, { onClosed: () => closed.push("upper") }).open();
+    lower.remove();
+    await Promise.resolve();
+    expect(closed).toEqual(["upper", "lower"]);
+    expect(isModalOpen()).toBe(false);
+    expect(document.body.style.position).toBe("");
+  });
+
+  it("closes a modal beside a removed lower one", async () => {
+    const lower = mountDialog();
+    const upper = modalOn(mountDialog());
+    modalOn(lower).open();
+    upper.open();
+    lower.remove();
+    await Promise.resolve();
+    expect(upper.state()).toBe("closed");
+    expect(document.querySelectorAll(":modal")).toHaveLength(0);
+  });
+
+  it("closes nothing on another change to the document", async () => {
+    const modal = modalOn(mountDialog());
+    modal.open();
+    document.body.append(document.createElement("div"));
+    await Promise.resolve();
+    expect(modal.isOpen()).toBe(true);
+  });
+});
+
+describe("more focus and dismissal", () => {
+  it("focuses the remaining modal's first tabbable without initial focus", () => {
+    const opener = mountOpener();
+    const lower = mountDialog();
+    modalOn(lower).open();
+    opener.focus();
+    const upper = modalOn(mountDialog());
+    upper.open(opener);
+    upper.close();
+    expect(document.activeElement).toBe(first(lower));
+  });
+
+  it("keeps the lower modal on a backdrop press of a nested one", () => {
+    const lower = mountDialog();
+    const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
+    const lowerModal = modalOn(lower);
+    const upperModal = modalOn(upper);
+    lowerModal.open();
+    upperModal.open();
+    pointer("pointerdown", upper);
+    pointer("pointerup", upper);
+    expect(upperModal.isOpen()).toBe(false);
+    expect(lowerModal.isOpen()).toBe(true);
+  });
+
+  it("refuses a second attach to one dialog", () => {
+    const dialog = mountDialog();
+    modalOn(dialog);
+    expect(() => modalOn(dialog)).toThrow(TypeError);
+  });
+
+  it("wraps Tab back in when focus sits outside", () => {
+    const opener = mountOpener();
+    const dialog = mountDialog();
+    modalOn(dialog).open();
+    opener.focus();
+    expect(pressTab(dialog).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first(dialog));
+  });
+
+  it("marks a middle modal both covered and over", () => {
+    const dialogs = [mountDialog(), mountDialog(), mountDialog()];
+    for (const dialog of dialogs) modalOn(dialog).open();
+    const marks = dialogs.map((dialog) => [
+      dialog.hasAttribute("data-modal-covered"),
+      dialog.hasAttribute("data-modal-over"),
+    ]);
+    expect(marks).toEqual([
+      [true, false],
+      [true, true],
+      [false, true],
+    ]);
+  });
+
+  it("reports its state through a leave", () => {
+    let finish = (): void => {};
+    const modal = modalOn(mountDialog(), {
+      leave: (done) => {
+        finish = done;
+      },
+    });
+    expect(modal.state()).toBe("closed");
+    modal.open();
+    expect(modal.state()).toBe("open");
+    modal.close();
+    expect(modal.state()).toBe("leaving");
+    finish();
+    expect(modal.state()).toBe("closed");
   });
 });

@@ -281,8 +281,12 @@ function isToastMessage(payload: unknown): payload is ToastMessage {
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
-  /** Itself, or a region in the top modal. */
-  private container: HTMLElement = this;
+  /** In the top modal; null without one. */
+  private region: HTMLElement | null = null;
+
+  private get container(): HTMLElement {
+    return this.region ?? this;
+  }
 
   connectedCallback(): void {
     window.addEventListener("show-toast", this.onShowToast);
@@ -296,27 +300,34 @@ class ToastStackElement extends HTMLElement {
     window.removeEventListener("show-toast", this.onShowToast);
     window.removeEventListener("remove-toast", this.onRemoveToast);
     window.removeEventListener(MODAL_CHANGE, this.onModalChange);
+    this.moveInto(null);
   }
 
   private readonly onModalChange = (): void => this.rehost();
 
-  /** The page under a modal is inert. */
+  /** Toasts follow the top modal. */
   private rehost(): void {
     const dialog = topModal();
-    const previous = this.container;
-    const next = dialog ? this.buildRegion() : this;
-    if (next === previous) return;
+    if (dialog === (this.region?.parentElement ?? null)) return;
+    this.moveInto(dialog);
+  }
+
+  private moveInto(dialog: HTMLDialogElement | null): void {
+    const previous = this.region;
+    const next = dialog ? this.buildRegion() : null;
+    if (!previous && !next) return;
+    const container = next ?? this;
     for (const toast of this.store.toasts) {
       const node = this.nodes.get(toast.id);
-      if (node) next.appendChild(node);
+      if (node) container.appendChild(node);
       // A move fires no mouseleave or focusout.
       this.store.setHovered(toast.id, false);
       this.store.setFocused(toast.id, false);
     }
-    // Filled first: moved nodes announce nothing.
-    dialog?.appendChild(next);
-    if (previous !== this) previous.remove();
-    this.container = next;
+    // A filled region announces no moves.
+    if (dialog && next) dialog.appendChild(next);
+    previous?.remove();
+    this.region = next;
   }
 
   private buildRegion(): HTMLElement {

@@ -400,15 +400,43 @@ describe('drop-down behavior="sheet"', () => {
     expect(order).toEqual(["change", "show"]);
   });
 
-  it("finishes the slide on the panel's transform transitionend", () => {
+  it("finishes the slide on the panel's translate transitionend", () => {
     reducedMotion = false;
     vi.useFakeTimers();
     const { host, toggle, dialog, panel } = mountSheet();
     toggle.click();
     host.close();
     const end = new Event("transitionend");
-    Object.defineProperty(end, "propertyName", { value: "transform" });
+    Object.defineProperty(end, "propertyName", { value: "translate" });
     panel.dispatchEvent(end);
+    expect(dialog.open).toBe(false);
+    expect(dialog.dataset.sheetState).toBe("closed");
+  });
+
+  it("cleans up a sheet closed from below", () => {
+    const { hosts, toggles, dialogs } = mountTwoSheets();
+    const hidden = vi.fn();
+    hosts[1].addEventListener("dropdown:hide", hidden);
+    hosts[0].open();
+    hosts[1].open();
+
+    hosts[0].close();
+
+    expect(dialogs[1].open).toBe(false);
+    expect(dialogs[1].dataset.sheetState).toBe("closed");
+    expect(toggles[1].getAttribute("aria-expanded")).toBe("false");
+    expect(hidden).toHaveBeenCalledOnce();
+  });
+
+  it("ignores the toggle while the sheet slides out", () => {
+    reducedMotion = false;
+    vi.useFakeTimers();
+    const { host, toggle, dialog } = mountSheet();
+    toggle.click();
+    host.close();
+    toggle.click();
+    expect(dialog.dataset.sheetState).toBe("closing");
+    vi.runAllTimers();
     expect(dialog.open).toBe(false);
     expect(dialog.dataset.sheetState).toBe("closed");
   });
