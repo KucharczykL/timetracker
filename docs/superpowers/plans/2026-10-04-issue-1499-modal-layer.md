@@ -44,6 +44,7 @@ export function resetModalLayerForTests(): void
 Internals: module `stack: Entry[]` (open, not leaving), `leaving: Set<Entry>`,
 scroll-lock refcount + snapshot (moved verbatim from the sheet), one
 `MutationObserver` connected while `stack.length + leaving.size > 0`.
+Backdrop press tracks one pointer id; `pointercancel` clears it.
 Per-modal state `closed | open | leaving` and a `generation` counter bound
 into each `finish` closure. `nearestDialog(event.target)` gate on every
 listener. `tabbableElements` moved from the sheet, filtered by nearest dialog.
@@ -87,9 +88,14 @@ Gotchas:
 
 ## Task 6: toast host
 
+- `common/components/toast.py`: `TOAST_MODAL_REGION_CLASS` (fixed top-0
+  right-0, flex col items-end, pointer-events-none, p-4, top padding
+  `max(1rem, env(safe-area-inset-top))`), prop `modal_region_class`; run
+  `make gen-element-types`. Pin in `tests/test_components.py` beside the
+  existing class pin.
 - `ts/elements/toast-stack.ts`: import `topModal`, `MODAL_CHANGE`. Field
   `container: HTMLElement` (self or region). `rehost()` on change and in
-  `connectedCallback`: build region (copy className/role/aria-*), move nodes,
+  `connectedCallback`: build region (`modal_region_class`, copy role/aria-*), move nodes,
   append to dialog, drop old region, reset hover/focus flags for each toast.
   `render()` appends new nodes to `container`.
 - `toast-stack.test.ts` (find existing test file): re-host on open, nested,
@@ -102,7 +108,8 @@ Gotchas:
   dialogs (one nested in DOM, one at body), open both, close the lower: no
   `:modal` left, scroll style restored, focus on the opener.
 - Settings mobile sheet: open it, dispatch `show-toast`, assert the toast is
-  inside the dialog and its dismiss click removes it.
+  inside the dialog, its box ends above the sheet panel's top, and its
+  dismiss click removes it.
 
 ## Task 8: docs
 

@@ -78,7 +78,9 @@ window event "modal-layer:change" on every change of the top modal
   task stays open but not modal; the owning element closes it in its own
   `disconnectedCallback`, as `<drop-down>` does.
 - Dismissal: `cancel` (always `preventDefault`), a press that starts and ends
-  on the dialog itself with one pointer, and a click on `[data-modal-dismiss]`
+  on the dialog itself with one pointer (a `pointercancel` discards it, so a
+  touch scroll that starts on the backdrop closes nothing), and a click on
+  `[data-modal-dismiss]`
   call `dismiss()`, which defaults to `close()`. A veto in `dismiss` holds
   only where `cancel` is cancelable.
 - Tab boundary: on Tab, only while this dialog is `topModal()`, focus wraps
@@ -105,10 +107,18 @@ inert.
 ### Toast host
 
 `<toast-stack>` keeps its element and its listeners. On each change event it
-renders into the top modal: it builds a region, copying `className`,
-`role`, `aria-label`, `aria-live` and `aria-atomic` off its own element (no
-new class literal), moves the toast nodes into it, then appends the region
-to the dialog. The region of the dialog below goes. A live region inserted with its
+renders into the top modal: it builds a region, copying `role`,
+`aria-label`, `aria-live` and `aria-atomic` off its own element, moves the
+toast nodes into it, then appends the region to the dialog. The region of
+the dialog below goes.
+
+The region anchors to the top edge, right-aligned, inside the top safe
+area. At the bottom corner a toast would cover a bottom sheet's panel on a
+phone (a 288 px toast on a 375 px screen), and an error toast stays until
+dismissed. With no modal open the corner is unchanged. The class lives in
+Python beside `TOAST_STACK_CLASS`, as `TOAST_MODAL_REGION_CLASS`, and
+reaches the element as the `modal_region_class` prop beside
+`action_class`, so TypeScript holds no class literal. A live region inserted with its
 content is usually not announced. With no modal open, the nodes move back
 into `<toast-stack>`; that move may announce again, a check for #1335.
 While hosted, toast wrappers (tab index 0) join the dialog's Tab boundary;
@@ -142,6 +152,17 @@ where `HTMLDialogElement` exists and lacks `showModal`, and it joins
 `setupFiles` in `vitest.config.ts`. The sheet tests drop their own stubs,
 whose `close` moved focus itself.
 
+## Mobile
+
+- The scroll lock fixes the body, because iOS Safari scrolls under
+  `overflow: hidden` alone. One lock for the stack keeps a lower modal from
+  restoring the page under a higher one.
+- `dialog[data-modal]` is `100dvh` high, so it follows the URL bar.
+- Safari does not focus a tapped button, so a caller that opens from a
+  click passes its opener; the sheet passes its toggle.
+- Android's back gesture raises `cancel` on the top modal: the same path as
+  Escape.
+
 ## Measured in Chromium
 
 1. Escape on a focused element in a modal dialog whose keydown calls
@@ -168,13 +189,16 @@ whose `close` moved focus itself.
   `await` for the microtask); change events.
 - vitest surface stack: a pushed modal or panel keeps an open modal.
 - vitest toast stack: re-hosts on change, back on last close, a new toast
-  lands in the top modal.
+  lands in the top modal, the region wears `modal_region_class`.
+- vitest layer: a `pointercancel` between down and up on the backdrop
+  closes nothing.
 - vitest sheet: the existing cases, with three rewritten. "Fully closes a
   sibling sheet" becomes "two sheets nest and the last close restores the
   page style". The failed-open case asserts the report, not `console.error`.
   Focus return comes from the layer, not the stub.
 - e2e: real nested dialogs leave no `:modal` and restore scroll and focus; a
-  toast raised under the open settings sheet is in the dialog and its
+  toast raised under the open settings sheet, at a phone viewport, is in
+  the dialog, sits above the sheet's panel without overlapping it, and its
   dismiss works.
 
 ## Docs
