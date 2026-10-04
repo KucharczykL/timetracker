@@ -26,9 +26,8 @@ def refuse_unless_this_batch_wrote_it(
 ) -> None:
     """Refuse a value another act wrote.
 
-    A latest void passes: the void answers
-    already so. Otherwise the batch's own
-    statement must still be the latest.
+    A latest void passes, so a second
+    Undo answers already so, not refused.
     """
     family = endpoint_events.family
     stated = endpoint_events.stated.event_type

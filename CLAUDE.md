@@ -859,6 +859,14 @@ carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
 imports no act, and `FactChange` is `games/reads/fact_change.py`,
 whose `Fact.read` takes the whole event (`payload_fact` reads one key).
+#1355's `entry.end` ends access on selected copies, one
+`WayActStatement` for all (`games/bulk_access_end.py`, which the
+device act shares over its own `ways`); a `caution` counts copies
+already ended. Its Undo and the playthrough acts' read one guard,
+`refuse_unless_this_batch_wrote_it` (`games/bulk_endpoint_undo.py`):
+a latest void passes, else the batch's own statement must be the
+family's latest. Contract is
+[End access to many copies at once](docs/superpowers/specs/2026-10-04-issue-1355-bulk-entry-end-design.md).
 
 **A purchase buys one copy** — the conversion split every legacy bundle
 into one purchase per game, cents split, so each refundable unit is its own

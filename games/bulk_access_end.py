@@ -1,7 +1,7 @@
 """One end of access, asked once.
 
-Imports no act: the device act and the
-copy act both read it.
+Imports no act: two act modules
+read it, and acts never import acts.
 """
 
 import datetime

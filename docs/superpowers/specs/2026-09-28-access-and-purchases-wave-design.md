@@ -996,9 +996,16 @@ inside a member says so in its body and closes with it.
   live copy of. The held value skips that check and the removal check,
   as a held device does.
 - **Bulk end of access over copies** is #1355, beside #1345, on the
-  bulk runner; it reads `latest_end_act` and voids only where the
-  batch's own event is still the latest of the end's family, as
-  #1256's Undo does. **A platform across many copies** is #1382, which
+  bulk runner. Its Undo reads the row's events through the shared
+  guard `refuse_unless_this_batch_wrote_it`
+  (`games/bulk_endpoint_undo.py`), not `latest_end_act`: the guard
+  needs the batch's own event too. A latest void passes, so a second
+  Undo is already so; a resume, correction or later end refuses. The
+  guard raises `CommandRejected`, so each caller wraps it in
+  `answered`. #1345 declares the device act on
+  `access_end_choice(DEVICE_WAYS)`, whose form leads with a blank
+  required way; its Undo calls the guard with
+  `DEVICE_ACCESS_END_EVENTS`. **A platform across many copies** is #1382, which
   resolves each game's Release on the platform and refuses a row whose
   game holds none, never creating one.
 - **#1344** swaps the device's `endpoint_events(...)` for
