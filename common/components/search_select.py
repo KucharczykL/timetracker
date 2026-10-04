@@ -479,8 +479,10 @@ def _combobox_children(
     else:
         panel_attributes: list[HTMLAttribute] = [("data-search-select-panel", "")]
         if layout.menu_target:
-            panel_attributes.append(("data-menu", ""))
-        if layout.menu_target or not always_visible:
+            panel_attributes.extend(
+                [("data-menu", ""), ("hidden", ""), ("popover", "manual")]
+            )
+        elif not always_visible:
             panel_attributes.append(("hidden", ""))
         options_panel = DropdownPanel(
             panel_attributes,

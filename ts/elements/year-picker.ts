@@ -120,9 +120,6 @@ function initYearPicker(picker: HTMLElement): boolean {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       host.open();
-    } else if (event.key === "Escape" && host.isOpen()) {
-      event.preventDefault();
-      host.close();
     }
   });
 

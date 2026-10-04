@@ -10,7 +10,13 @@ import {
   positionAnchored,
   type Side,
 } from "./anchored-position.js";
-import { bindPopupDismiss } from "../utils.js";
+import {
+  hideFromTopLayer,
+  pushSurface,
+  removeSurface,
+  showInTopLayer,
+  type Surface,
+} from "./surface-stack.js";
 
 const ARROW_SIZE = 8;
 const TRIGGER_GAP = 8;
@@ -108,20 +114,15 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     if (isOpen) positionPanel();
   };
 
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key !== "Escape") return;
-    // Spent, so a selectable table hosting this tooltip keeps its selection.
-    event.preventDefault();
-    close();
-  };
+  const surface: Surface = { host, kind: "hint", close: () => close() };
 
   const open = (): void => {
     if (destroyed || isOpen || !isActive()) return;
+    if (!showInTopLayer(panel)) return;
     isOpen = true;
-    panel.hidden = false;
     tintArrow(panel, arrow);
     positionPanel();
-    if (!tap) document.addEventListener("keydown", onKeyDown);
+    pushSurface(surface);
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
   };
@@ -129,10 +130,10 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   const close = (): void => {
     if (!isOpen) return;
     isOpen = false;
-    panel.hidden = true;
+    removeSurface(surface);
+    hideFromTopLayer(panel);
     clearAnchoredPosition(panel);
     if (content !== panel) content.style.removeProperty("max-height");
-    if (!tap) document.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
   };
@@ -175,9 +176,6 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     trigger.addEventListener("pointerdown", onTriggerPointerDown);
     trigger.addEventListener("click", onTriggerClick);
   }
-  const dismissCleanup = tap
-    ? bindPopupDismiss({ host, isOpen: () => isOpen, close })
-    : null;
   const disabledObserver = new MutationObserver(() => {
     if (triggerIsDisabled()) close();
     else if (pointerInside) open();
@@ -198,7 +196,6 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     trigger.removeEventListener("pointerdown", onTriggerPointerDown);
     trigger.removeEventListener("click", onTriggerClick);
     disabledObserver.disconnect();
-    dismissCleanup?.();
   };
 
   return { open, close, destroy };

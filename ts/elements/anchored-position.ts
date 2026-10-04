@@ -4,8 +4,7 @@
  * Pins the panel `position: fixed` (so it escapes clipping/overflow ancestors),
  * aligns it under/over an anchor with a configurable default side + gap, flips
  * to the other side when the preferred one lacks room, clamps horizontally to
- * the viewport, and corrects for a transformed/filtered ancestor becoming the
- * containing block for `fixed`.
+ * the viewport. Panels sit in the top layer, so viewport coordinates hold.
  *
  * Geometry only — keyboard roving, single-open coordination, and submenu flyouts
  * stay in attachMenu (the submenu keeps its own flip/first-item geometry, but
@@ -18,7 +17,7 @@ export type Align = "start" | "center" | "end";
 export type Side = "top" | "bottom";
 
 // Every inline property the anchored positioners may write (positionAnchored plus
-// the submenu path through pinFixedAndMeasureOrigin), in one place so the teardown
+// the submenu path through pinFixed), in one place so the teardown
 // stays the exact inverse of the writers (see clearAnchoredPosition). overflow-y is
 // NOT here: it is a static class on scrollable panels, not written by the geometry.
 const ANCHORED_PROPERTIES = [
@@ -33,22 +32,16 @@ const ANCHORED_PROPERTIES = [
 ] as const;
 
 /**
- * The fixed-position scaffold shared by positionAnchored and the submenu flyout:
- * pin the panel `position: fixed`, reset the edges it might have carried, then
- * pin it to (0,0) and measure the origin. A transformed/filtered ancestor becomes
- * the containing block for `fixed`, so its coords are relative to that ancestor,
- * not the viewport; the returned origin is subtracted from viewport coords to
- * convert. Callers must measure the anchor AFTER this returns: a just-unhidden,
- * still-in-flow panel that descends from the anchor would otherwise inflate the
- * anchor's box before it is pinned out of flow here.
+ * Pin the panel `fixed` at (0,0), edges reset.
+ *
+ * Callers measure the anchor after this returns.
  */
-export function pinFixedAndMeasureOrigin(panel: HTMLElement): DOMRect {
+export function pinFixed(panel: HTMLElement): void {
   panel.style.position = "fixed";
   panel.style.right = "auto";
   panel.style.bottom = "auto";
   panel.style.left = "0px";
   panel.style.top = "0px";
-  return panel.getBoundingClientRect();
 }
 
 // Clamp a viewport-left so the panel stays fully on-screen sideways (a full
@@ -109,7 +102,7 @@ export function positionAnchored(
   const side = options.side ?? "bottom";
   const gap = options.gap ?? 0;
 
-  const origin = pinFixedAndMeasureOrigin(panel);
+  pinFixed(panel);
   const rect = anchor.getBoundingClientRect();
 
   const availableBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN - gap;
@@ -147,8 +140,8 @@ export function positionAnchored(
   const top =
     resolved === "bottom" ? rect.bottom + gap : rect.top - panel.offsetHeight - gap;
 
-  panel.style.left = `${left - origin.x}px`;
-  panel.style.top = `${top - origin.y}px`;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
 
   return { side: resolved, left, width, anchorCenterX: rect.left + rect.width / 2 };
 }

@@ -19,7 +19,7 @@ function mount(): HTMLElement {
     <search-select name="game" multi="false" data-toggle>
       <div data-search-select-pills></div>
       <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
-      <div data-search-select-options data-menu hidden role="listbox" tabindex="-1">
+      <div data-search-select-options data-menu popover="manual" hidden role="listbox" tabindex="-1">
         <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
         <div data-search-select-option data-value="2" data-label="Two" role="option" aria-selected="false"><span data-search-select-label>Two</span></div>
         <div data-search-select-no-results role="presentation" class="hidden">No results</div>
@@ -86,11 +86,13 @@ describe("<search-select> hosted in <drop-down behavior=inline-combobox> (#348)"
     expect(isOpen(host)).toBe(false);
   });
 
-  it("closes on an outside click", () => {
+  it("closes on an outside press", () => {
     const host = mount();
     searchOf(host).focus();
     expect(isOpen(host)).toBe(true);
-    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const init = { bubbles: true, composed: true, isPrimary: true, button: 0, pointerId: 1 };
+    document.body.dispatchEvent(new PointerEvent("pointerdown", init));
+    document.body.dispatchEvent(new PointerEvent("pointerup", init));
     expect(isOpen(host)).toBe(false);
   });
 });
@@ -102,7 +104,7 @@ describe("<search-select> inside an unrelated <drop-down>", () => {
     const outer = document.createElement("drop-down");
     outer.innerHTML = `
       <button data-toggle>Menu</button>
-      <div data-menu>
+      <div data-menu popover="manual" hidden>
         <search-select name="game" multi="false">
           <div data-search-select-pills></div>
           <input data-search-select-search role="combobox" aria-expanded="false" />

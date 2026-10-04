@@ -391,15 +391,11 @@ def _preset_button(preset_value: str, preset_label: str) -> Node:
     )[preset_label]
 
 
-# The static (panel) calendar surface: no hidden/absolute/positioning offset —
-# it flows in the document below the field, inside a dropdown dialog that is
-# ALSO OVERLAY_SURFACE_CLASS (frosted). The calendar still carries its own
-# frosted surface (not a flat control color) so it looks the same everywhere
-# the calendar appears, popup or panel — the double-frost-in-dark-mode
-# tradeoff is intentional (issue #485 follow-up option 1). `relative` anchors
-# the frost's `before:inset-0` pseudo-element to this box, not the ancestor
-# dialog (which would otherwise blur the whole dialog, not just the calendar).
-_STATIC_CALENDAR_CLASS = f"mt-2 flex rounded-base border border-default-medium relative {OVERLAY_SURFACE_CLASS}"
+# The static calendar flows inside a frosted panel and frosts itself
+# too, so it looks the same as the popup.
+_STATIC_CALENDAR_CLASS = (
+    f"mt-2 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}"
+)
 
 
 def date_calendar_shell(
@@ -470,10 +466,10 @@ def date_calendar_shell(
         ]
     )
     return Div(
-        [] if static else [("data-menu", ""), ("hidden", "")],
+        [] if static else [("data-menu", ""), ("hidden", ""), ("popover", "manual")],
         class_=_STATIC_CALENDAR_CLASS
         if static
-        else f"z-20 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}",
+        else f"flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}",
         data_date_range_calendar="",
         data_input_name_prefix=input_name_prefix,
     )[*children]

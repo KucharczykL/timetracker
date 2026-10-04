@@ -37,7 +37,7 @@ function mount(): HTMLElement {
       ${segment("year", 4, "YYYY")}${segment("month", 2, "MM")}${segment("day", 2, "DD")}
       <button data-date-picker-calendar-toggle></button>
     </div>
-    <div data-date-range-calendar data-menu hidden>
+    <div data-date-range-calendar data-menu popover="manual" hidden>
       <button data-date-range-prev></button>
       <span data-date-range-month-label></span>
       <button data-date-range-next></button>

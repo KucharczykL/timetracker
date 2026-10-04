@@ -34,7 +34,7 @@ describe("select behavior on a refused PATCH", () => {
       <button data-toggle aria-expanded="false" type="button">
         <span data-label>Unplayed</span>
       </button>
-      <div data-menu hidden role="listbox">
+      <div data-menu popover="manual" hidden role="listbox">
         <a data-option data-value="u" aria-selected="true">Unplayed</a>
         <a data-option data-value="f" aria-selected="false">Finished</a>
       </div>`;

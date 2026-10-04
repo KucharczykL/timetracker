@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachMenu, type MenuController } from "./menu-behavior.js";
+import { openSurfaces, resetSurfacesForTests } from "./surface-stack.js";
 
 function mount(): {
   host: HTMLElement;
@@ -10,7 +11,7 @@ function mount(): {
   document.body.innerHTML = `
     <div id="host">
       <button data-toggle type="button">Open</button>
-      <div data-menu hidden>
+      <div data-menu popover="manual" hidden>
         <button data-inside type="button">×</button>
       </div>
     </div>
@@ -19,7 +20,6 @@ function mount(): {
   const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
   const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
   const controller = attachMenu(host, toggle, menu);
-  controller.bindDocument();
   return { host, menu, controller };
 }
 
@@ -30,7 +30,7 @@ function mountKeepOpenOnTab(): {
   document.body.innerHTML = `
     <div id="host">
       <button data-toggle type="button">Open</button>
-      <div data-menu hidden>
+      <div data-menu popover="manual" hidden>
         <button data-first type="button">first</button>
         <button data-second type="button">second</button>
       </div>
@@ -43,7 +43,6 @@ function mountKeepOpenOnTab(): {
     inlineTrigger: true,
     keepOpenOnTab: true,
   });
-  controller.bindDocument();
   return { menu, controller };
 }
 
@@ -51,49 +50,20 @@ function click(element: HTMLElement): void {
   element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
+// A press is pointerdown then pointerup, then click.
+function press(element: HTMLElement): void {
+  const init = { bubbles: true, composed: true, isPrimary: true, button: 0, pointerId: 1 };
+  element.dispatchEvent(new PointerEvent("pointerdown", init));
+  element.dispatchEvent(new PointerEvent("pointerup", init));
+  click(element);
+}
+
 afterEach(() => {
+  resetSurfacesForTests();
   document.body.innerHTML = "";
 });
 
-describe("attachMenu outside-click containment", () => {
-  it("closes on a click outside the host", () => {
-    const { controller } = mount();
-    controller.open();
-    expect(controller.isOpen()).toBe(true);
-    click(document.querySelector("#outside") as HTMLElement);
-    expect(controller.isOpen()).toBe(false);
-  });
-
-  it("stays open when an inside click synchronously removes its own target", () => {
-    // The filter pill × removes the pill during bubble; by the time the
-    // document-level guard runs, `host.contains(event.target)` is already
-    // false for the detached node. composedPath() is captured at dispatch,
-    // so containment must consult it first.
-    const { menu, controller } = mount();
-    const inside = menu.querySelector<HTMLElement>(
-      "[data-inside]",
-    ) as HTMLElement;
-    inside.addEventListener("click", () => inside.remove());
-    controller.open();
-    click(inside);
-    expect(document.contains(inside)).toBe(false);
-    expect(controller.isOpen()).toBe(true);
-  });
-
-  it("still closes on outside clicks after an inside self-removing click", () => {
-    const { menu, controller } = mount();
-    const inside = menu.querySelector<HTMLElement>(
-      "[data-inside]",
-    ) as HTMLElement;
-    inside.addEventListener("click", () => inside.remove());
-    controller.open();
-    click(inside);
-    click(document.querySelector("#outside") as HTMLElement);
-    expect(controller.isOpen()).toBe(false);
-  });
-});
-
-describe("attachMenu Escape on the toggle", () => {
+describe("attachMenu on the surface stack", () => {
   function escape(element: HTMLElement): KeyboardEvent {
     const event = new KeyboardEvent("keydown", {
       key: "Escape",
@@ -104,20 +74,48 @@ describe("attachMenu Escape on the toggle", () => {
     return event;
   }
 
-  it("marks the press spent when it closed an open menu", () => {
+  it("closes on a press outside the host", () => {
+    const { controller } = mount();
+    controller.open();
+    expect(openSurfaces()).toHaveLength(1);
+    press(document.querySelector("#outside") as HTMLElement);
+    expect(controller.isOpen()).toBe(false);
+    expect(openSurfaces()).toEqual([]);
+  });
+
+  it("stays open when an inside press removes its own target", () => {
+    const { menu, controller } = mount();
+    const inside = menu.querySelector<HTMLElement>("[data-inside]") as HTMLElement;
+    inside.addEventListener("pointerdown", () => inside.remove());
+    controller.open();
+    press(inside);
+    expect(controller.isOpen()).toBe(true);
+  });
+
+  it("closes on Escape and returns focus to the toggle", () => {
     const { host, menu } = mount();
     const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
     click(toggle);
-    const event = escape(toggle);
+    const inside = menu.querySelector<HTMLElement>("[data-inside]") as HTMLElement;
+    inside.focus();
+    const event = escape(inside);
     expect(menu.hidden).toBe(true);
     expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(toggle);
   });
 
-  it("leaves a press that closed nothing to its host", () => {
+  it("leaves an Escape that closed nothing to its host", () => {
     const { host } = mount();
     const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
-    const event = escape(toggle);
-    expect(event.defaultPrevented).toBe(false);
+    expect(escape(toggle).defaultPrevented).toBe(false);
+  });
+
+  it("does not open a disconnected panel", () => {
+    const { host, controller } = mount();
+    host.remove();
+    controller.open();
+    expect(controller.isOpen()).toBe(false);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 
@@ -163,14 +161,13 @@ describe("attachMenu inlineTrigger (issue #348)", () => {
     document.body.innerHTML = `
       <div id="host">
         <div data-toggle><input data-search-select-search /></div>
-        <div data-menu hidden></div>
+        <div data-menu popover="manual" hidden></div>
       </div>
       <button id="outside" type="button">elsewhere</button>`;
     const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
     const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
     const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
     const controller = attachMenu(host, toggle, menu, { inlineTrigger: true });
-    controller.bindDocument();
     return { host, toggle, controller };
   }
 
@@ -196,10 +193,10 @@ describe("attachMenu inlineTrigger (issue #348)", () => {
     expect(toggle.hasAttribute("aria-expanded")).toBe(false);
   });
 
-  it("still closes on an outside click", () => {
+  it("still closes on an outside press", () => {
     const { controller } = mountInline();
     controller.open();
-    click(document.querySelector("#outside") as HTMLElement);
+    press(document.querySelector("#outside") as HTMLElement);
     expect(controller.isOpen()).toBe(false);
   });
 });
@@ -276,13 +273,12 @@ describe("attachMenu keepOpenOnTab", () => {
     document.body.innerHTML = `
       <div id="host">
         <button data-toggle type="button">Open</button>
-        <div data-menu hidden><button data-first type="button">first</button></div>
+        <div data-menu popover="manual" hidden><button data-first type="button">first</button></div>
       </div>`;
     const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
     const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
     const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
     const controller = attachMenu(host, toggle, menu, { keepOpenOnTab: true });
-    controller.bindDocument();
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     const first = menu.querySelector("[data-first]") as HTMLElement;
     first.focus();
@@ -313,7 +309,7 @@ describe("attachMenu pointer follow", () => {
     document.body.innerHTML = `
       <div id="host">
         <button data-toggle type="button">Open</button>
-        <div data-menu role="menu" hidden>
+        <div data-menu role="menu" popover="manual" hidden>
           <button role="menuitem" type="button">one</button>
           <button role="menuitem" type="button">two</button>
         </div>

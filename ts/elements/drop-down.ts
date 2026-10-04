@@ -26,17 +26,11 @@ function ownChild(host: HTMLElement, selector: string): HTMLElement | null {
 // attribute.
 export class DropdownElement extends HTMLElement {
   private controller?: MenuController;
-  private unbindDocument?: () => void;
 
   connectedCallback(): void {
-    if (this.controller) {
-      // Reconnection (e.g. a moved node): element-local wiring traveled
-      // with the subtree, so only the document listeners need re-attaching.
-      // Re-running attachMenu would stack a second toggle handler and every
-      // click would open-then-close.
-      this.unbindDocument = this.controller.bindDocument();
-      return;
-    }
+    // A moved node keeps its wiring; a second toggle
+    // handler would open then close on every click.
+    if (this.controller) return;
     const props = readDropdownProps(this);
     const toggle = ownChild(this, "[data-toggle]");
     const menu = ownChild(this, "[data-menu]");
@@ -66,7 +60,6 @@ export class DropdownElement extends HTMLElement {
           ...(behavior?.menuOptions?.(this) ?? {}),
         });
     this.controller = controller;
-    this.unbindDocument = controller.bindDocument();
     // wire()'s cleanup return is intentionally discarded. Every behavior binds
     // only to subtree-local nodes (toggle/menu/search input), so a real removal
     // GCs them with the detached subtree — nothing to unbind. Running that
@@ -87,12 +80,8 @@ export class DropdownElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    // Close (an open panel would linger at stale fixed coordinates) and
-    // drop the document listeners; the controller and element-local wiring
-    // persist for reconnection.
+    // The controller persists for reconnection.
     this.controller?.close();
-    this.unbindDocument?.();
-    this.unbindDocument = undefined;
   }
 }
 

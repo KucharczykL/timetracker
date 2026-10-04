@@ -1,6 +1,7 @@
 // Shared positioning/keyboard core for light-DOM dropdowns: viewport-aware
-// positioning, instant open/close (no animation — by design), ARIA wiring, full
-// keyboard navigation, and single-open coordination. Driven by the generic
+// positioning, instant open/close (no animation — by design), ARIA wiring and
+// full keyboard navigation. Panels open in the top layer; the surface stack
+// owns Escape, outside press and single open. Driven by the generic
 // <drop-down> element; type-specific wiring lives in the registered behaviors
 // (menu, select). The bottom-* panel geometry is the shared positionAnchored
 // (also used by the pop-over tooltip); the right-start submenu keeps its own
@@ -9,10 +10,17 @@ import {
   type Align,
   clampLeftToViewport,
   clearAnchoredPosition,
-  pinFixedAndMeasureOrigin,
+  pinFixed,
   positionAnchored,
   VIEWPORT_MARGIN,
 } from "./anchored-position.js";
+import {
+  hideFromTopLayer,
+  pushSurface,
+  removeSurface,
+  showInTopLayer,
+  type Surface,
+} from "./surface-stack.js";
 import { followPointer } from "../pointer-follow.js";
 
 export type MenuPlacement =
@@ -44,9 +52,9 @@ export interface MenuOptions {
   // behavior): the panel opens on that input's focus/typing — driven by the
   // hosted widget — not on a toggle click. So attachMenu neither wires the
   // toggle click/keydown handlers (a click on a pill or the input must not
-  // toggle-close, and the widget owns Arrow/Escape) nor writes aria-expanded on
+  // toggle-close, and the widget owns Arrow keys) nor writes aria-expanded on
   // the toggle (the widget owns it on the role="combobox" input). Everything
-  // else — positioning, outside-click/Escape/Tab close, single-open — is shared.
+  // else — positioning, dismissal, Tab close — is shared.
   inlineTrigger?: boolean;
   // Daylight between the toggle and the panel's near edge. Default 0 (flush,
   // every menu/select/combobox dropdown). A date-calendar popup wants visible
@@ -62,32 +70,13 @@ export interface MenuController {
   close: () => void;
   isOpen: () => boolean;
   focusFirst: () => void;
-  // Attaches the document-level listeners (outside-click close, single-open
-  // coordination) and returns their detacher. Called once per connection by
-  // <drop-down>: element-local wiring persists with the subtree across DOM
-  // moves, so reconnection re-binds only what disconnection removed.
-  bindDocument: () => () => void;
 }
 
 // A hairline gap between a submenu flyout and its parent panel edge. Purely
 // aesthetic: flush edges read as one merged surface; 1px of daylight makes the
 // flyout legible as a distinct, layered panel without looking detached.
 const SUBMENU_GAP = 1;
-export const OPEN_MENUS_EVENT = "dropdown-menu:open";
 const TYPEAHEAD_RESET_MS = 500;
-
-export interface OpenMenuDetail {
-  host: HTMLElement;
-}
-
-// Shared single-open notification for every controller hosted by <drop-down>.
-// Anchored menus listen below; the modal sheet emits the same notification so
-// an already-open dropdown cannot linger underneath it.
-export function notifyDropdownOpen(host: HTMLElement): void {
-  document.dispatchEvent(
-    new CustomEvent<OpenMenuDetail>(OPEN_MENUS_EVENT, { detail: { host } }),
-  );
-}
 
 // Wires open/close + positioning + keyboard nav for one toggle/menu pair living
 // inside `host`. Returns a small controller so callers (e.g. submenus) can drive
@@ -149,9 +138,8 @@ export function attachMenu(
   // rather than in the shared positioner.
   const positionSubmenu = (): void => {
     const rect = toggle.getBoundingClientRect();
-    // Shared scaffold: pin fixed and measure the containing-block origin. Only
-    // the flip/first-item/gap geometry below is submenu-specific.
-    const origin = pinFixedAndMeasureOrigin(menu);
+    // Pinned at (0,0), so item rects are insets.
+    pinFixed(menu);
 
     const anchor = horizontalAnchor.getBoundingClientRect();
     // Align the flyout's FIRST ITEM with the toggle row, not the panel's
@@ -159,9 +147,7 @@ export function attachMenu(
     // the first row down by that amount. Measured from the live layout, so it
     // tracks any padding/border/header change instead of a hardcoded offset.
     const items = enabledItems();
-    const firstItemInset = items.length
-      ? items[0].getBoundingClientRect().top - origin.y
-      : 0;
+    const firstItemInset = items.length ? items[0].getBoundingClientRect().top : 0;
     const menuWidth = menu.offsetWidth;
     const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
     const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
@@ -170,8 +156,8 @@ export function attachMenu(
     const viewportLeft = openLeft
       ? anchor.left - menuWidth - SUBMENU_GAP
       : anchor.right + SUBMENU_GAP;
-    menu.style.left = `${clampLeftToViewport(menu, viewportLeft) - origin.x}px`;
-    menu.style.top = `${rect.top - firstItemInset - origin.y}px`;
+    menu.style.left = `${clampLeftToViewport(menu, viewportLeft)}px`;
+    menu.style.top = `${rect.top - firstItemInset}px`;
   };
 
   const reposition = (): void => {
@@ -202,14 +188,18 @@ export function attachMenu(
 
   const focusFirst = (): void => setActive(0);
 
+  const surface: Surface = {
+    host,
+    kind: "panel",
+    close: () => close(),
+    restoreFocus: () => {
+      if (menu.contains(document.activeElement)) toggle.focus();
+    },
+  };
+
   const open = (): void => {
     if (isOpen()) return;
-    // Pin to `fixed` BEFORE unhiding. The panel class is `absolute`; if it became
-    // visible while still absolute it would join an ancestor scroll container's
-    // overflow (the parent menu), spawn a transient scrollbar, and shift the
-    // toggle we then measure — mis-anchoring a submenu opened from a low row.
-    menu.style.position = "fixed";
-    menu.hidden = false;
+    if (!showInTopLayer(menu)) return;
     positionMenu();
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "true");
     window.addEventListener("scroll", reposition, true);
@@ -219,14 +209,16 @@ export function attachMenu(
     // filtering shrinks the list), so a top-flipped panel re-anchors instead of
     // keeping a stale top.
     resizeObserver?.observe(menu);
-    notifyDropdownOpen(host);
+    pushSurface(surface);
     // Bubbles, so ancestors see submenus open.
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };
 
   const close = (): void => {
     if (!isOpen()) return;
-    menu.hidden = true;
+    // Nested surfaces close before this panel hides.
+    removeSurface(surface);
+    hideFromTopLayer(menu);
     clearAnchoredPosition(menu);
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "false");
     window.removeEventListener("scroll", reposition, true);
@@ -275,9 +267,7 @@ export function attachMenu(
   };
 
   // An inline-combobox toggle opens on the hosted input's focus, not on a click,
-  // and the widget owns Arrow/Escape on that input — so skip both toggle
-  // handlers. Positioning, outside-click/Escape/Tab close, and single-open below
-  // are unaffected.
+  // and the widget owns Arrow keys on that input — so skip both toggle handlers.
   if (!inlineTrigger) {
     toggle.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -306,14 +296,6 @@ export function attachMenu(
         event.preventDefault();
         if (!isOpen()) open();
         setActive(-1);
-      } else if (event.key === "Escape") {
-        // An Escape that closed a menu is spent.
-        //
-        // A host that clears its own state on Escape — a selectable table's
-        // selection — reads defaultPrevented to tell a closing menu from a
-        // bare press. The panel's own handler already marks it this way.
-        if (isOpen()) event.preventDefault();
-        close();
       }
     });
   }
@@ -324,9 +306,9 @@ export function attachMenu(
     const items = enabledItems();
     // An itemless menu (e.g. the combobox behavior's panel, whose inner widget
     // owns its own keyboard navigation) must not swallow arrow/Home/End — they
-    // would preventDefault caret movement inside an inner input. Escape and Tab
-    // still close below.
-    if (items.length === 0 && event.key !== "Escape" && event.key !== "Tab") return;
+    // would preventDefault caret movement inside an inner input. Tab still
+    // closes below.
+    if (items.length === 0 && event.key !== "Tab") return;
     const currentIndex = items.findIndex((item) => item === document.activeElement);
     switch (event.key) {
       case "ArrowDown":
@@ -344,11 +326,6 @@ export function attachMenu(
       case "End":
         event.preventDefault();
         setActive(items.length - 1);
-        break;
-      case "Escape":
-        event.preventDefault();
-        close();
-        toggle.focus();
         break;
       case "Tab":
         if (!keepOpenOnTab) close();
@@ -448,37 +425,5 @@ export function attachMenu(
     }
   });
 
-  // Containment must consult composedPath(): it is captured at dispatch time,
-  // so a click whose handler synchronously removes its own target (a filter
-  // pill's × inside a combobox panel) still counts as inside — by the time
-  // this document listener runs, `host.contains(event.target)` is already
-  // false for the detached node. The `contains` check stays as fallback for
-  // synthetic events dispatched without a path.
-  const onDocumentClick = (event: MouseEvent): void => {
-    if (!isOpen()) return;
-    const path = event.composedPath();
-    const inside = path.length
-      ? path.includes(host)
-      : host.contains(event.target as Node);
-    if (!inside) close();
-  };
-
-  // Single-open coordination: close when any other (non-ancestor) menu opens.
-  const onOtherMenuOpen = (event: Event): void => {
-    const detail = (event as CustomEvent<OpenMenuDetail>).detail;
-    if (!detail || detail.host === host || host.contains(detail.host)) return;
-    close();
-  };
-
-  // Bound per connection, so none accumulate.
-  const bindDocument = (): (() => void) => {
-    document.addEventListener("click", onDocumentClick);
-    document.addEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
-    return () => {
-      document.removeEventListener("click", onDocumentClick);
-      document.removeEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);
-    };
-  };
-
-  return { open, close, isOpen, focusFirst, bindDocument };
+  return { open, close, isOpen, focusFirst };
 }

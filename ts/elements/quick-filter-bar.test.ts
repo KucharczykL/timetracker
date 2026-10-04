@@ -146,7 +146,7 @@ describe("<quick-filter-bar>", () => {
     const { form, navigate } = mount(`
       <drop-down behavior="combobox">
         <button data-toggle type="button">Game</button>
-        <div data-menu hidden>
+        <div data-menu popover="manual" hidden>
           ${setFacet("game", includePill("1", "Outer Wilds"))}
         </div>
       </drop-down>`);

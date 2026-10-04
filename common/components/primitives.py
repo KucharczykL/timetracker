@@ -334,7 +334,7 @@ _TruncatedText = custom_element_builder("truncated-text")
 # typeface from every other tooltip on the site. Stating the family here keeps
 # a tooltip looking like a tooltip wherever it is mounted.
 _TOOLTIP_PANEL_CLASS = (
-    f"z-10 inline-block font-sans text-type-body text-heading bg-brand-soft "
+    f"inline-block font-sans text-type-body text-heading bg-brand-soft "
     f"border border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
 )
 
@@ -378,7 +378,9 @@ def _tooltip_panel(
         attributes.append(("aria-hidden", "true"))
     else:
         attributes.extend([("id", id), ("role", "tooltip")])
-    attributes.extend([("hidden", ""), ("class", _TOOLTIP_PANEL_CLASS)])
+    attributes.extend(
+        [("hidden", ""), ("popover", "manual"), ("class", _TOOLTIP_PANEL_CLASS)]
+    )
     return Div(attributes)[
         Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
             content
@@ -1793,7 +1795,7 @@ def YearPicker(
     popup_id = "year-picker-popup"
     period_id = "year-picker-period"
     popup_class = (
-        "absolute z-20 flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
+        "flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
         f"{OVERLAY_SURFACE_CLASS} shadow-sm border border-default-medium"
     )
     picker = _YearPicker(
@@ -1820,6 +1822,7 @@ def YearPicker(
                 ("data-year-picker-popup", ""),
                 ("id", popup_id),
                 ("hidden", ""),
+                ("popover", "manual"),
                 ("role", "group"),
                 ("aria-labelledby", period_id),
                 ("class", popup_class),

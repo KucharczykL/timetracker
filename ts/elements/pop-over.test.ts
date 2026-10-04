@@ -20,7 +20,7 @@ function mount(options: { tap?: boolean; anchor?: boolean } = {}): {
     : 'word';
   host.innerHTML = `
     <${tag} data-pop-over-trigger aria-describedby="pid" ${triggerAttrs}>${triggerContent}</${tag}>
-    <div data-pop-over-panel id="pid" role="tooltip" hidden>the full word<div data-pop-over-arrow></div></div>`;
+    <div data-pop-over-panel id="pid" role="tooltip" popover="manual" hidden>the full word<div data-pop-over-arrow></div></div>`;
   document.body.appendChild(host); // connectedCallback wires the listeners
   const panel = host.querySelector<HTMLElement>("[data-pop-over-panel]")!;
   const trigger = host.querySelector<HTMLElement>("[data-pop-over-trigger]")!;
@@ -39,7 +39,7 @@ function mountDisabledControl(): {
     <span data-pop-over-trigger role="button" aria-disabled="true" tabindex="0" aria-describedby="pid">
       <button type="button" data-pop-over-control disabled aria-hidden="true" class="pointer-events-none">word</button>
     </span>
-    <div data-pop-over-panel id="pid" role="tooltip" hidden>why unavailable<div data-pop-over-arrow></div></div>`;
+    <div data-pop-over-panel id="pid" role="tooltip" popover="manual" hidden>why unavailable<div data-pop-over-arrow></div></div>`;
   document.body.appendChild(host);
   return {
     host,
@@ -51,10 +51,16 @@ function mountDisabledControl(): {
 
 // jsdom ignores the `pointerType` init on PointerEvent, so build a MouseEvent and
 // pin pointerType onto it — the element reads only that field.
-function pointer(type: string, pointerType: string, init: EventInit = {}): Event {
-  const event = new MouseEvent(type, { bubbles: true, ...init });
-  Object.defineProperty(event, "pointerType", { value: pointerType });
-  return event;
+function pointer(type: string, pointerType: string, init: PointerEventInit = {}): Event {
+  return new PointerEvent(type, {
+    bubbles: true,
+    composed: true,
+    isPrimary: true,
+    button: 0,
+    pointerId: 1,
+    pointerType,
+    ...init,
+  });
 }
 
 function setRect(
@@ -252,6 +258,8 @@ describe("<pop-over> tap mode (touch)", () => {
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(panel.hidden).toBe(false);
     document.dispatchEvent(pointer("pointerdown", "touch")); // target = document
+    expect(panel.hidden).toBe(false);
+    document.dispatchEvent(pointer("pointerup", "touch"));
     expect(panel.hidden).toBe(true);
 
     trigger.dispatchEvent(pointer("pointerdown", "touch"));
@@ -268,7 +276,7 @@ describe("<pop-over> tap mode (touch)", () => {
     expect(panel.hidden).toBe(false);
     host.remove(); // disconnectedCallback
     expect(panel.hidden).toBe(true);
-    // The outside-press listener is gone: an Escape must not throw or reopen.
+    // Off the stack: an Escape finds nothing.
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(panel.hidden).toBe(true);
   });

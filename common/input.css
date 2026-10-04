@@ -366,3 +366,13 @@ dialog[data-bottom-sheet][data-sheet-state="open"] [data-sheet-panel] {
         );
     }
 }
+
+/* Undo the UA's centred-dialog popover look; panels position themselves. */
+@layer base {
+    [popover] {
+        inset: auto;
+        overflow: visible;
+        color: inherit;
+        background-color: transparent;
+    }
+}
