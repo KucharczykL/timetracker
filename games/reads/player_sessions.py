@@ -1,4 +1,4 @@
-"""The sessions a library holds, and those it shows."""
+"""Sessions a library holds and shows."""
 
 from datetime import date
 from typing import NamedTuple
@@ -63,12 +63,12 @@ def listed_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def game_sessions(library: UserLibrary, game: Game) -> PlayerSessionQuerySet:
-    """Every live session at one game, any run."""
+    """Every live session at one game."""
     return library_sessions(library).filter(**{GAME: game})
 
 
 def game_session_days(library: UserLibrary, game: Game) -> SessionDays | None:
-    """The span of days the game's sessions land on; None unplayed."""
+    """First and last session day; None unplayed."""
     span = game_sessions(library, game).aggregate(
         first=Min("effective_day"), last=Max("effective_day")
     )

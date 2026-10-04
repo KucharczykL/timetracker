@@ -1,4 +1,4 @@
-"""The records a library holds, and those it shows."""
+"""Records a library holds and shows."""
 
 from django.db.models import F, Q
 
@@ -67,7 +67,7 @@ def contained_in(
 def records_within(
     library: UserLibrary, within: DayInterval | None
 ) -> HistoricalPlaytimeQuerySet:
-    """Shown records contained in `within`; None is every one."""
+    """Shown records inside `within`; None: all."""
     records = shown_records(library)
     return records if within is None else contained_in(records, within)
 
@@ -75,7 +75,7 @@ def records_within(
 def records_in_scope(
     library: UserLibrary, year: YearScope
 ) -> HistoricalPlaytimeQuerySet:
-    """Shown records in the year; None is all-time."""
+    """Shown records in the year; None: all-time."""
     return records_within(library, year_days(year))
 
 

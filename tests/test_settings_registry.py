@@ -399,7 +399,7 @@ def test_show_prerelease_play_is_a_live_user_select_of_two_words():
     assert definition.scope is SettingScope.USER
     assert definition.apply_timing is ApplyTiming.LIVE
     assert definition.widget is SettingWidget.SELECT
-    #: Text round-trips through the live save; a bool would not.
+    #: A bool would not round-trip.
     assert definition.cast is None
     assert [value for value, _label in definition.choices] == ["show", "hide"]
     assert definition.default_factory() == "show"

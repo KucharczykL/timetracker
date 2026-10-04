@@ -1,11 +1,11 @@
-"""Whether a library's statistics and lists hold prerelease play."""
+"""Whether figures and lists hold prerelease play."""
 
 from django.db.models import Q, QuerySet
 
 from games.models import EditionKind, Release, UserLibrary
 from timetracker.settings_resolver import resolve_for_user
 
-#: A session or a record on a prerelease Edition.
+#: Play on a prerelease Edition.
 PRERELEASE_PLAY = Q(release__edition__kind=EditionKind.PRERELEASE)
 
 

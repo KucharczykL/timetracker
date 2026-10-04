@@ -71,7 +71,7 @@ def a_session(run, release, *, at=START, hours=1):
 
 @pytest.fixture
 def world(owned_library, graph, demo, stated_graph):
-    """Hades on both Editions; a game played only on its demo, earlier."""
+    """Hades on both Editions; a demo-only game."""
     demo_game = stated_graph(
         Game(name="Demo Quest", library=owned_library), owned_library
     )

@@ -27,7 +27,7 @@ def listed_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
 def with_run_rows(
     library: UserLibrary, records: HistoricalPlaytimeQuerySet
 ) -> HistoricalPlaytimeQuerySet:
-    """The row path; this library's runs, one query."""
+    """Row path plus this library's runs."""
     return with_row_path(records).prefetch_related(
         Prefetch(
             "runs",

@@ -547,6 +547,14 @@ docs/           — Additional documentation
   hidden-by-default Release column. A demo session (a `prerelease`
   Edition) is never outside its run's dates. Contract is
   [A session or a record names its Release](docs/superpowers/specs/2026-10-03-issue-1354-session-release-design.md)
+  #1361's `SHOW_PRERELEASE_PLAY` (user setting, `show`/`hide`) hides
+  prerelease play from figures, lists, list filters and bulk scopes:
+  `shown_sessions`/`shown_records` (`shown_play`,
+  `games/reads/prerelease_play.py`) beside `library_*`, which keep every
+  row; `listed_*` and `readable_*` are their row paths. Resolves, edits,
+  single-row API reads, the new-run seed and run activity read every
+  row. Contract is
+  [A toggle that hides prerelease play](docs/superpowers/specs/2026-10-04-issue-1361-prerelease-play-toggle-design.md)
 - **HistoricalPlaytime** — fourth projection: playtime a library states
   without sittings, written only by `HistoricalPlaytimes` projector.
   `library.historicalplaytime.created`/`.restated` carry one whole-statement
@@ -882,10 +890,11 @@ today's/last-7-days playtime from `model_counts` context processor.
 figure sums two sources, sessions and historical playtime records, and comes
 from this module: per Game, all-time, per year, per day window, per platform,
 per month, and per game in a day window. Sessions come through
-`library_sessions()` (`games/reads/player_sessions.py`: four removal marks,
-library on session, run and tracked game). Records come through
-`library_records()` (`games/reads/historical_playtime_records.py`: three
-removal marks, library on record and tracked game), summed in
+`shown_sessions()` (`games/reads/player_sessions.py`: `library_sessions()`,
+four removal marks, library on session, run and tracked game, then the
+prerelease setting). Records come through `shown_records()`
+(`games/reads/historical_playtime_records.py`: `library_records()`, three
+removal marks, library on record and tracked game, then the setting), summed in
 `games/reads/historical_playtime.py`, which no application module outside
 `games/reads` imports. Both scopes refuse a missing library with
 `UnscopedRead`. A record counts in a period only when `when_lower` and

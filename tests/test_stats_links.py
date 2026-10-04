@@ -409,7 +409,7 @@ def test_games_played_all_time_counts_every_record(world):
 
 @pytest.fixture
 def hidden_world(world, set_user_setting):
-    """A game played only on a demo, hidden."""
+    """A demo-only game, hidden."""
     library = world["library"]
     demo = default_graph(
         Game(name="Demo", library=library),

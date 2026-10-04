@@ -35,7 +35,7 @@ class GameAverage(NamedTuple):
 
 
 def scoped_sessions(library: UserLibrary, year: YearScope) -> PlayerSessionQuerySet:
-    """Shown sessions, narrowed to a year; None is all-time."""
+    """Shown sessions in a year; None: all-time."""
     sessions = shown_sessions(library)
     if year is None:
         return sessions

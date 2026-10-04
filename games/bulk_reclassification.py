@@ -71,7 +71,7 @@ def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Shown convertible rows at the threshold: the suggestion."""
+    """Shown convertible rows at the threshold."""
     return convertible_sessions(library).filter(
         shown_play(library),
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
@@ -79,7 +79,7 @@ def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def conversion_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """The shown base, narrowed by the statement's filter."""
+    """Shown base, narrowed by the filter."""
     return narrowed(
         convertible_sessions(library).filter(shown_play(library)),
         library,
