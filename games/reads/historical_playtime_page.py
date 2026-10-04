@@ -12,7 +12,7 @@ from games.models import (
     HistoricalPlaytimeRun,
     UserLibrary,
 )
-from games.reads.historical_playtime_records import readable_records
+from games.reads.historical_playtime_records import shown_records, with_row_path
 from games.reads.playthrough_numbering import display_name, numbered_for
 
 type RunLabel = str  # e.g. "Playthrough 2"
@@ -20,8 +20,15 @@ type RunLabels = Mapping[PlaythroughId, RunLabel]
 
 
 def listed_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
+    """The row path lists read: shown rows."""
+    return with_run_rows(library, shown_records(library))
+
+
+def with_run_rows(
+    library: UserLibrary, records: HistoricalPlaytimeQuerySet
+) -> HistoricalPlaytimeQuerySet:
     """The row path; this library's runs, one query."""
-    return readable_records(library).prefetch_related(
+    return with_row_path(records).prefetch_related(
         Prefetch(
             "runs",
             queryset=HistoricalPlaytimeRun.objects.filter(library=library).order_by(

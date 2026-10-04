@@ -54,6 +54,13 @@ DORMANT_AFTER_DAYS_CHOICES: Final[tuple[int, ...]] = (7, 14, 30, 60, 90, 180, 36
 DORMANT_AFTER_DAYS_OPTIONS: Final[tuple[SettingOption, ...]] = tuple(
     (days, f"{days} days") for days in DORMANT_AFTER_DAYS_CHOICES
 )
+PRERELEASE_PLAY_CHOICES: Final[tuple[tuple[str, str], ...]] = (
+    ("show", "Show"),
+    ("hide", "Hide"),
+)
+_PRERELEASE_PLAY_VALUES: Final[frozenset[str]] = frozenset(
+    value for value, _ in PRERELEASE_PLAY_CHOICES
+)
 THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("system", "System"),
     ("light", "Light"),
@@ -216,6 +223,12 @@ def _validate_dormant_after_days(value: object) -> int:
     return value
 
 
+def _validate_prerelease_play(value: object) -> str:
+    if not isinstance(value, str) or value not in _PRERELEASE_PLAY_VALUES:
+        raise ValidationError(f"Prerelease play must be show or hide (got {value!r}).")
+    return value
+
+
 def _validate_theme(value: object) -> str:
     if not isinstance(value, str) or value not in _THEME_VALUES:
         raise ValidationError(
@@ -346,6 +359,20 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             validator=_validate_dormant_after_days,
             widget=SettingWidget.SELECT,
             choices=DORMANT_AFTER_DAYS_OPTIONS,
+        ),
+        SettingDefinition(
+            "SHOW_PRERELEASE_PLAY",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Show prerelease play",
+            help_text=(
+                "Sessions and records on a demo, beta or test count in "
+                "statistics and show in lists."
+            ),
+            default_factory=lambda: "show",
+            validator=_validate_prerelease_play,
+            widget=SettingWidget.SELECT,
+            choices=PRERELEASE_PLAY_CHOICES,
         ),
         SettingDefinition(
             "THEME",

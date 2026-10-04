@@ -82,7 +82,6 @@ from games.endpoints import (
     PURCHASE_REFUND,
 )
 from games.models import (
-    EditionKind,
     EntryAccess,
     EntryFormat,
     PlayerSessionTimingMode,
@@ -91,6 +90,7 @@ from games.models import (
     session_day_of,
 )
 from games.reads.playthrough_activity import RunActivity
+from games.reads.prerelease_play import PRERELEASE_PLAY
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
 # ── FindFilter (sort / pagination) ─────────────────────────────────────────
@@ -598,7 +598,7 @@ class PlayerSessionFilter(OperatorFilter):
                 "playthrough__started_lower",
                 "playthrough__completed_upper",
                 #: Demo play is not the run's.
-                unless=Q(release__edition__kind=EditionKind.PRERELEASE),
+                unless=PRERELEASE_PLAY,
             ),
             label="Outside dates",
         ),
@@ -1432,8 +1432,8 @@ def filter_queryset_for_library(
     )
     from games.reads.entries import library_entries
     from games.reads.games_list import games_list_base
-    from games.reads.historical_playtime_records import library_records
-    from games.reads.player_sessions import library_sessions
+    from games.reads.historical_playtime_records import shown_records
+    from games.reads.player_sessions import shown_sessions
     from games.reads.playthrough_runs import runs_with_condition
     from games.reads.purchases import library_purchases
 
@@ -1443,9 +1443,9 @@ def filter_queryset_for_library(
     if model is Playthrough:
         return runs_with_condition(library)
     if model is PlayerSession:
-        return library_sessions(library)
+        return shown_sessions(library)
     if model is HistoricalPlaytime:
-        return library_records(library)
+        return shown_records(library)
     if model is LibraryEntry:
         return library_entries(library)
     if model is Purchase:
@@ -1470,8 +1470,8 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
     )
     from games.reads.calendar import calendar_day_zone
     from games.reads.entries import library_entries
-    from games.reads.historical_playtime_records import library_records
-    from games.reads.player_sessions import library_sessions
+    from games.reads.historical_playtime_records import shown_records
+    from games.reads.player_sessions import shown_sessions
     from games.reads.playthrough_runs import runs_with_condition
     from games.reads.purchases import library_purchases
 
@@ -1480,8 +1480,8 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         #: from the games this library tracks, and its criteria read
         #: the projection through the `tracked` alias.
         Game: cache(lambda: Game.objects.tracked_by(library)),
-        PlayerSession: cache(lambda: library_sessions(library)),
-        HistoricalPlaytime: cache(lambda: library_records(library)),
+        PlayerSession: cache(lambda: shown_sessions(library)),
+        HistoricalPlaytime: cache(lambda: shown_records(library)),
         LibraryEntry: cache(lambda: library_entries(library)),
         Purchase: cache(
             lambda: library_purchases(library).annotated_for_filtering(library)

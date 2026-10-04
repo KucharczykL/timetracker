@@ -25,7 +25,7 @@ from games.reads.historical_playtime import (
     historical_totals,
     historical_years,
 )
-from games.reads.player_sessions import GAME, library_sessions
+from games.reads.player_sessions import GAME, library_sessions, shown_sessions
 from games.reads.sums import (
     ZERO,
     Playtime,
@@ -94,8 +94,8 @@ def _on_days(days: DayInterval) -> Q:
 def _sessions(
     library: UserLibrary, within: DayInterval | None = None
 ) -> PlayerSessionQuerySet:
-    """Counted sessions, narrowed to days."""
-    sessions = library_sessions(library)
+    """Shown sessions, narrowed to days."""
+    sessions = shown_sessions(library)
     return sessions if within is None else sessions.filter(_on_days(within))
 
 
@@ -123,8 +123,13 @@ def game_playtime(library: UserLibrary, game: Game) -> PlaytimeBreakdown:
 def game_tracked_between(
     library: UserLibrary, game: Game, days: DayInterval
 ) -> timedelta:
-    """One game's sessions over inclusive days."""
-    return _total(_sessions(library, days).filter(**{GAME: game}))
+    """One game's sessions over days; every row.
+
+    The new run's seed reads it: stored text
+    must not follow a view setting.
+    """
+    sessions = library_sessions(library).filter(_on_days(days), **{GAME: game})
+    return _total(sessions)
 
 
 def game_playtime_between(
@@ -132,7 +137,7 @@ def game_playtime_between(
 ) -> PlaytimeBreakdown:
     """One game's playtime over inclusive days."""
     return PlaytimeBreakdown(
-        tracked=game_tracked_between(library, game, days),
+        tracked=_total(_sessions(library, days).filter(**{GAME: game})),
         historical=game_historical_playtime(library, game, within=days),
     )
 
@@ -288,7 +293,7 @@ def playtime_between_each(
     """One figure per window, in two queries."""
     if not windows:
         return []
-    tracked = library_sessions(library).aggregate(
+    tracked = shown_sessions(library).aggregate(
         **{
             f"window_{index}": Coalesce(
                 Sum("effective_duration", filter=_on_days(days)), ZERO

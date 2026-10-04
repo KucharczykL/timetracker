@@ -22,7 +22,7 @@ from games.reads.play_figures import (
     first_play,
     last_play,
 )
-from games.reads.player_sessions import readable_sessions
+from games.reads.player_sessions import listed_sessions
 from games.reads.playtime import (
     played_years,
     playtime_by_month,
@@ -52,7 +52,7 @@ class NamedRead(NamedTuple):
 
 
 def _session_page(library: UserLibrary) -> object:
-    return list(readable_sessions(library).order_by("-sort_instant", "-id")[:PAGE_ROWS])
+    return list(listed_sessions(library).order_by("-sort_instant", "-id")[:PAGE_ROWS])
 
 
 def _game_playtime_sort(library: UserLibrary) -> object:

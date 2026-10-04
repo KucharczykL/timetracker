@@ -212,6 +212,21 @@ def test_personal_settings_persist_and_drive_consumers(
     expect(page.locator("#page-sizeLink")).to_have_text("50")
 
 
+def test_a_text_select_keeps_its_value_after_the_live_save(
+    live_server, authenticated_page
+):
+    """The save writes the resolved value back."""
+    page, _preferred = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:settings')}")
+    _wait_for_live_settings(page)
+    select = page.locator('select[name="show_prerelease_play"]')
+
+    _save_select(page, "SHOW_PRERELEASE_PLAY", "show_prerelease_play", "hide")
+    expect(select).to_have_value("hide")
+    page.reload()
+    expect(select).to_have_value("hide")
+
+
 @pytest.mark.parametrize(
     "viewport",
     [{"width": 390, "height": 844}, {"width": 1280, "height": 900}],

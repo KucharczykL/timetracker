@@ -1,14 +1,14 @@
-"""The records a library counts, and the row path a page reads."""
+"""The records a library holds, and those it shows."""
 
 from django.db.models import F, Q
 
 from games.models import (
-    Game,
     HistoricalPlaytime,
     HistoricalPlaytimeQuerySet,
     UserLibrary,
 )
 from games.reads.days import DayInterval, YearScope, year_days
+from games.reads.prerelease_play import shown_play
 from games.reads.unscoped import require_library
 
 #: Newest first; an unknown `when` last; then newest recorded.
@@ -16,7 +16,7 @@ RECORD_ORDER = (F("when_lower").desc(nulls_last=True), "-created_at", "id")
 
 
 def library_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
-    """Every live record this library counts.
+    """Every live record this library holds.
 
     A copy of this breaks quietly. The record's and its tracked
     game's libraries are both stated: either can name another
@@ -33,9 +33,14 @@ def library_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     )
 
 
-def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
-    """The row path the list, the section and the API share."""
-    return library_records(library).select_related(
+def shown_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
+    """The records figures and lists hold."""
+    return library_records(library).filter(shown_play(library))
+
+
+def with_row_path(records: HistoricalPlaytimeQuerySet) -> HistoricalPlaytimeQuerySet:
+    """Game, platform, device and Release beside each."""
+    return records.select_related(
         "player_game__game__platform",
         "device",
         "release__edition",
@@ -43,9 +48,9 @@ def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     )
 
 
-def game_records(library: UserLibrary, game: Game) -> HistoricalPlaytimeQuerySet:
-    """The counted records at one catalog game."""
-    return library_records(library).filter(player_game__game=game)
+def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
+    """One named record's row path: every row."""
+    return with_row_path(library_records(library))
 
 
 def contains(days: DayInterval) -> Q:
@@ -62,15 +67,15 @@ def contained_in(
 def records_within(
     library: UserLibrary, within: DayInterval | None
 ) -> HistoricalPlaytimeQuerySet:
-    """Live records contained in `within`; None is every one."""
-    records = library_records(library)
+    """Shown records contained in `within`; None is every one."""
+    records = shown_records(library)
     return records if within is None else contained_in(records, within)
 
 
 def records_in_scope(
     library: UserLibrary, year: YearScope
 ) -> HistoricalPlaytimeQuerySet:
-    """Live records in the year; None is all-time."""
+    """Shown records in the year; None is all-time."""
     return records_within(library, year_days(year))
 
 

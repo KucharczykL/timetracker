@@ -25,6 +25,7 @@ USER_KEYS = {
     "DEFAULT_LANDING_PAGE",
     "DEFAULT_PAGE_SIZE",
     "DORMANT_AFTER_DAYS",
+    "SHOW_PRERELEASE_PLAY",
     "THEME",
     "DISPLAY_TIME_ZONE",
     "DATE_FORMAT_LOCALE",
@@ -390,3 +391,24 @@ def test_dormant_after_days_refuses_a_day_count_off_the_list():
     #: A day count; text is refused.
     with pytest.raises(ValidationError):
         definition.validator("30")
+
+
+def test_show_prerelease_play_is_a_live_user_select_of_two_words():
+    definition = get_definition("SHOW_PRERELEASE_PLAY")
+
+    assert definition.scope is SettingScope.USER
+    assert definition.apply_timing is ApplyTiming.LIVE
+    assert definition.widget is SettingWidget.SELECT
+    #: Text round-trips through the live save; a bool would not.
+    assert definition.cast is None
+    assert [value for value, _label in definition.choices] == ["show", "hide"]
+    assert definition.default_factory() == "show"
+
+
+@pytest.mark.parametrize("bad", ["true", "True", True, "", "Hide"])
+def test_show_prerelease_play_refuses_another_value(bad):
+    definition = get_definition("SHOW_PRERELEASE_PLAY")
+
+    assert definition.validator("hide") == "hide"
+    with pytest.raises(ValidationError):
+        definition.validator(bad)

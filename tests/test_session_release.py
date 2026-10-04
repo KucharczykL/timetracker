@@ -11,7 +11,13 @@ from django.http import QueryDict
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
-from entries import end_entry_access, record_entry, remove_entry, second_release
+from entries import (
+    end_entry_access,
+    prerelease_release,
+    record_entry,
+    remove_entry,
+    second_release,
+)
 from historical_playtime_posts import posted_record
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row
@@ -28,7 +34,6 @@ from games.bulk_session_edit import (
     settle_edit,
 )
 from games.bulk_sessions import labelled_session_resolution
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -67,7 +72,6 @@ from games.filters import (
 )
 from games.forms import held_release_options
 from games.models import (
-    EditionKind,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -837,30 +841,7 @@ def post_of(statement: EditStatement) -> QueryDict:
 @pytest.fixture
 def demo(owned_library, graph) -> Release:
     """A prerelease Edition of the same game."""
-    written = state_catalog_graph(
-        game=graph.game,
-        library=owned_library,
-        editions=[
-            EditionState(
-                key="edition-0",
-                edition=graph.edition,
-                is_default=True,
-                releases=(
-                    ReleaseState(
-                        key="edition-0-release-0",
-                        release=graph.release,
-                        is_default=True,
-                    ),
-                ),
-            ),
-            EditionState(
-                key="edition-1",
-                kind=EditionKind.PRERELEASE,
-                releases=(ReleaseState(key="edition-1-release-0", is_default=True),),
-            ),
-        ],
-    )
-    return written.editions[1].releases[0].release
+    return prerelease_release(owned_library, graph.release)
 
 
 def answered(library, criteria) -> set[PlayerSession]:

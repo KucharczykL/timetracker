@@ -19,9 +19,8 @@ from games.reads.days import DayInterval
 from games.reads.historical_playtime_records import (
     contained_in,
     contains,
-    game_records,
-    library_records,
     records_within,
+    shown_records,
 )
 from games.reads.sums import ZERO, PlaytimeSum, UnscopedSum
 
@@ -78,7 +77,7 @@ def historical_totals(
     """One sum per window, in one query."""
     if not windows:
         return []
-    sums = library_records(library).aggregate(
+    sums = shown_records(library).aggregate(
         **{
             f"window_{index}": Coalesce(Sum("duration", filter=contains(days)), ZERO)
             for index, days in enumerate(windows)
@@ -111,7 +110,7 @@ def historical_summed_by_game_matching(
 ) -> PlaytimeSum:
     """Matching records' sum a game; NULL when none."""
     context = filter_query_context_for_library(library)
-    return _summed_by_game(library_records(library).filter(record_filter.to_q(context)))
+    return _summed_by_game(shown_records(library).filter(record_filter.to_q(context)))
 
 
 def historical_by_platform(
@@ -130,7 +129,7 @@ def historical_by_platform(
 def historical_by_month(library: UserLibrary, *, year: int) -> list[MonthHistorical]:
     """Only records whose `when` lies in one month."""
     rows = (
-        contained_in(library_records(library), DayInterval.year(year))
+        contained_in(shown_records(library), DayInterval.year(year))
         .filter(when_lower__month=F("when_upper__month"))
         .annotate(month=TruncMonth("when_lower"))
         .values("month")
@@ -144,7 +143,7 @@ def historical_by_month(library: UserLibrary, *, year: int) -> list[MonthHistori
 def historical_years(library: UserLibrary) -> list[int]:
     """Years that wholly contain a record's `when`."""
     return list(
-        library_records(library)
+        shown_records(library)
         .filter(when_lower__year=F("when_upper__year"))
         .annotate(year=ExtractYear("when_lower"))
         .values_list("year", flat=True)
@@ -160,7 +159,7 @@ def game_historical_playtime(
     *,
     within: DayInterval | None = None,
 ) -> timedelta:
-    records = game_records(library, game)
+    records = shown_records(library).filter(**{GAME: game})
     if within is not None:
         records = contained_in(records, within)
     if provenance is not None:
