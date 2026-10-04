@@ -200,16 +200,17 @@ function stopWatchingRemovals(): void {
   removalObserver = null;
 }
 
+const TABBABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
 function tabbableElements(dialog: HTMLDialogElement): HTMLElement[] {
-  const selector = [
-    "a[href]",
-    "button:not([disabled])",
-    "input:not([disabled])",
-    "select:not([disabled])",
-    "textarea:not([disabled])",
-    "[tabindex]:not([tabindex='-1'])",
-  ].join(",");
-  return Array.from(dialog.querySelectorAll<HTMLElement>(selector)).filter(
+  return Array.from(dialog.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)).filter(
     (element) =>
       element.tabIndex >= 0 &&
       nearestDialog(element) === dialog &&
@@ -283,9 +284,14 @@ function finish(entry: Entry): void {
   }
 }
 
-function refuseOpen(entry: Entry, detail: string): false {
+/** Undoes an open that never showed. */
+function abandonOpen(entry: Entry): void {
   entry.opener = null;
   if (shown.length === 0) unlockDocumentScroll();
+}
+
+function refuseOpen(entry: Entry, detail: string): false {
+  abandonOpen(entry);
   report(detail);
   return false;
 }
@@ -303,8 +309,7 @@ function open(entry: Entry, opener: HTMLElement | null | undefined): boolean {
     entry.dialog.showModal();
   } catch (error) {
     if (!isInvalidState(error)) {
-      entry.opener = null;
-      if (shown.length === 0) unlockDocumentScroll();
+      abandonOpen(entry);
       throw error;
     }
     return refuseOpen(entry, `showModal refused: ${String(error)}`);

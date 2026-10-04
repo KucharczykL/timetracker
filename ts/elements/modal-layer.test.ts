@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  attachModal,
-  isModalOpen,
-  MODAL_CHANGE,
-  type Modal,
-  type ModalOptions,
-  topModal,
-} from "./modal-layer.js";
+import { attachModal, isModalOpen, MODAL_CHANGE, topModal } from "./modal-layer.js";
 import { openSurfaces, pushSurface, removeSurface, type Surface } from "./surface-stack.js";
 
 let changes = 0;
@@ -58,10 +51,6 @@ function dismissControl(dialog: HTMLDialogElement): HTMLButtonElement {
   return dialog.querySelector<HTMLButtonElement>("[data-modal-dismiss]")!;
 }
 
-function modalOn(dialog: HTMLDialogElement, options: ModalOptions = {}): Modal {
-  return attachModal(dialog, options);
-}
-
 function pointer(type: string, target: EventTarget, pointerId = 1): void {
   target.dispatchEvent(
     new PointerEvent(type, { bubbles: true, isPrimary: true, button: 0, pointerId }),
@@ -97,7 +86,7 @@ describe("open", () => {
   it("shows the dialog as the top modal and pushes a modal surface", () => {
     const opener = mountOpener();
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     expect(modal.open(opener)).toBe(true);
     expect(dialog.matches(":modal")).toBe(true);
     expect(modal.isOpen()).toBe(true);
@@ -110,25 +99,25 @@ describe("open", () => {
   it("focuses initialFocus, else [data-modal-initial-focus]", () => {
     const dialog = mountDialog();
     dismissControl(dialog).setAttribute("data-modal-initial-focus", "");
-    modalOn(dialog).open();
+    attachModal(dialog).open();
     expect(document.activeElement).toBe(dismissControl(dialog));
 
     const other = mountDialog();
-    modalOn(other, { initialFocus: () => first(other) }).open();
+    attachModal(other, { initialFocus: () => first(other) }).open();
     expect(document.activeElement).toBe(first(other));
   });
 
   it("answers false for a disconnected host", () => {
     const dialog = document.createElement("dialog");
     dialog.setAttribute("data-modal", "");
-    expect(modalOn(dialog).open()).toBe(false);
+    expect(attachModal(dialog).open()).toBe(false);
     expect(isModalOpen()).toBe(false);
   });
 
   it("reports a refused showModal and leaves nothing locked", () => {
     const dialog = mountDialog();
     dialog.setAttribute("open", "");
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(modal.open()).toBe(false);
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("modal-layer: showModal"));
@@ -140,7 +129,7 @@ describe("open", () => {
 
   it("does nothing on an open modal", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     expect(modal.open()).toBe(true);
     expect(changes).toBe(1);
@@ -151,8 +140,8 @@ describe("nesting", () => {
   it("nests a dialog placed inside another", () => {
     const lower = mountDialog();
     const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
-    modalOn(lower).open();
-    modalOn(upper).open();
+    attachModal(lower).open();
+    attachModal(upper).open();
     expect(topModal()).toBe(upper);
     expect(lower.matches(":modal")).toBe(true);
     expect(openSurfaces().map((surface) => surface.kind)).toEqual(["modal", "modal"]);
@@ -161,20 +150,20 @@ describe("nesting", () => {
   it("nests a dialog placed beside another", () => {
     const lower = mountDialog();
     const upper = mountDialog();
-    modalOn(lower).open();
-    modalOn(upper).open();
+    attachModal(lower).open();
+    attachModal(upper).open();
     expect(topModal()).toBe(upper);
     expect(lower.open).toBe(true);
   });
 
   it("closes the modals above a closing one, topmost first", () => {
     const closed: string[] = [];
-    const bottom = modalOn(mountDialog(), { onClosed: () => closed.push("bottom") });
-    const middle = modalOn(mountDialog(), { onClosed: () => closed.push("middle") });
+    const bottom = attachModal(mountDialog(), { onClosed: () => closed.push("bottom") });
+    const middle = attachModal(mountDialog(), { onClosed: () => closed.push("middle") });
     const top = mountDialog();
     bottom.open();
     middle.open();
-    modalOn(top, { onClosed: () => closed.push("top") }).open();
+    attachModal(top, { onClosed: () => closed.push("top") }).open();
     middle.close();
     expect(closed).toEqual(["top", "middle"]);
     expect(top.open).toBe(false);
@@ -184,9 +173,9 @@ describe("nesting", () => {
   it("closes a modal opened above a closing one before it leaves", () => {
     const lower = mountDialog();
     const upper = mountDialog(lower);
-    const lowerModal = modalOn(lower, { leave: () => {} });
+    const lowerModal = attachModal(lower, { leave: () => {} });
     lowerModal.open();
-    modalOn(upper).open();
+    attachModal(upper).open();
     lowerModal.close();
     expect(upper.open).toBe(false);
     expect(document.querySelectorAll(":modal")).toHaveLength(0);
@@ -195,8 +184,8 @@ describe("nesting", () => {
 
 describe("scroll lock", () => {
   it("is one lock for the stack", () => {
-    const lower = modalOn(mountDialog());
-    const upper = modalOn(mountDialog());
+    const lower = attachModal(mountDialog());
+    const upper = attachModal(mountDialog());
     lower.open();
     expect(document.body.style.position).toBe("fixed");
     upper.open();
@@ -208,7 +197,7 @@ describe("scroll lock", () => {
 
   it("holds through a leave", () => {
     let finish = (): void => {};
-    const modal = modalOn(mountDialog(), {
+    const modal = attachModal(mountDialog(), {
       leave: (done) => {
         finish = done;
       },
@@ -224,7 +213,7 @@ describe("scroll lock", () => {
 describe("focus return", () => {
   it("returns focus to the opener", () => {
     const opener = mountOpener();
-    const modal = modalOn(mountDialog());
+    const modal = attachModal(mountDialog());
     modal.open(opener);
     modal.close();
     expect(document.activeElement).toBe(opener);
@@ -233,7 +222,7 @@ describe("focus return", () => {
   it("defaults the opener to the focused element", () => {
     const opener = mountOpener();
     opener.focus();
-    const modal = modalOn(mountDialog());
+    const modal = attachModal(mountDialog());
     modal.open();
     modal.close();
     expect(document.activeElement).toBe(opener);
@@ -243,7 +232,7 @@ describe("focus return", () => {
     const wrapper = document.createElement("div");
     document.body.append(wrapper);
     const opener = mountOpener(wrapper);
-    const modal = modalOn(mountDialog());
+    const modal = attachModal(mountDialog());
     modal.open(opener);
     wrapper.hidden = true;
     modal.close();
@@ -258,7 +247,7 @@ describe("focus return", () => {
       </drop-down>
     `;
     const item = document.querySelector<HTMLElement>("[data-item]")!;
-    const modal = modalOn(mountDialog());
+    const modal = attachModal(mountDialog());
     modal.open(item);
     modal.close();
     expect(document.activeElement).toBe(document.querySelector("[data-toggle]"));
@@ -276,7 +265,7 @@ describe("focus return", () => {
         </div>
       </drop-down>
     `;
-    const modal = modalOn(mountDialog());
+    const modal = attachModal(mountDialog());
     modal.open(document.querySelector<HTMLElement>("[data-item]")!);
     modal.close();
     expect(document.activeElement?.id).toBe("outer-toggle");
@@ -285,8 +274,8 @@ describe("focus return", () => {
   it("focuses the remaining modal when the opener sits outside it", () => {
     const opener = mountOpener();
     const lower = mountDialog();
-    modalOn(lower, { initialFocus: () => first(lower) }).open();
-    const upper = modalOn(mountDialog());
+    attachModal(lower, { initialFocus: () => first(lower) }).open();
+    const upper = attachModal(mountDialog());
     upper.open(opener);
     upper.close();
     expect(document.activeElement).toBe(first(lower));
@@ -294,8 +283,8 @@ describe("focus return", () => {
 
   it("returns focus inside the remaining modal to the opener there", () => {
     const lower = mountDialog();
-    modalOn(lower).open();
-    const upper = modalOn(mountDialog());
+    attachModal(lower).open();
+    const upper = attachModal(mountDialog());
     upper.open(dismissControl(lower));
     upper.close();
     expect(document.activeElement).toBe(dismissControl(lower));
@@ -304,7 +293,7 @@ describe("focus return", () => {
   it("lets onClosed move focus last", () => {
     const opener = mountOpener();
     const elsewhere = mountOpener();
-    const modal = modalOn(mountDialog(), { onClosed: () => elsewhere.focus() });
+    const modal = attachModal(mountDialog(), { onClosed: () => elsewhere.focus() });
     modal.open(opener);
     modal.close();
     expect(document.activeElement).toBe(elsewhere);
@@ -314,7 +303,7 @@ describe("focus return", () => {
 describe("dismissal", () => {
   it("prevents cancel and dismisses", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     expect(cancel(dialog).defaultPrevented).toBe(true);
     expect(modal.isOpen()).toBe(false);
@@ -323,7 +312,7 @@ describe("dismissal", () => {
   it("lets dismiss veto a cancel", () => {
     const dialog = mountDialog();
     const dismiss = vi.fn();
-    const modal = modalOn(dialog, { dismiss });
+    const modal = attachModal(dialog, { dismiss });
     modal.open();
     cancel(dialog);
     expect(dismiss).toHaveBeenCalledOnce();
@@ -332,7 +321,7 @@ describe("dismissal", () => {
 
   it("dismisses on a press that starts and ends on the backdrop", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     pointer("pointerdown", dialog);
     pointer("pointerup", dialog);
@@ -341,7 +330,7 @@ describe("dismissal", () => {
 
   it("keeps the modal on a press that starts inside the panel", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     pointer("pointerdown", first(dialog));
     pointer("pointerup", dialog);
@@ -350,7 +339,7 @@ describe("dismissal", () => {
 
   it("keeps the modal when the browser cancels the press", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     pointer("pointerdown", dialog);
     pointer("pointercancel", dialog);
@@ -360,7 +349,7 @@ describe("dismissal", () => {
 
   it("keeps the modal on another pointer's release", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     pointer("pointerdown", dialog, 1);
     pointer("pointerup", dialog, 2);
@@ -369,7 +358,7 @@ describe("dismissal", () => {
 
   it("dismisses on a click on [data-modal-dismiss]", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     dismissControl(dialog).click();
     expect(modal.isOpen()).toBe(false);
@@ -378,8 +367,8 @@ describe("dismissal", () => {
   it("leaves a nested dialog's dismiss control to it", () => {
     const lower = mountDialog();
     const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
-    const lowerModal = modalOn(lower);
-    const upperModal = modalOn(upper);
+    const lowerModal = attachModal(lower);
+    const upperModal = attachModal(upper);
     lowerModal.open();
     upperModal.open();
     dismissControl(upper).click();
@@ -391,7 +380,7 @@ describe("dismissal", () => {
 describe("Tab boundary", () => {
   it("wraps among the top modal's own tabbables", () => {
     const dialog = mountDialog();
-    modalOn(dialog).open();
+    attachModal(dialog).open();
     dismissControl(dialog).focus();
     expect(pressTab(dismissControl(dialog)).defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(first(dialog));
@@ -402,8 +391,8 @@ describe("Tab boundary", () => {
   it("skips tabbables of a nested dialog", () => {
     const lower = mountDialog();
     const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
-    modalOn(lower).open();
-    modalOn(upper).open();
+    attachModal(lower).open();
+    attachModal(upper).open();
     dismissControl(upper).focus();
     pressTab(dismissControl(upper));
     expect(document.activeElement).toBe(first(upper));
@@ -411,8 +400,8 @@ describe("Tab boundary", () => {
 
   it("does nothing in a modal that is not the top one", () => {
     const lower = mountDialog();
-    modalOn(lower).open();
-    modalOn(mountDialog()).open();
+    attachModal(lower).open();
+    attachModal(mountDialog()).open();
     dismissControl(lower).focus();
     expect(pressTab(dismissControl(lower)).defaultPrevented).toBe(false);
   });
@@ -423,7 +412,7 @@ describe("leave", () => {
     let finish = (): void => {};
     const dialog = mountDialog();
     const onClosed = vi.fn();
-    const modal = modalOn(dialog, {
+    const modal = attachModal(dialog, {
       leave: (done) => {
         finish = done;
       },
@@ -443,7 +432,7 @@ describe("leave", () => {
 
   it("finishes at once when leave calls finish at once", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave: (done) => done() });
+    const modal = attachModal(dialog, { leave: (done) => done() });
     modal.open();
     modal.close();
     expect(dialog.open).toBe(false);
@@ -452,7 +441,7 @@ describe("leave", () => {
   it("ignores close during a leave", () => {
     const leave = vi.fn();
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave });
+    const modal = attachModal(dialog, { leave });
     modal.open();
     modal.close();
     modal.close();
@@ -462,7 +451,7 @@ describe("leave", () => {
 
   it("finishes a leave when the host is gone", () => {
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave: () => {} });
+    const modal = attachModal(dialog, { leave: () => {} });
     modal.open();
     modal.close();
     dialog.remove();
@@ -474,7 +463,7 @@ describe("leave", () => {
   it("skips leave for a disconnected host", () => {
     const leave = vi.fn();
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave });
+    const modal = attachModal(dialog, { leave });
     modal.open();
     dialog.remove();
     modal.close();
@@ -483,16 +472,16 @@ describe("leave", () => {
   });
 
   it("refuses to open while a modal leaves", () => {
-    const leaving = modalOn(mountDialog(), { leave: () => {} });
+    const leaving = attachModal(mountDialog(), { leave: () => {} });
     leaving.open();
     leaving.close();
-    expect(modalOn(mountDialog()).open()).toBe(false);
+    expect(attachModal(mountDialog()).open()).toBe(false);
   });
 
   it("ignores a late finish after a reopen", () => {
     let finish = (): void => {};
     const dialog = mountDialog();
-    const modal = modalOn(dialog, {
+    const modal = attachModal(dialog, {
       leave: (done) => {
         finish = done;
       },
@@ -514,7 +503,7 @@ describe("native close", () => {
     const opener = mountOpener();
     const dialog = mountDialog();
     const onClosed = vi.fn();
-    const modal = modalOn(dialog, { onClosed });
+    const modal = attachModal(dialog, { onClosed });
     modal.open(opener);
     dialog.close();
     vi.runAllTimers();
@@ -526,7 +515,7 @@ describe("native close", () => {
   it("ignores a stale close event after a reopen", () => {
     vi.useFakeTimers();
     const dialog = mountDialog();
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     modal.open();
     modal.close();
     modal.open();
@@ -538,8 +527,8 @@ describe("native close", () => {
     vi.useFakeTimers();
     const lower = mountDialog();
     const upper = mountDialog();
-    modalOn(lower).open();
-    const upperModal = modalOn(upper);
+    attachModal(lower).open();
+    const upperModal = attachModal(upper);
     upperModal.open();
     lower.close();
     vi.runAllTimers();
@@ -552,7 +541,7 @@ describe("removal", () => {
   it("finishes a modal whose dialog leaves the document", async () => {
     const dialog = mountDialog();
     const onClosed = vi.fn();
-    const modal = modalOn(dialog, { onClosed });
+    const modal = attachModal(dialog, { onClosed });
     modal.open();
     dialog.remove();
     await Promise.resolve();
@@ -567,8 +556,8 @@ describe("backdrops", () => {
     let finish = (): void => {};
     const lower = mountDialog();
     const upper = mountDialog();
-    const lowerModal = modalOn(lower);
-    const upperModal = modalOn(upper, {
+    const lowerModal = attachModal(lower);
+    const upperModal = attachModal(upper, {
       leave: (done) => {
         finish = done;
       },
@@ -591,8 +580,8 @@ describe("backdrops", () => {
 
 describe("change events", () => {
   it("fires when the top modal changes", () => {
-    const lower = modalOn(mountDialog());
-    const upper = modalOn(mountDialog());
+    const lower = attachModal(mountDialog());
+    const upper = attachModal(mountDialog());
     lower.open();
     upper.open();
     expect(changes).toBe(2);
@@ -604,7 +593,7 @@ describe("change events", () => {
 
   it("fires at the start of a leave, not again at finish", () => {
     let finish = (): void => {};
-    const modal = modalOn(mountDialog(), {
+    const modal = attachModal(mountDialog(), {
       leave: (done) => {
         finish = done;
       },
@@ -629,7 +618,7 @@ describe("surface stack", () => {
         removeSurface(panel);
       },
     };
-    const modal = modalOn(dialog, { leave: () => {} });
+    const modal = attachModal(dialog, { leave: () => {} });
     modal.open();
     pushSurface(panel);
     modal.close();
@@ -644,7 +633,7 @@ function silenceReports(): ReturnType<typeof vi.spyOn> {
 describe("failure paths", () => {
   it("reports and finishes a leave that throws", () => {
     const logged = silenceReports();
-    const modal = modalOn(mountDialog(), {
+    const modal = attachModal(mountDialog(), {
       leave: () => {
         throw new Error("broken slide");
       },
@@ -653,14 +642,14 @@ describe("failure paths", () => {
     modal.close();
     expect(modal.state()).toBe("closed");
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("leave threw"));
-    expect(modalOn(mountDialog()).open()).toBe(true);
+    expect(attachModal(mountDialog()).open()).toBe(true);
   });
 
   it("finishes a leave that never calls finish", () => {
     vi.useFakeTimers();
     const logged = silenceReports();
     const dialog = mountDialog();
-    const modal = modalOn(dialog, { leave: () => {} });
+    const modal = attachModal(dialog, { leave: () => {} });
     modal.open();
     modal.close();
     expect(dialog.open).toBe(true);
@@ -673,7 +662,7 @@ describe("failure paths", () => {
     const logged = silenceReports();
     const dialog = mountDialog();
     vi.spyOn(dialog, "showModal").mockImplementation(() => {});
-    const modal = modalOn(dialog);
+    const modal = attachModal(dialog);
     expect(modal.open()).toBe(false);
     expect(modal.state()).toBe("closed");
     expect(document.body.style.position).toBe("");
@@ -686,25 +675,25 @@ describe("failure paths", () => {
     vi.spyOn(dialog, "showModal").mockImplementation(() => {
       throw new TypeError("defect");
     });
-    expect(() => modalOn(dialog).open()).toThrow(TypeError);
+    expect(() => attachModal(dialog).open()).toThrow(TypeError);
     expect(document.body.style.position).toBe("");
   });
 
   it("keeps the page lock when a nested open is refused", () => {
     silenceReports();
-    const lower = modalOn(mountDialog());
+    const lower = attachModal(mountDialog());
     lower.open();
     const refused = mountDialog();
     refused.setAttribute("open", "");
-    expect(modalOn(refused).open()).toBe(false);
+    expect(attachModal(refused).open()).toBe(false);
     expect(document.body.style.position).toBe("fixed");
     expect(lower.isOpen()).toBe(true);
   });
 
   it("closes the rest when an onClosed throws", () => {
     const logged = silenceReports();
-    const lower = modalOn(mountDialog());
-    const upper = modalOn(mountDialog(), {
+    const lower = attachModal(mountDialog());
+    const upper = attachModal(mountDialog(), {
       onClosed: () => {
         throw new Error("broken hook");
       },
@@ -723,7 +712,7 @@ describe("failure paths", () => {
     const dialog = mountDialog();
     const dismiss = vi.fn();
     const onClosed = vi.fn();
-    const modal = modalOn(dialog, { dismiss, onClosed });
+    const modal = attachModal(dialog, { dismiss, onClosed });
     modal.open();
     dialog.dispatchEvent(new Event("cancel", { cancelable: false }));
     // The browser then closes the dialog.
@@ -740,8 +729,8 @@ describe("removal of a stack", () => {
     const closed: string[] = [];
     const lower = mountDialog();
     const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
-    modalOn(lower, { onClosed: () => closed.push("lower") }).open();
-    modalOn(upper, { onClosed: () => closed.push("upper") }).open();
+    attachModal(lower, { onClosed: () => closed.push("lower") }).open();
+    attachModal(upper, { onClosed: () => closed.push("upper") }).open();
     lower.remove();
     await Promise.resolve();
     expect(closed).toEqual(["upper", "lower"]);
@@ -751,8 +740,8 @@ describe("removal of a stack", () => {
 
   it("closes a modal beside a removed lower one", async () => {
     const lower = mountDialog();
-    const upper = modalOn(mountDialog());
-    modalOn(lower).open();
+    const upper = attachModal(mountDialog());
+    attachModal(lower).open();
     upper.open();
     lower.remove();
     await Promise.resolve();
@@ -761,7 +750,7 @@ describe("removal of a stack", () => {
   });
 
   it("closes nothing on another change to the document", async () => {
-    const modal = modalOn(mountDialog());
+    const modal = attachModal(mountDialog());
     modal.open();
     document.body.append(document.createElement("div"));
     await Promise.resolve();
@@ -773,9 +762,9 @@ describe("more focus and dismissal", () => {
   it("focuses the remaining modal's first tabbable without initial focus", () => {
     const opener = mountOpener();
     const lower = mountDialog();
-    modalOn(lower).open();
+    attachModal(lower).open();
     opener.focus();
-    const upper = modalOn(mountDialog());
+    const upper = attachModal(mountDialog());
     upper.open(opener);
     upper.close();
     expect(document.activeElement).toBe(first(lower));
@@ -784,8 +773,8 @@ describe("more focus and dismissal", () => {
   it("keeps the lower modal on a backdrop press of a nested one", () => {
     const lower = mountDialog();
     const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
-    const lowerModal = modalOn(lower);
-    const upperModal = modalOn(upper);
+    const lowerModal = attachModal(lower);
+    const upperModal = attachModal(upper);
     lowerModal.open();
     upperModal.open();
     pointer("pointerdown", upper);
@@ -796,14 +785,14 @@ describe("more focus and dismissal", () => {
 
   it("refuses a second attach to one dialog", () => {
     const dialog = mountDialog();
-    modalOn(dialog);
-    expect(() => modalOn(dialog)).toThrow(TypeError);
+    attachModal(dialog);
+    expect(() => attachModal(dialog)).toThrow(TypeError);
   });
 
   it("wraps Tab back in when focus sits outside", () => {
     const opener = mountOpener();
     const dialog = mountDialog();
-    modalOn(dialog).open();
+    attachModal(dialog).open();
     opener.focus();
     expect(pressTab(dialog).defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(first(dialog));
@@ -811,7 +800,7 @@ describe("more focus and dismissal", () => {
 
   it("marks a middle modal both covered and over", () => {
     const dialogs = [mountDialog(), mountDialog(), mountDialog()];
-    for (const dialog of dialogs) modalOn(dialog).open();
+    for (const dialog of dialogs) attachModal(dialog).open();
     const marks = dialogs.map((dialog) => [
       dialog.hasAttribute("data-modal-covered"),
       dialog.hasAttribute("data-modal-over"),
@@ -825,7 +814,7 @@ describe("more focus and dismissal", () => {
 
   it("reports its state through a leave", () => {
     let finish = (): void => {};
-    const modal = modalOn(mountDialog(), {
+    const modal = attachModal(mountDialog(), {
       leave: (done) => {
         finish = done;
       },

@@ -10,9 +10,12 @@ interface PendingNavigation {
   focusTarget: HTMLElement;
 }
 
+type TimerHandle = number;
+type FrameHandle = number;
+
 interface PendingLeave {
   finish: FinishLeave;
-  timer: number;
+  timer: TimerHandle;
 }
 
 const CLOSE_FALLBACK_MS = 250;
@@ -69,7 +72,7 @@ export function attachSheet(
   }
 
   let entered = false;
-  let openFrame = 0;
+  let openFrame: FrameHandle = 0;
   let pendingLeave: PendingLeave | null = null;
   let pendingNavigation: PendingNavigation | null = null;
 
