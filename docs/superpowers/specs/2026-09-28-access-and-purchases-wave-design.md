@@ -1209,6 +1209,13 @@ runs on it.
 - #1432, the Library page as the one place for purchase data gaps, later
   a library-wide audit screen that absorbs P5b's review surface and
   #1418's report; after P5b, outside the stack, mockup first
+- #1355, bulk end of access over copies; ruled 2026-10-04 with #1345: one
+  module `games/bulk_access_end.py` (statement, form over a `ways` tuple,
+  offer/settle), #1355 builds it, #1345 declares the device act on it;
+  the batch Undo guard is lifted out of the run acts into the shared bulk
+  layer, one function over an endpoint's event family; scope is every
+  live selected row, an ended one refused by the command's sentence under
+  a `caution`
 - #1382, set the platform across many copies on the Library tab
 - #1383, the Game detail redesign, after P5 and #1353
 - #1384, the `<form-dialog>` element, and #1385, the epic that opens
