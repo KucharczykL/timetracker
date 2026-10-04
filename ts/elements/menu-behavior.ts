@@ -147,7 +147,9 @@ export function attachMenu(
     // the first row down by that amount. Measured from the live layout, so it
     // tracks any padding/border/header change instead of a hardcoded offset.
     const items = enabledItems();
-    const firstItemInset = items.length ? items[0].getBoundingClientRect().top : 0;
+    // Scrolled content must not move the flyout.
+    const scrolled = menu.querySelector<HTMLElement>("[data-menu-scroll]")?.scrollTop ?? 0;
+    const firstItemInset = items.length ? items[0].getBoundingClientRect().top + scrolled : 0;
     const menuWidth = menu.offsetWidth;
     const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
     const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;
@@ -164,7 +166,7 @@ export function attachMenu(
     if (!menu.hidden) positionMenu();
   };
 
-  // The panel is `fixed` (see open()), so it does not auto-follow the toggle the
+  // The panel is `fixed` (pinFixed), so it does not auto-follow the toggle the
   // way an `absolute top-full` panel would. A multi-select toggle
   // grows/shrinks as pills are added/removed while
   // the panel is open, with no scroll/resize to fire — so observe the toggle's

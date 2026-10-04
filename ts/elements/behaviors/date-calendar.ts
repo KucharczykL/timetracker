@@ -22,7 +22,7 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   under (every other dropdown is flush; a calendar reads better with
 //   daylight).
 //
-// attachMenu and the surface stack do the rest.
+// attachMenu and the stack do the rest.
 registerBehavior("date-calendar", {
   menuOptions: () => ({
     itemSelector: "[data-date-calendar-no-items]",

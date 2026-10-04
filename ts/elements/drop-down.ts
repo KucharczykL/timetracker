@@ -1,3 +1,4 @@
+import { reportClientError } from "../client-errors.js";
 import { readDropdownProps } from "../generated/props.js";
 import { getBehavior } from "./dropdown-behaviors.js";
 import { attachMenu, MenuController, MenuPlacement } from "./menu-behavior.js";
@@ -35,8 +36,10 @@ export class DropdownElement extends HTMLElement {
     const menu = ownChild(this, "[data-menu]");
     if (!toggle || !menu) {
       // Unwired, open() and close() would do nothing.
-      console.error(
-        `<drop-down> has no own ${toggle ? "[data-menu]" : "[data-toggle]"}; it stays unwired.`,
+      reportClientError(
+        "drop-down",
+        `no own ${toggle ? "[data-menu]" : "[data-toggle]"}; it stays unwired`,
+        { toast: false },
       );
       return;
     }
@@ -46,9 +49,10 @@ export class DropdownElement extends HTMLElement {
       // A named-but-unregistered behavior degrades to a bare open/close menu with
       // no wiring (e.g. a `select` dropdown that never PATCHes) — say so loudly
       // instead of failing silently. An empty behavior is intentional and quiet.
-      console.error(
-        `<drop-down> requested behavior "${props.behavior}" but none is registered; ` +
-          "it will open/close but its behavior wiring is missing.",
+      reportClientError(
+        "drop-down",
+        `behavior "${props.behavior}" is not registered; its wiring is missing`,
+        { toast: false },
       );
     }
     const controller = behavior?.createController

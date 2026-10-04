@@ -250,9 +250,8 @@ minimum control height. They do not need chevrons or a selected appearance.
 
 The mobile trigger is a normal-flow grid item that becomes sticky with the
 settings scaffold. It uses an opaque surface and a stacking position above
-static section content but below real floating overlays. Document the exact
-stacking choice beside the existing overlay scale rather than assuming every
-`z-10` consumer has the same role.
+static section content. Floating surfaces open in the top layer above it,
+so it needs no place on a z-scale.
 
 The desktop rail retains the current ownership:
 
@@ -670,8 +669,7 @@ The implementation is not complete unless every gate passes:
    geometry, and no unconditional `hidden` competes with native closed state.
 9. **No sticky obstruction.** Anchor destinations land below the mobile trigger.
 10. **No overlay inversion.** Static content remains below the sticky trigger;
-    dropdowns, popovers, the modal sheet, and toasts retain their documented
-    ordering.
+    top-layer surfaces paint over everything else, and toasts sit at z-50.
 11. **No reconnect leaks.** Moving/reconnecting the host never duplicates
     document listeners or close effects.
 12. **No JavaScript-only navigation.** Failed or disabled enhancement leaves the

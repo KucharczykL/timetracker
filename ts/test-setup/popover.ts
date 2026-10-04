@@ -20,10 +20,18 @@ function hidePopover(this: HTMLElement): void {
   openPopovers.delete(this);
 }
 
+/** Removal hides a popover, as in a browser. */
 export function isPopoverOpen(element: HTMLElement): boolean {
-  return openPopovers.has(element);
+  return element.isConnected && openPopovers.has(element);
 }
 
 if (typeof HTMLElement !== "undefined" && !("showPopover" in HTMLElement.prototype)) {
   Object.assign(HTMLElement.prototype, { showPopover, hidePopover });
+  // jsdom does not parse :popover-open.
+  const matches = Element.prototype.matches;
+  function matchesPopoverOpen(this: Element, selector: string): boolean {
+    if (selector !== ":popover-open") return matches.call(this, selector);
+    return this instanceof HTMLElement && isPopoverOpen(this);
+  }
+  Object.assign(Element.prototype, { matches: matchesPopoverOpen });
 }

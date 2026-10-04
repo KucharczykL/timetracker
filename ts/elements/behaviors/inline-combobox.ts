@@ -20,7 +20,7 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   <form> (the widget's own Enter-pick handling has already run by the time
 //   this listener fires).
 //
-// attachMenu and the surface stack do the rest.
+// attachMenu and the stack do the rest.
 
 registerBehavior("inline-combobox", {
   menuOptions: () => ({

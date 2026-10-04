@@ -333,8 +333,10 @@ _TruncatedText = custom_element_builder("truncated-text")
 # TruncatedText host inherits font-condensed and renders in a different
 # typeface from every other tooltip on the site. Stating the family here keeps
 # a tooltip looking like a tooltip wherever it is mounted.
-#: A floating panel, closed: shown into the top layer.
-CLOSED_POPOVER: tuple[tuple[str, str], ...] = (("hidden", ""), ("popover", "manual"))
+#: An attribute whose value is text.
+type TextAttribute = tuple[str, str]
+#: A closed top-layer panel: hidden, manual popover.
+CLOSED_POPOVER: tuple[TextAttribute, ...] = (("hidden", ""), ("popover", "manual"))
 
 _TOOLTIP_PANEL_CLASS = (
     f"inline-block font-sans text-type-body text-heading bg-brand-soft "
@@ -3693,8 +3695,7 @@ def StyledTable(
         # Only from md up: 19rem is wider than a phone's scrollport, where the
         # browser would clamp it into a meaningless snap position anyway.
         # The scroll-state container type lets the pinned column show its shadow
-        # only while something is scrolled behind it. It is not a containing
-        # block, so the fixed panels inside the table are unaffected.
+        # only while something is scrolled behind it.
         scroll_class = (
             f"{scroll_class} md:scroll-ps-[19rem] md:[container-type:scroll-state]"
         )

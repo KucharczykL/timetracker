@@ -160,8 +160,7 @@ def field_box_class(shape: ButtonShape) -> str:
 
 
 _BOX_CLASS = field_box_class("full")
-# Anchors the drop-down.
-_CONTAINER_CLASS = "relative block"
+_CONTAINER_CLASS = "block"
 _PILLS_CLASS = "contents"
 # Under 16px text, iOS zooms on focus.
 _SEARCH_CLASS = (
@@ -404,12 +403,8 @@ def _grouped_option_rows(groups: list[OptionGroup]) -> list[Node]:
     return rows
 
 
-class _ComboboxLayout(NamedTuple):
-    """Where a combobox lives, declared once."""
-
-    container_class: str
-    #: A <drop-down> owns the list; else the dialog is the panel.
-    hosted: bool
+#: Where a combobox's list lives.
+type ComboboxHome = Literal["drop_down", "dialog"]
 
 
 def _combobox_children(
@@ -420,7 +415,7 @@ def _combobox_children(
     always_visible: bool,
     items_visible: int,
     multi_select: bool = False,
-    layout: _ComboboxLayout,
+    home: ComboboxHome,
     templates: list[Node] | None = None,
     no_results_text: str = "No results",
     create_row: Node | None = None,
@@ -469,7 +464,7 @@ def _combobox_children(
     if multi_select:
         listbox_attributes.append(("aria-multiselectable", "true"))
     options_panel: Node
-    if not layout.hosted:
+    if home == "dialog":
         options_panel = Div(listbox_attributes, class_=_DIALOG_LISTBOX_CLASS)[
             *panel_children
         ]
@@ -503,7 +498,6 @@ def SearchSelect(
     csrf: str = "",
     commit_sole_option: bool = False,
     multi_select: bool = False,
-    always_visible: bool = False,
     items_visible: int = 5,
     items_scroll: int = 10,
     prefetch: int = 0,
@@ -563,10 +557,6 @@ def SearchSelect(
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
-    if always_visible and not panel:
-        raise ValueError("always_visible needs panel=True; a host hides the list")
-    if panel:
-        always_visible = True
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
     selected = [_normalize_option(option) for option in (selected or [])]
@@ -631,7 +621,7 @@ def SearchSelect(
             class_=_CLEAR_PLACEMENT_CLASS,
         )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
-    layout = _DIALOG_LAYOUT if panel else _INLINE_LAYOUT
+    home: ComboboxHome = "dialog" if panel else "drop_down"
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     if search_url:
@@ -699,11 +689,11 @@ def SearchSelect(
         pill_nodes=pills_children,
         search_attributes=search_attrs,
         options_children=option_rows,
-        always_visible=always_visible,
+        always_visible=panel,
         items_visible=items_visible,
         multi_select=multi_select,
         templates=templates,
-        layout=layout,
+        home=home,
         marker=marker,
         clear_button=clear_button,
         box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
@@ -714,7 +704,7 @@ def SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
         # is the positioning anchor (its field box) and the focus/typing trigger.
         # No id/aria-controls/aria-expanded stamp — the widget owns those at init.
-        [("data-toggle", "")] if layout.hosted else [],
+        [("data-toggle", "")] if home == "drop_down" else [],
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
@@ -724,13 +714,13 @@ def SearchSelect(
         multi="true" if multi_select else "false",
         filter_mode="false",
         free_text="false",
-        always_visible="true" if always_visible else "false",
+        always_visible="true" if panel else "false",
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
         none_label=none_label,
-        class_=layout.container_class,
+        class_=_CONTAINER_CLASSES[home],
     )[*children]
-    return _inline_combobox_host(widget) if layout.hosted else widget
+    return _inline_combobox_host(widget) if home == "drop_down" else widget
 
 
 def _inline_combobox_host(widget: Node) -> Node:
@@ -892,7 +882,7 @@ def FilterSelect(
     for option in normalized_excluded:
         pills_children.append(_filter_value_pill(option, "exclude"))
 
-    combobox_layout = _DIALOG_LAYOUT if panel_layout else _INLINE_LAYOUT
+    home: ComboboxHome = "dialog" if panel_layout else "drop_down"
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attributes: list[HTMLAttribute] = [
@@ -958,7 +948,7 @@ def FilterSelect(
         # FilterSelect is always multi (include/exclude pill sets).
         multi_select=True,
         templates=templates,
-        layout=combobox_layout,
+        home=home,
     )
     # The self-describe root attributes for the generic filter serializer. Only
     # Filter-layer callers pass ``path``; synthetic/test callers leave it None and
@@ -966,7 +956,7 @@ def FilterSelect(
     widget_attributes = (
         filter_widget_attributes(path, "set") if path is not None else []
     )
-    if combobox_layout.hosted:
+    if home == "drop_down":
         # The <search-select> element itself is the drop-down's [data-toggle]: its
         # field box is the positioning anchor and its search input is the trigger.
         widget_attributes = [("data-toggle", ""), *widget_attributes]
@@ -980,21 +970,22 @@ def FilterSelect(
         always_visible="true" if panel_layout else "false",
         prefetch=prefetch,
         sync_url="false",
-        class_=combobox_layout.container_class,
+        class_=_CONTAINER_CLASSES[home],
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
-    return _inline_combobox_host(widget) if combobox_layout.hosted else widget
+    return _inline_combobox_host(widget) if home == "drop_down" else widget
 
 
 # ── Panel personality styling ───────────────────────────
 # Dialog-hosted comboboxes: field box above a list.
 _PANEL_CONTAINER_CLASS = "block text-type-body"
 
-# Pinned by the hosting drop-down.
-_INLINE_LAYOUT = _ComboboxLayout(container_class=_CONTAINER_CLASS, hosted=True)
-# Inside a dialog's padded surface.
-_DIALOG_LAYOUT = _ComboboxLayout(container_class=_PANEL_CONTAINER_CLASS, hosted=False)
+#: The widget's class in each home.
+_CONTAINER_CLASSES: dict[ComboboxHome, str] = {
+    "drop_down": _CONTAINER_CLASS,
+    "dialog": _PANEL_CONTAINER_CLASS,
+}
 
 # Fetch-on-open window. A preset collection is per-user and small; one fetch
 # returns it all, and the type-to-filter narrows client-side.
@@ -1043,7 +1034,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible=True,
         items_visible=items_visible,
         templates=templates,
-        layout=_DIALOG_LAYOUT,
+        home="dialog",
         no_results_text="No saved presets",
         create_row=_option_row(_BLANK_OPTION, RowKind.CREATE),
     )
@@ -1059,7 +1050,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         **_create_props(
             EmitCreate(verb=SAVE_PRESET_VERB, replace_verb=OVERWRITE_PRESET_VERB)
         ),
-        class_=_DIALOG_LAYOUT.container_class,
+        class_=_PANEL_CONTAINER_CLASS,
     )[*children]
 
 

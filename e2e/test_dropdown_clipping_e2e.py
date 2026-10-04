@@ -1,9 +1,7 @@
-"""Browser test: the device dropdown is not clipped by the table wrapper (#39).
+"""The table's overflow wrapper never clips the device dropdown.
 
-The session list lives inside an ``overflow-x-auto`` wrapper, which forces
-``overflow-y: auto`` and used to clip an absolutely-positioned dropdown menu
-that extended past a short table. The menu now opens with ``position: fixed``
-so it escapes the clipping ancestor and stays within the viewport.
+The session list lives inside an ``overflow-x-auto`` wrapper. The menu opens
+in the top layer, so it stays whole and within the viewport.
 """
 
 import pytest

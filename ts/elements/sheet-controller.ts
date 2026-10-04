@@ -261,11 +261,18 @@ export function attachSheet(
       setState("closed");
       return;
     }
-    if (state === "closing") return;
-    if (!host.isConnected || prefersReducedMotion()) {
+    // A detached sheet never ends its animation.
+    if (!host.isConnected) {
       finishClose();
       return;
     }
+    if (state === "closing") return;
+    if (prefersReducedMotion()) {
+      finishClose();
+      return;
+    }
+    // Panels inside close now, not after the slide.
+    removeSurface(surface);
     setState("closing");
     closeTimer = window.setTimeout(finishClose, CLOSE_FALLBACK_MS);
   };

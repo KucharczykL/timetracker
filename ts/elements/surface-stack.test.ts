@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   hideFromTopLayer,
-  openSurfacesForTests,
+  openSurfaces,
   pushSurface,
   removeSurface,
   resetSurfacesForTests,
@@ -67,7 +67,7 @@ describe("single open", () => {
     const panel = surface("panel", host());
     pushSurface(panel);
     expect(closed).toEqual(["unrelated"]);
-    expect(openSurfacesForTests()).toEqual([panel]);
+    expect(openSurfaces()).toEqual([panel]);
   });
 
   it("keeps the panel whose host holds the new one", () => {
@@ -77,7 +77,7 @@ describe("single open", () => {
     pushSurface(ancestor);
     pushSurface(nested);
     expect(closed).toEqual([]);
-    expect(openSurfacesForTests()).toEqual([ancestor, nested]);
+    expect(openSurfaces()).toEqual([ancestor, nested]);
   });
 
   it("lets a hint close nothing", () => {
@@ -85,7 +85,7 @@ describe("single open", () => {
     pushSurface(panel);
     pushSurface(surface("hint", host(), "hint"));
     expect(closed).toEqual([]);
-    expect(openSurfacesForTests()).toHaveLength(2);
+    expect(openSurfaces()).toHaveLength(2);
   });
 
   it("closes an unrelated hint when a panel opens", () => {
@@ -99,16 +99,16 @@ describe("single open", () => {
     pushSurface(surface("outside", host()));
     const modal = surface("modal", dialog, "modal");
     pushSurface(modal);
-    pushSurface(surface("inside", host(dialog)));
     expect(closed).toEqual(["outside"]);
-    expect(openSurfacesForTests()[0]).toBe(modal);
+    pushSurface(surface("inside", host(dialog)));
+    expect(openSurfaces()[0]).toBe(modal);
   });
 
   it("moves nothing on a second push", () => {
     const first = surface("first", host());
     pushSurface(first);
     pushSurface(first);
-    expect(openSurfacesForTests()).toEqual([first]);
+    expect(openSurfaces()).toEqual([first]);
   });
 });
 
@@ -122,7 +122,7 @@ describe("removal", () => {
     pushSurface(surface("grandchild", host(childHost)));
     parent.close();
     expect(closed).toEqual(["parent", "grandchild", "child"]);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 
   it("is idempotent", () => {
@@ -130,7 +130,7 @@ describe("removal", () => {
     pushSurface(panel);
     removeSurface(panel);
     removeSurface(panel);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 
@@ -160,6 +160,15 @@ describe("Escape", () => {
     pushSurface(surface("panel", host(dialog)));
     expect(pressEscape().defaultPrevented).toBe(true);
     expect(closed).toEqual(["panel"]);
+  });
+
+  it("closes a tooltip over a panel first", () => {
+    pushSurface(surface("panel", host()));
+    pushSurface(surface("hint", host(), "hint"));
+    pressEscape();
+    expect(closed).toEqual(["hint"]);
+    pressEscape();
+    expect(closed).toEqual(["hint", "panel"]);
   });
 
   it("leaves a modal on top to its own cancel", () => {
@@ -253,7 +262,7 @@ describe("outside press", () => {
     pointer("pointerdown", dialog);
     pointer("pointerup", dialog);
     expect(closed).toEqual(["panel"]);
-    expect(openSurfacesForTests().map((open) => open.kind)).toEqual(["modal"]);
+    expect(openSurfaces().map((open) => open.kind)).toEqual(["modal"]);
   });
 
   it("never closes a modal", () => {
@@ -270,7 +279,7 @@ describe("outside press", () => {
     pointer("pointerdown", hintHost);
     pointer("pointerup", hintHost);
     expect(closed).toEqual(["panel"]);
-    expect(openSurfacesForTests().map((open) => open.kind)).toEqual(["hint"]);
+    expect(openSurfaces().map((open) => open.kind)).toEqual(["hint"]);
   });
 
   it("ignores a press that is not the primary pointer", () => {
@@ -291,9 +300,49 @@ describe("a close that throws", () => {
       },
     };
     pushSurface(broken);
-    const next = surface("next", host());
-    expect(() => pushSurface(next)).toThrow("broken");
-    expect(openSurfacesForTests()).toEqual([next]);
+    pushSurface(surface("other", host()));
+    expect(openSurfaces().map((open) => open.kind)).toEqual(["panel"]);
+    expect(openSurfaces()).not.toContain(broken);
+  });
+
+  it("does not stop the others closing", () => {
+    pushSurface(surface("first", host()));
+    const broken: Surface = {
+      host: host(),
+      kind: "hint",
+      close: () => {
+        throw new Error("broken");
+      },
+    };
+    pushSurface(broken);
+    pushSurface(surface("next", host()));
+    expect(closed).toEqual(["first"]);
+    expect(openSurfaces()).toHaveLength(1);
+  });
+});
+
+describe("a click with no pointer press", () => {
+  function click(target: EventTarget, detail: number): void {
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true, detail }));
+  }
+
+  it("closes what it lands outside of", () => {
+    pushSurface(surface("panel", host()));
+    click(host(), 0);
+    expect(closed).toEqual(["panel"]);
+  });
+
+  it("keeps the surface it lands in", () => {
+    const panelHost = host();
+    pushSurface(surface("panel", panelHost));
+    click(panelHost, 0);
+    expect(closed).toEqual([]);
+  });
+
+  it("leaves a pointer click to its press", () => {
+    pushSurface(surface("panel", host()));
+    click(host(), 1);
+    expect(closed).toEqual([]);
   });
 });
 
@@ -310,8 +359,10 @@ describe("top layer helpers", () => {
     const element = panel();
     expect(showInTopLayer(element)).toBe(true);
     expect(element.hidden).toBe(false);
+    expect(element.matches(":popover-open")).toBe(true);
     hideFromTopLayer(element);
     expect(element.hidden).toBe(true);
+    expect(element.matches(":popover-open")).toBe(false);
   });
 
   it("refuses a disconnected panel and keeps it hidden", () => {
@@ -324,7 +375,15 @@ describe("top layer helpers", () => {
     const element = panel();
     showInTopLayer(element);
     element.remove();
+    expect(element.matches(":popover-open")).toBe(false);
     hideFromTopLayer(element);
+    expect(element.hidden).toBe(true);
+  });
+
+  it("reports a show that left the panel hidden", () => {
+    const element = panel();
+    element.showPopover = () => {};
+    expect(showInTopLayer(element)).toBe(false);
     expect(element.hidden).toBe(true);
   });
 

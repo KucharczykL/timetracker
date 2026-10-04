@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachMenu, type MenuController } from "./menu-behavior.js";
-import { openSurfacesForTests, resetSurfacesForTests } from "./surface-stack.js";
+import { openSurfaces, resetSurfacesForTests } from "./surface-stack.js";
 
 function mount(): {
   host: HTMLElement;
@@ -77,10 +77,10 @@ describe("attachMenu on the surface stack", () => {
   it("closes on a press outside the host", () => {
     const { controller } = mount();
     controller.open();
-    expect(openSurfacesForTests()).toHaveLength(1);
+    expect(openSurfaces()).toHaveLength(1);
     press(document.querySelector("#outside") as HTMLElement);
     expect(controller.isOpen()).toBe(false);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 
   it("stays open when an inside press removes its own target", () => {
@@ -100,7 +100,7 @@ describe("attachMenu on the surface stack", () => {
     controller.open();
     press(toggle);
     expect(controller.isOpen()).toBe(false);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 
   it("closes an open submenu with its parent", () => {
@@ -129,11 +129,11 @@ describe("attachMenu on the surface stack", () => {
     );
     parent.open();
     child.open();
-    expect(openSurfacesForTests()).toHaveLength(2);
+    expect(openSurfaces()).toHaveLength(2);
     press(document.body);
     expect(child.isOpen()).toBe(false);
     expect(parent.isOpen()).toBe(false);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 
   it("closes on Escape and returns focus to the toggle", () => {
@@ -159,7 +159,7 @@ describe("attachMenu on the surface stack", () => {
     host.remove();
     controller.open();
     expect(controller.isOpen()).toBe(false);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 

@@ -13,8 +13,8 @@ is the state: a panel's display utility overrides the closed popover's
 `display: none`.
 
 A panel class has no `absolute`, no `z-*` and no `isolate`. One rule in
-`common/input.css` resets the four popover defaults that the preflight
-keeps: `inset`, `overflow`, `color` and `background-color`.
+`common/input.css` resets four popover defaults that the preflight keeps:
+`inset`, `overflow`, `color` and `background-color`.
 
 The static calendar in the date facet is not a surface. It has no `popover`
 attribute.
@@ -22,9 +22,8 @@ attribute.
 ## Show and hide
 
 `showInTopLayer(panel)` calls `showPopover()` and then clears `hidden`. It
-returns false for a disconnected panel. `hideFromTopLayer(panel)` calls
-`hidePopover()` and then sets `hidden`. It accepts a panel that the browser
-hid already.
+returns false for a disconnected panel, and reports a refused one.
+`hideFromTopLayer(panel)` calls `hidePopover()` and then sets `hidden`.
 
 A top-layer panel uses viewport coordinates. `pinFixed` puts a panel at
 (0, 0) before a caller measures it.
@@ -35,22 +34,24 @@ hides a host closes its `<drop-down>` first.
 ## The surface stack
 
 A controller pushes a `Surface` when it opens and removes it when it closes.
-A surface has a host, a kind (`panel`, `hint` or `modal`), a `close`, and an
-optional `restoreFocus`. A press in the host is a press inside.
+A press in its host is a press inside.
 
 - **Single open.** A `panel` or a `modal` closes each surface whose host does
   not contain the new host. A `hint` closes nothing.
 - **Nested close.** A removal closes the surfaces in its host first.
-- **Escape.** One capture listener on `window` closes the topmost surface. A
-  panel calls `restoreFocus` first. The listener marks the key spent. It
-  ignores composition and repeat. A `modal` on top keeps its native `cancel`.
+- **Escape.** One capture listener on `window` closes the topmost surface, so
+  a tooltip closes before the panel under it. A panel calls `restoreFocus`
+  first. The key is spent. Composition and repeat are ignored. A `modal` on
+  top keeps its native `cancel`.
 - **Outside press.** A `pointerdown` of the primary pointer and button
   records its path. The `pointerup` of the same pointer finds the topmost
-  `panel` or `modal` host on that path. It closes each surface above that
-  host that the press did not touch. A hint never shields the surfaces below
-  it. A `pointercancel` discards the press, so a touch scroll keeps a panel
+  `panel` or `modal` host on that path, and closes each untouched surface
+  above it. A hint shields nothing. A `pointercancel` discards the press, so a touch scroll keeps a panel
   open. The stack never closes a `modal` on a press.
-- **Failure.** A `close` that throws still leaves the stack.
+- **Keyboard click.** A click without a pointer press closes what it lands
+  outside of.
+- **Failure.** A `close` that throws is reported, and it still leaves the
+  stack.
 
 `attachMenu` pushes a `panel`. A tooltip pushes a `hint`. The bottom sheet
 pushes a `modal`.
@@ -70,5 +71,4 @@ dialog panel with `panel=True`. When its host closes, the widget resets
 ## Limits
 
 An open panel paints above the toasts. Under a modal dialog a toast is
-inert, and the top layer does not change that. The form dialog work (#1384)
-puts the toasts in the dialog.
+inert, and the top layer does not change that.

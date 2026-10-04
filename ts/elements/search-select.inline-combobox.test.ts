@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define("search-select")
 import "./drop-down.js"; // side effect: define <drop-down> + register inline-combobox
-import { openSurfacesForTests } from "./surface-stack.js";
+import { openSurfaces } from "./surface-stack.js";
 import { hosted, press } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
@@ -131,7 +131,7 @@ describe("<search-select> inside another <drop-down>", () => {
     searchOf(outer).focus();
     expect(panelOf(outer).hidden).toBe(false);
     expect(outerMenu.hidden).toBe(false);
-    expect(openSurfacesForTests()).toHaveLength(2);
+    expect(openSurfaces()).toHaveLength(2);
   });
 
   it("resets its state when the outer panel closes, not before", () => {

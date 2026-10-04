@@ -22,8 +22,8 @@
  * date-calendar-core.ts; anchor/track/preset logic below is range-specific.
  *
  * A <drop-down> places and dismisses the popup.
- * The static (panel) variant is unaffected — it already lives inside the quick
- * bar's OWN separate <drop-down>, and never toggles.
+ * The static (panel) variant has no popup: it flows inside the quick
+ * bar's own <drop-down> and never toggles.
  *
  * NB: class strings below are emitted verbatim so the Tailwind scanner picks
  * them up — keep them as plain literals.

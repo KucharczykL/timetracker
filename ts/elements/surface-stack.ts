@@ -1,9 +1,9 @@
 // One stack owns every floating surface's dismissal.
 //
 // A surface is an open panel, hint or modal. The stack holds them
-// in opening order and owns the only document listeners: Escape closes
-// the topmost surface, and a press outside closes every surface above
-// the one pressed in. Panels render in the top layer as manual
+// in opening order and owns the only dismissal listeners, on window:
+// Escape closes the topmost surface, and a press outside closes every
+// surface above the one pressed in. Panels render in the top layer as manual
 // popovers, so no ancestor clips them and no z-index orders them.
 import { reportClientError } from "../client-errors.js";
 
@@ -21,12 +21,13 @@ export interface PanelSurface extends SurfaceBase {
   restoreFocus?(): void;
 }
 
-/** A tooltip: it never closes another surface. */
+/** A tooltip: opens over all; Escape closes it first. */
 export interface HintSurface extends SurfaceBase {
   readonly kind: "hint";
 }
 
 /** A modal dialog: Escape stays its native cancel. */
+// Single open still closes an unrelated modal.
 export interface ModalSurface extends SurfaceBase {
   readonly kind: "modal";
 }
@@ -54,8 +55,29 @@ function dismiss(surface: Surface): void {
 
 function dismissAll(candidates: readonly Surface[]): void {
   for (const surface of [...candidates].reverse()) {
-    if (surfaces.includes(surface)) dismiss(surface);
+    if (!surfaces.includes(surface)) continue;
+    // One broken close must not stop the rest.
+    try {
+      dismiss(surface);
+    } catch (error) {
+      reportClientError("surface-stack", `close threw: ${String(error)}`, { toast: false });
+    }
   }
+}
+
+/** Closes what sits above the pressed surface. */
+function dismissOutside(path: readonly EventTarget[]): void {
+  const pressed = (surface: Surface): boolean => path.includes(surface.host);
+  // A hint shields nothing beneath it.
+  let pressedIndex = -1;
+  surfaces.forEach((surface, index) => {
+    if (surface.kind !== "hint" && pressed(surface)) pressedIndex = index;
+  });
+  dismissAll(
+    surfaces
+      .slice(pressedIndex + 1)
+      .filter((surface) => surface.kind !== "modal" && !pressed(surface)),
+  );
 }
 
 function onKeyDown(event: KeyboardEvent): void {
@@ -82,17 +104,13 @@ function onPointerUp(event: PointerEvent): void {
   const press = pendingPress;
   if (!press || press.pointerId !== event.pointerId) return;
   pendingPress = null;
-  const pressed = (surface: Surface): boolean => press.path.includes(surface.host);
-  // A hint shields nothing beneath it.
-  let pressedIndex = -1;
-  surfaces.forEach((surface, index) => {
-    if (surface.kind !== "hint" && pressed(surface)) pressedIndex = index;
-  });
-  dismissAll(
-    surfaces
-      .slice(pressedIndex + 1)
-      .filter((surface) => surface.kind !== "modal" && !pressed(surface)),
-  );
+  dismissOutside(press.path);
+}
+
+function onClick(event: MouseEvent): void {
+  // Keyboard and assistive clicks bring no pointer press.
+  if (event.detail !== 0 || surfaces.length === 0) return;
+  dismissOutside(event.composedPath());
 }
 
 function onPointerCancel(event: PointerEvent): void {
@@ -106,6 +124,7 @@ function listen(): void {
   window.addEventListener("pointerdown", onPointerDown, true);
   window.addEventListener("pointerup", onPointerUp, true);
   window.addEventListener("pointercancel", onPointerCancel, true);
+  window.addEventListener("click", onClick, true);
 }
 
 export function pushSurface(surface: Surface): void {
@@ -134,27 +153,32 @@ export function removeSurface(surface: Surface): void {
 }
 
 function isShowing(panel: HTMLElement): boolean {
-  try {
-    return panel.matches(":popover-open");
-  } catch (error) {
-    // jsdom does not parse the selector.
-    if (error instanceof DOMException && error.name === "SyntaxError") return false;
-    throw error;
-  }
+  return panel.matches(":popover-open");
 }
 
 function isInvalidState(error: unknown): boolean {
   return error instanceof DOMException && error.name === "InvalidStateError";
 }
 
-/** False if not shown. */
+/** False if detached (quietly) or refused (reported). */
 export function showInTopLayer(panel: HTMLElement): boolean {
   if (!panel.isConnected) return false;
+  if (typeof panel.showPopover !== "function") {
+    reportClientError("surface-stack", "this browser has no Popover API");
+    return false;
+  }
   try {
     if (!isShowing(panel)) panel.showPopover();
   } catch (error) {
     if (!isInvalidState(error)) throw error;
     reportClientError("surface-stack", `showPopover refused: ${String(error)}`, {
+      toast: false,
+    });
+    return false;
+  }
+  // A re-entrant show returns without showing.
+  if (!isShowing(panel)) {
+    reportClientError("surface-stack", "showPopover left the panel hidden", {
       toast: false,
     });
     return false;
@@ -167,13 +191,13 @@ export function hideFromTopLayer(panel: HTMLElement): void {
   try {
     panel.hidePopover();
   } catch (error) {
-    // Detached: the UA hid it already.
+    // Nothing to hide, or the UA refused.
     if (!isInvalidState(error)) throw error;
   }
   panel.hidden = true;
 }
 
-export function openSurfacesForTests(): readonly Surface[] {
+export function openSurfaces(): readonly Surface[] {
   return [...surfaces];
 }
 
@@ -186,4 +210,5 @@ export function resetSurfacesForTests(): void {
   window.removeEventListener("pointerdown", onPointerDown, true);
   window.removeEventListener("pointerup", onPointerUp, true);
   window.removeEventListener("pointercancel", onPointerCancel, true);
+  window.removeEventListener("click", onClick, true);
 }

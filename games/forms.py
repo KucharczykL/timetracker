@@ -476,7 +476,6 @@ class SearchSelectWidget(_SearchSelectAdapter):
         items_visible=5,
         items_scroll=10,
         prefetch=DEFAULT_PREFETCH,
-        always_visible=False,
         placeholder="Search…",
         autofocus=False,
         clearable: bool = True,
@@ -499,7 +498,6 @@ class SearchSelectWidget(_SearchSelectAdapter):
         self.items_visible = items_visible
         self.items_scroll = items_scroll
         self.prefetch = prefetch
-        self.always_visible = always_visible
 
     @staticmethod
     def _values(value) -> list:
@@ -528,7 +526,6 @@ class SearchSelectWidget(_SearchSelectAdapter):
             items_visible=self.items_visible,
             items_scroll=self.items_scroll,
             prefetch=self.prefetch,
-            always_visible=self.always_visible,
             none_label=self.none_label,
             shape=shape,
         )

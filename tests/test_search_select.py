@@ -514,10 +514,6 @@ class SearchSelectAriaTest(unittest.TestCase):
         )
         self.assertIn('aria-expanded="true"', input_tag)
 
-    def test_a_hosted_list_cannot_stay_visible(self):
-        with self.assertRaises(ValueError):
-            SearchSelect(name="games", always_visible=True)
-
     def test_options_panel_is_a_listbox(self):
         panel_tag = _tag_around(
             str(SearchSelect(name="games", options=[("1", "One")])),

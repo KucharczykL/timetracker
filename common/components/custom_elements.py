@@ -62,6 +62,7 @@ from common.components.primitives import (
     SelectionScope,
     Span,
     Template,
+    TextAttribute,
     Ul,
     custom_element_builder,
     shaped,
@@ -961,7 +962,7 @@ class DropdownContractWarning(UserWarning):
     precisely and callers can filter/escalate it independently."""
 
 
-def _stamp(element: Element, contract: list[tuple[str, str]], id: str) -> Element:
+def _stamp(element: Element, contract: list[TextAttribute], id: str) -> Element:
     """Return a clone of `element` carrying `contract`, preserving its other attrs
     (class, data-*, …) and media. Warns on each reserved-key collision."""
     reserved = {key for key, _ in contract}

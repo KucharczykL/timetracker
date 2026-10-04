@@ -203,8 +203,8 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
   idiom (`filters.py` comparison row). Panes declare `@container` inside, so controls
   auto-size by available width (the `@md:` = 28rem contract). The split itself stays
   viewport-driven; container-driven splits are self-referential.
-- **Overlay stack:** reuse trigger/panel IDs, lifecycle, surface tokens, and the documented
-  z-scale, but keep presentation controllers distinct. `anchored-position` + `menu-behavior`
+- **Overlay stack:** reuse trigger/panel IDs, lifecycle, surface tokens, and the top
+  layer with its surface stack, but keep presentation controllers distinct. `anchored-position` + `menu-behavior`
   own trigger-anchored dropdown geometry and menu keyboard behavior; `pop-over` owns passive
   tooltip behavior; a modal bottom sheet uses a native `<dialog>` in the UA top layer and a
   dedicated sheet controller. A sheet is viewport-docked and document-scroll-locking, so it

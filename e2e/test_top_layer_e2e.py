@@ -8,8 +8,10 @@ from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
 from common.components import (
+    BottomSheet,
     ButtonDropdown,
     ComboboxDropdown,
+    ControlButton,
     DropdownActionItem,
     DropdownSubmenuItem,
     Fragment,
@@ -43,7 +45,15 @@ def harness_view(request):
         id="facet",
     )
     hint = Popover("Why it is so", wrapped_content="hint")
-    content = Fragment(acts, facet, hint)
+    sheet = BottomSheet(
+        trigger_element=ControlButton()["Sections"].as_element(),
+        title="Sections",
+        children=ButtonDropdown(
+            label="Inside", items=[DropdownActionItem()["Nested"]], id="inside"
+        ),
+        id="sheet",
+    )
+    content = Fragment(acts, facet, hint, sheet)
     scripts = "".join(
         f'<script type="module" src="/static/js/{script}"></script>'
         for script in collect_media(content).js
@@ -58,6 +68,7 @@ def harness_view(request):
         height:48px;width:320px;margin:120px 0 0 240px">{acts}</div>
     <div style="margin-top:24px">{facet}</div>
     <div style="margin-top:24px">{hint}</div>
+    <div style="margin-top:24px">{sheet}</div>
     </body></html>""")
 
 
@@ -112,6 +123,51 @@ def test_a_submenu_aligns_its_first_item_with_its_row(live_server, page: Page):
     first = deep.bounding_box()
     assert row is not None and first is not None
     assert abs(first["y"] - row["y"]) <= 1
+
+
+@harness
+@on_harness
+def test_a_dark_submenu_sits_flush_beside_its_panel(live_server, page: Page):
+    """The panel's own blur traps no flyout."""
+    page.emulate_media(color_scheme="dark")
+    page.goto(f"{live_server.url}/top-layer/")
+    page.evaluate("() => document.documentElement.classList.add('dark')")
+    page.locator("#actsLink").click()
+    page.get_by_role("menuitem", name="More").hover()
+    expect(page.get_by_role("menuitem", name="Deep")).to_be_visible()
+    parent = page.locator("#acts").bounding_box()
+    flyout = page.locator("#more").bounding_box()
+    row = page.get_by_role("menuitem", name="More").bounding_box()
+    deep = page.get_by_role("menuitem", name="Deep").bounding_box()
+    assert parent and flyout and row and deep
+    assert abs(flyout["x"] - (parent["x"] + parent["width"] + 1)) <= 1
+    assert abs(deep["y"] - row["y"]) <= 1
+
+
+@harness
+@on_harness
+def test_a_second_click_on_the_toggle_closes_the_menu(live_server, page: Page):
+    _open_acts(page, live_server)
+    page.locator("#actsLink").click()
+    expect(page.locator("#acts")).to_be_hidden()
+
+
+@harness
+@on_harness
+def test_escape_closes_a_menu_inside_a_sheet_before_the_sheet(live_server, page: Page):
+    page.goto(f"{live_server.url}/top-layer/")
+    page.locator("#sheetLink").click()
+    dialog = page.locator("dialog[data-bottom-sheet]")
+    expect(dialog).to_be_visible()
+    page.locator("#insideLink").click()
+    expect(page.locator("#inside")).to_be_visible()
+
+    page.keyboard.press("Escape")
+    expect(page.locator("#inside")).to_be_hidden()
+    assert dialog.evaluate("(element) => element.open")
+
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
 
 
 @harness
@@ -180,13 +236,22 @@ def _login(page: Page, live_server) -> None:
 def test_escape_clears_a_selection_under_the_quick_bar(
     live_server, page: Page, e2e_library
 ):
-    """No closed panel spends the key."""
+    """A facet takes the first Escape; the selection the next."""
     create_tracked_game(e2e_library, "Outer Wilds")
     _login(page, live_server)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     box = page.locator("tbody [data-selection-checkbox]").first
     box.click()
     expect(box).to_be_checked()
+    page.locator("#quick-status-dropdownLink").click()
+    facet = page.locator("#quick-status-dropdown")
+    expect(facet).to_be_visible()
 
+    page.keyboard.press("Escape")
+    expect(facet).to_be_hidden()
+    expect(box).to_be_checked()
+
+    # The table hears keys from inside it.
+    box.focus()
     page.keyboard.press("Escape")
     expect(box).not_to_be_checked()

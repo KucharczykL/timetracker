@@ -476,8 +476,7 @@ def test_a_row_menu_opens_over_the_line_and_owns_escape(page: Page, live_server)
     panel = page.locator("[role='menu']").first
     panel.wait_for(state="visible")
     page.keyboard.press("Escape")
-    # The menu answered it; the selection stands. Escape is decided in the
-    # task after the press, so the second reading has to be one that waits.
+    # The menu answered it; the selection stands.
     expect(panel).to_be_hidden()
     expect(_checkboxes(page).nth(0)).to_be_checked()
     page.keyboard.press("Escape")

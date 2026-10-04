@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectionStatement } from "./selection-statement.js";
 import { storageKeyFor } from "./selection-storage.js";
 import {
-  openSurfacesForTests,
+  openSurfaces,
   pushSurface,
   resetSurfacesForTests,
 } from "./surface-stack.js";
@@ -429,7 +429,7 @@ describe("hiding the line", () => {
     menu.open();
     element.querySelector<HTMLElement>("[data-selection-clear]")!.click();
     expect(menu.querySelector<HTMLElement>("[data-menu]")!.hidden).toBe(true);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 

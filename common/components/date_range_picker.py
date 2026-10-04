@@ -555,8 +555,7 @@ def DateRangePanel(
     """The dropdown-panel variant of :func:`DateRangePicker`: the
     segmented field (no calendar toggle) above a statically flowing,
     always-visible calendar — for hosting inside a ``ComboboxDropdown``
-    dialog, whose surface can't host the absolute popup (the panel clips
-    overflow and scrolls vertically while open).
+    dialog, which already owns visibility.
 
     Same custom element and hidden ``{prefix}-min``/``{prefix}-max``
     contract. ``data-static-calendar`` is the client discriminator:

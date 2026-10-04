@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./quick-filter-bar.js";
 import { applyUrl } from "./filter-url.js";
-import { openSurfacesForTests } from "./surface-stack.js";
+import { openSurfaces } from "./surface-stack.js";
 import {
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
@@ -387,12 +387,12 @@ describe("quick-filter-bar overflow menu", () => {
     fixture.setRowWidth(300);
     fixture.bar.layoutOverflow();
     menu.open();
-    expect(openSurfacesForTests()).toHaveLength(1);
+    expect(openSurfaces()).toHaveLength(1);
 
     fixture.setRowWidth(1000);
     fixture.bar.layoutOverflow();
     expect(fixture.host.classList.contains("hidden")).toBe(true);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 

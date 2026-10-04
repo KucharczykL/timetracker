@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { openSurfacesForTests } from "./surface-stack.js";
+import { openSurfaces } from "./surface-stack.js";
 import "./pop-over.js"; // side effect: customElements.define
 
 // jsdom has no layout engine, so the positioner's coordinates are meaningless
@@ -277,7 +277,7 @@ describe("<pop-over> tap mode (touch)", () => {
     expect(panel.hidden).toBe(false);
     host.remove(); // disconnectedCallback
     expect(panel.hidden).toBe(true);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 });
 

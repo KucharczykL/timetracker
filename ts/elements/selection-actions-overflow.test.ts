@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import "./selection-actions.js";
-import { openSurfacesForTests } from "./surface-stack.js";
+import { openSurfaces } from "./surface-stack.js";
 
 interface TrayFixture {
   tray: HTMLElement & { layoutActs: () => void };
@@ -129,11 +129,11 @@ describe("selection-actions priority-plus overflow", () => {
     reveal(fixture, 480);
     const menu = fixture.host.querySelector("drop-down")!;
     menu.open();
-    expect(openSurfacesForTests()).toHaveLength(1);
+    expect(openSurfaces()).toHaveLength(1);
 
     reveal(fixture, 1000);
     expect(fixture.host.classList.contains("hidden")).toBe(true);
-    expect(openSurfacesForTests()).toEqual([]);
+    expect(openSurfaces()).toEqual([]);
   });
 
   it("states the overflowed acts in declaration order", () => {

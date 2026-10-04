@@ -1,9 +1,10 @@
+import re
 from datetime import timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from entries import record_entry
 from graphs import default_graph
@@ -15,6 +16,26 @@ from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 
+#: Opening tags of panels a script shows.
+FLOATING_PANEL = re.compile(
+    r"<(?!dialog\b)[a-z-]+\b[^>]*\b(?:data-menu|data-pop-over-panel)(?=[\s=>])[^>]*>"
+)
+
+
+class PanelCheckingClient(Client):
+    """Every page's floating panels are manual popovers."""
+
+    def request(self, **request):
+        response = super().request(**request)
+        if response.status_code == 200 and "html" in response.get("Content-Type", ""):
+            unstamped = [
+                tag
+                for tag in FLOATING_PANEL.findall(response.content.decode())
+                if 'popover="manual"' not in tag
+            ]
+            assert not unstamped, f"{request.get('PATH_INFO')}: {unstamped[:3]}"
+        return response
+
 
 # DEBUG on turns every smoke test below into an id-uniqueness check: the page
 # assembly in common/layout.py only runs assert_unique_element_ids under DEBUG,
@@ -25,6 +46,8 @@ ZONEINFO = ZoneInfo("Europe/Prague")
 # never registered because timetracker.urls saw DEBUG=False at import time.
 @override_settings(DEBUG=True, INTERNAL_IPS=[])
 class PathWorksTest(TestCase):
+    client_class = PanelCheckingClient
+
     def setUp(self) -> None:
         self.user = User.objects.create_superuser(
             username="testuser", email="test@example.com", password="testpass"
