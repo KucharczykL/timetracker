@@ -98,54 +98,6 @@ function getValueFromProperty(sourceElement: EventTarget, property: string): any
   }
 }
 
-interface PopupDismissOptions {
-  // Clicks within host (or any extraInside root) do not dismiss.
-  host: HTMLElement;
-  isOpen: () => boolean;
-  close: () => void;
-  // Extra roots considered "inside" — e.g. a library popup appended to
-  // document.body rather than nested under host. Evaluated per event so a
-  // lazily-created popup element is picked up once it exists.
-  extraInside?: () => Array<Element | null | undefined>;
-}
-
-/**
- * Wires the shared dismiss behaviour for an anchored popup: Escape closes it,
- * and a press (pointerdown/mousedown) outside the host (and any extraInside
- * roots) closes it. Only acts while isOpen() is true. Returns a cleanup function
- * that removes the document listeners — call it from disconnectedCallback.
- *
- * Both pointerdown and mousedown are bound: iOS Safari synthesises no compat
- * mousedown for a tap on non-clickable page space, so a mousedown-only outside
- * dismiss would strand a tap-opened popup; pointerdown fires there. close() is
- * idempotent, so a mouse press firing both is harmless.
- */
-function bindPopupDismiss(options: PopupDismissOptions): () => void {
-  const isInside = (target: Node): boolean => {
-    if (options.host.contains(target)) return true;
-    const extras = options.extraInside ? options.extraInside() : [];
-    return extras.some((root) => !!root && root.contains(target));
-  };
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key !== "Escape" || !options.isOpen()) return;
-    // An Escape that closed something is spent: a host that clears its own
-    // state on Escape reads defaultPrevented to tell the two apart.
-    event.preventDefault();
-    options.close();
-  };
-  const onOutsidePress = (event: Event): void => {
-    if (options.isOpen() && !isInside(event.target as Node)) options.close();
-  };
-  document.addEventListener("keydown", onKeyDown);
-  document.addEventListener("pointerdown", onOutsidePress);
-  document.addEventListener("mousedown", onOutsidePress);
-  return () => {
-    document.removeEventListener("keydown", onKeyDown);
-    document.removeEventListener("pointerdown", onOutsidePress);
-    document.removeEventListener("mousedown", onOutsidePress);
-  };
-}
-
 type ElementHandlerConfig = [
   condition: () => boolean, // condition function
   targetElements: string[], // array of target element selectors
@@ -188,5 +140,4 @@ export {
   syncSelectInputUntilChanged,
   conditionalElementHandler,
   getValueFromProperty,
-  bindPopupDismiss,
 };

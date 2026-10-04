@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js";
+import { hosted } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -56,7 +57,7 @@ function mount(attributes: Record<string, string> = {}): SearchSelectLike {
   //: The token comes from the hosting form, as it does on a page.
   const form = document.createElement("form");
   form.innerHTML = '<input type="hidden" name="csrfmiddlewaretoken" value="token" />';
-  form.appendChild(host);
+  form.appendChild(hosted(host));
   document.body.appendChild(form);
   return host;
 }

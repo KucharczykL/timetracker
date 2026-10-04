@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
+import { hosted, press } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -20,7 +21,7 @@ function mountSingle(name: string): HTMLElement {
       <div data-search-select-option data-value="2" data-label="Two" role="option" aria-selected="false"></div>
     </div>
   `;
-  document.body.appendChild(host); // connectedCallback → initWidget
+  document.body.appendChild(hosted(host)); // connectedCallback → initWidget
   return host;
 }
 
@@ -105,41 +106,34 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     }
   });
 
-  it("collapses on an outside mousedown", () => {
-    // bindPopupDismiss dismisses on an outside mousedown; the panel still opens
-    // on focus. Guards that it closes on an outside press.
+  it("collapses on an outside press and drops the active option", () => {
     const host = mountSingle("games");
     const search = searchOf(host);
 
     search.dispatchEvent(new Event("focus"));
     expect(panelOf(host).hidden).toBe(false);
+    expect(search.hasAttribute("aria-activedescendant")).toBe(true);
 
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    press(document.body);
     expect(panelOf(host).hidden).toBe(true);
     expect(search.getAttribute("aria-expanded")).toBe("false");
+    expect(search.hasAttribute("aria-activedescendant")).toBe(false);
   });
 
-  it("re-binds dismiss on reconnect without re-initialising", () => {
-    // The filter builder moves rows, disconnecting then reconnecting this
-    // element. initWidget must run once (element-local listeners persist with
-    // the moved subtree); only the document dismiss listeners re-bind.
+  it("wires once across a move and still dismisses", () => {
+    // The filter builder moves rows; a re-init would mint a fresh listbox id.
     const host = mountSingle("games");
     const search = searchOf(host);
-    const parent = host.parentElement!;
+    const dropdown = host.parentElement!;
     const listboxIdBefore = panelOf(host).id;
 
-    parent.removeChild(host); // disconnectedCallback -> drop document listeners
-    parent.appendChild(host); // connectedCallback -> re-bind, NOT re-init
+    dropdown.remove();
+    document.body.appendChild(dropdown);
 
-    // initWidget did not re-run: the listbox id (assigned once per init from a
-    // module counter) is unchanged. A re-init would mint a fresh id.
     expect(panelOf(host).id).toBe(listboxIdBefore);
-
-    // The outside-mousedown dismiss still works, so the document listeners were
-    // re-bound by the reconnect (not left dangling from the first mount).
     search.dispatchEvent(new Event("focus"));
     expect(panelOf(host).hidden).toBe(false);
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    press(document.body);
     expect(panelOf(host).hidden).toBe(true);
   });
 

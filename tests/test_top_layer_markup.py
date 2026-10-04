@@ -26,7 +26,7 @@ FLOATING_PANELS = {
         "data-date-range-calendar",
     ),
     "inline combobox": (
-        lambda: str(SearchSelect(name="game", search_url="/s/", host_dropdown=True)),
+        lambda: str(SearchSelect(name="game", search_url="/s/")),
         "data-search-select-panel",
     ),
 }

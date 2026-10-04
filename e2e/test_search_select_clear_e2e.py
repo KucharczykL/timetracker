@@ -24,7 +24,6 @@ def multi_harness_view(request):
         ],
         multi_select=True,
         id="tags",
-        host_dropdown=True,
     )
     return HttpResponse(f"""
     <!DOCTYPE html>

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 import "./search-select.js";
+import { hosted } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -32,7 +33,7 @@ function mountPicker(): HTMLElement {
       <div data-search-select-no-results class="hidden">No results</div>
     </div>
   `;
-  document.body.appendChild(picker);
+  document.body.appendChild(hosted(picker));
   return picker;
 }
 

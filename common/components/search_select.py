@@ -182,8 +182,6 @@ _UNCOMMITTED_SEARCH_CLASS = (
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # ml-auto ends the row; peer-disabled hides it.
 _CLEAR_PLACEMENT_CLASS = "ml-auto -mr-1 peer-disabled:hidden"
-#: The standalone panel hangs below the box.
-_STANDALONE_PANEL_CLASS = "top-full left-0 right-0 mt-1"
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
 #: Picker rows wear the menu item look.
@@ -409,10 +407,8 @@ class _ComboboxLayout(NamedTuple):
     """Where a combobox lives, declared once."""
 
     container_class: str
-    #: None: the hosting dialog is the panel.
+    #: None: the hosting dialog is the panel; else a <drop-down> owns it.
     panel_class: str | None
-    #: The <drop-down> owns the list's visibility.
-    menu_target: bool
 
 
 def _combobox_children(
@@ -477,13 +473,12 @@ def _combobox_children(
             *panel_children
         ]
     else:
-        panel_attributes: list[HTMLAttribute] = [("data-search-select-panel", "")]
-        if layout.menu_target:
-            panel_attributes.extend(
-                [("data-menu", ""), ("hidden", ""), ("popover", "manual")]
-            )
-        elif not always_visible:
-            panel_attributes.append(("hidden", ""))
+        panel_attributes: list[HTMLAttribute] = [
+            ("data-search-select-panel", ""),
+            ("data-menu", ""),
+            ("hidden", ""),
+            ("popover", "manual"),
+        ]
         options_panel = DropdownPanel(
             panel_attributes,
             width="w-full",
@@ -522,7 +517,6 @@ def SearchSelect(
     id: str = "",
     sync_url: bool = False,
     autofocus: bool = False,
-    host_dropdown: bool = False,
     dynamic_options: bool = False,
     committed_marker: bool = True,
     panel: bool = False,
@@ -539,13 +533,9 @@ def SearchSelect(
     composition :func:`PresetSelect` and a panel-layout :func:`FilterSelect`
     build by hand — the hosting dialog, not the widget, is the disclosure.
 
-    ``host_dropdown`` (issue #348) wraps the widget in
-    ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
-    dismisses through the shared attachMenu engine (the widget's own search input
-    is the trigger — focus opens). The add-form comboboxes
-    (``games/forms.py`` :class:`SearchSelectWidget`) and the filter-builder field
-    picker (:func:`FilterFieldPicker`) pass it; the preset picker uses its own
-    ``behavior="combobox"`` host, and bare test mounts leave it ``False``.
+    Otherwise the widget sits in ``<drop-down behavior="inline-combobox">``,
+    so its panel opens, positions and dismisses through attachMenu; the
+    widget's own search input is the trigger.
 
     Pass ``option_groups`` instead of ``options`` to render a grouped panel
     (non-selectable header rows before each group's options); the two are mutually
@@ -645,11 +635,7 @@ def SearchSelect(
             class_=_CLEAR_PLACEMENT_CLASS,
         )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
-    layout = (
-        _DIALOG_LAYOUT
-        if panel
-        else (_INLINE_LAYOUT if host_dropdown else _STANDALONE_LAYOUT)
-    )
+    layout = _DIALOG_LAYOUT if panel else _INLINE_LAYOUT
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     if search_url:
@@ -732,7 +718,7 @@ def SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
         # is the positioning anchor (its field box) and the focus/typing trigger.
         # No id/aria-controls/aria-expanded stamp — the widget owns those at init.
-        [("data-toggle", "")] if host_dropdown else [],
+        [] if panel else [("data-toggle", "")],
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
@@ -748,7 +734,7 @@ def SearchSelect(
         none_label=none_label,
         class_=layout.container_class,
     )[*children]
-    if not host_dropdown:
+    if panel:
         return widget
     # block (not the generic inline-flex) so the field keeps its full form-column
     # width. attachMenu positions the [data-menu] panel fixed relative to the
@@ -870,7 +856,7 @@ def FilterSelect(
     The default ``layout="field"`` hosts itself in
     ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
     dismisses through the shared attachMenu engine (the search input is the
-    trigger — focus opens), mirroring :func:`SearchSelect` ``host_dropdown=True``.
+    trigger — focus opens), mirroring :func:`SearchSelect` the hosted :func:`SearchSelect`.
 
     ``layout="panel"`` renders the same widget in the panel personality (see
     :data:`FilterSelectLayout`): pills in their own wrap row above the
@@ -886,7 +872,7 @@ def FilterSelect(
     """
     panel_layout = layout == "panel"
     # The field layout hosts itself in <drop-down behavior="inline-combobox"> so its
-    # panel uses the shared attachMenu engine (the same hooks SearchSelect(host_dropdown)
+    # panel uses the shared attachMenu engine (the same hooks SearchSelect
     # uses); the panel layout is hosted a level up by ComboboxDropdown, so it stays bare.
     field_host = not panel_layout
     normalized_options = [_normalize_option(option) for option in (options or [])]
@@ -1021,19 +1007,11 @@ def FilterSelect(
 # Dialog-hosted comboboxes: field box above a list.
 _PANEL_CONTAINER_CLASS = "block text-type-body"
 
-# Absolute below the box; no drop-down.
-_STANDALONE_LAYOUT = _ComboboxLayout(
-    container_class=_CONTAINER_CLASS,
-    panel_class=_STANDALONE_PANEL_CLASS,
-    menu_target=False,
-)
 # Pinned by the hosting drop-down.
-_INLINE_LAYOUT = _ComboboxLayout(
-    container_class=_CONTAINER_CLASS, panel_class="", menu_target=True
-)
+_INLINE_LAYOUT = _ComboboxLayout(container_class=_CONTAINER_CLASS, panel_class="")
 # Inside a dialog's padded surface.
 _DIALOG_LAYOUT = _ComboboxLayout(
-    container_class=_PANEL_CONTAINER_CLASS, panel_class=None, menu_target=False
+    container_class=_PANEL_CONTAINER_CLASS, panel_class=None
 )
 
 # Fetch-on-open window. A preset collection is per-user and small; one fetch

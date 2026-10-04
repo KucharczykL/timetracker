@@ -6,6 +6,7 @@
 // query). Blur is covered e2e (jsdom focus semantics are too loose for it).
 import { describe, it, expect } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
+import { hosted } from "../test-setup/search-select-host.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 
 Element.prototype.scrollIntoView = () => {};
@@ -44,7 +45,7 @@ function mountSingle(
     ${status}
     <div data-search-select-options></div>
   `;
-  document.body.appendChild(host); // connectedCallback → initWidget
+  document.body.appendChild(hosted(host)); // connectedCallback → initWidget
   return host;
 }
 

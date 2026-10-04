@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import "./search-select.js"; // side-effect: customElements.define("search-select", …)
+import { hosted } from "../test-setup/search-select-host.js";
 
 // jsdom does not implement scrollIntoView, which the widget calls when it
 // auto-highlights an option on focus/keystroke. Stub it so the focus path runs.
@@ -31,7 +32,7 @@ function mount(): HTMLElement {
       <div data-search-select-no-results class="hidden">No results</div>
     </div>
   `;
-  document.body.appendChild(host); // connectedCallback → initWidget
+  document.body.appendChild(hosted(host)); // connectedCallback → initWidget
   return host;
 }
 

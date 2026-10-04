@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js";
+import { hosted } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -38,7 +39,7 @@ function mountDependentPicker(params: string): {
       <div data-search-select-no-results class="hidden">No results</div>
     </div>
   `;
-  form.appendChild(picker);
+  form.appendChild(hosted(picker));
   document.body.appendChild(form);
   return {
     picker,
@@ -151,7 +152,7 @@ describe("<search-select> params (#1080)", () => {
         data-search-select-option role="option" aria-selected="false"
       ><span data-search-select-label></span></div></template>
     `;
-    document.body.appendChild(picker);
+    document.body.appendChild(hosted(picker));
 
     picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
 
@@ -187,7 +188,7 @@ describe("<search-select> params (#1080)", () => {
         data-search-select-option role="option" aria-selected="false"
       ><span data-search-select-label></span></div></template>
     `;
-    document.body.appendChild(picker);
+    document.body.appendChild(hosted(picker));
 
     const search = picker.querySelector<HTMLInputElement>(
       "[data-search-select-search]"
@@ -224,7 +225,7 @@ describe("<search-select> params (#1080)", () => {
         data-search-select-option role="option" aria-selected="false"
       ><span data-search-select-label></span></div></template>
     `;
-    document.body.appendChild(picker);
+    document.body.appendChild(hosted(picker));
 
     const search = picker.querySelector<HTMLInputElement>(
       "[data-search-select-search]"
@@ -272,7 +273,7 @@ describe("<search-select> params (#1080)", () => {
         data-search-select-option role="option" aria-selected="false"
       ><span data-search-select-label></span></div></template>
     `;
-    document.body.appendChild(picker);
+    document.body.appendChild(hosted(picker));
 
     picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
     await vi.waitFor(() =>

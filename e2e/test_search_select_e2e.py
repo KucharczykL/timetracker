@@ -17,7 +17,7 @@ def e2e_test_view(request):
              (the .hidden utility resolves to display:none) instead of class strings. -->
         <link rel="stylesheet" href="/static/base.css">
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
-        <!-- host_dropdown=True wraps each widget in <drop-down behavior=inline-combobox>,
+        <!-- Each widget lives in <drop-down behavior=inline-combobox>,
              whose behaviors are registered by drop-down.js (#348). -->
         <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
     </head>
@@ -32,7 +32,6 @@ def e2e_test_view(request):
                 {"value": "8", "label": "Game B", "data": {}},
             ],
             multi_select=False,
-            host_dropdown=True,
         )
     }
             {
@@ -44,7 +43,6 @@ def e2e_test_view(request):
             ],
             multi_select=True,
             id="multi-search",
-            host_dropdown=True,
         )
     }
             <input type="text" id="next-field" />
@@ -76,7 +74,6 @@ def anchor_test_view(request):
             name="thing",
             options=options,
             multi_select=False,
-            host_dropdown=True,
         )
     }
         </div>
@@ -114,7 +111,6 @@ def searchurl_committed_view(request):
             prefetch=6,
             selected=[{"value": "3", "label": "Item 03", "data": {}}],
             multi_select=False,
-            host_dropdown=True,
         )
     }
         </div>

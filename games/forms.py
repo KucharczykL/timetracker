@@ -445,8 +445,6 @@ class _SearchSelectAdapter(forms.Widget):
                 autofocus=self.autofocus,
                 clearable=self.clearable,
                 clear_description_id=field_label_id(input_id) if input_id else None,
-                # Panel opens through the shared attachMenu engine.
-                host_dropdown=True,
                 shape=shape,
                 **component,
             )

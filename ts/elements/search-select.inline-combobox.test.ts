@@ -2,6 +2,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import "./search-select.js"; // side effect: customElements.define("search-select")
 import "./drop-down.js"; // side effect: define <drop-down> + register inline-combobox
+import { openSurfaces } from "./surface-stack.js";
+import { hosted } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -97,28 +99,31 @@ describe("<search-select> hosted in <drop-down behavior=inline-combobox> (#348)"
   });
 });
 
-describe("<search-select> inside an unrelated <drop-down>", () => {
+describe("<search-select> inside another <drop-down>", () => {
   beforeEach(() => document.body.replaceChildren());
 
-  it("opens its own panel, not the outer menu", () => {
+  it("opens its own panel above the outer one", () => {
+    const widget = document.createElement("search-select");
+    widget.setAttribute("name", "game");
+    widget.setAttribute("multi", "false");
+    widget.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" aria-expanded="false" />
+      <div data-search-select-options hidden role="listbox">
+        <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
+      </div>`;
     const outer = document.createElement("drop-down");
     outer.innerHTML = `
       <button data-toggle>Menu</button>
-      <div data-menu popover="manual" hidden>
-        <search-select name="game" multi="false">
-          <div data-search-select-pills></div>
-          <input data-search-select-search role="combobox" aria-expanded="false" />
-          <div data-search-select-options hidden role="listbox">
-            <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
-          </div>
-        </search-select>
-      </div>`;
-    document.body.appendChild(outer);
+      <div data-menu popover="manual" hidden></div>`;
     const outerMenu = outer.querySelector<HTMLElement>(":scope > [data-menu]")!;
+    outerMenu.append(hosted(widget));
+    document.body.appendChild(outer);
     outer.open();
 
     searchOf(outer).focus();
     expect(panelOf(outer).hidden).toBe(false);
     expect(outerMenu.hidden).toBe(false);
+    expect(openSurfaces()).toHaveLength(2);
   });
 });

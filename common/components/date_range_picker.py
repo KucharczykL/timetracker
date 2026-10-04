@@ -524,7 +524,7 @@ def DateRangePicker(
     instead of a bespoke absolute-positioned Div — this is what fixed the
     calendar overlapping the field on narrow viewports. ``block`` (not the
     generic inline-flex ``Dropdown()`` wrapper) so the field keeps its full
-    form-column width, matching ``SearchSelect(host_dropdown=True)``."""
+    form-column width, matching the hosted ``SearchSelect``."""
     widget_attributes = (
         filter_widget_attributes(path, "date") if path is not None else []
     )
