@@ -268,6 +268,7 @@ def end_entry_access(
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     """Access to a held copy ended."""
     with answered(SUBJECT):
@@ -276,6 +277,26 @@ def end_entry_access(
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )
+
+
+def void_entry_access_end(
+    actor: User,
+    entry: LibraryEntry,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """Take back that access ended."""
+    with answered(SUBJECT):
+        return _dispatch(
+            VoidEntryAccessEnd(entry_id=entry.pk),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 

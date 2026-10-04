@@ -34,6 +34,7 @@ from common.returns import action_url
 from common.temporal_presentation import present_temporal_value
 from common.utils import paginate
 from games.bulk_entry_edit import ENTRY_EDIT
+from games.bulk_entry_end import ENTRY_END
 from games.bulk_removal import REMOVE_ENTRY
 from games.bulk_tray import tray_actions
 from games.end_ways import way_words
@@ -155,7 +156,9 @@ def list_library(request: HttpRequest) -> HttpResponse:
         "selection": {
             "filter": filter_json,
             "csrf_token": csrf_token,
-            "actions": tray_actions(ENTRY_EDIT.name, REMOVE_ENTRY.name, origin=origin),
+            "actions": tray_actions(
+                ENTRY_END.name, ENTRY_EDIT.name, REMOVE_ENTRY.name, origin=origin
+            ),
         },
     }
     table = paginated_table_content(

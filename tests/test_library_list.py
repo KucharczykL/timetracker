@@ -164,12 +164,16 @@ def test_both_tabs_render_the_tab_row(logged_in):
         assert 'aria-current="page"' in html
 
 
-def test_the_library_tab_offers_add_to_library_and_both_acts(logged_in):
+def test_the_library_tab_offers_add_to_library_and_every_act(logged_in):
     html = logged_in.get(reverse("games:list_library")).content.decode()
 
     assert reverse("games:add_to_library") in html
-    assert reverse("games:run_bulk_action", args=["entry.edit"]) in html
-    assert reverse("games:run_bulk_action", args=["entry.remove"]) in html
+    acts = [
+        html.index(reverse("games:run_bulk_action", args=[name]))
+        for name in ("entry.end", "entry.edit", "entry.remove")
+    ]
+    #: The row menu's order.
+    assert acts == sorted(acts)
 
 
 def test_an_ended_copy_shows_its_way(logged_in, owned_library, graph):
