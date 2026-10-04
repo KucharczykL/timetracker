@@ -67,7 +67,7 @@ from games.reads.calendar import calendar_day_zone
 from games.reads.player_sessions import (
     game_sessions,
     library_sessions,
-    readable_sessions,
+    listed_sessions,
 )
 from games.reads.playthrough_runs import sole_ordinary_run
 from games.reads.releases import stated_release_label
@@ -210,7 +210,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    sessions: QuerySet[PlayerSession] = readable_sessions(library)
+    sessions: QuerySet[PlayerSession] = listed_sessions(library)
     device_list = Device.objects.for_library(library).order_by("name")
 
     # ── Structured filter (JSON; free-text search lives here too) ──

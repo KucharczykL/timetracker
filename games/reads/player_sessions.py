@@ -1,4 +1,4 @@
-"""The sessions a library counts."""
+"""Sessions a library holds and shows."""
 
 from datetime import date
 from typing import NamedTuple
@@ -6,6 +6,7 @@ from typing import NamedTuple
 from django.db.models import Max, Min
 
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
+from games.reads.prerelease_play import shown_play
 from games.reads.unscoped import require_library
 
 #: Sessions reach their game through the run.
@@ -20,7 +21,7 @@ class SessionDays(NamedTuple):
 
 
 def library_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Every live session this library counts.
+    """Every live session this library holds.
 
     A copy of `library_runs` breaks this quietly. Its `kind`
     condition drops the sessions of the imported-history bucket.
@@ -40,20 +41,34 @@ def library_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     )
 
 
-def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """The row path the list and the API share: run, game, platform, device."""
-    return library_sessions(library).select_related(
+def shown_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """The sessions figures and lists hold."""
+    return library_sessions(library).filter(shown_play(library))
+
+
+def _with_row_path(sessions: PlayerSessionQuerySet) -> PlayerSessionQuerySet:
+    return sessions.select_related(
         f"{GAME}__platform", "device", "release__edition", "release__platform"
     )
 
 
+def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """The row path over every row."""
+    return _with_row_path(library_sessions(library))
+
+
+def listed_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """The row path over shown rows."""
+    return _with_row_path(shown_sessions(library))
+
+
 def game_sessions(library: UserLibrary, game: Game) -> PlayerSessionQuerySet:
-    """The counted sessions at one game, on any of its runs."""
+    """Every live session at one game."""
     return library_sessions(library).filter(**{GAME: game})
 
 
 def game_session_days(library: UserLibrary, game: Game) -> SessionDays | None:
-    """The span of days the game's counted sessions land on; None unplayed."""
+    """First and last session day; None unplayed."""
     span = game_sessions(library, game).aggregate(
         first=Min("effective_day"), last=Max("effective_day")
     )

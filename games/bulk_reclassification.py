@@ -30,6 +30,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.player_sessions import library_sessions
+from games.reads.prerelease_play import shown_play
 from games.writes.playersession import reclassify_session, undo_reclassification
 
 #: Longer than a sitting a person recalls.
@@ -61,7 +62,7 @@ SHORT_MANY = (
 
 
 def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """The act's base: any length, ordinary run."""
+    """Every convertible row: any length, ordinary run."""
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         #: The bucket's hours name no run.
@@ -70,16 +71,20 @@ def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Convertible rows at the threshold: the suggestion."""
+    """Shown convertible rows at the threshold."""
     return convertible_sessions(library).filter(
+        shown_play(library),
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
     )
 
 
 def conversion_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """The base, narrowed by the statement's filter."""
+    """Shown base, narrowed by the filter."""
     return narrowed(
-        convertible_sessions(library), library, filter_json, parse_session_filter
+        convertible_sessions(library).filter(shown_play(library)),
+        library,
+        filter_json,
+        parse_session_filter,
     )
 
 

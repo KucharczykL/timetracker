@@ -105,7 +105,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone, calendar_sentence
 from games.reads.entries import readable_entries
-from games.reads.historical_playtime_page import listed_records
+from games.reads.historical_playtime_records import readable_records
 from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
@@ -1319,7 +1319,7 @@ def list_historical_playtime_api(
     request, filter: str = "", sort: str = "", page: int = 1
 ):
     library = cast(User, request.user).library
-    records: QuerySet[HistoricalPlaytime] = listed_records(library)
+    records: QuerySet[HistoricalPlaytime] = readable_records(library)
     if filter:
         try:
             record_filter = parse_historical_playtime_filter(filter)
@@ -1367,7 +1367,7 @@ def list_historical_playtime_api(
 @historical_playtime_router.get("/{record_id}", response=HistoricalPlaytimeOut)
 def get_historical_playtime(request, record_id: UUIDv7):
     library = cast(User, request.user).library
-    return owned_or_404(listed_records(library), library, id=record_id)
+    return owned_or_404(readable_records(library), library, id=record_id)
 
 
 api.add_router("/historical-playtime", historical_playtime_router)

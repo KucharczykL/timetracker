@@ -439,7 +439,8 @@ docs/           — Additional documentation
   session list's selection line states that review, and the bulk runner
   acts on a base that contains it (below). The threshold suggests, never
   refuses (#1357): `reviewable_sessions()` is the review,
-  `convertible_sessions()` the act's base, any length; a short row
+  `convertible_sessions()` every convertible row, any length, and
+  `conversion_scope` the act's shown base; a short row
   converts under the confirmation's `caution`. Contract is
   [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
@@ -467,7 +468,9 @@ docs/           — Additional documentation
   tracking minted rather than leaving a blank run beside a named one
   (#1080). Session on game nothing tracks refused on run. Bucket takes no
   new session; `MoveSessionToPlaythrough` is only way in or out. Resume keyed on game (`games:resume_session`). Read surfaces:
-  `library_sessions` and `game_sessions` in `games/reads/player_sessions.py`;
+  `shown_sessions`/`listed_sessions` for figures and lists, `library_sessions`,
+  `readable_sessions` and `game_sessions` (acts, seed) for every row, in
+  `games/reads/player_sessions.py`;
   `PlayerSessionFilter` (below); stats scope year on `effective_day`, order
   first and last play by `sort_instant`, superlatives read
   `effective_duration`; `stats_links` emit `day__between`; navbar resumes page
@@ -525,7 +528,7 @@ docs/           — Additional documentation
   relation serializes as `{}` and means "has one". The game list narrows its
   Playtime column by both clauses a filter states (`GameFilter.narrowing`).
   `compute_stats` calls them all, `make bench` times them.
-  `readable_sessions()` is the row path list and API share; `games_for_list()`
+  `listed_sessions()` is the row path the list and the bench share; `games_for_list()`
   in `games/views/game.py` builds the game list's queryset so the bench times
   the served plan. Ran on the 2026-09-12 dump: replay clean, 0 of 4,649 figures
   differ, every read inside 20 ms; page diff attributed in the wave review.
@@ -547,6 +550,13 @@ docs/           — Additional documentation
   hidden-by-default Release column. A demo session (a `prerelease`
   Edition) is never outside its run's dates. Contract is
   [A session or a record names its Release](docs/superpowers/specs/2026-10-03-issue-1354-session-release-design.md)
+  #1361's `SHOW_PRERELEASE_PLAY` (user setting, `show`/`hide`) hides
+  prerelease play from figures, lists, list filters and bulk scopes:
+  `shown_sessions`/`shown_records` (`shown_play`,
+  `games/reads/prerelease_play.py`) beside `library_*`, which keep every
+  row; `listed_*` and `readable_*` are their row paths. Resolves, edits,
+  the API, the new-run seed and run activity read every row. Contract is
+  [A toggle that hides prerelease play](docs/superpowers/specs/2026-10-04-issue-1361-prerelease-play-toggle-design.md)
 - **HistoricalPlaytime** — fourth projection: playtime a library states
   without sittings, written only by `HistoricalPlaytimes` projector.
   `library.historicalplaytime.created`/`.restated` carry one whole-statement
@@ -564,8 +574,8 @@ docs/           — Additional documentation
   take `HistoricalPlaytimeStatement`, normalised before fingerprint; devices
   resolve through `library_device` in `games/commands/scope.py`, the one
   resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry.
-  The Playtime page's Historical tab lists live records through
-  `readable_records` and `HistoricalPlaytimeFilter`, mode
+  The Playtime page's Historical tab lists shown records through
+  `listed_records` and `HistoricalPlaytimeFilter`, mode
   `historical_playtime`. `games/reads/historical_playtime.py` sums the
   records by containment; `games/reads/playtime.py` adds them to sessions.
   Game detail and the Historical list record, restate, remove and restore
@@ -882,10 +892,11 @@ today's/last-7-days playtime from `model_counts` context processor.
 figure sums two sources, sessions and historical playtime records, and comes
 from this module: per Game, all-time, per year, per day window, per platform,
 per month, and per game in a day window. Sessions come through
-`library_sessions()` (`games/reads/player_sessions.py`: four removal marks,
-library on session, run and tracked game). Records come through
-`library_records()` (`games/reads/historical_playtime_records.py`: three
-removal marks, library on record and tracked game), summed in
+`shown_sessions()` (`games/reads/player_sessions.py`: `library_sessions()`,
+four removal marks, library on session, run and tracked game, then the
+prerelease setting). Records come through `shown_records()`
+(`games/reads/historical_playtime_records.py`: `library_records()`, three
+removal marks, library on record and tracked game, then the setting), summed in
 `games/reads/historical_playtime.py`, which no application module outside
 `games/reads` imports. Both scopes refuse a missing library with
 `UnscopedRead`. A record counts in a period only when `when_lower` and
@@ -894,7 +905,7 @@ too-wide `when` counts in all-time alone. `DayInterval`
 (`games/reads/days.py`) states every period, for both sources. Python figures
 answer `PlaytimeBreakdown(tracked, historical)` with `.total`; the
 playthrough page's range sum reads `game_tracked_between`, because a record
-is not a sitting. Expressions stay one number: `playtime_by_game` is zero
+is not a sitting, over every session, because the seed is stored text. Expressions stay one number: `playtime_by_game` is zero
 when unplayed (the `playtime` alias `GameQuerySet.annotated_for_filtering`
 registers, which refuses a second library, and the stats games card's total).
 `playtime_sort_key` is NULL without playtime. A game whose only session is
@@ -1186,8 +1197,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   device takes the Unknown its default names and a name the library holds is
   answered rather than made twice, case ignored; a platform is private to the
   library. 201 and `{value, label}`, else 422 and one sentence naming the field
-- `GET /api/session/`, `GET /{id}` — projection rows through
-  `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
+- `GET /api/session/`, `GET /{id}` — every live row, the prerelease setting
+  aside, through `readable_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
   instants with zones, `stated_day`, `stated_duration_seconds`, `day`,
   `duration_seconds`, `release_id`
 - `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
@@ -1208,8 +1219,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   under the lock and behind the key; every other rule keeps the command's
   sentence at 409
 - `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
-- `GET /api/historical-playtime/`, `GET /{id}` — live records through
-  `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
+- `GET /api/historical-playtime/`, `GET /{id}` — every live record, the
+  prerelease setting aside, through `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
   canonical text beside its two bounds, `playthrough_ids`, `release_id`. No
   write endpoint
 - `GET /api/releases/held` — one game's Releases a live copy names, `game_id`

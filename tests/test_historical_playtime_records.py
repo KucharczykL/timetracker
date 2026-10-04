@@ -20,7 +20,6 @@ from games.models import (
 )
 from games.reads.historical_playtime_records import (
     RECORD_ORDER,
-    game_records,
     library_records,
     readable_records,
 )
@@ -98,13 +97,6 @@ def test_another_librarys_record_is_not(
     _record(owned_user, game)
     other = django_user_model.objects.create_user(username="someone-else")
     assert not library_records(other.library).exists()
-
-
-def test_game_records_narrows_to_one_game(owned_user, owned_library, game):
-    other_game = Game.objects.create(library=owned_library, name="Tunic")
-    record = _record(owned_user, game)
-    _record(owned_user, other_game)
-    assert list(game_records(owned_library, game)) == [record]
 
 
 def test_the_order_is_newest_when_then_unknown_then_newest_recorded(

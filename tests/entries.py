@@ -15,7 +15,7 @@ from games.commands.libraryentry import (
 from games.end_ways import EndWay
 from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandResult, append_command
-from games.models import LibraryEntry, LibraryEvent, Release, UserLibrary
+from games.models import EditionKind, LibraryEntry, LibraryEvent, Release, UserLibrary
 from timetracker.temporal import TemporalValue
 
 
@@ -56,6 +56,33 @@ def second_release(library: UserLibrary, release: Release) -> Release:
         ],
     )
     return written.editions[0].releases[1].release
+
+
+def prerelease_release(library: UserLibrary, release: Release) -> Release:
+    """A prerelease Edition's Release beside this one."""
+    edition = release.edition
+    written = state_catalog_graph(
+        game=edition.game,
+        library=library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                edition=edition,
+                is_default=True,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0", release=release, is_default=True
+                    ),
+                ),
+            ),
+            EditionState(
+                key="edition-1",
+                kind=EditionKind.PRERELEASE,
+                releases=(ReleaseState(key="edition-1-release-0", is_default=True),),
+            ),
+        ],
+    )
+    return written.editions[1].releases[0].release
 
 
 def record_entry(

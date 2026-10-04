@@ -128,12 +128,9 @@ from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
 from games.reads.games_list import games_list_base
-from games.reads.historical_playtime_page import (
-    listed_records,
-    run_labels_for,
-)
-from games.reads.historical_playtime_records import RECORD_ORDER
-from games.reads.player_sessions import game_sessions
+from games.reads.historical_playtime_page import run_labels_for
+from games.reads.historical_playtime_records import RECORD_ORDER, listed_records
+from games.reads.player_sessions import GAME, shown_sessions
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_activity import ActivityClock, activity_clock
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
@@ -1398,7 +1395,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     #: Scoped, not `game.sessions` and friends: tracked_by() admits a
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
-    sessions = game_sessions(library, game)
+    sessions = shown_sessions(library).filter(**{GAME: game})
     tracked = tracked_game(library, game)
     #: A run may name another library's PlayerGame.
     runs = list(

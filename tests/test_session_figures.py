@@ -8,7 +8,6 @@ from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.models import Game, PlayerSession
 from games.reads.session_figures import (
-    has_sessions,
     highest_average_game,
     longest_session,
     most_sessions_game,
@@ -96,16 +95,15 @@ def test_an_empty_library_answers_none_and_zero(owned_library):
     assert longest_session(owned_library, None) is None
     assert most_sessions_game(owned_library, None) is None
     assert highest_average_game(owned_library, None) is None
-    assert has_sessions(owned_library) is False
 
 
 def test_a_removed_session_leaves_every_figure(owned_library, games):
     beta, _alpha = games
     row = timed(tracked_run(owned_library, beta), date(2024, 1, 1), 10, 1)
-    assert has_sessions(owned_library) is True
+    assert session_count(owned_library, None) == 1
 
     #: The projector's mark, stated here as a row.
     PlayerSession.objects.filter(pk=row.pk).update(removed_at=timezone.now())
 
-    assert has_sessions(owned_library) is False
+    assert session_count(owned_library, None) == 0
     assert most_sessions_game(owned_library, None) is None

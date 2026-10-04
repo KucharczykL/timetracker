@@ -32,7 +32,6 @@ from games.reads.historical_playtime import (
     historical_years,
 )
 from games.reads.historical_playtime_records import (
-    game_records,
     library_records,
     readable_records,
 )
@@ -110,20 +109,21 @@ def test_a_record_of_a_removed_catalog_game_is_not_counted(owned_library, game, 
 
 
 @pytest.mark.django_db
-def test_game_records_narrow_to_one_catalog_game(owned_library, game, run):
+def test_a_game_sums_only_its_own_records(owned_library, game, run):
     other = Game.objects.create(library=owned_library, name="Tunic")
-    mine = record_row([run], duration=HOUR, when="2022")
-    record_row([tracked_run(owned_library, other)], duration=HOUR, when="2022")
-    assert list(game_records(owned_library, game)) == [mine]
+    record_row([run], duration=HOUR, when="2022")
+    record_row([tracked_run(owned_library, other)], duration=2 * HOUR, when="2022")
+    assert game_historical_playtime(owned_library, game) == HOUR
 
 
 @pytest.mark.django_db
-def test_readable_records_read_platform_and_device_at_once(
+def test_readable_records_read_platform_device_and_runs_at_once(
     owned_library, run, django_assert_num_queries
 ):
     device = create_device(library=owned_library, name="Deck")
     record_row([run], duration=HOUR, when="2022", device=device)
-    with django_assert_num_queries(1):
+    #: The rows, then their runs.
+    with django_assert_num_queries(2):
         (record,) = readable_records(owned_library)
         assert record.player_game.game.platform is None
         assert record.device == device

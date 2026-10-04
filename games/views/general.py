@@ -33,7 +33,7 @@ from games.filters import model_field_registry
 from games.models import Game, Platform, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.days import DayInterval
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import shown_sessions
 from games.reads.playtime import playtime_between_each
 from games.reads.purchases import library_purchases
 from games.reads.sums import PlaytimeBreakdown
@@ -92,7 +92,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
             library_purchases(library).exists() if library is not None else False
         ),
         "session_count": (
-            library_sessions(library).exists() if library is not None else False
+            shown_sessions(library).exists() if library is not None else False
         ),
         #: No link: the session list shows no record, so it sums less.
         "today_played": PlaytimeSplit(today_played, durations, id_scope="navbar-today"),

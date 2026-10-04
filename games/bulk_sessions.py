@@ -17,7 +17,7 @@ from games.bulk_parts import FilterJson, Presentations, Refused, Resolution
 from games.events.dispatch import RowNotHeld, RowUnreadable
 from games.filters import parse_session_filter
 from games.models import PlayerSession, UserLibrary
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import library_sessions, shown_sessions
 from games.reads.releases import stated_release_label
 from games.reads.session_run_labels import every_run_label
 from games.writes.answers import answered
@@ -35,9 +35,7 @@ def lost(
 def session_scope(
     library: UserLibrary, filter_json: FilterJson
 ) -> QuerySet[PlayerSession]:
-    return narrowed(
-        library_sessions(library), library, filter_json, parse_session_filter
-    )
+    return narrowed(shown_sessions(library), library, filter_json, parse_session_filter)
 
 
 def session_resolution(

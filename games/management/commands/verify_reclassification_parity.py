@@ -95,6 +95,7 @@ class Command(BaseCommand):
 
         scopes: list[ScopeKey] = [None, *played_years(library)]
         before = {scope: read_scope(library, scope) for scope in scopes}
+        #: Shown rows: the figures judged hide the rest.
         population = list(reviewable_sessions(library).select_related(GAME))
         self.stdout.write(
             f"Review population: {len(population)} session(s) across "

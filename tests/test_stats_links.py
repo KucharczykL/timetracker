@@ -407,6 +407,53 @@ def test_games_played_all_time_counts_every_record(world):
     assert _count(stats_links.games_played(None), Game, world["library"]) == 5
 
 
+@pytest.fixture
+def hidden_world(world, set_user_setting):
+    """A demo-only game, hidden."""
+    library = world["library"]
+    demo = default_graph(
+        Game(name="Demo", library=library),
+        library,
+        edition_kind=EditionKind.PRERELEASE,
+    )
+    session_row(demo.game, started_at=_dt(YEAR, 6, 9), release=demo.release)
+    record_row(
+        [tracked_run(library, demo.game)], when=f"{YEAR}-05", release=demo.release
+    )
+    set_user_setting(library.user, "SHOW_PRERELEASE_PLAY", "hide")
+    return world
+
+
+@pytest.mark.parametrize("year", [YEAR, None])
+def test_hidden_prerelease_play_keeps_every_link_on_its_figure(
+    hidden_world, set_user_setting, year
+):
+    library = hidden_world["library"]
+    stats = _stats(hidden_world, year)
+    scope = year if year is not None else "Alltime"
+    set_user_setting(library.user, "SHOW_PRERELEASE_PLAY", "show")
+    shown = _stats(hidden_world, year)
+    set_user_setting(library.user, "SHOW_PRERELEASE_PLAY", "hide")
+
+    #: The demo session is gone from the figure.
+    assert stats["total_sessions"] == shown["total_sessions"] - 1
+    assert (
+        _count(stats_links.all_sessions(scope), PlayerSession, library)
+        == stats["total_sessions"]
+    )
+    if year is not None:
+        assert stats["total_games"] == shown["total_games"] - 1
+        assert (
+            _count(stats_links.games_played(year), Game, library)
+            == stats["total_games"]
+        )
+    for builder, key, model in _FIGURE_LINKS:
+        expected = _figure(stats, key)
+        if expected is not None:
+            link = getattr(stats_links, builder)(scope)
+            assert _count(link, model, library) == expected, builder
+
+
 #: Builder, the figure it links from, its list's model.
 _FIGURE_LINKS = [
     ("purchases_total", "all_purchased_this_year_count", Purchase),

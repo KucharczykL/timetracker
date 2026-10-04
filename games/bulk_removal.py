@@ -67,7 +67,7 @@ from games.models import (
 )
 from games.reads.device_departures import naming_sessions_of, with_naming_sessions
 from games.reads.game_departures import departures_of, with_departures
-from games.reads.historical_playtime_records import library_records
+from games.reads.historical_playtime_records import library_records, shown_records
 from games.reads.platform_departures import (
     PlatformDepartures,
     platform_departures_of,
@@ -221,7 +221,7 @@ def record_scope(
     library: UserLibrary, filter_json: FilterJson
 ) -> QuerySet[HistoricalPlaytime]:
     return narrowed(
-        library_records(library),
+        shown_records(library),
         library,
         filter_json,
         parse_historical_playtime_filter,

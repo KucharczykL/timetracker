@@ -10,7 +10,7 @@ from typing import NamedTuple
 from common.criteria import BoolCriterion, ChoiceCriterion, Modifier
 from games.filters import PlayerSessionFilter, filter_query_context_for_library
 from games.models import PlaythroughKind, UserLibrary
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import shown_sessions
 
 
 class OrganizationCounts(NamedTuple):
@@ -38,7 +38,7 @@ def outside_dates_filter() -> PlayerSessionFilter:
 def organization_counts(library: UserLibrary) -> OrganizationCounts:
     """Count both populations, each through its builder."""
     context = filter_query_context_for_library(library)
-    sessions = library_sessions(library)
+    sessions = shown_sessions(library)
     return OrganizationCounts(
         bucket=sessions.filter(bucket_sessions_filter().to_q(context)).count(),
         outside=sessions.filter(outside_dates_filter().to_q(context)).count(),

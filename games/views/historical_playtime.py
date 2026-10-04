@@ -59,10 +59,10 @@ from games.list_columns import column_choice
 from games.models import HistoricalPlaytime, HistoricalPlaytimeProvenance
 from games.reads.historical_playtime_page import (
     RunLabels,
-    listed_records,
     record_run_labels,
     run_labels_for,
 )
+from games.reads.historical_playtime_records import listed_records
 from games.reads.releases import stated_release_label
 from games.sorting import (
     HISTORICAL_PLAYTIME_DEFAULT_SORT,

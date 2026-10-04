@@ -12,7 +12,7 @@ from django.db.models import Avg, Count
 
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
 from games.reads.days import YearScope
-from games.reads.player_sessions import GAME, library_sessions
+from games.reads.player_sessions import GAME, shown_sessions
 
 #: The tie-break's two game columns, spelled from a session.
 SORT_NAME = f"{GAME}__sort_name"
@@ -35,8 +35,8 @@ class GameAverage(NamedTuple):
 
 
 def scoped_sessions(library: UserLibrary, year: YearScope) -> PlayerSessionQuerySet:
-    """Counted sessions, narrowed to a year; None is all-time."""
-    sessions = library_sessions(library)
+    """Shown sessions in a year; None: all-time."""
+    sessions = shown_sessions(library)
     if year is None:
         return sessions
     return sessions.filter(effective_day__year=year)
@@ -93,7 +93,3 @@ def highest_average_game(library: UserLibrary, year: YearScope) -> GameAverage |
         return None
     game_id, average = row
     return GameAverage(Game.objects.get(pk=game_id), average)
-
-
-def has_sessions(library: UserLibrary) -> bool:
-    return library_sessions(library).exists()
