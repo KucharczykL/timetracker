@@ -407,8 +407,8 @@ CreateSession(
 
 `TimingStatement` is the Python-side union of three `NamedTuple`s mirroring the
 payload members — `NamedTuple` because `canonical_command_input` builds a shallow
-dict of dataclass fields and `json.dumps` encodes a NamedTuple as an array,
-where a dataclass reaches `default` and raises. `timedelta` has no canonical
+dict of dataclass fields and `json.dumps` encodes a NamedTuple as an array
+(since #1489 a dataclass value encodes as the same array). `timedelta` has no canonical
 encoding today, so this issue adds one branch to `_encode_command_value` —
 `("duration", total microseconds as text)` — which #692, #700 and HIST inherit.
 The encoding is positional, so reordering a member's fields invalidates every
