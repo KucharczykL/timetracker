@@ -825,7 +825,6 @@ _Dropdown = custom_element_builder("drop-down")
 # variant="outline" is the bordered toggle, variant="plain" the borderless
 # navbar trigger. Corners come from the toggle's own shape= either way.
 
-# Panel: white (light) / frosted (dark), shown in the top layer.
 # The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"
 #: The surface never scrolls, so its blur stays put.

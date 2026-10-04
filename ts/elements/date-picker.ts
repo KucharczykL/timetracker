@@ -15,11 +15,7 @@
  *   closes the popup immediately (a native date input's one-click UX);
  *   Clear empties the value and keeps the popup open.
  *
- * Hosted in <drop-down behavior="date-calendar"> (issue #485 follow-up):
- * visibility, viewport-aware positioning, and outside-click/Escape dismiss
- * all come from the shared attachMenu engine (this element delegates to the
- * host's open()/close(), the same shape SearchSelect(host_dropdown) uses)
- * instead of a bespoke absolute-positioned Div + its own document listeners.
+ * Its <drop-down> host opens, positions and dismisses it.
  *
  * The committed value lives in the hidden ISO input Django binds
  * (`[data-date-picker-hidden]`), named after the real form field.

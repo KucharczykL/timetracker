@@ -1,7 +1,6 @@
 // Shared positioning/keyboard core for light-DOM dropdowns: viewport-aware
 // positioning, instant open/close (no animation — by design), ARIA wiring and
-// full keyboard navigation. Panels open in the top layer; the surface stack
-// owns Escape, outside press and single open. Driven by the generic
+// full keyboard navigation. The surface stack owns dismissal. Driven by the generic
 // <drop-down> element; type-specific wiring lives in the registered behaviors
 // (menu, select). The bottom-* panel geometry is the shared positionAnchored
 // (also used by the pop-over tooltip); the right-start submenu keeps its own
@@ -138,7 +137,7 @@ export function attachMenu(
   // rather than in the shared positioner.
   const positionSubmenu = (): void => {
     const rect = toggle.getBoundingClientRect();
-    // Pinned at (0,0), so item rects are insets.
+    // Pinned at (0,0): item rects are insets.
     pinFixed(menu);
 
     const anchor = horizontalAnchor.getBoundingClientRect();
@@ -267,7 +266,7 @@ export function attachMenu(
   };
 
   // An inline-combobox toggle opens on the hosted input's focus, not on a click,
-  // and the widget owns Arrow keys on that input — so skip both toggle handlers.
+  // The widget owns its input's keys.
   if (!inlineTrigger) {
     toggle.addEventListener("click", (event) => {
       event.stopPropagation();

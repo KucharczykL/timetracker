@@ -1,7 +1,7 @@
 // Hosts a test widget as the server does.
 import "../elements/drop-down.js";
 
-/** Wraps an unconnected widget in its inline-combobox host. */
+/** Wraps a widget in its host. */
 export function hosted(widget: HTMLElement): HTMLElement {
   const host = document.createElement("drop-down");
   host.setAttribute("behavior", "inline-combobox");

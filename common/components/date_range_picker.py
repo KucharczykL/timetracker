@@ -391,8 +391,7 @@ def _preset_button(preset_value: str, preset_label: str) -> Node:
     )[preset_label]
 
 
-# The static calendar flows inside a frosted panel and frosts itself
-# too, so it looks the same as the popup.
+# Frosted too: it looks like the popup.
 _STATIC_CALENDAR_CLASS = (
     f"mt-2 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}"
 )
@@ -520,7 +519,7 @@ def DateRangePicker(
 
     Hosted in ``<drop-down behavior="date-calendar">`` (issue #485
     follow-up): the popup's visibility, viewport-aware positioning, and
-    outside-click/Escape dismiss all come from the shared attachMenu engine
+    outside-press/Escape dismiss all come from the shared attachMenu engine
     instead of a bespoke absolute-positioned Div — this is what fixed the
     calendar overlapping the field on narrow viewports. ``block`` (not the
     generic inline-flex ``Dropdown()`` wrapper) so the field keeps its full

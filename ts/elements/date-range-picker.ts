@@ -21,11 +21,7 @@
  * renderer are shared with date-picker.ts via date-field-core.ts /
  * date-calendar-core.ts; anchor/track/preset logic below is range-specific.
  *
- * The popup (non-panel) variant is hosted in <drop-down behavior="date-calendar">
- * (issue #485 follow-up): visibility, viewport-aware positioning, and outside-
- * click/Escape dismiss all come from the shared attachMenu engine (this element
- * delegates to the host's open()/close(), the same shape SearchSelect(host_dropdown)
- * uses) instead of a bespoke absolute-positioned Div + its own document listeners.
+ * The popup variant's <drop-down> host opens, positions and dismisses it.
  * The static (panel) variant is unaffected — it already lives inside the quick
  * bar's OWN separate <drop-down>, and never toggles.
  *

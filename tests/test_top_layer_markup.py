@@ -1,4 +1,4 @@
-"""Every floating panel opens in the top layer."""
+"""Floating panels open in the top layer."""
 
 import re
 

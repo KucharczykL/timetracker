@@ -121,7 +121,7 @@ def DatePicker(
 
     Hosted in ``<drop-down behavior="date-calendar">`` (issue #485
     follow-up): the popup's visibility, viewport-aware positioning, and
-    outside-click/Escape dismiss all come from the shared attachMenu engine
+    outside-press/Escape dismiss all come from the shared attachMenu engine
     instead of a bespoke absolute-positioned Div — this is what fixed the
     calendar overlapping the field on narrow viewports."""
     picker = _DatePicker(class_="relative")[

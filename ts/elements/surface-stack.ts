@@ -38,7 +38,7 @@ function dismissAll(candidates: readonly Surface[]): void {
 function onKeyDown(event: KeyboardEvent): void {
   if (event.key !== "Escape" || event.isComposing || event.repeat) return;
   const top = surfaces.at(-1);
-  // A modal dialog closes through its own cancel.
+  // A modal keeps its native cancel.
   if (!top || top.kind === "modal") return;
   // Focus moves home before the panel hides.
   top.restoreFocus?.();
@@ -51,7 +51,7 @@ function onPointerDown(event: PointerEvent): void {
     pendingPress = null;
     return;
   }
-  // Recorded now: a handler may detach the target.
+  // Now: a handler may detach the target.
   pendingPress = { pointerId: event.pointerId, path: event.composedPath() };
 }
 
@@ -113,7 +113,7 @@ function isInvalidState(error: unknown): boolean {
   return error instanceof DOMException && error.name === "InvalidStateError";
 }
 
-/** False when the panel could not be shown. */
+/** False if not shown. */
 export function showInTopLayer(panel: HTMLElement): boolean {
   if (!panel.isConnected) return false;
   try {

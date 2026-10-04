@@ -28,8 +28,7 @@ export class DropdownElement extends HTMLElement {
   private controller?: MenuController;
 
   connectedCallback(): void {
-    // A moved node keeps its wiring; a second toggle
-    // handler would open then close on every click.
+    // Moved: rewiring would double-toggle.
     if (this.controller) return;
     const props = readDropdownProps(this);
     const toggle = ownChild(this, "[data-toggle]");

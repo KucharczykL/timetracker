@@ -1,4 +1,4 @@
-"""Floating panels open in the top layer; one stack dismisses them."""
+"""Top-layer panels and their one dismissal stack."""
 
 import pytest
 from django.http import HttpResponse
@@ -82,7 +82,7 @@ def test_a_panel_escapes_a_transformed_clipping_ancestor(live_server, page: Page
     assert toggle is not None and panel is not None
     assert abs(panel["y"] - (toggle["y"] + toggle["height"])) <= 1
     assert abs(panel["x"] - toggle["x"]) <= 1
-    # Taller than the 48px clip, and every row is hit-testable.
+    # Taller than the clip; rows hit-testable.
     assert panel["height"] > 48
     third = page.get_by_role("menuitem", name="Third").bounding_box()
     assert third is not None
@@ -144,7 +144,7 @@ def test_escape_closes_a_combobox_before_its_facet(live_server, page: Page):
 @harness
 @on_harness
 def test_a_cancelled_touch_keeps_the_menu_open(live_server, page: Page):
-    """A touch that turns into a scroll is cancelled, not a press."""
+    """A scrolling touch is cancelled, not pressed."""
     _open_acts(page, live_server)
     page.evaluate(
         """() => {
@@ -172,7 +172,7 @@ def _login(page: Page, live_server) -> None:
 def test_escape_clears_a_selection_under_the_quick_bar(
     live_server, page: Page, e2e_library
 ):
-    """No closed panel on the page spends the key."""
+    """No closed panel spends the key."""
     create_tracked_game(e2e_library, "Outer Wilds")
     _login(page, live_server)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")

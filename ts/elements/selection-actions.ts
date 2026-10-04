@@ -244,7 +244,7 @@ class SelectionActionsElement extends HTMLElement {
         overflowItems.appendChild(element);
       }
     }
-    // A hidden host would strand its open panel.
+    // Hidden, the host would strand it.
     const allFit = fitCount === this.acts.length;
     if (allFit) overflowHost.querySelector("drop-down")?.close();
     overflowHost.classList.toggle("hidden", allFit);

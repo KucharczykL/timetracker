@@ -121,7 +121,7 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
   });
 
   it("wires once across a move and still dismisses", () => {
-    // The filter builder moves rows; a re-init would mint a fresh listbox id.
+    // A re-init would mint a new id.
     const host = mountSingle("games");
     const search = searchOf(host);
     const dropdown = host.parentElement!;

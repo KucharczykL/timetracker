@@ -11,7 +11,7 @@ Element.prototype.scrollIntoView = () => {};
 // (issue #348): the panel is the drop-down's [data-menu], toggled via the `hidden`
 // attribute by attachMenu; the <search-select> element is the [data-toggle] anchor;
 // its own search input is the trigger (focus opens). This mirrors the markup
-// SearchSelect(host_dropdown=True) emits.
+// SearchSelect emits.
 function mount(): HTMLElement {
   const host = document.createElement("drop-down");
   host.setAttribute("behavior", "inline-combobox");

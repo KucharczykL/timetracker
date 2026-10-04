@@ -351,7 +351,7 @@ OCCLUSION = """
 def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
     authenticated_page: Page, live_server, populated
 ):
-    """A panel nested in a sticky cell still paints over later rows.
+    """Later rows never paint over its panel.
 
     Purchases renders its first cell through `PurchaseName` → `TruncatedText`
     with `reveal="auto"`, so the tooltip exists only while the name is actually
@@ -411,7 +411,7 @@ def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
 def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
     authenticated_page: Page, live_server, populated
 ):
-    """The pin never covers the menus of the rows it overlaps.
+    """The pin never covers other rows' menus.
 
     This one has to be staged. The menu needs JavaScript, and with JavaScript
     the table never overflows, so the pinned column never slides over anything

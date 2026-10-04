@@ -407,7 +407,7 @@ class _ComboboxLayout(NamedTuple):
     """Where a combobox lives, declared once."""
 
     container_class: str
-    #: None: the hosting dialog is the panel; else a <drop-down> owns it.
+    #: None: the dialog is the panel.
     panel_class: str | None
 
 
@@ -871,9 +871,7 @@ def FilterSelect(
     rather than a ``<label>`` next to the widget.
     """
     panel_layout = layout == "panel"
-    # The field layout hosts itself in <drop-down behavior="inline-combobox"> so its
-    # panel uses the shared attachMenu engine (the same hooks SearchSelect
-    # uses); the panel layout is hosted a level up by ComboboxDropdown, so it stays bare.
+    # ComboboxDropdown hosts the panel layout instead.
     field_host = not panel_layout
     normalized_options = [_normalize_option(option) for option in (options or [])]
     normalized_included = [_normalize_option(option) for option in (included or [])]

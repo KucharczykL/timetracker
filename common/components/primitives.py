@@ -638,7 +638,6 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # flips to rtl:text-right, where the scroll start edge is the right one.
 # `bg-inherit` picks up the row's zebra and hover surface — a sticky cell is
 # transparent by default and would let the scrolled content show through it.
-# Panels a cell hosts open in the top layer, above every cell.
 #
 # From md up only, and not by preference: below md the same cell carries
 # SHRINKABLE_COLUMN_CLASS, whose max-w-0 is what lets the name column collapse
@@ -649,8 +648,10 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # viewport where the table has already been cut to two columns.
 PINNED_COLUMN_CLASS = (
     "md:sticky md:start-0 md:z-[2] md:bg-inherit "
-    # The shadow shows only once content scrolls behind the column. The offset is physical where the trigger and the pin are
-    # logical, so the direction is mirrored explicitly — otherwise the shadow
+    # Only once content scrolls behind it.
+    #
+    # The offset is physical where the trigger and the pin are logical,
+    # so the direction is mirrored explicitly — otherwise the shadow
     # paints into the table's own edge under rtl instead of over the
     # content sliding beneath it.
     "md:[@container_scroll-state(scrollable:inline-start)]:shadow-[6px_0_8px_-2px_rgb(0_0_0/0.28)] "

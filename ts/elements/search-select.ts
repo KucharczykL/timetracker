@@ -424,7 +424,7 @@ const initWidget = (containerElement: Element): boolean => {
   // ── Highlight tracking (filter mode) ──
   let highlightedRow: HTMLElement | null = null;
 
-  // The host closes on Escape and outside press.
+  // A host close resets the ARIA state.
   dropdownHost?.addEventListener("dropdown:hide", (event) => {
     if (event.target !== dropdownHost) return;
     clearHighlight();
@@ -1680,7 +1680,7 @@ export class SearchSelectElement extends HTMLElement {
   private initialized = false;
 
   connectedCallback(): void {
-    // A moved row keeps its listeners; wire once.
+    // Moved rows keep listeners; wire once.
     if (!this.initialized) this.initialized = initWidget(this);
   }
 

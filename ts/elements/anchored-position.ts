@@ -4,7 +4,7 @@
  * Pins the panel `position: fixed` (so it escapes clipping/overflow ancestors),
  * aligns it under/over an anchor with a configurable default side + gap, flips
  * to the other side when the preferred one lacks room, clamps horizontally to
- * the viewport. Panels sit in the top layer, so viewport coordinates hold.
+ * the viewport. Top-layer panels use viewport coordinates.
  *
  * Geometry only — keyboard roving, single-open coordination, and submenu flyouts
  * stay in attachMenu (the submenu keeps its own flip/first-item geometry, but

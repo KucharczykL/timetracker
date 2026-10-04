@@ -251,7 +251,7 @@ class QuickFilterBarElement extends HTMLElement {
       for (const facet of spilled) overflowItems.appendChild(facet.element);
     }
 
-    // A hidden host would strand its open panel.
+    // Hidden, the host would strand it.
     if (spilled.length === 0) overflowHost.querySelector("drop-down")?.close();
     overflowHost.classList.toggle("hidden", spilled.length === 0);
     const holdsApplied = spilled.some((facet) => facet.applied);

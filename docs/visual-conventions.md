@@ -186,9 +186,8 @@ name-column cap silently does nothing).
 The settings scaffold is the app's first `position: sticky` two-pane layout; it does not add
 scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate its contracts:
 
-- **Page frame:** a settings page is a normal `ContentContainer` child. The rail sits below
-  the overlay z-scale (z-10 popovers + the standalone combobox panel → z-20 hosted dropdown
-  panels → z-50 toasts): no z class. Since the navbar scrolls away, the sticky
+- **Page frame:** a settings page is a normal `ContentContainer` child. The rail takes no
+  z class: floating panels open in the top layer, and toasts sit at z-50. Since the navbar scrolls away, the sticky
   rail needs no navbar-height coupling. Put `sticky top-* self-start` on the direct grid-item
   host whose containing block spans the full settings content; a sticky child inside a
   content-height host has no travel. The nested `<nav>` owns the viewport `max-height` and

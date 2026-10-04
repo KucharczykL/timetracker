@@ -1,4 +1,4 @@
-// jsdom lacks the Popover API; this stands in.
+// Stands in for jsdom's missing Popover API.
 const openPopovers = new WeakSet<HTMLElement>();
 
 function showPopover(this: HTMLElement): void {

@@ -261,7 +261,7 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
 
 
 class SearchSelectHostDropdownTest(unittest.TestCase):
-    """The form combobox lives in an inline-combobox drop-down."""
+    """The form combobox lives in a drop-down."""
 
     def test_wraps_in_inline_combobox_dropdown(self):
         html = str(SearchSelect(name="games"))

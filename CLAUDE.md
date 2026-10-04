@@ -963,9 +963,8 @@ Submodules re-exported via `common/components/__init__.py`:
   the columns each mode's search reads
 - **`search_select.py`** — combobox family, all built on shared `_combobox_shell`
   and wired by `ts/elements/search-select.ts`: `SearchSelect()` (form combobox;
-  with `host_dropdown=True`, set by `SearchSelectWidget` form adapter, lives in
-  `<drop-down behavior="inline-combobox">` so its panel shares the one attachMenu
-  open/close/position/dismiss engine, #348; `create=PostCreate(url)` offers a `Create “…”`
+  lives in `<drop-down behavior="inline-combobox">` unless `panel=True`, so its
+  panel shares the one attachMenu engine, #348; `create=PostCreate(url)` offers a `Create “…”`
   row for a query no loaded label **equals**, which POSTs `{name, ...params}`
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
@@ -1553,6 +1552,16 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   blur never scrolls away and attachMenu's `max-height` shrinks the scroller.
   Children, `content_attributes` and `content_class` go to the scroller; never
   hand-write a panel that scrolls itself.
+- **A floating panel opens in the top layer** (#544): every hidden panel,
+  tooltip and calendar popup carries `popover="manual"` beside `hidden`, which
+  stays its state; no `absolute`, no `z-*`. Show and hide through
+  `showInTopLayer`/`hideFromTopLayer` and push/remove a `Surface` in
+  `ts/elements/surface-stack.ts`, which alone owns Escape (topmost first,
+  marked spent), the outside press (pointerdown then pointerup) and single
+  open. A modal sheet is a `modal` surface; Escape stays its native `cancel`.
+  Never `popover="auto"`: its light dismiss closes a combobox on a click in
+  its own input. Contract is
+  [Floating surfaces in the top layer](docs/superpowers/specs/2026-10-03-issue-544-top-layer-surfaces-design.md)
 - **Read settings via `config()`** from `timetracker/config.py`, never bare
   `os.environ.get` in `settings.py`. Declare `cast`/`allow_file`/`required_in_prod`
   explicitly. Container-bootstrap flags belong in `entrypoint.sh`.

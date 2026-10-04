@@ -32,9 +32,10 @@ Facts that matter to consumers:
 
 Every open path fires the same event: toggle click, keyboard (Enter/Space/
 ArrowDown on the toggle), hover-open submenus, and programmatic
-`controller.open()`. Likewise every close path (outside click, Escape, Tab,
-item activation, single-open coordination, `DropdownElement.close()`) fires
-`dropdown:hide`.
+`controller.open()`. Likewise every close path (outside press, Escape, Tab,
+item activation, another panel opening, `DropdownElement.close()`) fires
+`dropdown:hide`. The surface stack (`ts/elements/surface-stack.ts`) owns
+the outside press, Escape and single open.
 
 ## Consuming from a registered behavior (preferred)
 
