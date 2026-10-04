@@ -2,6 +2,7 @@
 import { reportClientError } from "../client-errors.js";
 import { getCsrfToken } from "../csrf.js";
 import { readToastStackProps } from "../generated/props.js";
+import { MODAL_CHANGE, topModal } from "./modal-layer.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
 export type ToastType = (typeof TOAST_TYPES)[number];
@@ -280,16 +281,53 @@ function isToastMessage(payload: unknown): payload is ToastMessage {
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
+  /** Itself, or a region in the top modal. */
+  private container: HTMLElement = this;
 
   connectedCallback(): void {
     window.addEventListener("show-toast", this.onShowToast);
     window.addEventListener("remove-toast", this.onRemoveToast);
+    window.addEventListener(MODAL_CHANGE, this.onModalChange);
+    this.rehost();
     this.readDjangoMessages();
   }
 
   disconnectedCallback(): void {
     window.removeEventListener("show-toast", this.onShowToast);
     window.removeEventListener("remove-toast", this.onRemoveToast);
+    window.removeEventListener(MODAL_CHANGE, this.onModalChange);
+  }
+
+  private readonly onModalChange = (): void => this.rehost();
+
+  /** The page under a modal is inert. */
+  private rehost(): void {
+    const dialog = topModal();
+    const previous = this.container;
+    const next = dialog ? this.buildRegion() : this;
+    if (next === previous) return;
+    for (const toast of this.store.toasts) {
+      const node = this.nodes.get(toast.id);
+      if (node) next.appendChild(node);
+      // A move fires no mouseleave or focusout.
+      this.store.setHovered(toast.id, false);
+      this.store.setFocused(toast.id, false);
+    }
+    // Filled first: moved nodes announce nothing.
+    dialog?.appendChild(next);
+    if (previous !== this) previous.remove();
+    this.container = next;
+  }
+
+  private buildRegion(): HTMLElement {
+    const region = document.createElement("div");
+    region.className = readToastStackProps(this).modalRegionClass;
+    for (const attribute of this.attributes) {
+      if (attribute.name === "role" || attribute.name.startsWith("aria-")) {
+        region.setAttribute(attribute.name, attribute.value);
+      }
+    }
+    return region;
   }
 
   private readonly onShowToast = (event: Event): void => {
@@ -338,7 +376,7 @@ class ToastStackElement extends HTMLElement {
       if (!node) {
         node = this.buildToast(toast);
         this.nodes.set(toast.id, node);
-        this.appendChild(node);
+        this.container.appendChild(node);
       }
       this.updateToast(node, toast);
     }

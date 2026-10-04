@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "../toast.js";
+import { attachModal, type Modal } from "./modal-layer.js";
 import { pushSurface } from "./surface-stack.js";
 import "./toast-stack.js";
 
@@ -355,5 +356,81 @@ describe("an action", () => {
     form.querySelector<HTMLButtonElement>("button[type=submit]")!.click();
 
     expect(toast.classList.contains("opacity-0")).toBe(false);
+  });
+});
+
+describe("under a modal", () => {
+  const STACK = `<toast-stack role="region" aria-label="Notifications" aria-live="polite"
+    aria-atomic="false" modal-region-class="region-look"></toast-stack>`;
+
+  function mountModal(): { dialog: HTMLDialogElement; modal: Modal } {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("data-modal", "");
+    dialog.innerHTML = "<div><button>Inside</button></div>";
+    document.body.append(dialog);
+    return { dialog, modal: attachModal(dialog) };
+  }
+
+  function region(dialog: HTMLDialogElement): HTMLElement | null {
+    return dialog.querySelector<HTMLElement>(".region-look");
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = STACK;
+  });
+
+  it("moves the toasts into a region in the top modal", () => {
+    show({ message: "Saved" });
+    const { dialog, modal } = mountModal();
+    modal.open();
+    const hosted = region(dialog)!;
+    expect(hosted.parentElement).toBe(dialog);
+    expect(toasts()[0].parentElement).toBe(hosted);
+    expect(hosted.getAttribute("role")).toBe("region");
+    expect(hosted.getAttribute("aria-label")).toBe("Notifications");
+    expect(hosted.getAttribute("aria-live")).toBe("polite");
+    expect(hosted.getAttribute("aria-atomic")).toBe("false");
+  });
+
+  it("puts a new toast in the top modal", () => {
+    const { dialog, modal } = mountModal();
+    modal.open();
+    show({ message: "Saved" });
+    expect(toasts()[0].closest("dialog")).toBe(dialog);
+  });
+
+  it("follows the top modal and back to the page", () => {
+    show([{ message: "one" }, { message: "two" }]);
+    const lower = mountModal();
+    const upper = mountModal();
+    lower.modal.open();
+    upper.modal.open();
+    expect(region(lower.dialog)).toBeNull();
+    expect(toasts().every((toast) => toast.closest("dialog") === upper.dialog)).toBe(true);
+    upper.modal.close();
+    expect(toasts().every((toast) => toast.closest("dialog") === lower.dialog)).toBe(true);
+    lower.modal.close();
+    const stack = document.querySelector("toast-stack")!;
+    expect(toasts().map(messageOf)).toEqual(["one", "two"]);
+    expect(toasts().every((toast) => toast.parentElement === stack)).toBe(true);
+    expect(region(lower.dialog)).toBeNull();
+  });
+
+  it("clears a hover the move hides", () => {
+    show({ message: "Saved", duration: 1_000 });
+    toasts()[0].dispatchEvent(new MouseEvent("mouseenter"));
+    const { modal } = mountModal();
+    modal.open();
+    vi.advanceTimersByTime(1_000 + 300);
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it("hosts in a modal open before it connects", () => {
+    document.body.innerHTML = "";
+    const { dialog, modal } = mountModal();
+    modal.open();
+    document.body.insertAdjacentHTML("beforeend", STACK);
+    show({ message: "Saved" });
+    expect(toasts()[0].closest("dialog")).toBe(dialog);
   });
 });

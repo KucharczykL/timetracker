@@ -3860,6 +3860,17 @@ class BottomCornerTest(SimpleTestCase):
         # Above the line: a toast answers the act.
         self.assertIn("z-50", TOAST_STACK_CLASS)
 
+    def test_toasts_under_a_modal_take_the_top_edge(self):
+        """A bottom sheet's panel owns the foot on a phone."""
+        from common.components.toast import TOAST_MODAL_REGION_CLASS, ToastStack
+
+        self.assertIn("top-0", TOAST_MODAL_REGION_CLASS)
+        self.assertIn("env(safe-area-inset-top)", TOAST_MODAL_REGION_CLASS)
+        self.assertNotIn("bottom-", TOAST_MODAL_REGION_CLASS)
+        self.assertIn(
+            f'modal-region-class="{TOAST_MODAL_REGION_CLASS}"', str(ToastStack())
+        )
+
     def test_the_version_stamp_stands_in_the_page_flow(self):
         """It is the page's last line, so nothing overlays a sticky line."""
         from common.layout import VERSION_STAMP_CLASS
