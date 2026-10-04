@@ -36,8 +36,9 @@ hides a host closes its `<drop-down>` first.
 A controller pushes a `Surface` when it opens and removes it when it closes.
 A press in its host is a press inside.
 
-- **Single open.** A `panel` or a `modal` closes each surface whose host does
-  not contain the new host. A `hint` closes nothing.
+- **Single open.** A `panel` or a `modal` closes each non-modal surface whose
+  host does not contain the new host. A `hint` closes nothing. A push never
+  closes a `modal`: modals nest, and the modal layer closes them.
 - **Nested close.** A removal closes the surfaces in its host first.
 - **Escape.** One capture listener on `window` closes the topmost surface, so
   a tooltip closes before the panel under it. A panel calls `restoreFocus`
@@ -53,8 +54,8 @@ A press in its host is a press inside.
 - **Failure.** A `close` that throws is reported, and it still leaves the
   stack.
 
-`attachMenu` pushes a `panel`. A tooltip pushes a `hint`. The bottom sheet
-pushes a `modal`.
+`attachMenu` pushes a `panel`. A tooltip pushes a `hint`. The modal layer
+(`ts/elements/modal-layer.ts`) pushes a `modal`.
 
 ## Why `manual`
 
@@ -62,14 +63,8 @@ An `auto` popover closes a combobox on a press in its own input, and a
 toggle button reopens it after the press closes it. Thus each surface is
 `manual`.
 
-## SearchSelect
-
-A SearchSelect lives in `<drop-down behavior="inline-combobox">`, or in a
-dialog panel with `panel=True`. When its host closes, the widget resets
-`aria-expanded` and the active option.
-
 ## Limits
 
 The last surface shown paints on top. Thus a tooltip shown after a panel
-covers it, and an open panel paints above the toasts. Under a modal dialog a toast is
-inert, and the top layer does not change that.
+covers it, and an open panel paints above the toasts. Under a modal dialog
+the toasts move into the top modal, so they stay usable.

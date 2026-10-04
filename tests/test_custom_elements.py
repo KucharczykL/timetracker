@@ -225,6 +225,7 @@ class BottomSheetTest(unittest.TestCase):
         self.assertIn('aria-expanded="false"', html)
         dialog_start = html.index("<dialog")
         dialog_tag = html[dialog_start : html.index(">", dialog_start) + 1]
+        self.assertIn('data-modal=""', dialog_tag)
         self.assertIn('data-bottom-sheet=""', dialog_tag)
         self.assertIn('data-menu=""', dialog_tag)
         self.assertIn('aria-labelledby="settings-sheet-title"', dialog_tag)
@@ -232,7 +233,7 @@ class BottomSheetTest(unittest.TestCase):
         self.assertNotIn('role="menu"', html)
         self.assertNotIn('role="menuitem"', html)
         self.assertIn('data-sheet-panel=""', html)
-        self.assertIn('data-sheet-dismiss=""', html)
+        self.assertIn('data-modal-dismiss=""', html)
         self.assertIn('aria-label="Close settings sections"', html)
         self.assertIn('data-sheet-test-body=""', html)
         self.assertIn("dist/elements/drop-down.js", collect_media(node).js)

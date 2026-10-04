@@ -26,9 +26,9 @@ async function mountNav(): Promise<NavFixture> {
       <div data-section-nav-sheet hidden>
         <drop-down behavior="sheet" placement="bottom-start" submenu="false">
           <button data-toggle aria-expanded="false">Settings sections</button>
-          <dialog data-menu data-bottom-sheet>
+          <dialog data-menu data-modal data-bottom-sheet>
             <div data-sheet-panel>
-              <button data-sheet-dismiss>Close</button>
+              <button data-modal-dismiss>Close</button>
               <nav data-section-nav-sheet-destination></nav>
             </div>
           </dialog>

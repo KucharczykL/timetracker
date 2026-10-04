@@ -2,6 +2,7 @@
 import { reportClientError } from "../client-errors.js";
 import { getCsrfToken } from "../csrf.js";
 import { readToastStackProps } from "../generated/props.js";
+import { MODAL_CHANGE, topModal } from "./modal-layer.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
 export type ToastType = (typeof TOAST_TYPES)[number];
@@ -277,19 +278,83 @@ function isToastMessage(payload: unknown): payload is ToastMessage {
   );
 }
 
+interface ToastHosting {
+  dialog: HTMLDialogElement;
+  region: HTMLElement;
+}
+
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
+  /** The region and the modal holding it. */
+  private hosting: ToastHosting | null = null;
+  /** Its own aria-live, muted while hosting. */
+  private politeness: string | null = null;
+
+  private get container(): HTMLElement {
+    if (this.hosting && !this.hosting.region.isConnected) {
+      reportClientError("toast-stack", "modal region was detached", { toast: false });
+      this.moveInto(topModal());
+    }
+    return this.hosting?.region ?? this;
+  }
 
   connectedCallback(): void {
     window.addEventListener("show-toast", this.onShowToast);
     window.addEventListener("remove-toast", this.onRemoveToast);
+    window.addEventListener(MODAL_CHANGE, this.onModalChange);
+    this.rehost();
     this.readDjangoMessages();
   }
 
   disconnectedCallback(): void {
     window.removeEventListener("show-toast", this.onShowToast);
     window.removeEventListener("remove-toast", this.onRemoveToast);
+    window.removeEventListener(MODAL_CHANGE, this.onModalChange);
+    this.moveInto(null);
+  }
+
+  private readonly onModalChange = (): void => this.rehost();
+
+  /** Toasts follow the top modal. */
+  private rehost(): void {
+    const dialog = topModal();
+    if (dialog === (this.hosting?.dialog ?? null)) return;
+    this.moveInto(dialog);
+  }
+
+  private moveInto(dialog: HTMLDialogElement | null): void {
+    const previous = this.hosting;
+    if (!previous && !dialog) return;
+    if (!previous) this.politeness = this.getAttribute("aria-live");
+    const next = dialog ? { dialog, region: this.buildRegion() } : null;
+    const container = next?.region ?? this;
+    for (const toast of this.store.toasts) {
+      const node = this.nodes.get(toast.id);
+      if (node) container.appendChild(node);
+      // A move fires no mouseleave or focusout.
+      this.store.setHovered(toast.id, false);
+      this.store.setFocused(toast.id, false);
+    }
+    // A filled region announces no moves.
+    if (next) next.dialog.appendChild(next.region);
+    previous?.region.remove();
+    this.hosting = next;
+    // One polite live region at a time.
+    if (next) this.setAttribute("aria-live", "off");
+    else if (this.politeness !== null) this.setAttribute("aria-live", this.politeness);
+  }
+
+  private buildRegion(): HTMLElement {
+    const region = document.createElement("div");
+    region.className = readToastStackProps(this).modalRegionClass;
+    for (const attribute of this.attributes) {
+      if (attribute.name === "role" || attribute.name.startsWith("aria-")) {
+        region.setAttribute(attribute.name, attribute.value);
+      }
+    }
+    if (this.politeness !== null) region.setAttribute("aria-live", this.politeness);
+    return region;
   }
 
   private readonly onShowToast = (event: Event): void => {
@@ -338,7 +403,7 @@ class ToastStackElement extends HTMLElement {
       if (!node) {
         node = this.buildToast(toast);
         this.nodes.set(toast.id, node);
-        this.appendChild(node);
+        this.container.appendChild(node);
       }
       this.updateToast(node, toast);
     }

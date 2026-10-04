@@ -36,6 +36,7 @@ from common.components.core import (
     Node,
     as_children,
 )
+from common.components.modal import MODAL_ATTRIBUTES, ModalDialog
 from common.components.primitives import (
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
@@ -47,7 +48,6 @@ from common.components.primitives import (
     ButtonSize,
     ControlButton,
     ControlLink,
-    Dialog,
     Div,
     EllipsisTrigger,
     Fieldset,
@@ -1269,6 +1269,22 @@ def Dropdown(
     )
 
 
+#: Only a close fades; uncovering stays instant.
+_SHEET_DIALOG_CLASS = (
+    "group/sheet backdrop:opacity-0 "
+    "data-[sheet-state=opening]:backdrop:opacity-100 "
+    "data-[sheet-state=open]:backdrop:opacity-100 "
+    "motion-safe:data-[sheet-state=closing]:backdrop:transition-opacity "
+    "motion-safe:data-[sheet-state=closing]:backdrop:duration-200 "
+    "motion-safe:data-[sheet-state=closing]:backdrop:ease-out"
+)
+#: The slide; the controller waits on translate.
+_SHEET_PANEL_MOTION_CLASS = (
+    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0 "
+    "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
+)
+
+
 def BottomSheet(
     *,
     trigger_element: Element,
@@ -1286,24 +1302,23 @@ def BottomSheet(
     title_id = f"{id}-title"
     close_button = ControlButton(
         [
-            ("data-sheet-dismiss", ""),
+            (MODAL_ATTRIBUTES["dismiss"], ""),
             ("aria-label", close_label),
             ("class", "shrink-0 focus:ring-inset"),
         ],
         variant="ghost",
     )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
-    target = Dialog(
-        [
-            ("data-bottom-sheet", ""),
-            ("aria-labelledby", title_id),
-        ],
+    target = ModalDialog(
+        [("data-bottom-sheet", ""), ("aria-labelledby", title_id)],
+        align="end",
+        class_=_SHEET_DIALOG_CLASS,
     )[
         Div(
             data_sheet_panel="",
             class_=(
                 "flex w-full max-h-[min(80dvh,32rem)] flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
-                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
+                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
         )[
             Div(

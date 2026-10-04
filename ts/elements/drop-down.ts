@@ -2,6 +2,7 @@ import { reportClientError } from "../client-errors.js";
 import { readDropdownProps } from "../generated/props.js";
 import { getBehavior } from "./dropdown-behaviors.js";
 import { attachMenu, MenuController, MenuPlacement } from "./menu-behavior.js";
+import { ownChild } from "./own-child.js";
 // Side-effect imports register the built-in behaviors before connectedCallback.
 import "./behaviors/menu.js";
 import "./behaviors/select.js";
@@ -11,15 +12,6 @@ import "./behaviors/choice-grid.js";
 import "./behaviors/column-picker.js";
 import "./behaviors/date-calendar.js";
 import "./behaviors/sheet.js";
-
-// Finds the element's own [data-toggle]/[data-menu], ignoring any that belong to
-// a nested <drop-down> (so a sub-dropdown never cross-wires its parent).
-function ownChild(host: HTMLElement, selector: string): HTMLElement | null {
-  for (const match of host.querySelectorAll<HTMLElement>(selector)) {
-    if (match.closest("drop-down") === host) return match;
-  }
-  return null;
-}
 
 // The one generic dropdown element. A registered behavior may provide its own
 // controller (the modal sheet does); otherwise attachMenu owns the usual
