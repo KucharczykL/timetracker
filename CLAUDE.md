@@ -1668,6 +1668,15 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `PlayerGameNotTracked` is one exception: write path takes it, tracks game,
   states fact again, so 404 would end request program repairs. Contract is
   [Where a scope miss is answered](docs/superpowers/specs/2026-09-20-issue-1167-1174-scope-boundary-design.md)
+- **A command's value object is a `FingerprintedValue`** — a command field
+  holding more than a scalar holds a `@dataclass(frozen=True, slots=True)`
+  subclass of `FingerprintedValue` (`games/events/idempotency.py`) with a
+  written-out `fingerprint_word` `ClassVar`; never a `NamedTuple`, which
+  `json` writes untagged (`tests/test_command_value_objects.py` refuses
+  one). A field rename, a new field or a new word moves digests: bump
+  `FINGERPRINT_VERSION` and re-record `tests/test_endpoint_fingerprints.py`.
+  Contract is
+  [Value objects](docs/superpowers/specs/2026-10-04-issue-1489-stated-wrappers-nominal-design.md)
 - **A command scopes a resolve by calling one** — resolve UUID command carries with
   `library_row` from `games/commands/scope.py`, never `Model.objects.get(...)`
   inside a `build`. It applies `library=context.library` itself, so no caller holds
