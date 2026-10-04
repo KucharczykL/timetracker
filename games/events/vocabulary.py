@@ -34,6 +34,8 @@ from timetracker.temporal import TemporalValue
 
 type AggregateType = str  # "playthrough"
 type EventType = str  # "library.playersession.created"
+#: Where a registered class is defined.
+type DefinitionSite = tuple[str, str]  # ("games.commands.session", "CreateSession")
 #: Path from payload to one field.
 type KeyPath = tuple[str, ...]
 #: A `type` alias's name: "ReferenceId".

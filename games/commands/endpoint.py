@@ -10,7 +10,7 @@ from games.end_ways import EndWay
 from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import Endpoint, OpeningEndpoint, ResumableEndpoint
 from games.events.dispatch import CommandRejected
-from games.events.idempotency import FingerprintedValue
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.vocabulary import NewEvent, Unchanged
 from games.reads.endpoints import stated
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
@@ -25,7 +25,7 @@ class ActStatement(FingerprintedValue):
     states no ActStatement at all.
     """
 
-    fingerprint_word: ClassVar[str] = "act_statement"
+    fingerprint_word: ClassVar[FingerprintWord] = "act_statement"
 
     #: None is a day nobody wrote down.
     when: TemporalValue | None
@@ -36,7 +36,7 @@ class ActStatement(FingerprintedValue):
 class WayActStatement(FingerprintedValue):
     """An act in one way, and its note."""
 
-    fingerprint_word: ClassVar[str] = "way_act_statement"
+    fingerprint_word: ClassVar[FingerprintWord] = "way_act_statement"
 
     when: TemporalValue | None
     way: EndWay

@@ -29,27 +29,34 @@ the three timing statements are told apart by their length alone.
    `__name__`, as the command registry does: `slots=True` rebuilds the
    class and fires the hook a second time.
 4. The encoder writes a fingerprinted value as
-   `{"value": <word>, "fields": {<name>: <value>}}`, the shape
-   `canonical_command_input` gives a command. `json` encodes each field
+   `{"value": <word>, "fields": {<name>: <value>}}`. A command's input has
+   the same shape under the key `command`. `json` encodes each field
    again. A tagged scalar is a two-item array, so no word collides with a
-   tag word. A field order change moves no digest.
-5. The encoder refuses every other dataclass, as it refuses every other
+   tag word. A field order change moves no digest. A field rename, a new
+   field or a new word moves every digest that holds the value, and needs
+   a version bump.
+5. The encoder reads the word off the class. It refuses a subclass that is
+   no dataclass, and one that declares `fingerprint_word` as a field: a
+   caller could restate that word. mypy refuses the second as well.
+6. The encoder refuses every other dataclass, as it refuses every other
    unknown type.
-6. `FINGERPRINT_VERSION` is 5.
+7. `FINGERPRINT_VERSION` is 5.
 
 ## Why the bump is free
 
 A record stored under another version replays its key unchecked
-(`idempotent_append`). The mismatch check lapses for every key stored
-before the deploy, on every command. A key belongs to one request, and a
-client repeats it within seconds. `tests/test_endpoint_fingerprints.py`
-records the new digests.
+(`idempotent_append`). A repeated key therefore still answers with what it
+did. Only the mismatch check lapses, for every key stored before the
+deploy, on every command. `tests/test_endpoint_fingerprints.py` records
+the new digests.
 
 ## Guard
 
 `json` writes a tuple itself, so the encoder cannot refuse a `NamedTuple`.
 A test walks the type of every `Command` field, through aliases, unions
-and nested value objects, and refuses a `NamedTuple` it reaches.
+and nested value objects. It refuses a `NamedTuple`, a dataclass with no
+word, and a `FingerprintedValue` that is no dataclass. It asserts that it
+reaches known nested value objects, so an empty walk fails.
 
 ## Callers
 

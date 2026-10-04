@@ -6,6 +6,9 @@ from dataclasses import is_dataclass
 from typing import ClassVar, TypeAliasType, get_args, get_origin, get_type_hints
 
 import games.commands
+from games.commands.endpoint import ActStatement
+from games.commands.libraryentry import EntryStatement
+from games.commands.playersession import StatedDevice, TimedTiming
 from games.commands.purchase import UNDATED_PURCHASE, UNKNOWN_PRICE
 from games.events.dispatch import Command
 from games.events.idempotency import FingerprintedValue
@@ -52,6 +55,13 @@ def _value_classes() -> set[type]:
     return seen
 
 
+def test_the_walk_reaches_nested_value_objects():
+    """An empty walk would pass both guards."""
+    assert {StatedDevice, TimedTiming, EntryStatement, ActStatement} <= (
+        _value_classes()
+    )
+
+
 def test_no_command_field_holds_a_named_tuple():
     """json writes a tuple itself, untagged."""
     named_tuples = {
@@ -73,6 +83,16 @@ def test_every_value_object_a_command_holds_states_a_word():
     }
 
     assert unworded == set()
+
+
+def test_every_value_object_is_a_dataclass():
+    undecorated = {
+        value.__qualname__
+        for value in _value_classes()
+        if issubclass(value, FingerprintedValue) and not is_dataclass(value)
+    }
+
+    assert undecorated == set()
 
 
 def test_value_objects_with_equal_fields_are_not_equal():

@@ -1,12 +1,17 @@
 """Commands keep their recorded fingerprints."""
 
 import uuid
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
 from games.commands.device import CreateDevice
 from games.commands.endpoint import WayActStatement
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    RecordHistoricalPlaytime,
+)
 from games.commands.libraryentry import (
     CorrectEntryAccessEnd,
     CorrectEntryAcquisition,
@@ -20,9 +25,13 @@ from games.commands.libraryentry import (
     VoidEntryAccessEnd,
 )
 from games.commands.playersession import (
+    CorrectedTiming,
+    CreateSession,
     DescribeSession,
+    DurationOnlyTiming,
     StatedDevice,
     StatedRelease,
+    TimedTiming,
 )
 from games.commands.playthrough import (
     ActStatement,
@@ -49,6 +58,7 @@ from games.commands.purchase import (
 from games.end_ways import EndWay
 from games.events.dispatch import Command, canonical_command_input
 from games.events.idempotency import fingerprint_command_input
+from games.models import HistoricalPlaytimeProvenance
 from timetracker.temporal import TemporalValue
 
 RUN = uuid.UUID("01890000-0000-7000-8000-000000000001")
@@ -59,6 +69,7 @@ PURCHASE = uuid.UUID("01890000-0000-7000-8000-000000000005")
 SESSION = uuid.UUID("01890000-0000-7000-8000-000000000006")
 DEVICE = uuid.UUID("01890000-0000-7000-8000-000000000007")
 MAY = TemporalValue.parse("2021-05")
+NOON = datetime(2021, 5, 1, 12, tzinfo=UTC)
 
 COMMANDS: dict[str, Command] = {
     "start": StartPlaythrough(playthrough_id=RUN, when=MAY, note="began"),
@@ -142,6 +153,35 @@ COMMANDS: dict[str, Command] = {
     "describe_session_to_none": DescribeSession(
         session_id=SESSION, device=StatedDevice(None), release=StatedRelease(None)
     ),
+    "create_timed_session": CreateSession(
+        playthrough_id=RUN,
+        timing=TimedTiming(started_at=NOON, day_zone="Europe/Prague"),
+    ),
+    "create_duration_only_session": CreateSession(
+        playthrough_id=RUN,
+        timing=DurationOnlyTiming(day=date(2021, 5, 1), duration=timedelta(hours=1)),
+    ),
+    "create_corrected_session": CreateSession(
+        playthrough_id=RUN,
+        timing=CorrectedTiming(
+            started_at=NOON,
+            ended_at=NOON + timedelta(hours=2),
+            duration=timedelta(hours=1),
+            day_zone="Europe/Prague",
+        ),
+    ),
+    "record_historical_playtime": RecordHistoricalPlaytime(
+        statement=HistoricalPlaytimeStatement(
+            duration=timedelta(hours=100),
+            when="2005",
+            provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+            playthrough_ids=(RUN,),
+            device_id=None,
+            release_id=RELEASE,
+            emulated=False,
+            note="",
+        )
+    ),
 }
 
 RECORDED: dict[str, str] = {
@@ -211,6 +251,10 @@ RECORDED: dict[str, str] = {
     "describe_session": (
         "888b5d7e18c2403242f9c9fe79cb530f86041fbe1f2b6647cc38616cf73a1983"
     ),
+    "create_timed_session": "07510c52e199fb6bbc12f96791e329d714e15f2cbdfbec4611424de395b15fb1",
+    "create_duration_only_session": "af2b3846e52d6ac1e6bfdc9a48989fd6fba19026388c75345cbc4631bcbc9bab",
+    "create_corrected_session": "538e8bde512e330ea5c74a7972d2064fce13a73f56c541fc67e060c8d84fe5d6",
+    "record_historical_playtime": "8b944a87b58091b5244c42417916c81e76e67f9bcaed5ed51e0b1bb346f67c53",
     "describe_session_to_none": (
         "0db9ea775239b97d760c9f04c3be5a5b0e2b3449246ece939432a8a854b4e0fa"
     ),

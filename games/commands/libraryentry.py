@@ -36,7 +36,7 @@ from games.events.dispatch import (
     CommandRejected,
     RowUnreadable,
 )
-from games.events.idempotency import FingerprintedValue
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.libraryentry import (
     EntryAccessValue,
     EntryFormatValue,
@@ -241,7 +241,7 @@ def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
 class EntryStatement(FingerprintedValue):
     """One copy to record."""
 
-    fingerprint_word: ClassVar[str] = "entry_statement"
+    fingerprint_word: ClassVar[FingerprintWord] = "entry_statement"
 
     release_id: uuid.UUID
     access: EntryAccessValue

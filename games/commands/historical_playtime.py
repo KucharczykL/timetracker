@@ -36,7 +36,7 @@ from games.events.historical_playtime import (
     historicalplaytime_restated,
     historicalplaytime_restored,
 )
-from games.events.idempotency import FingerprintedValue
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
@@ -117,7 +117,7 @@ def when_sentence(error: TemporalValueParseError) -> str:
 class HistoricalPlaytimeStatement(FingerprintedValue):
     """One record, as a person states it."""
 
-    fingerprint_word: ClassVar[str] = "historical_playtime_statement"
+    fingerprint_word: ClassVar[FingerprintWord] = "historical_playtime_statement"
 
     duration: timedelta
     #: Canonical temporal text; None is unknown.

@@ -31,7 +31,7 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
-from games.events.idempotency import FingerprintedValue
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.playersession import (
     TimingPayload,
     ZoneName,
@@ -87,7 +87,7 @@ DURATION_RESOLUTION = timedelta(seconds=1)
 class TimedTiming(FingerprintedValue):
     """An exact start, an end once there is one, no override."""
 
-    fingerprint_word: ClassVar[str] = "timed_timing"
+    fingerprint_word: ClassVar[FingerprintWord] = "timed_timing"
 
     started_at: datetime
     #: The zone this library counts the session's day in.
@@ -102,7 +102,7 @@ class TimedTiming(FingerprintedValue):
 class DurationOnlyTiming(FingerprintedValue):
     """A written calendar day and a duration. No instants."""
 
-    fingerprint_word: ClassVar[str] = "duration_only_timing"
+    fingerprint_word: ClassVar[FingerprintWord] = "duration_only_timing"
 
     day: date
     duration: timedelta
@@ -112,7 +112,7 @@ class DurationOnlyTiming(FingerprintedValue):
 class CorrectedTiming(FingerprintedValue):
     """Both instants, and a duration that replaces the elapsed time."""
 
-    fingerprint_word: ClassVar[str] = "corrected_timing"
+    fingerprint_word: ClassVar[FingerprintWord] = "corrected_timing"
 
     started_at: datetime
     ended_at: datetime
@@ -709,7 +709,7 @@ class CorrectSessionTiming(Command):
 class StatedDevice(FingerprintedValue):
     """Device or none; bare None is unstated."""
 
-    fingerprint_word: ClassVar[str] = "stated_device"
+    fingerprint_word: ClassVar[FingerprintWord] = "stated_device"
 
     device_id: uuid.UUID | None
 
@@ -718,7 +718,7 @@ class StatedDevice(FingerprintedValue):
 class StatedRelease(FingerprintedValue):
     """Release or none; bare None is unstated."""
 
-    fingerprint_word: ClassVar[str] = "stated_release"
+    fingerprint_word: ClassVar[FingerprintWord] = "stated_release"
 
     release_id: uuid.UUID | None
 

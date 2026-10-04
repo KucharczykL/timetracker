@@ -20,6 +20,7 @@ from games.events.conflicts import CommandConflict
 from games.events.idempotency import (
     FINGERPRINT_VERSION,
     FingerprintedValue,
+    FingerprintWord,
     IdempotencyKeyMismatch,
     ReplayedAppend,
     UnchangedAppend,
@@ -453,7 +454,7 @@ def test_an_unsupported_value_is_refused():
 
 @dataclass(frozen=True, slots=True)
 class _Stated(FingerprintedValue):
-    fingerprint_word: ClassVar[str] = "probe_stated"
+    fingerprint_word: ClassVar[FingerprintWord] = "probe_stated"
 
     key: uuid.UUID | None
     when: TemporalValue | None
@@ -461,7 +462,7 @@ class _Stated(FingerprintedValue):
 
 @dataclass(frozen=True, slots=True)
 class _OtherStated(FingerprintedValue):
-    fingerprint_word: ClassVar[str] = "probe_other_stated"
+    fingerprint_word: ClassVar[FingerprintWord] = "probe_other_stated"
 
     key: uuid.UUID | None
     when: TemporalValue | None
@@ -493,16 +494,44 @@ def test_two_fingerprinted_values_with_equal_fields_differ():
     ) != fingerprint_command_input({"statement": (key, None)})
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
-        pytest.param(_Unworded(None), id="unworded-dataclass"),
-        pytest.param(_Stated, id="fingerprinted-class"),
-    ],
-)
-def test_a_dataclass_without_a_word_is_refused(value: Any):
-    with pytest.raises(TypeError):
-        fingerprint_command_input({"statement": value})
+def test_a_dataclass_without_a_word_is_refused():
+    with pytest.raises(TypeError, match="no canonical form"):
+        fingerprint_command_input({"statement": _Unworded(None)})
+
+
+def test_a_value_class_is_not_a_value():
+    with pytest.raises(TypeError, match="no canonical form"):
+        fingerprint_command_input({"statement": _Stated})
+
+
+class _NoDataclass(FingerprintedValue):
+    fingerprint_word: ClassVar[FingerprintWord] = "probe_no_dataclass"
+
+
+def test_a_fingerprinted_value_must_be_a_dataclass():
+    with pytest.raises(TypeError, match="no dataclass"):
+        fingerprint_command_input({"statement": _NoDataclass()})
+
+
+@dataclass(frozen=True)
+class _WordAsField(FingerprintedValue):
+    fingerprint_word: str = "probe_word_as_field"  # type: ignore[misc]
+
+
+def test_a_word_written_as_a_field_is_refused():
+    """A caller could otherwise restate the word."""
+    with pytest.raises(TypeError, match="as a field"):
+        fingerprint_command_input(
+            {"statement": _WordAsField(fingerprint_word="probe_stated")}
+        )
+
+
+def test_a_value_subclass_states_its_own_word():
+    with pytest.raises(TypeError, match="states no fingerprint_word"):
+
+        @dataclass(frozen=True, slots=True)
+        class Inheriting(_Stated):
+            pass
 
 
 def test_a_fingerprinted_value_must_state_a_word():
@@ -518,7 +547,7 @@ def test_two_classes_cannot_claim_one_word():
 
         @dataclass(frozen=True, slots=True)
         class Impostor(FingerprintedValue):
-            fingerprint_word: ClassVar[str] = "probe_stated"
+            fingerprint_word: ClassVar[FingerprintWord] = "probe_stated"
 
 
 @pytest.mark.parametrize(

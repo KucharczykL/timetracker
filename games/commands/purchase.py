@@ -33,7 +33,7 @@ from games.events.dispatch import (
     CommandRejected,
     RowUnreadable,
 )
-from games.events.idempotency import FingerprintedValue
+from games.events.idempotency import FingerprintedValue, FingerprintWord
 from games.events.libraryentry import (
     ENTRY_ACCESS_END_EVENTS,
     LibraryEntryAccessEndPayload,
@@ -123,7 +123,7 @@ _CURRENCY = re.compile(CURRENCY_CODE)
 class StatedPrice(FingerprintedValue):
     """Amount and currency; blank exactly when unknown."""
 
-    fingerprint_word: ClassVar[str] = "stated_price"
+    fingerprint_word: ClassVar[FingerprintWord] = "stated_price"
 
     amount: Decimal | None
     currency: str
