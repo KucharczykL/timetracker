@@ -1144,7 +1144,6 @@ runs on it.
 - #1352, the Library screens (M3)
 - #1353, `Game.kind` and `Game.parent` (M7)
 - #1354, a Release on a session and a record
-- #1355, bulk end of access over entries
 - #1361, a toggle that hides prerelease play (after #1354)
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
@@ -1221,7 +1220,8 @@ runs on it.
 - #1432, the Library page as the one place for purchase data gaps, later
   a library-wide audit screen that absorbs P5b's review surface and
   #1418's report; after P5b, outside the stack, mockup first
-- #1355, bulk end of access over copies; ruled 2026-10-04 with #1345: one
+- #1355, bulk end of access over copies: done (PR #1502, merged
+  2026-10-04); ruled 2026-10-04 with #1345: one
   module `games/bulk_access_end.py` (statement, form over a `ways` tuple,
   offer/settle), #1355 builds it, #1345 declares the device act on it;
   the batch Undo guard is lifted out of the run acts into the shared bulk
