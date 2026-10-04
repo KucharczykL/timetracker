@@ -425,18 +425,28 @@ def hidden_world(world, set_user_setting):
 
 
 @pytest.mark.parametrize("year", [YEAR, None])
-def test_hidden_prerelease_play_keeps_every_link_on_its_figure(hidden_world, year):
+def test_hidden_prerelease_play_keeps_every_link_on_its_figure(
+    hidden_world, set_user_setting, year
+):
     library = hidden_world["library"]
     stats = _stats(hidden_world, year)
     scope = year if year is not None else "Alltime"
+    set_user_setting(library.user, "SHOW_PRERELEASE_PLAY", "show")
+    shown = _stats(hidden_world, year)
+    set_user_setting(library.user, "SHOW_PRERELEASE_PLAY", "hide")
 
-    for link, key, model in (
-        (stats_links.all_sessions(scope), "total_sessions", PlayerSession),
-        (stats_links.games_played(year), "total_games", Game),
-    ):
-        expected = _figure(stats, key)
-        if expected is not None:
-            assert _count(link, model, library) == expected, key
+    #: The demo session is gone from the figure.
+    assert stats["total_sessions"] == shown["total_sessions"] - 1
+    assert (
+        _count(stats_links.all_sessions(scope), PlayerSession, library)
+        == stats["total_sessions"]
+    )
+    if year is not None:
+        assert stats["total_games"] == shown["total_games"] - 1
+        assert (
+            _count(stats_links.games_played(year), Game, library)
+            == stats["total_games"]
+        )
     for builder, key, model in _FIGURE_LINKS:
         expected = _figure(stats, key)
         if expected is not None:

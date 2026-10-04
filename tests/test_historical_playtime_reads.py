@@ -117,12 +117,13 @@ def test_a_game_sums_only_its_own_records(owned_library, game, run):
 
 
 @pytest.mark.django_db
-def test_readable_records_read_platform_and_device_at_once(
+def test_readable_records_read_platform_device_and_runs_at_once(
     owned_library, run, django_assert_num_queries
 ):
     device = create_device(library=owned_library, name="Deck")
     record_row([run], duration=HOUR, when="2022", device=device)
-    with django_assert_num_queries(1):
+    #: The rows, then their runs.
+    with django_assert_num_queries(2):
         (record,) = readable_records(owned_library)
         assert record.player_game.game.platform is None
         assert record.device == device

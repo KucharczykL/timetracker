@@ -53,12 +53,12 @@ def _with_row_path(sessions: PlayerSessionQuerySet) -> PlayerSessionQuerySet:
 
 
 def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """One named session's row path: every row."""
+    """The row path over every row."""
     return _with_row_path(library_sessions(library))
 
 
 def listed_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """The row path lists read: shown rows."""
+    """The row path over shown rows."""
     return _with_row_path(shown_sessions(library))
 
 

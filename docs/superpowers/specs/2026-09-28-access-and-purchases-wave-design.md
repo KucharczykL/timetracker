@@ -372,8 +372,8 @@ on full editions, since a demo precedes the game by nature. And the
 toggle #1361 adds, one library setting stats and lists read alike, hides
 sessions and records on prerelease editions; it needs a session to name
 its Release, so it follows #1354. Its lesson: a view setting splits each
-scope in two, every row (`library_*`) for a resolve, an act or stored
-text, and shown rows (`shown_*`) for a figure or a list, and the filter
+scope in two, every row (`library_*`) for a resolve, a per-row act,
+the API or stored text, and shown rows (`shown_*`) for a figure or a list, and the filter
 context must take the shown one or a stats link stops counting its
 figure. A Trial is the
 full game, on its own Edition. An entry on a prerelease Edition states

@@ -54,13 +54,21 @@ DORMANT_AFTER_DAYS_CHOICES: Final[tuple[int, ...]] = (7, 14, 30, 60, 90, 180, 36
 DORMANT_AFTER_DAYS_OPTIONS: Final[tuple[SettingOption, ...]] = tuple(
     (days, f"{days} days") for days in DORMANT_AFTER_DAYS_CHOICES
 )
+
+
+class PrereleasePlay(StrEnum):
+    """Text, not bool: the live save round-trips."""
+
+    SHOW = "show"
+    HIDE = "hide"
+
+
 PRERELEASE_PLAY_CHOICES: Final[tuple[tuple[str, str], ...]] = (
-    ("show", "Show"),
-    ("hide", "Hide"),
+    (PrereleasePlay.SHOW, "Show"),
+    (PrereleasePlay.HIDE, "Hide"),
 )
-_PRERELEASE_PLAY_VALUES: Final[frozenset[str]] = frozenset(
-    value for value, _ in PRERELEASE_PLAY_CHOICES
-)
+
+
 THEME_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("system", "System"),
     ("light", "Light"),
@@ -224,7 +232,7 @@ def _validate_dormant_after_days(value: object) -> int:
 
 
 def _validate_prerelease_play(value: object) -> str:
-    if not isinstance(value, str) or value not in _PRERELEASE_PLAY_VALUES:
+    if not isinstance(value, str) or value not in PrereleasePlay:
         raise ValidationError(f"Prerelease play must be show or hide (got {value!r}).")
     return value
 
@@ -366,10 +374,10 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             apply_timing=ApplyTiming.LIVE,
             label="Show prerelease play",
             help_text=(
-                "Sessions and records on a demo, beta or test count in "
-                "statistics and show in lists."
+                "Whether sessions and records on a demo, beta or test count "
+                "in statistics and show in lists."
             ),
-            default_factory=lambda: "show",
+            default_factory=lambda: PrereleasePlay.SHOW.value,
             validator=_validate_prerelease_play,
             widget=SettingWidget.SELECT,
             choices=PRERELEASE_PLAY_CHOICES,

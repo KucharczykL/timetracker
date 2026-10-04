@@ -128,11 +128,8 @@ from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
 from games.reads.games_list import games_list_base
-from games.reads.historical_playtime_page import (
-    listed_records,
-    run_labels_for,
-)
-from games.reads.historical_playtime_records import RECORD_ORDER
+from games.reads.historical_playtime_page import run_labels_for
+from games.reads.historical_playtime_records import RECORD_ORDER, listed_records
 from games.reads.player_sessions import GAME, shown_sessions
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_activity import ActivityClock, activity_clock

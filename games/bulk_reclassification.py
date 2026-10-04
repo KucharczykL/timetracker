@@ -62,7 +62,7 @@ SHORT_MANY = (
 
 
 def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """The act's base: any length, ordinary run."""
+    """Every convertible row: any length, ordinary run."""
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         #: The bucket's hours name no run.

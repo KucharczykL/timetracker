@@ -4,35 +4,71 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from django.db.models import Q
+from devices import create_device
+from django.db.models import Q, QuerySet
 from django.urls import reverse
+from django.utils import timezone
 from entries import prerelease_release, record_entry
 from historical_playtime_rows import record_row
-from session_rows import timed_row, tracked_run
+from session_rows import duration_only_row, timed_row, tracked_run
 
+from games.bulk_reclassification import (
+    conversion_scope,
+    convertible_sessions,
+    reviewable_sessions,
+)
 from games.bulk_removal import record_resolution, record_scope
 from games.bulk_sessions import session_resolution, session_scope
 from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.commands.session_reclassification import statement_from_session
 from games.events.dispatch import dispatch
 from games.filters import filter_queryset_for_library
-from games.models import Game, HistoricalPlaytime, PlayerSession
+from games.models import (
+    Game,
+    HistoricalPlaytime,
+    PlayerSession,
+    Playthrough,
+    PlaythroughKind,
+)
 from games.reads.copy_figures import copy_counts
 from games.reads.days import DayInterval
-from games.reads.historical_playtime import historical_total
+from games.reads.device_departures import sessions_naming
+from games.reads.game_departures import game_departures
+from games.reads.historical_playtime import (
+    historical_by_month,
+    historical_by_platform,
+    historical_total,
+    historical_years,
+)
 from games.reads.play_figures import distinct_days, first_play, games_in_scope
-from games.reads.player_sessions import listed_sessions, shown_sessions
+from games.reads.player_sessions import (
+    SessionDays,
+    game_session_days,
+    listed_sessions,
+    shown_sessions,
+)
 from games.reads.playtime import (
     PlaytimeBreakdown,
     game_playtime,
+    game_playtime_between,
     game_tracked_between,
     played_years,
     playtime_between_each,
     total_playtime,
 )
-from games.reads.prerelease_play import shown_play, shows_prerelease_play
+from games.reads.prerelease_play import (
+    PRERELEASE_PLAY,
+    shown_play,
+    shows_prerelease_play,
+)
+from games.reads.releases import played_releases
 from games.reads.session_figures import longest_session, session_count
+from games.reads.session_organization import organization_counts
+from games.views.general import model_counts
+from games.views.stats_data import compute_stats
 from games.writes.playersession import reclassify_session
+from timetracker import settings_resolver
+from timetracker.settings_commands import change_site_setting
 
 START = datetime(2026, 1, 1, 12, tzinfo=UTC)
 DAY = date(2026, 1, 1)
@@ -65,8 +101,8 @@ def hide(owned_library, set_user_setting):
     return hidden
 
 
-def a_session(run, release, *, at=START, hours=1):
-    return timed_row(run, at, at + hours * HOUR, release=release)
+def a_session(run, release, *, at=START, hours=1, **columns):
+    return timed_row(run, at, at + hours * HOUR, release=release, **columns)
 
 
 @pytest.fixture
@@ -80,12 +116,20 @@ def world(owned_library, graph, demo, stated_graph):
     record_entry(owned_library, demo_game.release)
     run = tracked_run(owned_library, graph.game)
     demo_run = tracked_run(owned_library, demo_game.game)
+    device = create_device(owned_library, "Deck")
     return {
         "game": graph.game,
         "demo_game": demo_game.game,
+        "demo_release": demo_game_demo,
+        "device": device,
         "full": a_session(run, graph.release, hours=2),
         "on_demo": a_session(run, demo),
-        "demo_only": a_session(demo_run, demo_game_demo, at=EARLIER, hours=5),
+        "demo_only": a_session(
+            demo_run, demo_game_demo, at=EARLIER, hours=5, device=device
+        ),
+        "demo_year_record": record_row(
+            [demo_run], duration=6 * HOUR, when="2024", release=demo_game_demo
+        ),
         "full_record": record_row(
             [run], duration=3 * HOUR, when="2026-01-01", release=graph.release
         ),
@@ -155,10 +199,34 @@ def test_playtime_figures_drop_hidden_play(owned_library, world, hide):
 
 
 def test_played_years_drop_a_year_only_demo_play_reaches(owned_library, world, hide):
-    assert played_years(owned_library) == [2025, 2026]
+    assert played_years(owned_library) == [2024, 2025, 2026]
     hide()
 
     assert played_years(owned_library) == [2026]
+
+
+def test_historical_breakdowns_drop_hidden_records(owned_library, world, hide):
+    assert historical_years(owned_library) == [2024, 2026]
+    hide()
+
+    assert historical_years(owned_library) == [2026]
+    assert [row.playtime for row in historical_by_month(owned_library, year=2026)] == [
+        3 * HOUR
+    ]
+    assert [row.playtime for row in historical_by_platform(owned_library)] == [3 * HOUR]
+
+
+def test_a_run_range_hides_demo_play_but_the_seed_keeps_it(owned_library, world, hide):
+    days = DayInterval(date(2025, 1, 1), DAY)
+    hide()
+
+    assert game_playtime_between(owned_library, world["demo_game"], days).tracked == (
+        timedelta(0)
+    )
+    assert game_tracked_between(owned_library, world["demo_game"], days) == 5 * HOUR
+    assert game_session_days(owned_library, world["demo_game"]) == SessionDays(
+        EARLIER.date(), EARLIER.date()
+    )
 
 
 def test_session_and_day_figures_drop_hidden_play(owned_library, world, hide):
@@ -214,16 +282,39 @@ def test_pages_drop_hidden_rows(signed_in, world, hide):
         reverse("games:view_game", args=[game.pk, game.url_slug]),
     ]
 
-    for url in pages:
+    shown = [("full",), ("full_record",), ("full", "full_record")]
+
+    for url, kept in zip(pages, shown, strict=True):
         html = signed_in.get(url).content.decode()
         for hidden in ("on_demo", "demo_only", "demo_record"):
             assert str(world[hidden].pk) not in html, (url, hidden)
-    game_page = signed_in.get(pages[2]).content.decode()
-    assert str(world["full"].pk) in game_page
-    assert str(world["full_record"].pk) in game_page
+        for row in kept:
+            assert str(world[row].pk) in html, (url, row)
 
 
-def test_api_lists_hide_but_one_row_reads_find(signed_in, world, hide):
+def test_edit_pages_open_a_hidden_row(signed_in, world, hide):
+    hide()
+
+    for url in (
+        reverse("games:edit_session", args=[world["on_demo"].pk]),
+        reverse("games:edit_historical_playtime", args=[world["demo_record"].pk]),
+    ):
+        assert signed_in.get(url).status_code == 200, url
+
+
+def test_the_navbar_offers_sessions_only_when_one_shows(signed_in, world, hide):
+    PlayerSession.objects.exclude(pk=world["on_demo"].pk).update(
+        removed_at=timezone.now()
+    )
+    request = signed_in.get(reverse("games:list_sessions")).wsgi_request
+    assert model_counts(request)["session_count"] is True
+    hide()
+
+    assert model_counts(request)["session_count"] is False
+
+
+def test_the_api_reads_every_row(signed_in, world, hide):
+    """A program reads the API, not a screen."""
     hide()
 
     sessions = signed_in.get("/api/session/").json()
@@ -231,7 +322,8 @@ def test_api_lists_hide_but_one_row_reads_find(signed_in, world, hide):
     listed = {row["id"] for row in sessions["items"]} | {
         row["id"] for row in records["items"]
     }
-    assert listed == {str(world["full"].pk), str(world["full_record"].pk)}
+    every = ("full", "on_demo", "demo_only", "full_record", "demo_record")
+    assert listed >= {str(world[row].pk) for row in every}
     for path in (
         f"/api/session/{world['on_demo'].pk}",
         f"/api/historical-playtime/{world['demo_record'].pk}",
@@ -253,15 +345,86 @@ def test_bulk_scopes_hide_but_resolutions_find(owned_library, world, hide):
     assert [row.pk for row in found.rows] == [world["demo_record"].pk]
 
 
-def test_the_seed_reads_every_session(owned_library, world, hide):
+def test_removal_previews_count_hidden_sessions(owned_library, world, hide):
     hide()
 
-    assert (
-        game_tracked_between(
-            owned_library, world["demo_game"], DayInterval(date(2025, 1, 1), DAY)
-        )
-        == 5 * HOUR
+    assert game_departures(owned_library, world["demo_game"]).sessions == 1
+    assert sessions_naming(owned_library, world["device"]).count() == 1
+
+
+def test_release_filter_options_keep_hidden_releases(owned_library, world, hide):
+    hide()
+
+    assert world["demo_release"] in played_releases(owned_library)
+
+
+def test_the_review_and_its_act_hide_but_the_base_keeps(
+    owned_library, graph, demo, run, hide
+):
+    full = duration_only_row(run, DAY, 9 * HOUR, release=graph.release)
+    on_demo = duration_only_row(run, DAY, 9 * HOUR, release=demo)
+    hide()
+
+    assert set(reviewable_sessions(owned_library)) == {full}
+    assert set(conversion_scope(owned_library, "")) == {full}
+    assert set(convertible_sessions(owned_library)) == {full, on_demo}
+
+
+def test_organization_counts_drop_hidden_bucket_sessions(
+    owned_library, graph, demo, run, hide
+):
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
     )
+    a_session(bucket, graph.release)
+    a_session(bucket, demo)
+    assert organization_counts(owned_library).bucket == 2
+    hide()
+
+    assert organization_counts(owned_library).bucket == 1
+
+
+def test_the_site_default_hides_for_a_library_without_its_own(
+    owned_library, django_user_model, set_user_setting
+):
+    other = django_user_model.objects.create_user(username="shows").library
+    set_user_setting(other.user, "SHOW_PRERELEASE_PLAY", "show")
+    change_site_setting("SHOW_PRERELEASE_PLAY", "hide")
+    settings_resolver.clear_cache()
+
+    assert shows_prerelease_play(owned_library) is False
+    assert shows_prerelease_play(other) is True
+
+
+# ── Every figure ─────────────────────────────────────────────────────────────
+
+
+def _settled(stats):
+    """Querysets compare by identity; read them."""
+    return {
+        key: list(value) if isinstance(value, QuerySet) else value
+        for key, value in stats.items()
+    }
+
+
+@pytest.mark.parametrize("year", [None, 2025, 2026])
+def test_hiding_is_removing_the_hidden_rows_for_every_figure(
+    owned_library, world, hide, set_user_setting, year
+):
+    hide()
+    hidden = _settled(compute_stats(owned_library, year))
+
+    set_user_setting(owned_library.user, "SHOW_PRERELEASE_PLAY", "show")
+    now = timezone.now()
+    PlayerSession.objects.filter(PRERELEASE_PLAY).update(removed_at=now)
+    HistoricalPlaytime.objects.filter(PRERELEASE_PLAY).update(removed_at=now)
+    removed = _settled(compute_stats(owned_library, year))
+
+    assert hidden == removed
 
 
 @pytest.mark.django_db(transaction=True)

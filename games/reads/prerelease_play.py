@@ -1,33 +1,29 @@
 """Whether figures and lists hold prerelease play."""
 
-from django.db.models import Q, QuerySet
+from django.db.models import Q
 
 from games.models import EditionKind, Release, UserLibrary
-from timetracker.settings_resolver import resolve_for_user
+from timetracker.settings_registry import PrereleasePlay
+from timetracker.settings_resolver import resolve_str_for_user
 
 #: Play on a prerelease Edition.
 PRERELEASE_PLAY = Q(release__edition__kind=EditionKind.PRERELEASE)
 
 
-def prerelease_releases() -> QuerySet[Release, Release]:
-    """Every Release of a prerelease Edition."""
-    return Release.objects.filter(edition__kind=EditionKind.PRERELEASE)
-
-
 def shows_prerelease_play(library: UserLibrary) -> bool:
-    """The library owner's setting, resolved."""
-    return resolve_for_user(library.user, "SHOW_PRERELEASE_PLAY") == "show"
+    """The owner's setting; another word raises."""
+    word = resolve_str_for_user(library.user, "SHOW_PRERELEASE_PLAY")
+    return PrereleasePlay(word) is PrereleasePlay.SHOW
 
 
 def shown_play(library: UserLibrary) -> Q:
-    """Sessions or records the library's figures hold.
+    """The predicate figures and lists apply.
 
-    Hidden, a row naming no Release stays: NULL NOT IN
-    answers NULL. Not the join of `PRERELEASE_PLAY`: two
-    joins on every subquery cost the statistics a quarter.
+    Not the join of `PRERELEASE_PLAY`: two joins on every
+    subquery cost the statistics a quarter. A row naming
+    no Release stays: Django adds IS NOT NULL.
     """
     if shows_prerelease_play(library):
         return Q()
-    return Q(release__isnull=True) | ~Q(
-        release_id__in=prerelease_releases().values("pk")
-    )
+    prerelease = Release.objects.filter(edition__kind=EditionKind.PRERELEASE)
+    return ~Q(release_id__in=prerelease.values("pk"))

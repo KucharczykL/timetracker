@@ -1,41 +1,14 @@
-"""The Historical tab's rows and run names."""
+"""The run names a record row prints."""
 
 from collections.abc import Iterable, Mapping
 
-from django.db.models import Prefetch
-
 from games.events.dispatch import RowUnreadable
 from games.ids import PlaythroughId
-from games.models import (
-    HistoricalPlaytime,
-    HistoricalPlaytimeQuerySet,
-    HistoricalPlaytimeRun,
-    UserLibrary,
-)
-from games.reads.historical_playtime_records import shown_records, with_row_path
+from games.models import HistoricalPlaytime, UserLibrary
 from games.reads.playthrough_numbering import display_name, numbered_for
 
 type RunLabel = str  # e.g. "Playthrough 2"
 type RunLabels = Mapping[PlaythroughId, RunLabel]
-
-
-def listed_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
-    """The row path lists read: shown rows."""
-    return with_run_rows(library, shown_records(library))
-
-
-def with_run_rows(
-    library: UserLibrary, records: HistoricalPlaytimeQuerySet
-) -> HistoricalPlaytimeQuerySet:
-    """Row path plus this library's runs."""
-    return with_row_path(records).prefetch_related(
-        Prefetch(
-            "runs",
-            queryset=HistoricalPlaytimeRun.objects.filter(library=library).order_by(
-                "playthrough_id"
-            ),
-        )
-    )
 
 
 def run_labels_for(

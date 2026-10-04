@@ -1,10 +1,11 @@
 """Records a library holds and shows."""
 
-from django.db.models import F, Q
+from django.db.models import F, Prefetch, Q
 
 from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeQuerySet,
+    HistoricalPlaytimeRun,
     UserLibrary,
 )
 from games.reads.days import DayInterval, YearScope, year_days
@@ -38,19 +39,33 @@ def shown_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     return library_records(library).filter(shown_play(library))
 
 
-def with_row_path(records: HistoricalPlaytimeQuerySet) -> HistoricalPlaytimeQuerySet:
-    """Game, platform, device and Release beside each."""
+def _with_row_path(
+    library: UserLibrary, records: HistoricalPlaytimeQuerySet
+) -> HistoricalPlaytimeQuerySet:
+    """Game, device, Release, and this library's runs."""
     return records.select_related(
         "player_game__game__platform",
         "device",
         "release__edition",
         "release__platform",
+    ).prefetch_related(
+        Prefetch(
+            "runs",
+            queryset=HistoricalPlaytimeRun.objects.filter(library=library).order_by(
+                "playthrough_id"
+            ),
+        )
     )
 
 
 def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
-    """One named record's row path: every row."""
-    return with_row_path(library_records(library))
+    """The row path over every row."""
+    return _with_row_path(library, library_records(library))
+
+
+def listed_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
+    """The row path over shown rows."""
+    return _with_row_path(library, shown_records(library))
 
 
 def contains(days: DayInterval) -> Q:
