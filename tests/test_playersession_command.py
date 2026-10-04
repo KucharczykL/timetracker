@@ -2,6 +2,7 @@
 
 import itertools
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from datetime import timezone as dt_timezone
 from functools import lru_cache
@@ -102,15 +103,15 @@ A_CORRECTED = CorrectedTiming(
 
 
 def a_timed(**stated) -> TimedTiming:
-    return A_TIMED._replace(**stated)
+    return replace(A_TIMED, **stated)
 
 
 def a_duration_only(**stated) -> DurationOnlyTiming:
-    return A_DURATION_ONLY._replace(**stated)
+    return replace(A_DURATION_ONLY, **stated)
 
 
 def a_corrected(**stated) -> CorrectedTiming:
-    return A_CORRECTED._replace(**stated)
+    return replace(A_CORRECTED, **stated)
 
 
 def record(library, actor, run, timing, *, key=None, **stated) -> PlayerSession:

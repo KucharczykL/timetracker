@@ -1,6 +1,7 @@
 """Stating untracked playtime."""
 
 import uuid
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -97,7 +98,7 @@ A_STATEMENT = HistoricalPlaytimeStatement(
 
 
 def stated(run, **changes) -> HistoricalPlaytimeStatement:
-    return A_STATEMENT._replace(playthrough_ids=(run.pk,))._replace(**changes)
+    return replace(replace(A_STATEMENT, playthrough_ids=(run.pk,)), **changes)
 
 
 def record(library, actor, statement, *, key=None) -> HistoricalPlaytime:

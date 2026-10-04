@@ -1,6 +1,7 @@
 """The form parses and narrows choices; the command decides."""
 
 import uuid
+from dataclasses import replace
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
@@ -58,16 +59,19 @@ def form(library, game, data=None, record=None) -> HistoricalPlaytimeForm:
 
 
 def recorded(user, run_ids, **changes) -> HistoricalPlaytime:
-    statement = HistoricalPlaytimeStatement(
-        duration=timedelta(hours=1, minutes=30, seconds=20),
-        when=None,
-        provenance=HistoricalPlaytimeProvenance.ESTIMATED,
-        playthrough_ids=tuple(run_ids),
-        device_id=None,
-        release_id=None,
-        emulated=False,
-        note="",
-    )._replace(**changes)
+    statement = replace(
+        HistoricalPlaytimeStatement(
+            duration=timedelta(hours=1, minutes=30, seconds=20),
+            when=None,
+            provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+            playthrough_ids=tuple(run_ids),
+            device_id=None,
+            release_id=None,
+            emulated=False,
+            note="",
+        ),
+        **changes,
+    )
     dispatch(
         RecordHistoricalPlaytime(statement=statement),
         actor=user,

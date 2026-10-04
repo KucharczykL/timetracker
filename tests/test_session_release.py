@@ -1,6 +1,7 @@
 """A session or a record names the Release it was played on."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 
@@ -338,7 +339,7 @@ def test_a_restatement_keeps_a_held_release_whose_copy_is_gone(
     record = HistoricalPlaytime.objects.get()
     remove_entry(entry)
 
-    restated = a_statement(run, graph.release)._replace(note="kept")
+    restated = replace(a_statement(run, graph.release), note="kept")
     state(owned_library, RestateHistoricalPlaytime(record.pk, restated))
 
     record.refresh_from_db()
@@ -1052,7 +1053,7 @@ def test_a_held_release_the_catalog_removed_stays(
     state(
         owned_library,
         RestateHistoricalPlaytime(
-            record.pk, a_statement(run, graph.release)._replace(note="kept")
+            record.pk, replace(a_statement(run, graph.release), note="kept")
         ),
     )
 

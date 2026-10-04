@@ -1,7 +1,8 @@
 """State, correct and void any endpoint."""
 
 from collections.abc import Callable, Sequence
-from typing import Any, NamedTuple, overload
+from dataclasses import dataclass, replace
+from typing import Any, ClassVar, NamedTuple, overload
 
 from django.db import models
 
@@ -9,34 +10,33 @@ from games.end_ways import EndWay
 from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import Endpoint, OpeningEndpoint, ResumableEndpoint
 from games.events.dispatch import CommandRejected
+from games.events.idempotency import FingerprintedValue
 from games.events.vocabulary import NewEvent, Unchanged
 from games.reads.endpoints import stated
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
 
 
-class ActStatement(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class ActStatement(FingerprintedValue):
     """An act that happened, and its note.
 
     The act is this object's existence, so the day inside
     never carries it: a row that never reached the endpoint
     states no ActStatement at all.
-
-    A NamedTuple, so the idempotency fingerprint encodes it
-    as an array and the TemporalValue inside reaches the
-    encoder that knows it.
     """
+
+    fingerprint_word: ClassVar[str] = "act_statement"
 
     #: None is a day nobody wrote down.
     when: TemporalValue | None
     note: str = ""
 
 
-class WayActStatement(NamedTuple):
-    """An act in one way, and its note.
+@dataclass(frozen=True, slots=True)
+class WayActStatement(FingerprintedValue):
+    """An act in one way, and its note."""
 
-    Not a third ActStatement field: a NamedTuple encodes as
-    an array, so that field would move every fingerprint.
-    """
+    fingerprint_word: ClassVar[str] = "way_act_statement"
 
     when: TemporalValue | None
     way: EndWay
@@ -80,8 +80,8 @@ def normalized(statement: ActStatement) -> ActStatement: ...
 def normalized(statement: WayActStatement) -> WayActStatement: ...
 def normalized(statement: Statement) -> Statement:
     """One spelling, so restatements fingerprint alike."""
-    return statement._replace(
-        when=stated_date(statement.when), note=statement.note.strip()
+    return replace(
+        statement, when=stated_date(statement.when), note=statement.note.strip()
     )
 
 

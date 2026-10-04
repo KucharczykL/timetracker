@@ -14,7 +14,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, ClassVar, TypedDict
 
 from django.contrib.auth.models import User
 
@@ -33,13 +33,51 @@ from timetracker.temporal import TemporalValue
 type IdempotencyKey = str  # "session-create-01J8Z3K4M5N6P7Q8R9S0T1U2V3"
 type RequestFingerprint = str  # "9f86d081884c7d65..." (sha256 hex)
 type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
-#: json encodes each element again.
-type EncodedValue = TaggedValue | list[Any]
+type FingerprintWord = str  # "stated_device"
+type DefinitionSite = tuple[str, str]  # (module, class name)
+
+
+class WordedValue(TypedDict):
+    """A value object's encoding."""
+
+    value: FingerprintWord
+    #: json encodes each field again.
+    fields: dict[str, object]
+
 
 #: Bump when a deployed record's digest changes.
 #:
 #: A command's field set is part of its digest.
-FINGERPRINT_VERSION = 4
+FINGERPRINT_VERSION = 5
+
+
+_VALUE_WORDS: dict[FingerprintWord, DefinitionSite] = {}
+
+
+class FingerprintedValue:
+    """A frozen dataclass a command field holds."""
+
+    __slots__ = ()
+    #: Written out: a rename moves no digest.
+    fingerprint_word: ClassVar[FingerprintWord]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        word = cls.__dict__.get("fingerprint_word")
+        if not isinstance(word, str) or not word:
+            raise TypeError(
+                f"{cls.__qualname__} states no fingerprint_word. A value a "
+                "command holds names itself in its digest."
+            )
+        #: slots=True rebuilds; one site registers twice.
+        definition_site = (cls.__module__, cls.__name__)
+        registered = _VALUE_WORDS.get(word)
+        if registered is not None and registered != definition_site:
+            raise TypeError(
+                f"{cls.__qualname__} claims {word!r}, already owned by "
+                f"{registered[0]}.{registered[1]}."
+            )
+        _VALUE_WORDS[word] = definition_site
 
 
 class IdempotencyKeyMismatch(CommandConflict):
@@ -113,14 +151,11 @@ def _canonical_datetime(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
 
-def _encode_command_value(value: Any) -> EncodedValue:
+def _encode_command_value(value: Any) -> TaggedValue | WordedValue:
     """The type word, then the canonical text.
 
     The words are the wire form: a rename moves every digest of that type,
     so they are written out rather than read from the class.
-
-    A dataclass encodes untagged, as a NamedTuple does:
-    a word would move every digest of one.
     """
     #: datetime first: the date branch skips UTC.
     if isinstance(value, datetime):
@@ -139,9 +174,14 @@ def _encode_command_value(value: Any) -> EncodedValue:
     if isinstance(value, TemporalValue):
         #: None for an unknown time.
         return ("temporal", value.canonical)
-    #: After TemporalValue, itself a dataclass.
-    if is_dataclass(value) and not isinstance(value, type):
-        return [getattr(value, field.name) for field in fields(value)]
+    if isinstance(value, FingerprintedValue) and is_dataclass(value):
+        #: The shape a command itself encodes as.
+        return {
+            "value": value.fingerprint_word,
+            "fields": {
+                field.name: getattr(value, field.name) for field in fields(value)
+            },
+        }
     raise TypeError(
         f"{type(value).__name__} has no canonical form for an idempotency "
         "fingerprint. Convert it at the call site: a repr() fallback would "

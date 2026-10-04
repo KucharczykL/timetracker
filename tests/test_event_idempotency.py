@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, localcontext
 from threading import Event, Thread
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, ClassVar, TypedDict
 
 import pytest
 from django.db import (
@@ -19,6 +19,7 @@ from games.events.append import AppendResult, LockedStream, lock_stream
 from games.events.conflicts import CommandConflict
 from games.events.idempotency import (
     FINGERPRINT_VERSION,
+    FingerprintedValue,
     IdempotencyKeyMismatch,
     ReplayedAppend,
     UnchangedAppend,
@@ -450,29 +451,74 @@ def test_an_unsupported_value_is_refused():
         fingerprint_command_input({"platforms": {"pc", "switch"}})
 
 
-class _TupleStatement(NamedTuple):
-    key: uuid.UUID
-    note: str
+@dataclass(frozen=True, slots=True)
+class _Stated(FingerprintedValue):
+    fingerprint_word: ClassVar[str] = "probe_stated"
+
+    key: uuid.UUID | None
+    when: TemporalValue | None
 
 
 @dataclass(frozen=True, slots=True)
-class _DataclassStatement:
-    key: uuid.UUID
-    note: str
+class _OtherStated(FingerprintedValue):
+    fingerprint_word: ClassVar[str] = "probe_other_stated"
+
+    key: uuid.UUID | None
+    when: TemporalValue | None
 
 
-def test_a_dataclass_encodes_as_a_tuple_of_its_fields():
-    """Moving a NamedTuple to a dataclass keeps its digests."""
+@dataclass(frozen=True, slots=True)
+class _Unworded:
+    key: uuid.UUID | None
+
+
+def test_a_fingerprinted_value_encodes_as_a_command_does():
+    key = uuid.uuid7()
+    when = TemporalValue.from_year(2026)
+
+    assert _encode_command_value(_Stated(key, when)) == {
+        "value": "probe_stated",
+        "fields": {"key": key, "when": when},
+    }
+
+
+def test_two_fingerprinted_values_with_equal_fields_differ():
     key = uuid.uuid7()
 
     assert fingerprint_command_input(
-        {"statement": _DataclassStatement(key, "note")}
-    ) == fingerprint_command_input({"statement": _TupleStatement(key, "note")})
+        {"statement": _Stated(key, None)}
+    ) != fingerprint_command_input({"statement": _OtherStated(key, None)})
+    assert fingerprint_command_input(
+        {"statement": _Stated(key, None)}
+    ) != fingerprint_command_input({"statement": (key, None)})
 
 
-def test_a_dataclass_class_is_refused():
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_Unworded(None), id="unworded-dataclass"),
+        pytest.param(_Stated, id="fingerprinted-class"),
+    ],
+)
+def test_a_dataclass_without_a_word_is_refused(value: Any):
     with pytest.raises(TypeError):
-        fingerprint_command_input({"statement": _DataclassStatement})
+        fingerprint_command_input({"statement": value})
+
+
+def test_a_fingerprinted_value_must_state_a_word():
+    with pytest.raises(TypeError, match="states no fingerprint_word"):
+
+        @dataclass(frozen=True, slots=True)
+        class Wordless(FingerprintedValue):
+            key: uuid.UUID
+
+
+def test_two_classes_cannot_claim_one_word():
+    with pytest.raises(TypeError, match="already owned by"):
+
+        @dataclass(frozen=True, slots=True)
+        class Impostor(FingerprintedValue):
+            fingerprint_word: ClassVar[str] = "probe_stated"
 
 
 @pytest.mark.parametrize(

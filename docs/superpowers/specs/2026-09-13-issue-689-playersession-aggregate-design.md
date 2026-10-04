@@ -405,15 +405,12 @@ CreateSession(
 )
 ```
 
-`TimingStatement` is the Python-side union of three `NamedTuple`s mirroring the
-payload members — `NamedTuple` because `canonical_command_input` builds a shallow
-dict of dataclass fields and `json.dumps` encodes a NamedTuple as an array
-(since #1489 a dataclass value encodes as the same array). `timedelta` has no canonical
-encoding today, so this issue adds one branch to `_encode_command_value` —
-`("duration", total microseconds as text)` — which #692, #700 and HIST inherit.
-The encoding is positional, so reordering a member's fields invalidates every
-issued idempotency key and needs a `FINGERPRINT_VERSION` bump; the fields are
-named here once and left alone.
+`TimingStatement` is the Python-side union of three `FingerprintedValue`
+dataclasses mirroring the payload members. Each fingerprints as its own word
+and its named fields (see
+[value objects](2026-10-04-issue-1489-stated-wrappers-nominal-design.md)).
+`timedelta` encodes as `("duration", total microseconds as text)`, which
+#692, #700 and HIST inherit.
 
 It takes the run explicitly and never infers one from the game, the day or
 another session. It resolves the run through `_live_run` in

@@ -2,9 +2,9 @@
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
-from typing import ClassVar, NamedTuple, cast
+from typing import ClassVar, cast
 
 from games.commands.playersession import (
     DURATION_RESOLUTION,
@@ -36,6 +36,7 @@ from games.events.historical_playtime import (
     historicalplaytime_restated,
     historicalplaytime_restored,
 )
+from games.events.idempotency import FingerprintedValue
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
@@ -112,8 +113,11 @@ def when_sentence(error: TemporalValueParseError) -> str:
     return _WHEN_SENTENCES.get(error.code, WHEN_UNSUPPORTED)
 
 
-class HistoricalPlaytimeStatement(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class HistoricalPlaytimeStatement(FingerprintedValue):
     """One record, as a person states it."""
+
+    fingerprint_word: ClassVar[str] = "historical_playtime_statement"
 
     duration: timedelta
     #: Canonical temporal text; None is unknown.
@@ -156,8 +160,8 @@ def normalized_statement(
             f"{statement.when!r} is not a temporal value: {error}",
             sentence=when_sentence(error),
         ) from None
-    return statement._replace(
-        note=note, playthrough_ids=runs, duration=duration, when=when
+    return replace(
+        statement, note=note, playthrough_ids=runs, duration=duration, when=when
     )
 
 

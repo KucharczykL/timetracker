@@ -1,77 +1,67 @@
-# A stated device and a stated release compare by type
+# A command's value objects compare and fingerprint by type
 
-Issue #1489.
+Issues #1489 and #1491.
 
 ## Problem
 
-`StatedDevice` and `StatedRelease` in `games/commands/playersession.py` are
-`NamedTuple`s. A `NamedTuple` is a tuple. So `StatedDevice(x) ==
-StatedRelease(x) == (x,)` is true at runtime, and both unpack and index.
-mypy keeps one type out of the other's field. Runtime equality cannot tell
-them apart.
+A command carries value objects in its fields: `ActStatement`,
+`WayActStatement`, `StatedPrice`, `EntryStatement`,
+`HistoricalPlaytimeStatement`, `TimedTiming`, `DurationOnlyTiming`,
+`CorrectedTiming`, `StatedDevice` and `StatedRelease`. Each is a
+`NamedTuple`. A `NamedTuple` is a tuple, so two of them with equal fields
+compare equal, and each equals a bare tuple. `UNKNOWN_PRICE ==
+UNDATED_PURCHASE` is true.
+
+The fingerprint has the same fault. `json.dumps` writes a tuple as an
+array and never calls the encoder for it. The array carries no type, so
+the three timing statements are told apart by their length alone.
 
 ## Decision
 
-1. Both types are `@dataclass(frozen=True, slots=True)`. Equality is then
-   nominal: a dataclass `__eq__` returns `NotImplemented` for another class.
-   Each keeps its one field (`device_id`, `release_id`).
-2. The idempotency encoder (`_encode_command_value`,
-   `games/events/idempotency.py`) accepts a dataclass instance. It writes
-   the instance as the list of its field values, in field order. The
-   encoder's return type and docstring widen to say so.
-3. `FINGERPRINT_VERSION` stays at 4.
+1. Every value object a command field holds is a
+   `@dataclass(frozen=True, slots=True)` subclass of `FingerprintedValue`
+   (`games/events/idempotency.py`). Equality is nominal.
+2. Each subclass states its wire word as a `ClassVar`, written out:
+   `fingerprint_word = "stated_device"`. A rename of the class moves no
+   digest.
+3. `FingerprintedValue.__init_subclass__` refuses a subclass that states no
+   word, and a word another class holds. It keys the holder by module and
+   `__name__`, as the command registry does: `slots=True` rebuilds the
+   class and fires the hook a second time.
+4. The encoder writes a fingerprinted value as
+   `{"value": <word>, "fields": {<name>: <value>}}`, the shape
+   `canonical_command_input` gives a command. `json` encodes each field
+   again. A tagged scalar is a two-item array, so no word collides with a
+   tag word. A field order change moves no digest.
+5. The encoder refuses every other dataclass, as it refuses every other
+   unknown type.
+6. `FINGERPRINT_VERSION` is 5.
 
-## Why the version stays
+## Why the bump is free
 
-`json.dumps` writes a tuple as a JSON array and never calls `default` for
-it. So a `NamedTuple` field fingerprints as the array of its values. The
-new branch writes the same array for the dataclass. The digest of every
-deployed `DescribeSession` record is therefore unchanged.
-`tests/test_endpoint_fingerprints.py` pins `DescribeSession` digests
-recorded on the code before the change.
+A record stored under another version replays its key unchecked
+(`idempotent_append`). The mismatch check lapses for every key stored
+before the deploy, on every command. A key belongs to one request, and a
+client repeats it within seconds. `tests/test_endpoint_fingerprints.py`
+records the new digests.
 
-## Why any dataclass instance
+## Guard
 
-The encoder refuses a value with no canonical form, because a `repr()`
-would vary between processes. A dataclass instance has a canonical form:
-every entry `dataclasses.fields()` gives, `compare=False` ones included,
-each encoded by the same rules. A class is refused (`is_dataclass` is true
-for one). The branch does not ask whether the dataclass is frozen: that
-check would read `__dataclass_params__`, which is not public API. Every
-command is frozen, and every value object on one is now frozen too.
-
-The branch sits after the `TemporalValue` branch. `TemporalValue` is a
-dataclass itself, so the order keeps its tagged canonical text. The
-existing tag-words test pins that.
-
-The branch writes no type word. Two dataclasses with equal fields give one
-array, and so does a one-element list. That is the behaviour a `NamedTuple`
-has today, and the field name in the command's `fields` mapping already
-tells the two facts apart. The encoder's docstring states this, so a later
-reader does not add a type word and move every digest.
+`json` writes a tuple itself, so the encoder cannot refuse a `NamedTuple`.
+A test walks the type of every `Command` field, through aliases, unions
+and nested value objects, and refuses a `NamedTuple` it reaches.
 
 ## Callers
 
-Every caller constructs the types by position or reads the field by name:
-`DescribeSession`, `games/writes/playersession.py`, `EditStatement` and the
-bulk Edit's settle and Undo halves in `games/bulk_session_edit.py`, and the
-two session `PATCH` routes in `games/api.py`. No caller unpacks, indexes or calls `_replace` on them. They
-need no change.
-
-## Statements the change makes false
-
-The #689 spec and the `TimedTiming` docstring say a dataclass reaches the
-encoder's fallback and raises. Both are amended.
+- Each `_replace` call on a value object becomes `dataclasses.replace`, in
+  code and in tests. `_replace` on a form group or a result tuple stays.
+- `purchase.py` unpacks a `StatedPrice`; it reads the fields by name.
+- `case` patterns name keyword attributes or a bare class. A dataclass
+  matches both.
+- mypy refuses unpacking, indexing, `len` and ordering on a dataclass, so
+  any other such caller fails the type check.
 
 ## Out of scope
 
-The other `NamedTuple` value objects that ride on commands (`ActStatement`,
-`WayActStatement`, `StatedPrice`, `EntryStatement`, the timing statements,
-`HistoricalPlaytimeStatement`) have the same runtime equality. The new
-encoder branch lets each become a dataclass with no digest change. Several
-call `_replace`, which becomes `dataclasses.replace`.
-
-## Follow-up issues
-
-- #1491: make the remaining command value objects frozen dataclasses, moving
-  each `_replace` call to `dataclasses.replace`.
+`NamedTuple`s that no command field holds (`HeldTarget`, `NewlyTracked`,
+`Rejection` and the like) are not fingerprinted. They stay as they are.

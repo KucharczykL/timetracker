@@ -146,13 +146,13 @@ COMMANDS: dict[str, Command] = {
 
 RECORDED: dict[str, str] = {
     "correct_entry_access_end": (
-        "3c52b21416172e04e107a7fbc2f393307a230c83852ec59b3043da02e9405ce1"
+        "c21467c527ae301865354f28bec92531384614be6657b1b2df4b2087a93a0103"
     ),
     "end_entry_access": (
-        "d58b4017ab28d3d55c22c15e906d908a63b13791f39e35019ec61c593fe0e0a2"
+        "64eb6ed582867c743f0931e85d8d9961d85f5d16cd9742bfe0d1b916c8c521ce"
     ),
     "resume_entry_access": (
-        "95ab5df157e2618c853ba772c2c4826a81db64bd941bd4bf8a168cccb8dcfa03"
+        "f42157129bedd51522032d00d28987f151451f97ca33ace14afddcd5cb193f90"
     ),
     "void_entry_access_end": (
         "d2313c5b75931be63e4b2f59028f51dad51ea0e297fb58fb026cad1f7de746d1"
@@ -162,15 +162,15 @@ RECORDED: dict[str, str] = {
         "0490e599e25fd92b2019a03e128c8596403b94e8c8911d31121ecdb9bdd30c03"
     ),
     "correct_entry_acquisition": (
-        "1c399b9ae1ebc4a20a9d350ecc85a889e65a2650ea0dcdc772ebf8d6c6c40d6b"
+        "ba6497d9b1e8fcc785b0ebdb1a00f4419ece408e44b09ac449cb5a4bf2b3b25a"
     ),
     "correct_start": "9650f82546728f0150ebe080bcc5bbc78466123b8418e7029989c62205ff69da",
-    "create": "4820bdd45c212b9a0871172b1ca790d269bcb10f07d21fc0545490bd48ac99ba",
+    "create": "7fe8275a8295fdb9890df94ad28b34430a3dc384dd6c5c3a0cf127659a539d53",
     "create_device": (
         "2bc2ba678e5fa0b358a78326139da09d621bd587ad0994b07a7663ac19ba5274"
     ),
     "describe_entry": "624fbbd5e4c2e5a0d5675d340444058f8af30b92130d935638d7499dc74e4ca4",
-    "record_entry": "d6dd7c56e8f3dd69393ed48ca19838c4ce7e64edf1ee385808341d9bc2dc2c68",
+    "record_entry": "44a4aac331629282fa27af861f0a83eb84df1a5783fd19a8bb417b046edf541d",
     "remove_entry": "21a157fa46b073a20091ca8e8a86bedd1e6fa8749ccbc35fb4dbe981bb7fd393",
     "restore_entry": "66fa174dd36166b0e374a7bbfe206a58c43e7814233162c82a7a6a1833f164d3",
     "start": "89d10a7bcb9966145fbf794ecd8972584210c18e029986720af18bb06a5ff43a",
@@ -179,13 +179,13 @@ RECORDED: dict[str, str] = {
     ),
     "void_start": "b83184f38a8c6e7cc9ca5d0fa308f3ad48b2176e1815b388f168fe809e9c2a23",
     "describe_purchase": (
-        "b55b50bf6a7c20590b1849facceabdf67cae89cb679c26a692df4a3bcd2a82cd"
+        "6686457ec6bad852364858ad902f6f2ceb3f161d3c225160b217905208420dbc"
     ),
     "record_purchase": (
-        "910548f3eadfece06170bf42e6826c97e067ce71effc901b935704862325a2f2"
+        "ba19ae103bd77c7e136dbf241d00c346b07419df31042308827fd902634a8261"
     ),
     "record_purchase_new_copy": (
-        "c8a8ce8fb148d5582384d0c3465d576ee6e4da2a5e534ed360f26b025dee0c93"
+        "49fe28a715d8ac3f096f863d009a5556f9be7798f6bdd70af157f650ed99f9ec"
     ),
     "remove_purchase": (
         "6eb59eaeca25392179507029ed9d32bb3acc5ad20d689a06ca08c2af61179a45"
@@ -197,10 +197,10 @@ RECORDED: dict[str, str] = {
         "5b6fa7cfd60ad05b4226446a285355af7e028c5f6bbafed66ed0744adad3c74c"
     ),
     "refund_purchase": (
-        "740990859d1a40131f80ddb70465846ccc7441337b27c6da1af86b6f4833ea48"
+        "14703e799db760449f9c8b2ee4fd457566c50c9745022bc90e1930bd3b1f1d75"
     ),
     "correct_purchase_refund": (
-        "0ac6063081e8ba28bc9356be0fd33c847bb2c8b0eedda3fb510abafc535f0e01"
+        "64ec75f1937109107a1bf26c8d1cbdb0cac89dcdef871df705ddbedaa601e63b"
     ),
     "void_purchase_refund": (
         "bcf8735d0164b1f736dc71770189e5693f6a7731ecac5c9c87d51a2c53c57a14"
@@ -208,12 +208,11 @@ RECORDED: dict[str, str] = {
     "undo_purchase_refund": (
         "fab7c21574cb2636fed67dd339cf6a80b1cfe39bc64ccc76e56e776cf25cbbca"
     ),
-    #: Recorded while both wrappers were NamedTuples.
     "describe_session": (
-        "21cda33e52d69d7234a13ea45f4b92144f231fe2d1e043cdbdde3f6a5395f86d"
+        "888b5d7e18c2403242f9c9fe79cb530f86041fbe1f2b6647cc38616cf73a1983"
     ),
     "describe_session_to_none": (
-        "48c844e38d728270cfa411349f67869b012b265388d2f0349288144e2d466185"
+        "0db9ea775239b97d760c9f04c3be5a5b0e2b3449246ece939432a8a854b4e0fa"
     ),
 }
 

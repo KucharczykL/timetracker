@@ -1,6 +1,7 @@
 """The request-free write path: one fact per event."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -403,7 +404,7 @@ def test_a_running_row_answers_the_commands_sentence(owned_user, owned_library, 
         reclassify_session(
             owned_user,
             row,
-            statement_from_session(row)._replace(duration=timedelta(hours=1)),
+            replace(statement_from_session(row), duration=timedelta(hours=1)),
             idempotency_key="running",
             correlation_id=uuid.uuid7(),
         )

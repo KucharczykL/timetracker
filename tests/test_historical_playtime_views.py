@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -64,16 +65,19 @@ def posted(run_ids, **changes) -> MultiValuePost:
 
 
 def recorded(user, run_ids, **changes) -> HistoricalPlaytime:
-    statement = HistoricalPlaytimeStatement(
-        duration=timedelta(hours=100),
-        when="2005",
-        provenance=HistoricalPlaytimeProvenance.ESTIMATED,
-        playthrough_ids=tuple(run_ids),
-        device_id=None,
-        release_id=None,
-        emulated=False,
-        note="",
-    )._replace(**changes)
+    statement = replace(
+        HistoricalPlaytimeStatement(
+            duration=timedelta(hours=100),
+            when="2005",
+            provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+            playthrough_ids=tuple(run_ids),
+            device_id=None,
+            release_id=None,
+            emulated=False,
+            note="",
+        ),
+        **changes,
+    )
     dispatch(
         RecordHistoricalPlaytime(statement=statement),
         actor=user,

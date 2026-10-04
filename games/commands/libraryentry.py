@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import ClassVar, NamedTuple, cast, get_args
 
@@ -36,6 +36,7 @@ from games.events.dispatch import (
     CommandRejected,
     RowUnreadable,
 )
+from games.events.idempotency import FingerprintedValue
 from games.events.libraryentry import (
     EntryAccessValue,
     EntryFormatValue,
@@ -236,12 +237,11 @@ def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
     )
 
 
-class EntryStatement(NamedTuple):
-    """One copy to record; fingerprints by position.
+@dataclass(frozen=True, slots=True)
+class EntryStatement(FingerprintedValue):
+    """One copy to record."""
 
-    A new field moves the digest of every command
-    holding one: RecordPurchase's new-copy keys.
-    """
+    fingerprint_word: ClassVar[str] = "entry_statement"
 
     release_id: uuid.UUID
     access: EntryAccessValue
@@ -251,7 +251,7 @@ class EntryStatement(NamedTuple):
 
     def normalized(self) -> EntryStatement:
         """One spelling, so restatements fingerprint alike."""
-        return self._replace(note=self.note.strip(), acquired=normalized(self.acquired))
+        return replace(self, note=self.note.strip(), acquired=normalized(self.acquired))
 
 
 class CreatedEntry(NamedTuple):
@@ -474,7 +474,7 @@ class EndEntryAccess(Command):
         return state_endpoint(
             entry,
             ENTRY_ACCESS_END,
-            self.statement._replace(way=way),
+            replace(self.statement, way=way),
             sentences=_access_end_sentences(entry.pk),
             before_event=partial(_refuse_a_live_end, entry, ended=self.statement.when),
         )
@@ -498,7 +498,7 @@ class CorrectEntryAccessEnd(Command):
         return correct_endpoint(
             entry,
             ENTRY_ACCESS_END,
-            self.statement._replace(way=way),
+            replace(self.statement, way=way),
             sentences=_access_end_sentences(entry.pk),
             before_event=partial(_refuse_a_live_end, entry, ended=self.statement.when),
         )
