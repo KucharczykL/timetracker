@@ -96,13 +96,16 @@ not move behind a sheet that slides out. A modal in between changes nothing.
 
 ### Backdrops
 
-Only the top modal dims. On each change the layer sets `data-modal-covered`
-on every stacked dialog below the top and clears it on the top one. A rule in
-`common/input.css`, after the sheet's backdrop rules, fades a covered
-dialog's `::backdrop` to opacity 0 over the 200 ms the sheet already uses.
-Thus two stacked modals dim the page once, at 70 %. When the top modal's close
-starts, the one below is top again: its backdrop fades in while the leaving
-one's fades out.
+Only one backdrop dims, at 70 %. The dimmer is the topmost dialog still
+shown, leaving or not. The layer sets `data-modal-covered` on every other
+shown dialog. A covered `::backdrop` has opacity 0, with no transition in
+either direction. A leaving dialog with a modal below it keeps its backdrop
+until finish; the sheet's backdrop fades out only when it is the last
+modal. At that finish the one below is uncovered in the same frame. Thus
+the dim stays at 70 % through a nested close; only the lower panel goes
+from dim to clear. A cross-fade would dip to about 58 % midway. Under
+`prefers-reduced-motion` every backdrop change is instant. Checked by eye
+in Chromium and Firefox; the user approves the look.
 
 ### While the last modal leaves
 
@@ -213,8 +216,9 @@ whose `close` moved focus itself.
 - vitest toast stack: re-hosts on change, back on last close, a new toast
   lands in the top modal, the region wears `modal_region_class`.
 - vitest layer: a `pointercancel` between down and up on the backdrop
-  closes nothing; `data-modal-covered` marks every stacked dialog but the
-  top and moves at close start; the scroll lock holds through a leave.
+  closes nothing; `data-modal-covered` marks every shown dialog but the
+  topmost shown one, and moves at finish; the scroll lock holds through a
+  leave.
 - vitest sheet: the existing cases, with three rewritten. "Fully closes a
   sibling sheet" becomes "two sheets nest and the last close restores the
   page style". The failed-open case asserts the report, not `console.error`.
