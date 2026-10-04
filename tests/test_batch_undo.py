@@ -25,6 +25,7 @@ pytestmark = pytest.mark.django_db
 
 SENTENCES = UndoSentences(not_stated="not ours", changed_since="changed since")
 ENDED = WayActStatement(TemporalValue.from_day(date(2024, 5, 1)), EndWay.SOLD, "")
+RESUMED = ActStatement(TemporalValue.from_day(date(2024, 6, 1)), "")
 
 
 @pytest.fixture
@@ -48,6 +49,15 @@ def _state(library: UserLibrary, command: Command, batch: uuid.UUID) -> None:
         )
 
 
+def _end(
+    library: UserLibrary,
+    copy: LibraryEntry,
+    batch: uuid.UUID,
+    statement: WayActStatement = ENDED,
+) -> None:
+    _state(library, EndEntryAccess(entry_id=copy.pk, statement=statement), batch)
+
+
 def _judge(library: UserLibrary, copy: LibraryEntry, batch: uuid.UUID) -> None:
     refuse_unless_this_batch_wrote_it(
         library,
@@ -61,23 +71,21 @@ def _judge(library: UserLibrary, copy: LibraryEntry, batch: uuid.UUID) -> None:
 
 def test_the_batchs_own_end_still_latest_passes(owned_library, copy):
     batch = uuid.uuid7()
-    _state(owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), batch)
+    _end(owned_library, copy, batch)
 
     _judge(owned_library, copy, batch)
 
 
 def test_an_end_already_voided_passes(owned_library, copy):
     batch = uuid.uuid7()
-    _state(owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), batch)
+    _end(owned_library, copy, batch)
     _state(owned_library, VoidEntryAccessEnd(entry_id=copy.pk), uuid.uuid7())
 
     _judge(owned_library, copy, batch)
 
 
 def test_an_end_the_batch_never_wrote_is_refused(owned_library, copy):
-    _state(
-        owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), uuid.uuid7()
-    )
+    _end(owned_library, copy, uuid.uuid7())
 
     with pytest.raises(CommandRejected) as refused:
         _judge(owned_library, copy, uuid.uuid7())
@@ -94,7 +102,7 @@ def test_a_row_with_no_end_event_is_refused(owned_library, copy):
 
 def test_a_correction_since_is_refused(owned_library, copy):
     batch = uuid.uuid7()
-    _state(owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), batch)
+    _end(owned_library, copy, batch)
     corrected = WayActStatement(ENDED.when, EndWay.LOST, "")
     _state(
         owned_library,
@@ -111,13 +119,10 @@ def test_a_correction_since_is_refused(owned_library, copy):
 def test_a_resume_since_passes(owned_library, copy):
     """The copy is held again: already so."""
     batch = uuid.uuid7()
-    _state(owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), batch)
+    _end(owned_library, copy, batch)
     _state(
         owned_library,
-        ResumeEntryAccess(
-            entry_id=copy.pk,
-            statement=ActStatement(TemporalValue.from_day(date(2024, 6, 1)), ""),
-        ),
+        ResumeEntryAccess(entry_id=copy.pk, statement=RESUMED),
         uuid.uuid7(),
     )
 
@@ -125,9 +130,7 @@ def test_a_resume_since_passes(owned_library, copy):
 
 
 def test_a_void_the_batch_never_preceded_is_refused(owned_library, copy):
-    _state(
-        owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), uuid.uuid7()
-    )
+    _end(owned_library, copy, uuid.uuid7())
     _state(owned_library, VoidEntryAccessEnd(entry_id=copy.pk), uuid.uuid7())
 
     with pytest.raises(CommandRejected) as refused:
@@ -138,19 +141,14 @@ def test_a_void_the_batch_never_preceded_is_refused(owned_library, copy):
 
 def test_a_later_end_is_refused(owned_library, copy):
     batch = uuid.uuid7()
-    _state(owned_library, EndEntryAccess(entry_id=copy.pk, statement=ENDED), batch)
+    _end(owned_library, copy, batch)
     _state(
         owned_library,
-        ResumeEntryAccess(
-            entry_id=copy.pk,
-            statement=ActStatement(TemporalValue.from_day(date(2024, 6, 1)), ""),
-        ),
+        ResumeEntryAccess(entry_id=copy.pk, statement=RESUMED),
         uuid.uuid7(),
     )
     later = WayActStatement(TemporalValue.from_day(date(2024, 7, 1)), EndWay.SOLD, "")
-    _state(
-        owned_library, EndEntryAccess(entry_id=copy.pk, statement=later), uuid.uuid7()
-    )
+    _end(owned_library, copy, uuid.uuid7(), later)
 
     with pytest.raises(CommandRejected) as refused:
         _judge(owned_library, copy, batch)

@@ -49,6 +49,7 @@ from timetracker.temporal import TemporalValue, temporal_input_name
 pytestmark = pytest.mark.django_db(transaction=True)
 
 SOLD_DAY = date(2024, 5, 1)
+RESUMED = ActStatement(TemporalValue.from_day(date(2024, 6, 1)), "")
 
 
 @pytest.fixture
@@ -91,11 +92,17 @@ def _confirm(client, *entries):
     return client.post(act_url(ENTRY_END), {STATEMENT_FIELD: selection(*entries)})
 
 
-def _end(client, *entries, way="sold", day=SOLD_DAY, note=""):
-    """Confirm, answer, press; the token and the answer."""
+def _press_fields(client, *entries, way="sold", day=SOLD_DAY, note=""):
+    """Confirm and answer; the fields Save posts."""
     fields = posted(_confirm(client, *entries))
     fields.update(_answers(way, day, note))
     fields.pop(CHOICE_FIELD, None)
+    return fields
+
+
+def _end(client, *entries, way="sold", day=SOLD_DAY, note=""):
+    """Confirm, answer, press; the token and the answer."""
+    fields = _press_fields(client, *entries, way=way, day=day, note=note)
     return fields[TOKEN_FIELD], client.post(act_url(ENTRY_END), fields)
 
 
@@ -227,7 +234,7 @@ def test_an_ended_copy_is_left_alone(logged_in, first, second):
 
     assert _end_of(first).way == EndWay.LOST
     assert _end_of(second).way == EndWay.SOLD
-    assert any("already has an end recorded" in s for s in said(answer))
+    assert any("already has an end recorded" in sentence for sentence in said(answer))
 
 
 def test_an_end_before_the_acquisition_is_refused(owned_library, logged_in, graph):
@@ -242,9 +249,7 @@ def test_an_end_before_the_acquisition_is_refused(owned_library, logged_in, grap
 
 
 def test_a_token_posted_twice_acts_once(logged_in, first):
-    fields = posted(_confirm(logged_in, first))
-    fields.update(_answers("sold", SOLD_DAY))
-    fields.pop(CHOICE_FIELD, None)
+    fields = _press_fields(logged_in, first)
     logged_in.post(act_url(ENTRY_END), fields)
     logged_in.post(act_url(ENTRY_END), fields)
 
@@ -290,8 +295,7 @@ def test_a_copy_voided_by_hand_is_already_so(logged_in, owned_library, first):
 
 def test_a_copy_resumed_since_is_already_so(logged_in, owned_library, first):
     token, _ = _end(logged_in, first)
-    resumed = ActStatement(TemporalValue.from_day(date(2024, 6, 1)), "")
-    _state(owned_library, ResumeEntryAccess(entry_id=first.pk, statement=resumed))
+    _state(owned_library, ResumeEntryAccess(entry_id=first.pk, statement=RESUMED))
 
     undone = _undo(logged_in, token)
 
@@ -315,8 +319,7 @@ def test_a_copy_corrected_since_keeps_its_end(logged_in, owned_library, first):
 
 def test_a_copy_ended_again_since_keeps_its_end(logged_in, owned_library, first):
     token, _ = _end(logged_in, first)
-    resumed = ActStatement(TemporalValue.from_day(date(2024, 6, 1)), "")
-    _state(owned_library, ResumeEntryAccess(entry_id=first.pk, statement=resumed))
+    _state(owned_library, ResumeEntryAccess(entry_id=first.pk, statement=RESUMED))
     again = WayActStatement(TemporalValue.from_day(date(2024, 7, 1)), EndWay.LOST, "")
     _state(owned_library, EndEntryAccess(entry_id=first.pk, statement=again))
 

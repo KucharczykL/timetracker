@@ -64,8 +64,9 @@ def encode_access_end(statement: WayActStatement) -> ChoiceValue:
 def decode_access_end(raw: ChoiceValue, ways: EndWays) -> WayActStatement:
     """Null decodes to `TemporalValue.unknown()`."""
     stated = stated_object(raw, _KEYS)
-    if set(stated) != _KEYS:
-        raise statement_unreadable(f"{raw!r} leaves out {sorted(_KEYS - set(stated))}")
+    missing = _KEYS - set(stated)
+    if missing:
+        raise statement_unreadable(f"{raw!r} leaves out {sorted(missing)}")
     way, note = stated["way"], stated["note"]
     if not isinstance(way, str) or way not in {admitted.value for admitted in ways}:
         raise statement_unreadable(f"{raw!r} states a way this act does not take")

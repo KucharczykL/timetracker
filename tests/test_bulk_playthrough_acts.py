@@ -522,25 +522,19 @@ def test_a_row_of_another_batch_states_its_own_sentence(
 
 
 @pytest.mark.parametrize(
-    ("inverse", "columns"),
+    ("inverse", "day_column", "marker_column"),
     [
-        (void_start_one, {"started": OTHER_DAY, "start_recorded_at": True}),
-        (
-            void_completion_one,
-            {"completed": OTHER_DAY, "completion_recorded_at": True},
-        ),
+        (void_start_one, "started", "start_recorded_at"),
+        (void_completion_one, "completed", "completion_recorded_at"),
     ],
 )
 def test_an_endpoint_stated_with_no_event_refuses_the_undo(
-    owned_user, owned_library, game, inverse, columns
+    owned_user, owned_library, game, inverse, day_column, marker_column
 ):
     """A marker no event wrote is no batch's."""
     run = tracked_run(owned_library, game)
     Playthrough.objects.filter(pk=run.pk).update(
-        **{
-            name: timezone.now() if value is True else value
-            for name, value in columns.items()
-        }
+        **{day_column: OTHER_DAY, marker_column: timezone.now()}
     )
 
     with pytest.raises(CommandFailed) as refused:
@@ -555,6 +549,4 @@ def test_an_endpoint_stated_with_no_event_refuses_the_undo(
     assert refused.value.message == RUN_UNDO.not_stated
     assert refused.value.status_code == 409
     run.refresh_from_db()
-    for name, value in columns.items():
-        if value is not True:
-            assert getattr(run, name) == value
+    assert getattr(run, day_column) == OTHER_DAY
