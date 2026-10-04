@@ -3861,7 +3861,7 @@ class BottomCornerTest(SimpleTestCase):
         self.assertIn("z-50", TOAST_STACK_CLASS)
 
     def test_toasts_under_a_modal_take_the_top_edge(self):
-        """A bottom sheet's panel owns the foot on a phone."""
+        """A sheet's panel owns a phone's foot."""
         from common.components.toast import TOAST_MODAL_REGION_CLASS, ToastStack
 
         self.assertIn("top-0", TOAST_MODAL_REGION_CLASS)

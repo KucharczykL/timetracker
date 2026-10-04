@@ -25,7 +25,7 @@ function sourceModules(directory: string): string[] {
   });
 }
 
-//: drop-down.ts and everything it imports; exempt, would cycle.
+//: drop-down.ts's import graph; exempt, would cycle.
 function dropdownOwnModules(): Set<string> {
   const own = new Set<string>();
   const pending = [join(SOURCE_ROOT, "elements", "drop-down.ts")];

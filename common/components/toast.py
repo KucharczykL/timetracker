@@ -17,7 +17,7 @@ TOAST_STACK_CLASS = (
     "items-end pointer-events-none p-4"
 )
 
-#: Inside the top modal: the top edge, clear of a sheet.
+#: Under a modal: top edge, clear of sheets.
 TOAST_MODAL_REGION_CLASS = (
     "fixed top-0 right-0 flex flex-col items-end pointer-events-none p-4 "
     "pt-[max(1rem,env(safe-area-inset-top))]"
@@ -27,7 +27,7 @@ TOAST_MODAL_REGION_CLASS = (
 class ToastStackProps(TypedDict):
     #: The class an action button wears: the ghost ControlButton's.
     action_class: str
-    #: The region the toasts move into under a modal.
+    #: The toasts' region under a modal.
     modal_region_class: str
 
 

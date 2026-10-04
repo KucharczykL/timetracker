@@ -1,8 +1,4 @@
 // One layer owns every modal dialog.
-//
-// Modals nest: the stack holds them in opening order. The layer owns
-// the scroll lock, the Tab boundary, dismissal, focus return and the
-// backdrop marks. It knows no form and no fetch.
 import { reportClientError } from "../client-errors.js";
 import { ownChild } from "./own-child.js";
 import { pushSurface, removeSurface, type ModalSurface } from "./surface-stack.js";

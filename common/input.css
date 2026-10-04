@@ -298,11 +298,8 @@
     }
 }
 
-/* A modal dialog is a transparent viewport hit area; its child panel owns
-   the visible surface, so a press on panel padding never masquerades as a
-   backdrop press. Visibility stays native showModal()/close() state. No
-   transform, filter or contain: a fixed child (the toast region) must use
-   the viewport. */
+/* Transparent hit area; the panel is visible. */
+/* No transform/filter/contain: toast region needs viewport. */
 dialog[data-modal] {
     position: fixed;
     inset: 0;
@@ -314,8 +311,7 @@ dialog[data-modal] {
     margin: 0;
     padding: 0;
     border: 0;
-    /* clip, not hidden: hidden makes the dialog a scroll container, and
-       showModal()'s initial focus then scrolls a translated panel into view. */
+    /* clip: hidden lets focus scroll the panel. */
     overflow: clip;
     color: inherit;
     background: transparent;
@@ -340,7 +336,7 @@ dialog[data-bottom-sheet]::backdrop {
     opacity: 0;
 }
 
-/* Only a close fades, so an uncover is instant. */
+/* Only a close fades; uncovering stays instant. */
 dialog[data-bottom-sheet][data-sheet-state="closing"]::backdrop {
     transition: opacity 200ms ease-out;
 }
@@ -359,7 +355,7 @@ dialog[data-bottom-sheet][data-sheet-state="open"] [data-sheet-panel] {
     transform: translateY(0);
 }
 
-/* Nested modals: only the topmost shown one dims. */
+/* Only the topmost shown modal dims. */
 dialog[data-modal][data-modal-covered]::backdrop {
     opacity: 0;
     transition: none;

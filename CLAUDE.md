@@ -1580,10 +1580,18 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `showInTopLayer`/`hideFromTopLayer` and push/remove a `Surface` in
   `ts/elements/surface-stack.ts`, which owns Escape for every open surface (the topmost only,
   marked spent), the outside press (pointerdown then pointerup) and single
-  open. A modal sheet is a `modal` surface; Escape stays its native `cancel`.
-  Never `popover="auto"`: its light dismiss closes a combobox on a click in
-  its own input. Contract is
+  open; a push never closes a `modal`. Escape stays a modal's native
+  `cancel`. Never `popover="auto"`: its light dismiss closes a combobox on a
+  click in its own input. Contract is
   [Floating surfaces in the top layer](docs/superpowers/specs/2026-10-03-issue-544-top-layer-surfaces-design.md)
+- **A modal is a `<dialog data-modal>` on the modal layer** (#1499):
+  `attachModal` in `ts/elements/modal-layer.ts`, never a bare `showModal()`.
+  Modals nest; the layer owns the scroll lock, Tab boundary, dismissal
+  (`[data-modal-dismiss]`), focus return and the one dim; `<toast-stack>`
+  moves into the top modal. Centred by default; a bottom sheet
+  (`BottomSheet`, `behavior="sheet"`) is a per-modal opt-in. Scope a
+  backdrop transition to the closing state. Contract is
+  [The modal layer](docs/superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md)
 - **Read settings via `config()`** from `timetracker/config.py`, never bare
   `os.environ.get` in `settings.py`. Declare `cast`/`allow_file`/`required_in_prod`
   explicitly. Container-bootstrap flags belong in `entrypoint.sh`.

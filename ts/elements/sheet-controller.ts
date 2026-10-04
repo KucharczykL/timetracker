@@ -1,9 +1,4 @@
-/** Modal bottom-sheet controller for the generic <drop-down> shell.
- *
- * The modal layer owns modality, focus, dismissal and the scroll lock.
- * This controller adds the slide, aria-expanded, the dropdown lifecycle
- * events and the close-then-navigate section-link path.
- */
+/** The bottom sheet's slide and lifecycle events. */
 import type { MenuController } from "./menu-behavior.js";
 import { attachModal } from "./modal-layer.js";
 
@@ -90,7 +85,7 @@ export function attachSheet(
 
   const modal = attachModal(dialog, {
     host,
-    // The native steps would pick the header's close button.
+    // Native steps would focus the close button.
     initialFocus: () =>
       dialog.querySelector<HTMLElement>("nav a[href]") ??
       dialog.querySelector<HTMLElement>("[data-modal-dismiss]"),
@@ -115,7 +110,7 @@ export function attachSheet(
 
   const open = (): void => {
     if (state !== "closed") return;
-    // A hidden trigger means the sheet is unavailable.
+    // A hidden trigger: the sheet is unavailable.
     if (!host.isConnected || toggle.closest("[hidden], [inert]")) return;
     // Safari does not focus a clicked button.
     if (!modal.open(toggle)) return;

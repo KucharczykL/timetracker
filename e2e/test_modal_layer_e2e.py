@@ -1,4 +1,4 @@
-"""The modal layer in a real browser: nesting, scroll, focus, toasts."""
+"""The modal layer in a real browser."""
 
 from django.test import override_settings
 from playwright.sync_api import Page, expect
@@ -44,7 +44,7 @@ def test_closing_the_lowest_modal_leaves_no_modal_behind(live_server, page: Page
 
     page.evaluate("window.modals.lower.close()")
 
-    # An open modal inside a closed one is an invisible trap.
+    # A modal left inside traps invisibly.
     assert page.evaluate("document.querySelectorAll(':modal').length") == 0
     expect(page.locator("body")).not_to_have_css("position", "fixed")
     assert page.evaluate("window.scrollY") == 200
@@ -73,7 +73,7 @@ def test_a_toast_under_the_sheet_sits_above_its_panel(live_server, page: Page):
     assert toast_box and panel_box
     assert toast_box["y"] + toast_box["height"] <= panel_box["y"]
 
-    # A press on a toast is no backdrop press.
+    # A toast press is no backdrop press.
     toast.locator("[data-toast-dismiss]").click()
     expect(page.locator("[data-toast-id]")).to_have_count(0)
     expect(dialog).to_have_attribute("open", "")
