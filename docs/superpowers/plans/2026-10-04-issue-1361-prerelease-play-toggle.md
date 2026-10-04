@@ -18,7 +18,7 @@ TDD per task. Iterate with `make test ARGS=…` under the shared lock.
 ## Task 2 — the reader
 
 - New leaf `games/reads/prerelease_play.py`: `PRERELEASE_PLAY`,
-  `shows_prerelease_play`, `shown_play`. Imports only `games.models`,
+  `prerelease_releases`, `shows_prerelease_play`, `shown_play` (`NOT IN` shape with the null branch; test a no-Release row survives). Imports only `games.models`,
   `timetracker.settings_resolver`.
 - `games/filters.py` `outside_playthrough_dates` `unless=` reads
   `PRERELEASE_PLAY`.
@@ -84,8 +84,9 @@ TDD per task. Iterate with `make test ARGS=…` under the shared lock.
 
 ## Task 7 — bench and parity
 
-- Scratch restore, set "hide", `make bench ARGS="--library <id> --gate"`;
-  record numbers in the PR body.
+- Re-time on scratch DB `timetracker_bench_1361` (releases stated by
+  hand; bench replay check refuses it, so time `READS` + `compute_stats`
+  directly) with the real implementation, setting "hide".
 - `make verify-reclassification-parity` on scratch with "hide".
 
 ## Then

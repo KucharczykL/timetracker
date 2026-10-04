@@ -47,16 +47,19 @@ A leaf module: it imports `games.models` and the resolver, never
 - `PRERELEASE_PLAY: Q` — the predicate; valid on both models, which
   both name `release`. `outside_playthrough_dates`' `unless=`
   (`games/filters.py`) uses it too.
+- `prerelease_releases() -> QuerySet[Release]` — the keys of every
+  Release on a prerelease Edition; a small catalog set.
 - `shows_prerelease_play(library) -> bool` — resolves the setting for
   `library.user` (one `auth_user` read on a library not reached through
   `request.user`, as `activity_clock` pays).
-- `shown_play(library) -> Q` — `Q()` when shown, `~PRERELEASE_PLAY`
-  when hidden.
+- `shown_play(library) -> Q` — `Q()` when shown; when hidden,
+  `Q(release__isnull=True) | ~Q(release_id__in=prerelease_releases())`.
+  The null branch is load-bearing: `NULL NOT IN (…)` is NULL, which
+  would drop every row that names no Release.
 
-Verified: `exclude(release__edition__kind=...)` compiles to
-`NOT (kind = 'prerelease' AND kind IS NOT NULL)` over two LEFT JOINs, so
-a row with no Release stays. `filter(~Q(...))` is the same on a
-single-valued path.
+Not the join shape `~PRERELEASE_PLAY`: it adds two LEFT JOINs to every
+session and record subquery. Both shapes answer the same rows and the
+same `compute_stats` (checked on the dump, below).
 
 ## Two scopes
 
@@ -138,12 +141,20 @@ record stays hidden and the total stays unchanged.
 
 ## Cost
 
-With the setting off, each session or record subquery gains two LEFT
-JOINs. With it on, `Q()` adds nothing. The bench resolves the setting
-as any read does, so the hidden case is timed on a scratch restore
-(`make restore-dump`): state "hide" for the user there through
-`make shell`, then `make bench ARGS="--library <id> --gate"`. Every
-read stays inside 20 ms or the spec says why.
+Measured before implementation on the 2026-10-03 dump, every session
+and record naming a Release (76 sessions prerelease), with both scopes
+patched to hide, medians of 15 runs, machine under load:
+
+| Read | Show | Hide, joins | Hide, `NOT IN` |
+|---|---|---|---|
+| `game_playtime_sort` | 20 ms | 24–25 ms | 12 ms |
+| `stats_superlatives` | 17–20 ms | 24–26 ms | 20–21 ms |
+| `compute_stats`, all-time | 122–130 ms | 155 ms | 113–125 ms |
+
+The join shape costs a quarter more; `NOT IN` costs nothing measurable.
+With the setting on, `Q()` adds nothing. The bench's replay check
+refuses a hand-edited copy, so the timing script calls `READS` and
+`compute_stats` directly.
 
 ## Tests
 
