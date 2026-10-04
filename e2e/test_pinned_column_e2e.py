@@ -351,7 +351,7 @@ OCCLUSION = """
 def test_a_tooltip_inside_the_pinned_cell_is_not_occluded(
     authenticated_page: Page, live_server, populated
 ):
-    """Later rows never paint over its panel.
+    """Later rows never cover the cell's tooltip.
 
     Purchases renders its first cell through `PurchaseName` → `TruncatedText`
     with `reveal="auto"`, so the tooltip exists only while the name is actually

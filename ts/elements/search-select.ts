@@ -268,6 +268,11 @@ const initWidget = (containerElement: Element): boolean => {
     ? container.closest("drop-down")
     : null;
   const delegated = dropdownHost !== null;
+  if (!delegated && !alwaysVisible) {
+    reportClientError("search-select", `${name}: no <drop-down> host; the list never opens`, {
+      toast: false,
+    });
+  }
 
   const noResults = options.querySelector<HTMLElement>("[data-search-select-no-results]");
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;

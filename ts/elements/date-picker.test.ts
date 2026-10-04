@@ -183,6 +183,23 @@ describe("date-picker calendar", () => {
     ).toBe(false);
   });
 
+  it("closes on Escape in a segment, spending the key", () => {
+    const picker = mount();
+    picker
+      .querySelector<HTMLElement>("[data-date-picker-calendar-toggle]")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const popup = picker.querySelector<HTMLElement>("[data-date-range-calendar]")!;
+    expect(popup.hidden).toBe(false);
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    picker.querySelector<HTMLInputElement>('input[data-date-part="year"]')!.dispatchEvent(escape);
+    expect(popup.hidden).toBe(true);
+    expect(escape.defaultPrevented).toBe(true);
+  });
+
   it("opens an empty field on the display zone's day (#949)", () => {
     const picker = mount();
     picker

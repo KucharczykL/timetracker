@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import "./selection-actions.js";
+import { openSurfacesForTests } from "./surface-stack.js";
 
 interface TrayFixture {
   tray: HTMLElement & { layoutActs: () => void };
@@ -43,7 +44,12 @@ function mountTray(): TrayFixture {
               <input type="hidden" data-selection-statement name="selection">
               ${submits}
               <div class="hidden" data-selection-overflow>
-                <div data-selection-overflow-items></div>
+                <drop-down>
+                  <button type="button" data-toggle>More</button>
+                  <div data-menu popover="manual" hidden>
+                    <div data-selection-overflow-items></div>
+                  </div>
+                </drop-down>
               </div>
             </form>
           </selection-actions>
@@ -116,6 +122,18 @@ describe("selection-actions priority-plus overflow", () => {
     expect(fixture.acts[2].parentElement).toBe(fixture.items);
     expect(fixture.acts[3].parentElement).toBe(fixture.items);
     expect(fixture.host.classList.contains("hidden")).toBe(false);
+  });
+
+  it("closes the overflow menu before hiding its host", () => {
+    const fixture = mountTray();
+    reveal(fixture, 480);
+    const menu = fixture.host.querySelector("drop-down")!;
+    menu.open();
+    expect(openSurfacesForTests()).toHaveLength(1);
+
+    reveal(fixture, 1000);
+    expect(fixture.host.classList.contains("hidden")).toBe(true);
+    expect(openSurfacesForTests()).toEqual([]);
   });
 
   it("states the overflowed acts in declaration order", () => {

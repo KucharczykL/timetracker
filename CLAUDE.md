@@ -1556,7 +1556,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   tooltip and calendar popup carries `popover="manual"` beside `hidden`, which
   stays its state; no `absolute`, no `z-*`. Show and hide through
   `showInTopLayer`/`hideFromTopLayer` and push/remove a `Surface` in
-  `ts/elements/surface-stack.ts`, which alone owns Escape (topmost first,
+  `ts/elements/surface-stack.ts`, which owns Escape for every open surface (topmost first,
   marked spent), the outside press (pointerdown then pointerup) and single
   open. A modal sheet is a `modal` surface; Escape stays its native `cancel`.
   Never `popover="auto"`: its light dismiss closes a combobox on a click in

@@ -15,7 +15,7 @@
  *   closes the popup immediately (a native date input's one-click UX);
  *   Clear empties the value and keeps the popup open.
  *
- * Its <drop-down> host opens, positions and dismisses it.
+ * Its <drop-down> host places and dismisses it.
  *
  * The committed value lives in the hidden ISO input Django binds
  * (`[data-date-picker-hidden]`), named after the real form field.

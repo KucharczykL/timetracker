@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachMenu, type MenuController } from "./menu-behavior.js";
-import { openSurfaces, resetSurfacesForTests } from "./surface-stack.js";
+import { openSurfacesForTests, resetSurfacesForTests } from "./surface-stack.js";
 
 function mount(): {
   host: HTMLElement;
@@ -77,10 +77,10 @@ describe("attachMenu on the surface stack", () => {
   it("closes on a press outside the host", () => {
     const { controller } = mount();
     controller.open();
-    expect(openSurfaces()).toHaveLength(1);
+    expect(openSurfacesForTests()).toHaveLength(1);
     press(document.querySelector("#outside") as HTMLElement);
     expect(controller.isOpen()).toBe(false);
-    expect(openSurfaces()).toEqual([]);
+    expect(openSurfacesForTests()).toEqual([]);
   });
 
   it("stays open when an inside press removes its own target", () => {
@@ -88,8 +88,52 @@ describe("attachMenu on the surface stack", () => {
     const inside = menu.querySelector<HTMLElement>("[data-inside]") as HTMLElement;
     inside.addEventListener("pointerdown", () => inside.remove());
     controller.open();
-    press(inside);
+    const init = { bubbles: true, composed: true, isPrimary: true, button: 0, pointerId: 1 };
+    inside.dispatchEvent(new PointerEvent("pointerdown", init));
+    document.body.dispatchEvent(new PointerEvent("pointerup", init));
     expect(controller.isOpen()).toBe(true);
+  });
+
+  it("closes, and stays closed, on a press of its own toggle", () => {
+    const { host, controller } = mount();
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    controller.open();
+    press(toggle);
+    expect(controller.isOpen()).toBe(false);
+    expect(openSurfacesForTests()).toEqual([]);
+  });
+
+  it("closes an open submenu with its parent", () => {
+    document.body.innerHTML = `
+      <div id="parent">
+        <button data-toggle type="button">Open</button>
+        <div data-menu popover="manual" hidden>
+          <div id="child">
+            <button data-child-toggle type="button">More</button>
+            <div data-child-menu popover="manual" hidden><button>Deep</button></div>
+          </div>
+        </div>
+      </div>`;
+    const parentHost = document.querySelector<HTMLElement>("#parent")!;
+    const childHost = document.querySelector<HTMLElement>("#child")!;
+    const parent = attachMenu(
+      parentHost,
+      parentHost.querySelector<HTMLElement>("[data-toggle]")!,
+      parentHost.querySelector<HTMLElement>("[data-menu]")!,
+    );
+    const child = attachMenu(
+      childHost,
+      childHost.querySelector<HTMLElement>("[data-child-toggle]")!,
+      childHost.querySelector<HTMLElement>("[data-child-menu]")!,
+      { placement: "right-start", submenu: true },
+    );
+    parent.open();
+    child.open();
+    expect(openSurfacesForTests()).toHaveLength(2);
+    press(document.body);
+    expect(child.isOpen()).toBe(false);
+    expect(parent.isOpen()).toBe(false);
+    expect(openSurfacesForTests()).toEqual([]);
   });
 
   it("closes on Escape and returns focus to the toggle", () => {
@@ -115,7 +159,7 @@ describe("attachMenu on the surface stack", () => {
     host.remove();
     controller.open();
     expect(controller.isOpen()).toBe(false);
-    expect(openSurfaces()).toEqual([]);
+    expect(openSurfacesForTests()).toEqual([]);
   });
 });
 

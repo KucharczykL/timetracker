@@ -25,6 +25,7 @@ from common.components.custom_elements import (
     _Dropdown,
 )
 from common.components.primitives import (
+    CLOSED_POPOVER,
     ButtonColor,
     ControlButton,
     Div,
@@ -465,7 +466,7 @@ def date_calendar_shell(
         ]
     )
     return Div(
-        [] if static else [("data-menu", ""), ("hidden", ""), ("popover", "manual")],
+        [] if static else [("data-menu", ""), *CLOSED_POPOVER],
         class_=_STATIC_CALENDAR_CLASS
         if static
         else f"flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}",
@@ -517,13 +518,8 @@ def DateRangePicker(
     filter serializer; non-filter callers (e.g. a standalone date picker)
     leave it None and the extra attributes are omitted.
 
-    Hosted in ``<drop-down behavior="date-calendar">`` (issue #485
-    follow-up): the popup's visibility, viewport-aware positioning, and
-    outside-press/Escape dismiss all come from the shared attachMenu engine
-    instead of a bespoke absolute-positioned Div — this is what fixed the
-    calendar overlapping the field on narrow viewports. ``block`` (not the
-    generic inline-flex ``Dropdown()`` wrapper) so the field keeps its full
-    form-column width, matching the hosted ``SearchSelect``."""
+    Its ``<drop-down>`` host opens, positions and dismisses it.
+    ``block`` keeps the full column width."""
     widget_attributes = (
         filter_widget_attributes(path, "date") if path is not None else []
     )

@@ -66,6 +66,7 @@ export interface MenuOptions {
 
 export interface MenuController {
   open: () => void;
+  /** Idempotent; a sheet may finish later. */
   close: () => void;
   isOpen: () => boolean;
   focusFirst: () => void;
@@ -172,6 +173,7 @@ export function attachMenu(
   const resizeObserver =
     typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
 
+  // Only the top-layer helpers write hidden.
   const isOpen = (): boolean => !menu.hidden;
 
   // Hover never scrolls; keyboard steps do.
@@ -265,8 +267,7 @@ export function attachMenu(
     }
   };
 
-  // An inline-combobox toggle opens on the hosted input's focus, not on a click,
-  // The widget owns its input's keys.
+  // Inline triggers open on focus; widgets own keys.
   if (!inlineTrigger) {
     toggle.addEventListener("click", (event) => {
       event.stopPropagation();

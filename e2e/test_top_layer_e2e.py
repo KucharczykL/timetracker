@@ -53,7 +53,7 @@ def harness_view(request):
     <link rel="stylesheet" href="/static/base.css">
     {scripts}
     </head><body style="padding:24px">
-    <!-- A transformed, clipping ancestor once trapped fixed panels. -->
+    <!-- A transformed, clipping ancestor must not trap panels. -->
     <div id="clipped" style="transform:translateZ(0);overflow:hidden;
         height:48px;width:320px;margin:120px 0 0 240px">{acts}</div>
     <div style="margin-top:24px">{facet}</div>
@@ -91,6 +91,14 @@ def test_a_panel_escapes_a_transformed_clipping_ancestor(live_server, page: Page
         [third["x"] + 8, third["y"] + third["height"] / 2],
     )
     assert hit == "Third"
+    # The UA's popover look stays reset.
+    look = page.locator("#acts").evaluate(
+        "(panel) => { const style = getComputedStyle(panel);"
+        " return [style.backgroundColor, style.marginTop, style.overflow]; }"
+    )
+    assert look[0] not in ("rgba(0, 0, 0, 0)", "transparent")
+    assert look[1] == "0px"
+    assert look[2] == "visible"
 
 
 @harness

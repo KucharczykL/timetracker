@@ -1,10 +1,14 @@
 // Stands in for jsdom's missing Popover API.
 const openPopovers = new WeakSet<HTMLElement>();
 
-function showPopover(this: HTMLElement): void {
-  if (!this.hasAttribute("popover")) {
+function requirePopover(element: HTMLElement): void {
+  if (!element.hasAttribute("popover")) {
     throw new DOMException("Element has no popover attribute", "NotSupportedError");
   }
+}
+
+function showPopover(this: HTMLElement): void {
+  requirePopover(this);
   if (!this.isConnected) {
     throw new DOMException("Element is not connected", "InvalidStateError");
   }
@@ -12,6 +16,7 @@ function showPopover(this: HTMLElement): void {
 }
 
 function hidePopover(this: HTMLElement): void {
+  requirePopover(this);
   openPopovers.delete(this);
 }
 

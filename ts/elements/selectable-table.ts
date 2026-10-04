@@ -1,5 +1,6 @@
 /** <selectable-table> — a data table's rows, selectable. */
 
+import "./drop-down.js";
 import {
   readSelectableTableProps,
   SelectableTableProps,
@@ -186,17 +187,8 @@ export class SelectableTableElement extends HTMLElement {
 
   private onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
-      if (!this.count()) return;
-      // Read after the press, not during it.
-      //
-      // An overlay that closes marks the press spent, but not always before
-      // this handler runs: a menu inside the table answers first, while the
-      // tooltip and the pickers listen on the document and answer later. A
-      // microtask is drained between listeners and would still read false, so
-      // the decision waits for the task after the dispatch.
-      setTimeout(() => {
-        if (!event.defaultPrevented && this.count()) this.onClear();
-      });
+      // The surface stack spent it first.
+      if (this.count() && !event.defaultPrevented) this.onClear();
       return;
     }
     if (event.key !== " " || !event.shiftKey) return;
@@ -329,6 +321,8 @@ export class SelectableTableElement extends HTMLElement {
     if (!this.line || this.line.hidden === !shown) return;
     // Read before hiding: focus leaves a hidden element lazily.
     const hadFocus = this.line.contains(document.activeElement);
+    // Close first: hiding strands a top-layer panel.
+    if (!shown) this.line.querySelectorAll("drop-down").forEach((menu) => menu.close());
     this.line.hidden = !shown;
     if (hadFocus && !shown) this.focusTarget()?.focus({ preventScroll: true });
   }

@@ -12,6 +12,7 @@
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
+import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
 import { applyUrl } from "./filter-url.js";
 import {
@@ -69,6 +70,7 @@ class QuickFilterBarElement extends HTMLElement {
   private overflowLabelApplied = "";
   private row: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
+  private overflowMenu: DropdownElement | null = null;
   private overflowItems: HTMLElement | null = null;
   private overflowTrigger: HTMLElement | null = null;
   private overflowMark: HTMLElement | null = null;
@@ -153,6 +155,10 @@ class QuickFilterBarElement extends HTMLElement {
         toast: false,
       });
       return;
+    }
+    this.overflowMenu = this.overflowHost.querySelector("drop-down");
+    if (!this.overflowMenu) {
+      reportClientError("quick-filter-bar", "overflow menu missing", { toast: false });
     }
     // The collapse still works without the mark.
     if (!this.overflowTrigger || !this.overflowMark) {
@@ -251,8 +257,8 @@ class QuickFilterBarElement extends HTMLElement {
       for (const facet of spilled) overflowItems.appendChild(facet.element);
     }
 
-    // Hidden, the host would strand it.
-    if (spilled.length === 0) overflowHost.querySelector("drop-down")?.close();
+    // Close first: hiding strands a top-layer panel.
+    if (spilled.length === 0) this.overflowMenu?.close();
     overflowHost.classList.toggle("hidden", spilled.length === 0);
     const holdsApplied = spilled.some((facet) => facet.applied);
     this.overflowMark?.classList.toggle("invisible", !holdsApplied);

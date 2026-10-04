@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define("search-select")
 import "./drop-down.js"; // side effect: define <drop-down> + register inline-combobox
-import { openSurfaces } from "./surface-stack.js";
-import { hosted } from "../test-setup/search-select-host.js";
+import { openSurfacesForTests } from "./surface-stack.js";
+import { hosted, press } from "../test-setup/search-select-host.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -88,6 +88,13 @@ describe("<search-select> hosted in <drop-down behavior=inline-combobox> (#348)"
     expect(isOpen(host)).toBe(false);
   });
 
+  it("stays open on a press in its own input", () => {
+    const host = mount();
+    searchOf(host).focus();
+    press(searchOf(host));
+    expect(isOpen(host)).toBe(true);
+  });
+
   it("closes on an outside press", () => {
     const host = mount();
     searchOf(host).focus();
@@ -124,6 +131,50 @@ describe("<search-select> inside another <drop-down>", () => {
     searchOf(outer).focus();
     expect(panelOf(outer).hidden).toBe(false);
     expect(outerMenu.hidden).toBe(false);
-    expect(openSurfaces()).toHaveLength(2);
+    expect(openSurfacesForTests()).toHaveLength(2);
+  });
+
+  it("resets its state when the outer panel closes, not before", () => {
+    const widget = document.createElement("search-select");
+    widget.setAttribute("name", "game");
+    widget.setAttribute("multi", "false");
+    widget.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" aria-expanded="false" />
+      <div data-search-select-options hidden role="listbox">
+        <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"><span data-search-select-label>One</span></div>
+        <drop-down id="nested"><button data-toggle>x</button><div data-menu popover="manual" hidden></div></drop-down>
+      </div>`;
+    const outer = document.createElement("drop-down");
+    outer.innerHTML = `<button data-toggle>Menu</button><div data-menu popover="manual" hidden></div>`;
+    outer.querySelector(":scope > [data-menu]")!.append(hosted(widget));
+    document.body.appendChild(outer);
+    outer.open();
+    searchOf(outer).focus();
+    expect(searchOf(outer).getAttribute("aria-expanded")).toBe("true");
+
+    const nested = outer.querySelector<HTMLElement & { open(): void; close(): void }>("#nested")!;
+    nested.open();
+    nested.close();
+    expect(searchOf(outer).hasAttribute("aria-activedescendant")).toBe(true);
+
+    (outer as HTMLElement & { close(): void }).close();
+    expect(searchOf(outer).getAttribute("aria-expanded")).toBe("false");
+    expect(searchOf(outer).hasAttribute("aria-activedescendant")).toBe(false);
+  });
+});
+
+describe("<search-select> with no host", () => {
+  it("reports that its list never opens", () => {
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const widget = document.createElement("search-select");
+    widget.setAttribute("name", "orphan");
+    widget.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search role="combobox" />
+      <div data-search-select-options hidden role="listbox"></div>`;
+    document.body.replaceChildren(widget);
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("orphan: no <drop-down> host"));
+    report.mockRestore();
   });
 });

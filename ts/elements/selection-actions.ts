@@ -5,7 +5,9 @@
  * out of reach while nothing is selected.
  */
 
+import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
+import { reportClientError } from "../client-errors.js";
 import { SelectionStatement } from "./selection-statement.js";
 import {
   OverflowItem,
@@ -64,6 +66,7 @@ class SelectionActionsElement extends HTMLElement {
   private controls: HTMLElement | null = null;
   private actsRow: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
+  private overflowMenu: DropdownElement | null = null;
   private overflowItems: HTMLElement | null = null;
   private acts: OverflowItem[] = [];
   // Taken the first time the line is shown.
@@ -129,7 +132,14 @@ class SelectionActionsElement extends HTMLElement {
       !this.overflowHost ||
       !this.overflowItems
     ) {
+      reportClientError("selection-actions", "line, row or overflow missing", {
+        toast: false,
+      });
       return;
+    }
+    this.overflowMenu = this.overflowHost.querySelector("drop-down");
+    if (!this.overflowMenu) {
+      reportClientError("selection-actions", "overflow menu missing", { toast: false });
     }
     if (!this.actsRow.querySelector(ACT)) return;
     if (typeof ResizeObserver !== "undefined") {
@@ -244,9 +254,9 @@ class SelectionActionsElement extends HTMLElement {
         overflowItems.appendChild(element);
       }
     }
-    // Hidden, the host would strand it.
+    // Close first: hiding strands a top-layer panel.
     const allFit = fitCount === this.acts.length;
-    if (allFit) overflowHost.querySelector("drop-down")?.close();
+    if (allFit) this.overflowMenu?.close();
     overflowHost.classList.toggle("hidden", allFit);
   }
 

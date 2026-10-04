@@ -73,6 +73,7 @@ from common.components.custom_elements import (
     _SearchSelect,
 )
 from common.components.primitives import (
+    CLOSED_POPOVER,
     DISABLED_WITHIN_CLASS,
     SHAPE_CLASSES,
     AppliedDot,
@@ -159,7 +160,7 @@ def field_box_class(shape: ButtonShape) -> str:
 
 
 _BOX_CLASS = field_box_class("full")
-# Anchors the standalone panel and drop-down.
+# Anchors the drop-down.
 _CONTAINER_CLASS = "relative block"
 _PILLS_CLASS = "contents"
 # Under 16px text, iOS zooms on focus.
@@ -407,8 +408,8 @@ class _ComboboxLayout(NamedTuple):
     """Where a combobox lives, declared once."""
 
     container_class: str
-    #: None: the dialog is the panel.
-    panel_class: str | None
+    #: A <drop-down> owns the list; else the dialog is the panel.
+    hosted: bool
 
 
 def _combobox_children(
@@ -468,21 +469,14 @@ def _combobox_children(
     if multi_select:
         listbox_attributes.append(("aria-multiselectable", "true"))
     options_panel: Node
-    if layout.panel_class is None:
+    if not layout.hosted:
         options_panel = Div(listbox_attributes, class_=_DIALOG_LISTBOX_CLASS)[
             *panel_children
         ]
     else:
-        panel_attributes: list[HTMLAttribute] = [
-            ("data-search-select-panel", ""),
-            ("data-menu", ""),
-            ("hidden", ""),
-            ("popover", "manual"),
-        ]
         options_panel = DropdownPanel(
-            panel_attributes,
+            [("data-search-select-panel", ""), ("data-menu", ""), *CLOSED_POPOVER],
             width="w-full",
-            class_=layout.panel_class,
             content_attributes=listbox_attributes,
             content_class="scroll-py-2",
         )[panel_children]
@@ -534,7 +528,7 @@ def SearchSelect(
     build by hand — the hosting dialog, not the widget, is the disclosure.
 
     Otherwise the widget sits in ``<drop-down behavior="inline-combobox">``,
-    so its panel opens, positions and dismisses through attachMenu; the
+    so its panel opens and positions through attachMenu; the
     widget's own search input is the trigger.
 
     Pass ``option_groups`` instead of ``options`` to render a grouped panel
@@ -569,6 +563,8 @@ def SearchSelect(
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
+    if always_visible and not panel:
+        raise ValueError("always_visible needs panel=True; a host hides the list")
     if panel:
         always_visible = True
     if options and option_groups:
@@ -718,7 +714,7 @@ def SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
         # is the positioning anchor (its field box) and the focus/typing trigger.
         # No id/aria-controls/aria-expanded stamp — the widget owns those at init.
-        [] if panel else [("data-toggle", "")],
+        [("data-toggle", "")] if layout.hosted else [],
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
@@ -734,11 +730,12 @@ def SearchSelect(
         none_label=none_label,
         class_=layout.container_class,
     )[*children]
-    if panel:
-        return widget
-    # block (not the generic inline-flex) so the field keeps its full form-column
-    # width. attachMenu positions the [data-menu] panel fixed relative to the
-    # <search-select> anchor; the inline-combobox behavior wires the rest.
+    return _inline_combobox_host(widget) if layout.hosted else widget
+
+
+def _inline_combobox_host(widget: Node) -> Node:
+    """The drop-down a hosted combobox lives in."""
+    # block keeps the field's full column width.
     return _Dropdown(
         class_="block",
         placement="bottom-start",
@@ -855,8 +852,8 @@ def FilterSelect(
 
     The default ``layout="field"`` hosts itself in
     ``<drop-down behavior="inline-combobox">`` so its panel opens/closes/positions/
-    dismisses through the shared attachMenu engine (the search input is the
-    trigger — focus opens), mirroring :func:`SearchSelect` the hosted :func:`SearchSelect`.
+    dismisses through attachMenu and the surface stack (the search input is the
+    trigger — focus opens), mirroring the hosted :func:`SearchSelect`.
 
     ``layout="panel"`` renders the same widget in the panel personality (see
     :data:`FilterSelectLayout`): pills in their own wrap row above the
@@ -871,8 +868,6 @@ def FilterSelect(
     rather than a ``<label>`` next to the widget.
     """
     panel_layout = layout == "panel"
-    # ComboboxDropdown hosts the panel layout instead.
-    field_host = not panel_layout
     normalized_options = [_normalize_option(option) for option in (options or [])]
     normalized_included = [_normalize_option(option) for option in (included or [])]
     normalized_excluded = [_normalize_option(option) for option in (excluded or [])]
@@ -971,7 +966,7 @@ def FilterSelect(
     widget_attributes = (
         filter_widget_attributes(path, "set") if path is not None else []
     )
-    if field_host:
+    if combobox_layout.hosted:
         # The <search-select> element itself is the drop-down's [data-toggle]: its
         # field box is the positioning anchor and its search input is the trigger.
         widget_attributes = [("data-toggle", ""), *widget_attributes]
@@ -989,16 +984,7 @@ def FilterSelect(
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
-    if not field_host:
-        return widget
-    # block (not the generic inline-flex) so the field keeps its full column width;
-    # attachMenu positions the [data-menu] panel fixed relative to the anchor.
-    return _Dropdown(
-        class_="block",
-        placement="bottom-start",
-        submenu="false",
-        behavior="inline-combobox",
-    )[widget]
+    return _inline_combobox_host(widget) if combobox_layout.hosted else widget
 
 
 # ── Panel personality styling ───────────────────────────
@@ -1006,11 +992,9 @@ def FilterSelect(
 _PANEL_CONTAINER_CLASS = "block text-type-body"
 
 # Pinned by the hosting drop-down.
-_INLINE_LAYOUT = _ComboboxLayout(container_class=_CONTAINER_CLASS, panel_class="")
+_INLINE_LAYOUT = _ComboboxLayout(container_class=_CONTAINER_CLASS, hosted=True)
 # Inside a dialog's padded surface.
-_DIALOG_LAYOUT = _ComboboxLayout(
-    container_class=_PANEL_CONTAINER_CLASS, panel_class=None
-)
+_DIALOG_LAYOUT = _ComboboxLayout(container_class=_PANEL_CONTAINER_CLASS, hosted=False)
 
 # Fetch-on-open window. A preset collection is per-user and small; one fetch
 # returns it all, and the type-to-filter narrows client-side.
@@ -1091,7 +1075,7 @@ def ComboboxDropdown(
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
-    open/close, outside-click, Escape and the panel surface; the panel hosts
+    open/close, outside press, Escape and the panel surface; the panel hosts
     ``content`` (a combobox-shell widget such as :func:`PresetSelect` or a
     panel-layout :func:`FilterSelect`). The ``combobox`` client behavior opts
     out of the menu's item navigation, focuses the search box on open, and

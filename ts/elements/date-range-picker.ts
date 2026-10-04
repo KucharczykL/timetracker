@@ -21,7 +21,7 @@
  * renderer are shared with date-picker.ts via date-field-core.ts /
  * date-calendar-core.ts; anchor/track/preset logic below is range-specific.
  *
- * The popup variant's <drop-down> host opens, positions and dismisses it.
+ * A <drop-down> places and dismisses the popup.
  * The static (panel) variant is unaffected — it already lives inside the quick
  * bar's OWN separate <drop-down>, and never toggles.
  *

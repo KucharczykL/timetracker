@@ -1,12 +1,12 @@
 /**
  * Shared viewport-aware fixed positioner for anchored panels: the geometry both
  * the dropdown menus (menu-behavior.ts) and the hover tooltip (pop-over.ts) use.
- * Pins the panel `position: fixed` (so it escapes clipping/overflow ancestors),
+ * Pins the panel `position: fixed`,
  * aligns it under/over an anchor with a configurable default side + gap, flips
  * to the other side when the preferred one lacks room, clamps horizontally to
  * the viewport. Top-layer panels use viewport coordinates.
  *
- * Geometry only — keyboard roving, single-open coordination, and submenu flyouts
+ * Geometry only — keyboard roving and submenu flyouts
  * stay in attachMenu (the submenu keeps its own flip/first-item geometry, but
  * shares the pin/clamp/clear scaffold exported here).
  */

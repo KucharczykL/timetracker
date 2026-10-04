@@ -333,6 +333,9 @@ _TruncatedText = custom_element_builder("truncated-text")
 # TruncatedText host inherits font-condensed and renders in a different
 # typeface from every other tooltip on the site. Stating the family here keeps
 # a tooltip looking like a tooltip wherever it is mounted.
+#: A floating panel, closed: shown into the top layer.
+CLOSED_POPOVER: tuple[tuple[str, str], ...] = (("hidden", ""), ("popover", "manual"))
+
 _TOOLTIP_PANEL_CLASS = (
     f"inline-block font-sans text-type-body text-heading bg-brand-soft "
     f"border border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
@@ -378,9 +381,7 @@ def _tooltip_panel(
         attributes.append(("aria-hidden", "true"))
     else:
         attributes.extend([("id", id), ("role", "tooltip")])
-    attributes.extend(
-        [("hidden", ""), ("popover", "manual"), ("class", _TOOLTIP_PANEL_CLASS)]
-    )
+    attributes.extend([*CLOSED_POPOVER, ("class", _TOOLTIP_PANEL_CLASS)])
     return Div(attributes)[
         Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
             content
@@ -648,7 +649,7 @@ SHRINKABLE_COLUMN_CLASS = "max-md:w-full max-md:max-w-0"
 # viewport where the table has already been cut to two columns.
 PINNED_COLUMN_CLASS = (
     "md:sticky md:start-0 md:z-[2] md:bg-inherit "
-    # Only once content scrolls behind it.
+    # Shadowed once content scrolls behind it.
     #
     # The offset is physical where the trigger and the pin are logical,
     # so the direction is mirrored explicitly — otherwise the shadow
@@ -1813,8 +1814,7 @@ def YearPicker(
                 ("data-menu", ""),
                 ("data-year-picker-popup", ""),
                 ("id", popup_id),
-                ("hidden", ""),
-                ("popover", "manual"),
+                *CLOSED_POPOVER,
                 ("role", "group"),
                 ("aria-labelledby", period_id),
                 ("class", popup_class),

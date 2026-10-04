@@ -37,6 +37,7 @@ from common.components.core import (
     as_children,
 )
 from common.components.primitives import (
+    CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
     ICON_BUTTON_SIZE_CLASS,
     MICRO_LABEL_CLASS,
@@ -1006,7 +1007,7 @@ def _stamp_target_contract(
     """
     contract = [("data-menu", ""), ("id", id)]
     if initially_hidden:
-        contract.extend([("hidden", ""), ("popover", "manual")])
+        contract.extend(CLOSED_POPOVER)
     if not any(
         key in {"aria-label", "aria-labelledby"} for key, _ in target.attributes
     ):
@@ -1299,14 +1300,14 @@ def BottomSheet(
         Div(
             data_sheet_panel="",
             class_=(
-                "relative isolate flex w-full max-h-[min(80dvh,32rem)] flex-col "
+                "flex w-full max-h-[min(80dvh,32rem)] flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
             ),
         )[
             Div(
                 class_=(
-                    "relative z-10 flex shrink-0 items-center justify-between gap-4 "
+                    "flex shrink-0 items-center justify-between gap-4 "
                     "border-b border-default-medium bg-surface-overlay px-4 py-3"
                 )
             )[

@@ -22,6 +22,13 @@ describe("popover shim", () => {
     );
   });
 
+  it("refuses to hide an element without a popover attribute", () => {
+    const element = document.createElement("div");
+    expect(() => element.hidePopover()).toThrow(
+      expect.objectContaining({ name: "NotSupportedError" }),
+    );
+  });
+
   it("refuses a disconnected element", () => {
     const panel = document.createElement("div");
     panel.setAttribute("popover", "manual");

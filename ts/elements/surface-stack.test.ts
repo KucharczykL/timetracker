@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   hideFromTopLayer,
-  openSurfaces,
+  openSurfacesForTests,
   pushSurface,
   removeSurface,
   resetSurfacesForTests,
@@ -69,7 +69,7 @@ describe("single open", () => {
     const panel = surface("panel", host());
     pushSurface(panel);
     expect(closed).toEqual(["unrelated"]);
-    expect(openSurfaces()).toEqual([panel]);
+    expect(openSurfacesForTests()).toEqual([panel]);
   });
 
   it("keeps the panel whose host holds the new one", () => {
@@ -79,7 +79,7 @@ describe("single open", () => {
     pushSurface(ancestor);
     pushSurface(nested);
     expect(closed).toEqual([]);
-    expect(openSurfaces()).toEqual([ancestor, nested]);
+    expect(openSurfacesForTests()).toEqual([ancestor, nested]);
   });
 
   it("lets a hint close nothing", () => {
@@ -87,7 +87,7 @@ describe("single open", () => {
     pushSurface(panel);
     pushSurface(surface("hint", host(), "hint"));
     expect(closed).toEqual([]);
-    expect(openSurfaces()).toHaveLength(2);
+    expect(openSurfacesForTests()).toHaveLength(2);
   });
 
   it("closes an unrelated hint when a panel opens", () => {
@@ -103,14 +103,14 @@ describe("single open", () => {
     pushSurface(modal);
     pushSurface(surface("inside", host(dialog)));
     expect(closed).toEqual(["outside"]);
-    expect(openSurfaces()[0]).toBe(modal);
+    expect(openSurfacesForTests()[0]).toBe(modal);
   });
 
   it("moves nothing on a second push", () => {
     const first = surface("first", host());
     pushSurface(first);
     pushSurface(first);
-    expect(openSurfaces()).toEqual([first]);
+    expect(openSurfacesForTests()).toEqual([first]);
   });
 });
 
@@ -124,7 +124,7 @@ describe("removal", () => {
     pushSurface(surface("grandchild", host(childHost)));
     parent.close();
     expect(closed).toEqual(["parent", "grandchild", "child"]);
-    expect(openSurfaces()).toEqual([]);
+    expect(openSurfacesForTests()).toEqual([]);
   });
 
   it("is idempotent", () => {
@@ -132,7 +132,7 @@ describe("removal", () => {
     pushSurface(panel);
     removeSurface(panel);
     removeSurface(panel);
-    expect(openSurfaces()).toEqual([]);
+    expect(openSurfacesForTests()).toEqual([]);
   });
 });
 
@@ -154,6 +154,14 @@ describe("Escape", () => {
     pushSurface(surface("panel", host()));
     expect(pressEscape(init).defaultPrevented).toBe(false);
     expect(closed).toEqual([]);
+  });
+
+  it("closes a panel over a modal and spends the key", () => {
+    const dialog = host();
+    pushSurface(surface("modal", dialog, "modal"));
+    pushSurface(surface("panel", host(dialog)));
+    expect(pressEscape().defaultPrevented).toBe(true);
+    expect(closed).toEqual(["panel"]);
   });
 
   it("leaves a modal on top to its own cancel", () => {
@@ -240,11 +248,54 @@ describe("outside press", () => {
     expect(closed).toEqual([]);
   });
 
+  it("closes the panels above a pressed modal and keeps it", () => {
+    const dialog = host();
+    pushSurface(surface("modal", dialog, "modal"));
+    pushSurface(surface("panel", host(dialog)));
+    pointer("pointerdown", dialog);
+    pointer("pointerup", dialog);
+    expect(closed).toEqual(["panel"]);
+    expect(openSurfacesForTests().map((open) => open.kind)).toEqual(["modal"]);
+  });
+
   it("never closes a modal", () => {
     pushSurface(surface("modal", host(), "modal"));
     pointer("pointerdown", document.body);
     pointer("pointerup", document.body);
     expect(closed).toEqual([]);
+  });
+
+  it("lets a pressed hint shield no panel beneath it", () => {
+    pushSurface(surface("panel", host()));
+    const hintHost = host();
+    pushSurface(surface("hint", hintHost, "hint"));
+    pointer("pointerdown", hintHost);
+    pointer("pointerup", hintHost);
+    expect(closed).toEqual(["panel"]);
+    expect(openSurfacesForTests().map((open) => open.kind)).toEqual(["hint"]);
+  });
+
+  it("ignores a press that is not the primary pointer", () => {
+    pushSurface(surface("panel", host()));
+    pointer("pointerdown", document.body, { isPrimary: false });
+    pointer("pointerup", document.body, { isPrimary: false });
+    expect(closed).toEqual([]);
+  });
+});
+
+describe("a close that throws", () => {
+  it("still leaves the stack", () => {
+    const broken: Surface = {
+      host: host(),
+      kind: "panel",
+      close: () => {
+        throw new Error("broken");
+      },
+    };
+    pushSurface(broken);
+    const next = surface("next", host());
+    expect(() => pushSurface(next)).toThrow("broken");
+    expect(openSurfacesForTests()).toEqual([next]);
   });
 });
 
@@ -268,6 +319,14 @@ describe("top layer helpers", () => {
   it("refuses a disconnected panel and keeps it hidden", () => {
     const element = panel(null);
     expect(showInTopLayer(element)).toBe(false);
+    expect(element.hidden).toBe(true);
+  });
+
+  it("hides a panel the browser already hid", () => {
+    const element = panel();
+    showInTopLayer(element);
+    element.remove();
+    hideFromTopLayer(element);
     expect(element.hidden).toBe(true);
   });
 

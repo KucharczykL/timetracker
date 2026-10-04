@@ -291,11 +291,7 @@ class SearchSelectHostDropdownTest(unittest.TestCase):
 
 
 class FilterSelectFieldHostTest(unittest.TestCase):
-    """The default field layout hosts itself in
-    <drop-down behavior="inline-combobox"> so its panel uses the shared attachMenu
-    open/close/position/dismiss engine (issue #354), mirroring
-    SearchSelect. The panel layout stays bare here — its
-    drop-down is supplied a level up by ComboboxDropdown."""
+    """The field layout lives in its own drop-down."""
 
     def test_field_layout_wraps_in_inline_combobox_dropdown(self):
         html = str(FilterSelect(field_name="type"))
@@ -511,12 +507,16 @@ class SearchSelectAriaTest(unittest.TestCase):
         self.assertIn('aria-expanded="false"', input_tag)
         self.assertIn('aria-autocomplete="list"', input_tag)
 
-    def test_always_visible_renders_expanded(self):
+    def test_the_panel_personality_renders_expanded(self):
         input_tag = _tag_around(
-            str(SearchSelect(name="games", always_visible=True)),
+            str(SearchSelect(name="games", panel=True)),
             "data-search-select-search",
         )
         self.assertIn('aria-expanded="true"', input_tag)
+
+    def test_a_hosted_list_cannot_stay_visible(self):
+        with self.assertRaises(ValueError):
+            SearchSelect(name="games", always_visible=True)
 
     def test_options_panel_is_a_listbox(self):
         panel_tag = _tag_around(
