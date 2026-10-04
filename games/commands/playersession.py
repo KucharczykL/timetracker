@@ -85,7 +85,7 @@ DURATION_RESOLUTION = timedelta(seconds=1)
 
 @dataclass(frozen=True, slots=True)
 class TimedTiming(FingerprintedValue):
-    """An exact start, an end once there is one, no override."""
+    """Exact start, optional end, no override."""
 
     fingerprint_word: ClassVar[FingerprintWord] = "timed_timing"
 

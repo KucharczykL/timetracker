@@ -46,8 +46,7 @@ class WordedValue(TypedDict):
 
 #: Bump when a deployed record's digest changes.
 #:
-#: Part of a digest: a command's field names, and each
-#: FingerprintedValue's word and field names.
+#: Field names and value words enter digests.
 FINGERPRINT_VERSION = 5
 
 
@@ -153,7 +152,7 @@ def _canonical_datetime(value: datetime) -> str:
 
 
 def _encode_value_object(value: FingerprintedValue) -> WordedValue:
-    """The word, read off the class, then the fields."""
+    """The class's word, then its fields."""
     if not is_dataclass(value):
         raise TypeError(
             f"{type(value).__qualname__} is a FingerprintedValue but no "
@@ -173,7 +172,7 @@ def _encode_value_object(value: FingerprintedValue) -> WordedValue:
 
 
 def _encode_command_value(value: Any) -> TaggedValue | WordedValue:
-    """A type word and canonical text, or a value's word and fields.
+    """Type word and text, or worded fields.
 
     The words are the wire form: a rename moves every digest of that type,
     so they are written out rather than read from the class.
