@@ -1,4 +1,4 @@
-"""The Library tab: tabs, a facet, bulk Edit and Undo, the row menu."""
+"""The Library tab: tabs, a facet, bulk acts and Undo, the row menu."""
 
 import pytest
 from django.urls import reverse
@@ -133,6 +133,41 @@ def test_two_copies_are_edited_and_the_undo_puts_theirs_back(
 
     page.wait_for_url(listed)
     assert _formats() == ["digital", "digital"]
+
+
+def _ended() -> list[str | None]:
+    return sorted(
+        LibraryEntry.objects.values_list("access_end_way", flat=True),
+        key=lambda way: way or "",
+    )
+
+
+def test_two_copies_end_and_the_undo_holds_them_again(
+    authenticated_page: Page, live_server, copies
+):
+    page = authenticated_page
+    listed = f"{live_server.url}{reverse('games:list_library')}"
+    page.goto(listed)
+    boxes = page.locator("tbody [data-selection-checkbox]")
+    boxes.nth(0).click()
+    boxes.nth(1).click()
+    page.get_by_role("button", name="I no longer have them…").first.click()
+    page.wait_for_load_state()
+
+    expect(
+        page.get_by_role("heading", name="I no longer have these 2 copies")
+    ).to_be_visible()
+    page.select_option("select[name='choice-way']", "sold")
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    assert _ended() == ["sold", "sold"]
+
+    with page.expect_navigation():
+        page.get_by_role("button", name="Undo").click()
+
+    page.wait_for_url(listed)
+    assert all(way in (None, "") for way in _ended())
 
 
 def test_the_row_menu_opens_the_details_page_and_returns_to_the_tab(

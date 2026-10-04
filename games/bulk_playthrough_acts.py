@@ -27,21 +27,14 @@ from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_STATUS_CHANGED
-from games.events.playthrough import (
-    PLAYTHROUGH_COMPLETED,
-    PLAYTHROUGH_COMPLETION_EVENTS,
-    PLAYTHROUGH_START_EVENTS,
-    PLAYTHROUGH_STARTED,
-)
 from games.models import PlayerGame, PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.events import aggregate_events, run_game_at_batch
 from games.reads.playergame_facts import status_change
-from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.writes.answers import answered
 from games.writes.implied_status import StatusRefused
 from games.writes.playergame import record_facts
-from games.writes.playthrough import void_completion, void_start
+from games.writes.playthrough import undo_completion, undo_start
 from games.writes.playthrough_endpoints import StatedAct, state_completion, state_start
 from timetracker.temporal import TemporalValue
 
@@ -222,19 +215,6 @@ def complete_one(
 
 # ── Backward ─────────────────────────────────────────────────────────────────
 
-#: What one row's Undo refuses.
-NOT_STATED_BY_THIS_BATCH = (
-    "That playthrough was not recorded by this batch, so it was left as it is."
-)
-CHANGED_SINCE = (
-    "That playthrough has been recorded again since this batch, so it was "
-    "left as it is. Correct it by hand instead."
-)
-
-#: One endpoint's events; the latest of them owns the value.
-_START_FAMILY = PLAYTHROUGH_START_EVENTS.family
-_COMPLETION_FAMILY = PLAYTHROUGH_COMPLETION_EVENTS.family
-
 
 def _row(actor: User, run_id: uuid.UUID) -> Playthrough:
     """The row an Undo speaks about.
@@ -254,42 +234,6 @@ def _row(actor: User, run_id: uuid.UUID) -> Playthrough:
                 "the batch's inverse has no row to take a record back from."
             )
         return row
-
-
-def _refuse_unless_this_batch_wrote_it(
-    run: Playthrough,
-    batch_id: uuid.UUID,
-    family: tuple[str, ...],
-    stated: str,
-) -> None:
-    """Refuse a value another act wrote after this batch.
-
-    The batch's own event must still be the latest of the family. A
-    correction states a day a person typed, and a second statement one
-    another act recorded; voiding either destroys a value this batch
-    never wrote, and no command puts it back.
-    """
-    about = [
-        event
-        for event in aggregate_events(run.library, run.pk)
-        if event.event_type in family
-    ]
-    ours = [
-        event
-        for event in about
-        if event.correlation_id == batch_id and event.event_type == stated
-    ]
-    if not ours:
-        raise CommandRejected(
-            f"batch {batch_id} recorded no {stated} of playthrough {run.pk}",
-            sentence=NOT_STATED_BY_THIS_BATCH,
-        )
-    if about[-1].sequence != ours[-1].sequence:
-        raise CommandRejected(
-            f"playthrough {run.pk} states {about[-1].event_type} at sequence "
-            f"{about[-1].sequence}, after batch {batch_id} recorded {stated}",
-            sentence=CHANGED_SINCE,
-        )
 
 
 def _game_at_batch(run: Playthrough, batch_id: uuid.UUID) -> PlayerGame:
@@ -407,17 +351,13 @@ def void_start_one(
 ) -> RowOutcome:
     """The run states no start; the game as it stood."""
     run = _row(actor, run_id)
-    if stated_start(run) is not None:
-        with answered("playthrough"):
-            _refuse_unless_this_batch_wrote_it(
-                run, undoes, _START_FAMILY, PLAYTHROUGH_STARTED.event_type
-            )
     tracked = _game_at_batch(run, undoes)
     before = _word_before(tracked, undoes)
     outcome = RowOutcome.of(
-        void_start(
+        undo_start(
             actor,
             run,
+            batch_id=undoes,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(START_RUNS.name),
@@ -445,17 +385,13 @@ def void_completion_one(
 ) -> RowOutcome:
     """The run states no completion; the game as it stood."""
     run = _row(actor, run_id)
-    if stated_completion(run) is not None:
-        with answered("playthrough"):
-            _refuse_unless_this_batch_wrote_it(
-                run, undoes, _COMPLETION_FAMILY, PLAYTHROUGH_COMPLETED.event_type
-            )
     tracked = _game_at_batch(run, undoes)
     before = _word_before(tracked, undoes)
     outcome = RowOutcome.of(
-        void_completion(
+        undo_completion(
             actor,
             run,
+            batch_id=undoes,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(COMPLETE_RUNS.name),

@@ -270,9 +270,10 @@ docs/           — Additional documentation
   record, writing day, note and marker back to what a run holds before any
   act, `Unchanged` where endpoint is unstated, ahead of both marks. No screen
   states one; batch Undo of `playthrough.start`/`playthrough.complete`
-  (`games/bulk_playthrough_acts.py`) is only caller, and it voids only where
-  batch's own event is still latest of that endpoint's family — statement,
-  correction and void are one family — then puts back status batch changed,
+  (`games/bulk_playthrough_acts.py`) dispatches `UndoPlaythroughStart`/
+  `UndoPlaythroughCompletion`, which void only where batch's own event is
+  still latest of that endpoint's family — statement, correction and void
+  are one family — then puts back status batch changed,
   read from its own `playergame.status_changed`. Endpoint and status it
   implies are one writer, `games/writes/playthrough_endpoints.py`, over the
   rule and status write in `games/writes/implied_status.py`: Played
@@ -786,8 +787,9 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 refuses a name twice declared, `EventRows` refuses a model no `EventSpec`
 speaks about, and `LedgerRows` a projection. It states
 scope, resolve, run and inverse, and may state a `caution`: a sentence
-above the sample about rows the press *will* act on, where `Refused` names
-a row left alone. Only the reclassification states one. Beside those is
+above the sample about some of the rows, before the press, where `Refused`
+names a row left alone after it. The reclassification and `entry.end`
+state one. Beside those is
 `undo_rows`, where its Undo reads
 the rows it takes back -- one act may write two, as the reclassification writes a
 created record beside the reclassified session, and an Undo reading both would
@@ -859,6 +861,15 @@ carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
 imports no act, and `FactChange` is `games/reads/fact_change.py`,
 whose `Fact.read` takes the whole event (`payload_fact` reads one key).
+#1355's `entry.end` ends access on selected copies, one
+`WayActStatement` for all (`AccessEndQuestion` in
+`games/bulk_access_end.py`, over a `ways` tuple); a `caution` counts
+copies already ended. Its Undo dispatches `UndoEntryAccessEnd`; that
+and the two run Undo commands call one guard under the lock,
+`refuse_unless_this_batch_wrote_it` (`games/commands/batch_undo.py`):
+the batch must have stated the endpoint, and its statement must be the
+family's latest, or a void or resume after it. Contract is
+[End access to many copies at once](docs/superpowers/specs/2026-10-04-issue-1355-bulk-entry-end-design.md).
 
 **A purchase buys one copy** — the conversion split every legacy bundle
 into one purchase per game, cents split, so each refundable unit is its own

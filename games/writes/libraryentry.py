@@ -18,6 +18,7 @@ from games.commands.libraryentry import (
     RemoveEntry,
     RestoreEntry,
     ResumeEntryAccess,
+    UndoEntryAccessEnd,
     VoidEntryAccessEnd,
 )
 from games.endpoints import ENTRY_ACCESS_END
@@ -268,6 +269,7 @@ def end_entry_access(
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     """Access to a held copy ended."""
     with answered(SUBJECT):
@@ -276,6 +278,27 @@ def end_entry_access(
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )
+
+
+def undo_entry_access_end(
+    actor: User,
+    entry: LibraryEntry,
+    *,
+    batch_id: uuid.UUID,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """Void a batch's end, still latest."""
+    with answered(SUBJECT):
+        return _dispatch(
+            UndoEntryAccessEnd(entry_id=entry.pk, batch_id=batch_id),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 

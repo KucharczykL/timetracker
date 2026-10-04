@@ -8,6 +8,7 @@ from typing import ClassVar, NamedTuple, cast
 
 from django.db.models import QuerySet
 
+from games.commands.batch_undo import UndoSentences, refuse_unless_this_batch_wrote_it
 from games.commands.endpoint import (
     ActStatement,
     EndpointSentences,
@@ -19,7 +20,7 @@ from games.commands.endpoint import (
 )
 from games.commands.playergame import tracked_game, tracking_event
 from games.commands.scope import Refusal, library_row, visible_row
-from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
+from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START, Endpoint
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -457,15 +458,7 @@ class VoidPlaythroughStart(Command):
     playthrough_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        run = library_playthrough(context, self.playthrough_id)
-        #: The no-op before either mark: a repeat still
-        #: succeeds once the game is gone.
-        return void_endpoint(
-            run,
-            PLAYTHROUGH_START,
-            sentences=_start_sentences(run.pk),
-            before_event=partial(_refuse_under_a_removed_parent, run),
-        )
+        return _void_start(library_playthrough(context, self.playthrough_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -477,13 +470,85 @@ class VoidPlaythroughCompletion(Command):
     playthrough_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        return _void_completion(library_playthrough(context, self.playthrough_id))
+
+
+def _void_start(run: Playthrough) -> Sequence[NewEvent] | Unchanged:
+    #: The no-op before either mark: a repeat still
+    #: succeeds once the game is gone.
+    return void_endpoint(
+        run,
+        PLAYTHROUGH_START,
+        sentences=_start_sentences(run.pk),
+        before_event=partial(_refuse_under_a_removed_parent, run),
+    )
+
+
+def _void_completion(run: Playthrough) -> Sequence[NewEvent] | Unchanged:
+    return void_endpoint(
+        run,
+        PLAYTHROUGH_COMPLETION,
+        sentences=_completion_sentences(run.pk),
+        before_event=partial(_refuse_under_a_removed_parent, run),
+    )
+
+
+#: What one run's batch Undo refuses.
+RUN_UNDO = UndoSentences(
+    not_stated=(
+        "That playthrough was not recorded by this batch, so it was left as it is."
+    ),
+    changed_since=(
+        "That playthrough has been recorded again since this batch, so it was "
+        "left as it is. Correct it by hand instead."
+    ),
+)
+
+
+def _refuse_another_acts_value(
+    context: CommandContext,
+    run: Playthrough,
+    endpoint: Endpoint,
+    batch_id: uuid.UUID,
+) -> None:
+    refuse_unless_this_batch_wrote_it(
+        context.library,
+        run.pk,
+        endpoint.events,
+        batch_id=batch_id,
+        row_description=f"Playthrough {run.pk} of library {run.library_id}",
+        sentences=RUN_UNDO,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class UndoPlaythroughStart(Command):
+    """Void a batch's start, still latest."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_UNDO_START
+    playthrough_id: uuid.UUID
+    #: The batch whose start this takes back.
+    batch_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = library_playthrough(context, self.playthrough_id)
-        return void_endpoint(
-            run,
-            PLAYTHROUGH_COMPLETION,
-            sentences=_completion_sentences(run.pk),
-            before_event=partial(_refuse_under_a_removed_parent, run),
-        )
+        _refuse_another_acts_value(context, run, PLAYTHROUGH_START, self.batch_id)
+        return _void_start(run)
+
+
+@dataclass(frozen=True, slots=True)
+class UndoPlaythroughCompletion(Command):
+    """Void a batch's completion, still latest."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_UNDO_COMPLETION
+    playthrough_id: uuid.UUID
+    #: The batch whose completion this takes back.
+    batch_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        _refuse_another_acts_value(context, run, PLAYTHROUGH_COMPLETION, self.batch_id)
+        return _void_completion(run)
 
 
 def _start_sentences(playthrough_id: uuid.UUID) -> EndpointSentences:

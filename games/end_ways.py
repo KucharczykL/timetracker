@@ -20,6 +20,10 @@ class EndWay(StrEnum):
     UNSTATED = "unstated"
 
 
+#: One endpoint's ways; never empty.
+type EndWays = tuple[EndWay, *tuple[EndWay, ...]]
+
+
 END_WAY_LABELS: Mapping[EndWay, str] = {
     EndWay.SOLD: "Sold",
     EndWay.LOST: "Lost",

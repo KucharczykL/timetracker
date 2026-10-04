@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from functools import partial
 from typing import ClassVar, NamedTuple, cast, get_args
 
+from games.commands.batch_undo import UndoSentences, refuse_unless_this_batch_wrote_it
 from games.commands.endpoint import (
     ActStatement,
     EndpointSentences,
@@ -512,13 +513,45 @@ class VoidEntryAccessEnd(Command):
     entry_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        return _void_access_end(library_entry_row(context, self.entry_id))
+
+
+#: What one copy's batch Undo refuses.
+ENTRY_UNDO = UndoSentences(
+    not_stated="That copy was not ended by this batch, so it was left as it is.",
+    changed_since="That copy has changed since this batch, so it was left as it is.",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class UndoEntryAccessEnd(Command):
+    """Void a batch's end, still latest."""
+
+    command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_UNDO_ACCESS_END
+    entry_id: uuid.UUID
+    #: The batch whose end this takes back.
+    batch_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         entry = library_entry_row(context, self.entry_id)
-        return void_endpoint(
-            entry,
-            ENTRY_ACCESS_END,
-            sentences=_access_end_sentences(entry.pk),
-            before_event=partial(_refuse_a_live_act, entry),
+        refuse_unless_this_batch_wrote_it(
+            context.library,
+            entry.pk,
+            ENTRY_ACCESS_END.events,
+            batch_id=self.batch_id,
+            row_description=f"LibraryEntry {entry.pk} of library {entry.library_id}",
+            sentences=ENTRY_UNDO,
         )
+        return _void_access_end(entry)
+
+
+def _void_access_end(entry: LibraryEntry) -> Sequence[NewEvent] | Unchanged:
+    return void_endpoint(
+        entry,
+        ENTRY_ACCESS_END,
+        sentences=_access_end_sentences(entry.pk),
+        before_event=partial(_refuse_a_live_act, entry),
+    )
 
 
 @dataclass(frozen=True, slots=True)
