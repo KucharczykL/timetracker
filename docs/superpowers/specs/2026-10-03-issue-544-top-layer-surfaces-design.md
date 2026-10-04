@@ -70,5 +70,6 @@ dialog panel with `panel=True`. When its host closes, the widget resets
 
 ## Limits
 
-An open panel paints above the toasts. Under a modal dialog a toast is
+The last surface shown paints on top. Thus a tooltip shown after a panel
+covers it, and an open panel paints above the toasts. Under a modal dialog a toast is
 inert, and the top layer does not change that.

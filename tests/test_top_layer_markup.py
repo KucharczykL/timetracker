@@ -35,7 +35,7 @@ PRESENTATION = DateTimePresentation(
 
 class FloatingPanel(NamedTuple):
     build: Callable[[], str]
-    #: An attribute only the panel's opening tag carries.
+    #: Marks the panel's opening tag.
     hook: str
 
 

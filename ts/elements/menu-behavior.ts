@@ -269,7 +269,7 @@ export function attachMenu(
     }
   };
 
-  // Inline triggers open on focus; widgets own keys.
+  // Inline triggers: focus opens, widget owns keys.
   if (!inlineTrigger) {
     toggle.addEventListener("click", (event) => {
       event.stopPropagation();

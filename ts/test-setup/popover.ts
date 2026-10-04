@@ -20,7 +20,7 @@ function hidePopover(this: HTMLElement): void {
   openPopovers.delete(this);
 }
 
-/** Removal hides a popover, as in a browser. */
+/** Removal hides it, as browsers do. */
 export function isPopoverOpen(element: HTMLElement): boolean {
   return element.isConnected && openPopovers.has(element);
 }

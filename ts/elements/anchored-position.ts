@@ -32,7 +32,7 @@ const ANCHORED_PROPERTIES = [
 ] as const;
 
 /**
- * Pin the panel `fixed` at (0,0), edges reset.
+ * Pin `fixed` at (0,0), edges reset.
  *
  * Callers measure the anchor after this returns.
  */

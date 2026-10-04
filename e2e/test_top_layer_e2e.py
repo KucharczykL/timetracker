@@ -63,7 +63,7 @@ def harness_view(request):
     <link rel="stylesheet" href="/static/base.css">
     {scripts}
     </head><body style="padding:24px">
-    <!-- A transformed, clipping ancestor must not trap panels. -->
+    <!-- A transformed, clipping ancestor traps no panel. -->
     <div id="clipped" style="transform:translateZ(0);overflow:hidden;
         height:48px;width:320px;margin:120px 0 0 240px">{acts}</div>
     <div style="margin-top:24px">{facet}</div>
@@ -236,7 +236,7 @@ def _login(page: Page, live_server) -> None:
 def test_escape_clears_a_selection_under_the_quick_bar(
     live_server, page: Page, e2e_library
 ):
-    """A facet takes the first Escape; the selection the next."""
+    """Facet takes first Escape; selection the next."""
     create_tracked_game(e2e_library, "Outer Wilds")
     _login(page, live_server)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")

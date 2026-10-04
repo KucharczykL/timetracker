@@ -8,25 +8,25 @@
 import { reportClientError } from "../client-errors.js";
 
 interface SurfaceBase {
-  /** Holds the panel and its toggle; a press inside is inside. */
+  /** Contains the panel and its toggle. */
   readonly host: HTMLElement;
-  /** Safe twice; removes itself when it closes on its own. */
+  /** Idempotent; removes itself when self-closing. */
   close(): void;
 }
 
-/** An anchored panel: a menu, listbox or popup. */
+/** A menu, listbox or popup. */
 export interface PanelSurface extends SurfaceBase {
   readonly kind: "panel";
   /** On Escape, before the close. */
   restoreFocus?(): void;
 }
 
-/** A tooltip: opens over all; Escape closes it first. */
+/** A tooltip; Escape closes it first. */
 export interface HintSurface extends SurfaceBase {
   readonly kind: "hint";
 }
 
-/** A modal dialog: Escape stays its native cancel. */
+/** A modal: Escape stays native cancel. */
 export interface ModalSurface extends SurfaceBase {
   readonly kind: "modal";
 }
@@ -44,7 +44,7 @@ let pendingPress: PendingPress | null = null;
 let listening = false;
 
 function dismiss(surface: Surface): void {
-  // A throwing close must not jam the stack.
+  // A throwing close still leaves.
   try {
     surface.close();
   } finally {
@@ -55,7 +55,7 @@ function dismiss(surface: Surface): void {
 function dismissAll(candidates: readonly Surface[]): void {
   for (const surface of [...candidates].reverse()) {
     if (!surfaces.includes(surface)) continue;
-    // One broken close must not stop the rest.
+    // One broken close spares the rest.
     try {
       dismiss(surface);
     } catch (error) {
@@ -107,7 +107,7 @@ function onPointerUp(event: PointerEvent): void {
 }
 
 function onClick(event: MouseEvent): void {
-  // Keyboard and assistive clicks bring no pointer press.
+  // Keyboard clicks bring no pointer press.
   if (event.detail !== 0 || surfaces.length === 0) return;
   dismissOutside(event.composedPath());
 }
