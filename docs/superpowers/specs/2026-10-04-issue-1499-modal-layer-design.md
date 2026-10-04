@@ -97,15 +97,22 @@ not move behind a sheet that slides out. A modal in between changes nothing.
 ### Backdrops
 
 Only one backdrop dims, at 70 %. The dimmer is the topmost dialog still
-shown, leaving or not. The layer sets `data-modal-covered` on every other
-shown dialog. A covered `::backdrop` has opacity 0, with no transition in
-either direction. A leaving dialog with a modal below it keeps its backdrop
-until finish; the sheet's backdrop fades out only when it is the last
-modal. At that finish the one below is uncovered in the same frame. Thus
-the dim stays at 70 % through a nested close; only the lower panel goes
-from dim to clear. A cross-fade would dip to about 58 % midway. Under
-`prefers-reduced-motion` every backdrop change is instant. Checked by eye
-in Chromium and Firefox; the user approves the look.
+shown, leaving or not. The layer stamps two attributes, recomputed at open,
+close start and finish:
+
+- `data-modal-covered` on every shown dialog but the dimmer. Its
+  `::backdrop` has opacity 0.
+- `data-modal-over` on every shown dialog with a shown dialog below it. Its
+  `::backdrop` stands at full strength with no transition, whatever the
+  sheet's state.
+
+Thus only the first modal fades its backdrop in, and only the last fades it
+out. A nested open shows the new backdrop at full strength in the frame the
+lower one covers. A nested close holds the top backdrop until finish, and
+the lower one uncovers in that frame. The dim stays at 70 % both ways; only
+the lower panel moves between dim and clear. A cross-fade would dip to
+about 58 % midway. Under `prefers-reduced-motion` every backdrop change is
+instant. Checked by eye in Chromium and Firefox; the user approves the look.
 
 ### While the last modal leaves
 
@@ -217,8 +224,8 @@ whose `close` moved focus itself.
   lands in the top modal, the region wears `modal_region_class`.
 - vitest layer: a `pointercancel` between down and up on the backdrop
   closes nothing; `data-modal-covered` marks every shown dialog but the
-  topmost shown one, and moves at finish; the scroll lock holds through a
-  leave.
+  topmost shown one, and moves at finish; `data-modal-over` marks every
+  shown dialog with one below; the scroll lock holds through a leave.
 - vitest sheet: the existing cases, with three rewritten. "Fully closes a
   sibling sheet" becomes "two sheets nest and the last close restores the
   page style". The failed-open case asserts the report, not `console.error`.

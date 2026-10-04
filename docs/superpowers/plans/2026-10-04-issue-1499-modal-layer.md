@@ -59,7 +59,8 @@ section. Add `ts/test-setup/modal-layer.ts` registering
 
 Gotchas:
 - `data-modal-covered`: on every shown dialog (stack + leaving) but the
-  topmost shown one; recompute at open, close start and finish.
+  topmost shown one; `data-modal-over`: on every shown dialog with one
+  below. Recompute both at open, close start and finish.
 - Scroll lock releases at finish only, never at close start.
 - Change event must fire on close start (leave) and on finish only if the
   top changed; dedupe by comparing previous `topModal()`.
@@ -72,10 +73,9 @@ Gotchas:
 - `common/input.css`: move the viewport hit-area block from
   `dialog[data-bottom-sheet]` to `dialog[data-modal]` (+ `[open]` flex,
   `align-items: center`); `dialog[data-modal][data-modal-covered]::backdrop
-  { opacity: 0; transition: none }` after the sheet's backdrop rules; the
-  sheet's closing fade applies only to an uncovered sheet with no modal
-  below (layer stamps `data-modal-last` on a leaving dialog with none below,
-  or equivalent). Verify by eye in Chromium and Firefox (Marionette),
+  { opacity: 0; transition: none }` after the sheet's backdrop rules; `dialog[data-modal][data-modal-over]:not([data-modal-covered])::backdrop
+  { opacity: 1; transition: none }` after the sheet's state rules, so the
+  sheet's fade runs only for the first open and the last close. Verify by eye in Chromium and Firefox (Marionette),
   reduced motion included; show the user on the dev server; sheet keeps `align-items: flex-end`, backdrop and
   slide.
 - `common/components/custom_elements.py` `BottomSheet`: add `data-modal`,
