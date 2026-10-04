@@ -9,6 +9,7 @@ import pytest
 from django.contrib.messages import get_messages
 from django.http import QueryDict
 from django.urls import reverse
+from django.utils import timezone
 from session_rows import tracked_run
 
 from games.bulk_actions import BULK_ACTIONS
@@ -512,6 +513,31 @@ def test_a_row_of_another_batch_states_its_own_sentence(
             run.pk,
             undoes=uuid.uuid7(),
             idempotency_key="not-ours",
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert NOT_STATED_BY_THIS_BATCH in str(refused.value.message)
+    run.refresh_from_db()
+    assert run.started == OTHER_DAY
+
+
+def test_a_start_stated_with_no_event_refuses_the_undo(
+    client_in, owned_user, owned_library, game
+):
+    """A marker no event wrote is no batch's."""
+    from games.bulk_playthrough_acts import void_start_one
+
+    run = tracked_run(owned_library, game)
+    Playthrough.objects.filter(pk=run.pk).update(
+        started=OTHER_DAY, start_recorded_at=timezone.now()
+    )
+
+    with pytest.raises(Exception) as refused:
+        void_start_one(
+            owned_user,
+            run.pk,
+            undoes=uuid.uuid7(),
+            idempotency_key="marker-alone",
             correlation_id=uuid.uuid7(),
         )
 
