@@ -143,15 +143,22 @@ record stays hidden and the total stays unchanged.
 
 Measured before implementation on the 2026-10-03 dump, every session
 and record naming a Release (76 sessions prerelease), with both scopes
-patched to hide, medians of 15 runs, machine under load:
+patched to hide. Idle machine (load 1.6), medians of 15 runs, three
+interleaved rounds agreeing within 0.5 ms:
 
 | Read | Show | Hide, joins | Hide, `NOT IN` |
 |---|---|---|---|
-| `game_playtime_sort` | 20 ms | 24–25 ms | 12 ms |
-| `stats_superlatives` | 17–20 ms | 24–26 ms | 20–21 ms |
-| `compute_stats`, all-time | 122–130 ms | 155 ms | 113–125 ms |
+| `game_playtime_sort` | 14.5 ms | 18.0 ms | 9.4 ms |
+| `stats_totals` | 5.8 ms | 9.1 ms | 8.0 ms |
+| `stats_superlatives` | 11.6 ms | 17.1 ms | 14.6 ms |
+| `stats_copies` | 16.0 ms | 17.6 ms | 17.7 ms |
+| `compute_stats`, all-time | 85 ms | 108 ms | 78 ms |
+| `compute_stats`, 2025 | 86 ms | 101 ms | 89 ms |
 
-The join shape costs a quarter more; `NOT IN` costs nothing measurable.
+Every read stays inside the 20 ms budget in both hidden shapes. The
+join shape costs a quarter more on the statistics page; `NOT IN` costs
+a few milliseconds on the session aggregates and wins them back on the
+playtime sort.
 With the setting on, `Q()` adds nothing. The bench's replay check
 refuses a hand-edited copy, so the timing script calls `READS` and
 `compute_stats` directly.
