@@ -5,7 +5,6 @@ import {
   openSurfaces,
   pushSurface,
   removeSurface,
-  resetSurfacesForTests,
   showInTopLayer,
   type Surface,
   type SurfaceKind,
@@ -14,7 +13,6 @@ import {
 const closed: string[] = [];
 
 afterEach(() => {
-  resetSurfacesForTests();
   document.body.innerHTML = "";
   closed.length = 0;
 });

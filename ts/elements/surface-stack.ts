@@ -27,7 +27,6 @@ export interface HintSurface extends SurfaceBase {
 }
 
 /** A modal dialog: Escape stays its native cancel. */
-// Single open still closes an unrelated modal.
 export interface ModalSurface extends SurfaceBase {
   readonly kind: "modal";
 }
@@ -131,6 +130,7 @@ export function pushSurface(surface: Surface): void {
   if (surfaces.includes(surface)) return;
   listen();
   try {
+    // Single open closes even an unrelated modal.
     if (surface.kind !== "hint") {
       dismissAll(surfaces.filter((open) => !open.host.contains(surface.host)));
     }

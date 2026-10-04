@@ -148,8 +148,8 @@ export function attachMenu(
     // tracks any padding/border/header change instead of a hardcoded offset.
     const items = enabledItems();
     // Scrolled content must not move the flyout.
-    const scrolled = menu.querySelector<HTMLElement>("[data-menu-scroll]")?.scrollTop ?? 0;
-    const firstItemInset = items.length ? items[0].getBoundingClientRect().top + scrolled : 0;
+    const scrollOffset = menu.querySelector<HTMLElement>("[data-menu-scroll]")?.scrollTop ?? 0;
+    const firstItemInset = items.length ? items[0].getBoundingClientRect().top + scrollOffset : 0;
     const menuWidth = menu.offsetWidth;
     const spaceRight = window.innerWidth - anchor.right - VIEWPORT_MARGIN;
     const openLeft = menuWidth > spaceRight && anchor.left - VIEWPORT_MARGIN > spaceRight;

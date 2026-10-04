@@ -412,7 +412,6 @@ def _combobox_children(
     pill_nodes: list[Node],
     search_attributes: Attributes,
     options_children: list[Node],
-    always_visible: bool,
     items_visible: int,
     multi_select: bool = False,
     home: ComboboxHome,
@@ -433,13 +432,14 @@ def _combobox_children(
     init (see module docstring); the JS also keeps ``aria-expanded`` in sync
     with the panel's visibility.
 
-    ``layout`` places the list; pills always sit in the box.
+    ``home`` places the list; a dialog's list is always visible.
+    Pills always sit in the box.
     ``box_class`` styles the field box.
     ``clear_button`` and ``marker`` follow the input inside it.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
-        ("aria-expanded", "true" if always_visible else "false"),
+        ("aria-expanded", "true" if home == "dialog" else "false"),
         ("aria-autocomplete", "list"),
     ]
     search = Input([*search_attributes, *aria_attributes])
@@ -689,7 +689,6 @@ def SearchSelect(
         pill_nodes=pills_children,
         search_attributes=search_attrs,
         options_children=option_rows,
-        always_visible=panel,
         items_visible=items_visible,
         multi_select=multi_select,
         templates=templates,
@@ -943,7 +942,6 @@ def FilterSelect(
         pill_nodes=pills_children,
         search_attributes=search_attributes,
         options_children=[*modifier_rows, *value_rows],
-        always_visible=panel_layout,
         items_visible=items_visible,
         # FilterSelect is always multi (include/exclude pill sets).
         multi_select=True,
@@ -1031,7 +1029,6 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         pill_nodes=[],
         search_attributes=search_attributes,
         options_children=[],
-        always_visible=True,
         items_visible=items_visible,
         templates=templates,
         home="dialog",
