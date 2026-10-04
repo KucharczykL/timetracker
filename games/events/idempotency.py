@@ -11,7 +11,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -33,6 +33,8 @@ from timetracker.temporal import TemporalValue
 type IdempotencyKey = str  # "session-create-01J8Z3K4M5N6P7Q8R9S0T1U2V3"
 type RequestFingerprint = str  # "9f86d081884c7d65..." (sha256 hex)
 type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
+#: json encodes each element again.
+type EncodedValue = TaggedValue | list[Any]
 
 #: Bump when a deployed record's digest changes.
 #:
@@ -111,11 +113,14 @@ def _canonical_datetime(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
 
-def _encode_command_value(value: Any) -> TaggedValue:
+def _encode_command_value(value: Any) -> EncodedValue:
     """The type word, then the canonical text.
 
     The words are the wire form: a rename moves every digest of that type,
     so they are written out rather than read from the class.
+
+    A dataclass encodes untagged, as a NamedTuple does:
+    a word would move every digest of one.
     """
     #: datetime first: the date branch skips UTC.
     if isinstance(value, datetime):
@@ -134,6 +139,9 @@ def _encode_command_value(value: Any) -> TaggedValue:
     if isinstance(value, TemporalValue):
         #: None for an unknown time.
         return ("temporal", value.canonical)
+    #: After TemporalValue, itself a dataclass.
+    if is_dataclass(value) and not isinstance(value, type):
+        return [getattr(value, field.name) for field in fields(value)]
     raise TypeError(
         f"{type(value).__name__} has no canonical form for an idempotency "
         "fingerprint. Convert it at the call site: a repr() fallback would "

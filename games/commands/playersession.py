@@ -85,9 +85,8 @@ DURATION_RESOLUTION = timedelta(seconds=1)
 class TimedTiming(NamedTuple):
     """An exact start, an end once there is one, no override.
 
-    A NamedTuple, so the idempotency fingerprint encodes it as an
-    array: a dataclass reaches the encoder's fallback and raises.
-    The array carries no tag, so the three statements are told
+    The idempotency fingerprint encodes it as an untagged array,
+    so the three statements are told
     apart by their length alone -- a fourth one with five fields
     would fingerprint as this one and replay as it.
     """
@@ -701,13 +700,15 @@ class CorrectSessionTiming(Command):
         return [playersession_timing_corrected(session.pk, timing=payload)]
 
 
-class StatedDevice(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatedDevice:
     """Device or none; bare None is unstated."""
 
     device_id: uuid.UUID | None
 
 
-class StatedRelease(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class StatedRelease:
     """Release or none; bare None is unstated."""
 
     release_id: uuid.UUID | None

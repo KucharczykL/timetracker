@@ -1,4 +1,4 @@
-"""Endpoint commands keep their recorded fingerprints."""
+"""Commands keep their recorded fingerprints."""
 
 import uuid
 from decimal import Decimal
@@ -18,6 +18,11 @@ from games.commands.libraryentry import (
     RestoreEntry,
     ResumeEntryAccess,
     VoidEntryAccessEnd,
+)
+from games.commands.playersession import (
+    DescribeSession,
+    StatedDevice,
+    StatedRelease,
 )
 from games.commands.playthrough import (
     ActStatement,
@@ -51,6 +56,8 @@ GAME = uuid.UUID("01890000-0000-7000-8000-000000000002")
 RELEASE = uuid.UUID("01890000-0000-7000-8000-000000000003")
 ENTRY = uuid.UUID("01890000-0000-7000-8000-000000000004")
 PURCHASE = uuid.UUID("01890000-0000-7000-8000-000000000005")
+SESSION = uuid.UUID("01890000-0000-7000-8000-000000000006")
+DEVICE = uuid.UUID("01890000-0000-7000-8000-000000000007")
 MAY = TemporalValue.parse("2021-05")
 
 COMMANDS: dict[str, Command] = {
@@ -127,6 +134,14 @@ COMMANDS: dict[str, Command] = {
     ),
     "void_purchase_refund": VoidPurchaseRefund(purchase_id=PURCHASE),
     "undo_purchase_refund": UndoPurchaseRefund(purchase_id=PURCHASE, refunded_at=42),
+    "describe_session": DescribeSession(
+        session_id=SESSION,
+        device=StatedDevice(DEVICE),
+        release=StatedRelease(RELEASE),
+    ),
+    "describe_session_to_none": DescribeSession(
+        session_id=SESSION, device=StatedDevice(None), release=StatedRelease(None)
+    ),
 }
 
 RECORDED: dict[str, str] = {
@@ -192,6 +207,13 @@ RECORDED: dict[str, str] = {
     ),
     "undo_purchase_refund": (
         "fab7c21574cb2636fed67dd339cf6a80b1cfe39bc64ccc76e56e776cf25cbbca"
+    ),
+    #: Recorded while both wrappers were NamedTuples.
+    "describe_session": (
+        "21cda33e52d69d7234a13ea45f4b92144f231fe2d1e043cdbdde3f6a5395f86d"
+    ),
+    "describe_session_to_none": (
+        "48c844e38d728270cfa411349f67869b012b265388d2f0349288144e2d466185"
     ),
 }
 

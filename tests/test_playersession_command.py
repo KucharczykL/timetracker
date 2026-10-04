@@ -25,6 +25,7 @@ from games.commands.playersession import (
     RestoreSession,
     SessionNotHeld,
     StatedDevice,
+    StatedRelease,
     TimedTiming,
 )
 from games.commands.playthrough import (
@@ -1550,6 +1551,16 @@ def test_stating_no_device_is_a_different_statement(
             device=StatedDevice(None),
             key="one",
         )
+
+
+def test_a_stated_device_is_no_stated_release():
+    key = uuid.uuid7()
+
+    assert StatedDevice(key) != StatedRelease(key)
+    assert StatedDevice(None) != StatedRelease(None)
+    assert StatedDevice(key) != (key,)
+    with pytest.raises(TypeError):
+        (_unpacked,) = StatedDevice(key)  # type: ignore[misc]
 
 
 # --- Moving a session to another playthrough ---------------------------------

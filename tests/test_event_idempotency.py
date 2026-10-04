@@ -1,9 +1,10 @@
 import contextlib
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, localcontext
 from threading import Event, Thread
-from typing import Any, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
 import pytest
 from django.db import (
@@ -447,6 +448,31 @@ def test_a_datetime_and_its_date_differ():
 def test_an_unsupported_value_is_refused():
     with pytest.raises(TypeError):
         fingerprint_command_input({"platforms": {"pc", "switch"}})
+
+
+class _TupleStatement(NamedTuple):
+    key: uuid.UUID
+    note: str
+
+
+@dataclass(frozen=True, slots=True)
+class _DataclassStatement:
+    key: uuid.UUID
+    note: str
+
+
+def test_a_dataclass_encodes_as_a_tuple_of_its_fields():
+    """Moving a NamedTuple to a dataclass keeps its digests."""
+    key = uuid.uuid7()
+
+    assert fingerprint_command_input(
+        {"statement": _DataclassStatement(key, "note")}
+    ) == fingerprint_command_input({"statement": _TupleStatement(key, "note")})
+
+
+def test_a_dataclass_class_is_refused():
+    with pytest.raises(TypeError):
+        fingerprint_command_input({"statement": _DataclassStatement})
 
 
 @pytest.mark.parametrize(

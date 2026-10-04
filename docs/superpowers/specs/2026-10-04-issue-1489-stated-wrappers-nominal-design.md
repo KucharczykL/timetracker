@@ -71,7 +71,7 @@ The other `NamedTuple` value objects that ride on commands (`ActStatement`,
 encoder branch lets each become a dataclass with no digest change. Several
 call `_replace`, which becomes `dataclasses.replace`.
 
-## Follow-up issues to file
+## Follow-up issues
 
-- Make the remaining command value objects frozen dataclasses, moving
+- #1491: make the remaining command value objects frozen dataclasses, moving
   each `_replace` call to `dataclasses.replace`.
