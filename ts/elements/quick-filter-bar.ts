@@ -12,8 +12,8 @@
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
-import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
+import { DropdownElement } from "./drop-down.js";
 import { applyUrl } from "./filter-url.js";
 import {
   isPlainObject,
@@ -258,7 +258,10 @@ class QuickFilterBarElement extends HTMLElement {
     }
 
     // Close first: hiding strands a top-layer panel.
-    if (spilled.length === 0) this.overflowMenu?.close();
+    // Not yet upgraded means never opened.
+    if (spilled.length === 0 && this.overflowMenu instanceof DropdownElement) {
+      this.overflowMenu.close();
+    }
     overflowHost.classList.toggle("hidden", spilled.length === 0);
     const holdsApplied = spilled.some((facet) => facet.applied);
     this.overflowMark?.classList.toggle("invisible", !holdsApplied);

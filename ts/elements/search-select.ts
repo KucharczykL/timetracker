@@ -1716,7 +1716,6 @@ export class SearchSelectElement extends HTMLElement {
   setOptions(options: SearchSelectOption[]): void {
     (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
   }
-
 }
 
 customElements.define("search-select", SearchSelectElement);

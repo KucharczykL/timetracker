@@ -11,13 +11,11 @@ import {
   type SurfaceKind,
 } from "./surface-stack.js";
 
+const closed: string[] = [];
+
 afterEach(() => {
   resetSurfacesForTests();
   document.body.innerHTML = "";
-});
-
-const closed: string[] = [];
-afterEach(() => {
   closed.length = 0;
 });
 

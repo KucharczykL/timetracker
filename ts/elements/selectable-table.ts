@@ -1,6 +1,7 @@
 /** <selectable-table> — a data table's rows, selectable. */
 
 import "./drop-down.js";
+import { DropdownElement } from "./drop-down.js";
 import {
   readSelectableTableProps,
   SelectableTableProps,
@@ -322,7 +323,11 @@ export class SelectableTableElement extends HTMLElement {
     // Read before hiding: focus leaves a hidden element lazily.
     const hadFocus = this.line.contains(document.activeElement);
     // Close first: hiding strands a top-layer panel.
-    if (!shown) this.line.querySelectorAll("drop-down").forEach((menu) => menu.close());
+    if (!shown) {
+      for (const menu of this.line.querySelectorAll("drop-down")) {
+        if (menu instanceof DropdownElement) menu.close();
+      }
+    }
     this.line.hidden = !shown;
     if (hadFocus && !shown) this.focusTarget()?.focus({ preventScroll: true });
   }

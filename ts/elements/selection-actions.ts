@@ -5,8 +5,8 @@
  * out of reach while nothing is selected.
  */
 
-import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
+import { DropdownElement } from "./drop-down.js";
 import { reportClientError } from "../client-errors.js";
 import { SelectionStatement } from "./selection-statement.js";
 import {
@@ -256,7 +256,8 @@ class SelectionActionsElement extends HTMLElement {
     }
     // Close first: hiding strands a top-layer panel.
     const allFit = fitCount === this.acts.length;
-    if (allFit) this.overflowMenu?.close();
+    // Not yet upgraded means never opened.
+    if (allFit && this.overflowMenu instanceof DropdownElement) this.overflowMenu.close();
     overflowHost.classList.toggle("hidden", allFit);
   }
 
