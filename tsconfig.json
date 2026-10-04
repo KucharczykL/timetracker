@@ -11,5 +11,5 @@
     "outDir": "games/static/js/dist"
   },
   "include": ["ts/**/*.ts"],
-  "exclude": ["ts/**/*.test.ts"]
+  "exclude": ["ts/**/*.test.ts", "ts/test-setup/**"]
 }

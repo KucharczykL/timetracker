@@ -10,5 +10,6 @@ export default defineConfig({
   test: {
     include: ["ts/**/*.test.ts"],
     environment: "node",
+    setupFiles: ["ts/test-setup/popover.ts"],
   },
 });
