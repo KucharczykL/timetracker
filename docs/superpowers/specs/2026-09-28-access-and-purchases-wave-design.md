@@ -1218,7 +1218,9 @@ runs on it.
   a `caution`
 - #1382, set the platform across many copies on the Library tab
 - #1383, the Game detail redesign, after P5 and #1353
-- #1384, the `<form-dialog>` element, and #1385, the epic that opens
+- #1499, one nesting modal layer the bottom sheet moves onto (decided
+  2026-10-04; #516 and #1094 depend on it), then #1384, the
+  `<form-dialog>` element on top of it, and #1385, the epic that opens
   every add and edit form in a modal, tied to #1383
 - #1381, #1386, #1387: a row divider in light mode, overflow facet
   chevrons, the device form's stale-page gap
