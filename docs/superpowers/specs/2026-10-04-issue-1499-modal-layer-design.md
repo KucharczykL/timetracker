@@ -7,69 +7,63 @@ element. It knows no form and no fetch.
 
 ```text
 attachModal(dialog, { host?, initialFocus?, leave?, dismiss?, onClosed? }) → Modal
-Modal: open(opener?) → boolean, close(), isOpen(), focusInitial()
-isModalOpen(), topModal()
+Modal: open(opener?) → boolean, close(), isOpen(), state() → "closed" | "open" | "leaving", focusInitial()
+isModalOpen(), topModal(), isReachable(element)
 window event "modal-layer:change" when the top modal changes
 ```
 
-The dialog must have `data-modal` and wear `modal_dialog_class()`. That
-class makes it a transparent viewport hit area. Its child panel is the visible surface. Thus a press on the dialog
-itself is a press on the backdrop. The dialog has no `transform`, `filter` or
-`contain`.
+`ModalDialog` (`common/components/modal.py`) makes the dialog: `data-modal`
+and the layer's classes together. The dialog is a transparent viewport hit
+area, so a press on it is a press on the backdrop. The host must contain the
+dialog. `MODAL_ATTRIBUTES` names each attribute once; the codegen writes it
+to `ts/generated/modal-attributes.ts`.
 
 ## The stack
 
 Modals nest. The stack holds the open modals in opening order.
 
-- `open` acts only on a closed modal, and not while a modal leaves. It takes
-  the scroll lock, calls `showModal`, pushes a `modal` surface and focuses
-  the initial element. It answers false for a detached dialog and for a
-  `showModal` that throws or leaves the dialog closed. It answers true for an
-  open modal.
+- `open` takes the scroll lock, calls `showModal`, pushes a `modal` surface
+  and focuses `initialFocus()`, else the dialog's own
+  `[data-modal-initial-focus]`. The opener defaults to the active element.
+  It answers false while a modal leaves, and false with a report for a
+  detached dialog or host, an `InvalidStateError`, or a dialog left closed.
+  Other errors propagate.
 - `close` first closes each modal above, topmost first, with no leave. Then
-  the modal stops being the top modal and calls `leave(finish)`. The leave
-  must call `finish`. A `finish` from an earlier close does nothing. A leave
-  that throws, or that runs past one second, is reported and finished.
+  the modal stops being the top modal and calls `leave(finish)`. `finish` is
+  idempotent. A leave that throws, or runs past one second, is reported and
+  finished.
 - Finish closes the dialog, releases the lock after the last modal, returns
-  focus and then calls `onClosed`. An `onClosed` that throws is reported.
-- A native `close` event finishes the modal. A dialog removed from the
-  document finishes too.
+  focus and calls `onClosed`. A native `close` event and a removal from the
+  document finish too.
 
-Focus returns to the opener. If the opener is hidden or inert, it returns to
-the nearest reachable `<drop-down>` toggle around it. Under a remaining modal,
-that modal gets the focus.
+Focus returns to the opener. If the opener is gone, hidden, inert or in a
+closed dialog, it returns to the nearest reachable `<drop-down>` toggle.
+Under a remaining modal, a target outside it yields to its initial element.
 
 ## Dismissal
 
-Escape (`cancel`), a press that starts and ends on the backdrop, and a click
-on `[data-modal-dismiss]` call `dismiss`. Its default is `close`. A veto in
-`dismiss` holds only when the `cancel` is cancelable; else the browser
-closes the dialog. Chrome can close several modals that code opened with one
-Escape. Each listener acts only on its own dialog. Tab wraps only
-in the top modal.
+Escape (`cancel`), a backdrop press and a click on `[data-modal-dismiss]`
+call `dismiss`; the default is `close`. `dismiss` is best effort: the
+browser may close the dialog anyway, and Chrome can close several modals
+that code opened with one Escape. `onClosed` always runs. A hook that
+throws is reported; a throwing `dismiss` closes the modal.
 
 ## Backdrops
 
 Only the topmost shown dialog dims, at 70 %. A leaving dialog keeps the dim
-until its finish. The layer sets `data-modal-covered` on each other shown
-dialog and `data-modal-over` on each dialog above another. Thus only the
-first open and the last close change the dim. A backdrop transition applies
-only to a closing state.
+until its finish. The layer stamps `data-modal-covered` and
+`data-modal-over`, so only the first open and the last close change the
+dim. A backdrop transition applies only to a closing state.
 
 ## Toasts
 
-`<toast-stack>` moves its toasts into a region in the top modal. The region
-is at the top edge, so a bottom sheet does not cover it. The class is
-`TOAST_MODAL_REGION_CLASS` in Python. When the last close starts, the toasts
-move back. While any modal leaves, the toasts are inert.
+`<toast-stack>` moves its toasts into a region at the top edge of the top
+modal, and mutes its own live region meanwhile. When the last close starts,
+they move back. A region removed with the modal's content is rebuilt and
+reported.
 
 ## Presentation
 
-`modal_dialog_class()` centres a modal at all widths. A bottom sheet is an
-opt-in for each modal: `BottomSheet` and `<drop-down behavior="sheet">` add
-the bottom alignment and the slide. No width changes a modal into a sheet.
-
-## Tests
-
-jsdom has no `showModal` and no `close`. `ts/test-setup/dialog.ts` adds
-them. Its `close` sends the `close` event in a later task.
+`ModalDialog` centres a modal at all widths. A bottom sheet is an opt-in for
+each modal: `BottomSheet` and `<drop-down behavior="sheet">` add the bottom
+alignment and the slide.

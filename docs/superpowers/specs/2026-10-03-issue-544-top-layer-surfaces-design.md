@@ -63,12 +63,6 @@ An `auto` popover closes a combobox on a press in its own input, and a
 toggle button reopens it after the press closes it. Thus each surface is
 `manual`.
 
-## SearchSelect
-
-A SearchSelect lives in `<drop-down behavior="inline-combobox">`, or in a
-dialog panel with `panel=True`. When its host closes, the widget resets
-`aria-expanded` and the active option.
-
 ## Limits
 
 The last surface shown paints on top. Thus a tooltip shown after a panel

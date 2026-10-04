@@ -467,4 +467,35 @@ describe("under a modal", () => {
     expect(region(dialog)).toBeNull();
     expect(stack.querySelectorAll("[data-toast-id]")).toHaveLength(1);
   });
+
+  it("clears a focus the move hides", () => {
+    show({ message: "Saved", duration: 1_000 });
+    toasts()[0].dispatchEvent(new FocusEvent("focusin"));
+    const { modal } = mountModal();
+    modal.open();
+    vi.advanceTimersByTime(1_000 + 300);
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it("rebuilds a region the modal's content swap removed", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { dialog, modal } = mountModal();
+    modal.open();
+    show({ message: "First" });
+    dialog.replaceChildren();
+    show({ message: "Second" });
+    expect(region(dialog)).not.toBeNull();
+    expect(toasts().every((toast) => toast.closest("dialog") === dialog)).toBe(true);
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("region was detached"));
+  });
+
+  it("mutes its own live region while hosting", () => {
+    const stack = document.querySelector("toast-stack")!;
+    const { modal } = mountModal();
+    modal.open();
+    expect(stack.getAttribute("aria-live")).toBe("off");
+    modal.close();
+    expect(stack.getAttribute("aria-live")).toBe("polite");
+  });
 });
+

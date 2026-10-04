@@ -3,33 +3,19 @@
 from django.test import override_settings
 from playwright.sync_api import Page, expect
 
-from common.components.custom_elements import modal_dialog_class
+from common.components import ControlButton, Div, Fragment, ModalDialog, Node
 
 on_kit = override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
 
-MOUNT_NESTED_MODALS = """async (dialogClass) => {
+MOUNT_NESTED_MODALS = """async (markup) => {
     const { attachModal } = await import("/static/js/dist/elements/modal-layer.js");
-    const mount = (parent) => {
-        const dialog = document.createElement("dialog");
-        dialog.setAttribute("data-modal", "");
-        dialog.className = dialogClass;
-        dialog.innerHTML = '<div style="background:white;padding:16px">'
-            + "<button>Inside</button></div>";
-        parent.append(dialog);
-        return dialog;
-    };
+    document.body.insertAdjacentHTML("beforeend", markup);
     const opener = document.createElement("button");
     opener.id = "opener";
     opener.textContent = "Opener";
     document.body.prepend(opener);
-    const lower = mount(document.body);
-    const inner = mount(lower.firstElementChild);
-    const beside = mount(document.body);
-    window.modals = {
-        lower: attachModal(lower),
-        inner: attachModal(inner),
-        beside: attachModal(beside),
-    };
+    const modal = (id) => attachModal(document.getElementById(id));
+    window.modals = { lower: modal("lower"), inner: modal("inner"), beside: modal("beside") };
     window.scrollTo(0, 200);
     opener.focus({ preventScroll: true });
     window.modals.lower.open(opener);
@@ -38,10 +24,24 @@ MOUNT_NESTED_MODALS = """async (dialogClass) => {
 }"""
 
 
+def _nested_modals_markup() -> str:
+    """A modal inside another, and one beside them."""
+
+    def panel(*children: Node) -> Node:
+        return Div(style="background:white;padding:16px")[
+            ControlButton()["Inside"], *children
+        ]
+
+    inner = ModalDialog([("id", "inner")])[panel()]
+    lower = ModalDialog([("id", "lower")])[panel(inner)]
+    beside = ModalDialog([("id", "beside")])[panel()]
+    return str(Fragment(lower, beside))
+
+
 def _mount_nested_modals(page: Page, live_server) -> None:
     page.set_viewport_size({"width": 390, "height": 600})
     page.goto(f"{live_server.url}/settings-kit-test/")
-    page.evaluate(MOUNT_NESTED_MODALS, modal_dialog_class())
+    page.evaluate(MOUNT_NESTED_MODALS, _nested_modals_markup())
 
 
 def _modal_count(page: Page) -> int:
@@ -85,8 +85,19 @@ def test_a_toast_under_the_sheet_sits_above_its_panel(live_server, page: Page):
     assert toast_box and panel_box
     assert toast_box["y"] + toast_box["height"] <= panel_box["y"]
 
+    # Escape on a focused toast spares the sheet.
+    toast.focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("[data-toast-id]")).to_have_count(0)
+    expect(dialog).to_have_attribute("open", "")
+
     # A toast press is no backdrop press.
-    toast.locator("[data-toast-dismiss]").click()
+    page.evaluate(
+        """window.dispatchEvent(new CustomEvent("show-toast", {
+            detail: { message: "Pressed under the sheet", type: "error" },
+        }))"""
+    )
+    dialog.locator("[data-toast-dismiss]").click()
     expect(page.locator("[data-toast-id]")).to_have_count(0)
     expect(dialog).to_have_attribute("open", "")
 
@@ -96,10 +107,18 @@ def test_escape_closes_nested_modals_from_the_top(live_server, page: Page):
     _mount_nested_modals(page, live_server)
 
     # Chrome may group code-opened modals into one Escape.
+    presses = 0
     while (count := _modal_count(page)) > 0:
         page.keyboard.press("Escape")
+        presses += 1
         page.wait_for_function(f"document.querySelectorAll(':modal').length < {count}")
-        assert page.evaluate("window.modals.lower.isOpen()") == (_modal_count(page) > 0)
+        lower, inner, beside = page.evaluate(
+            "['lower', 'inner', 'beside'].map((name) => window.modals[name].isOpen())"
+        )
+        # Closed from the top: an open modal has every one below open.
+        assert (not beside or inner) and (not inner or lower)
+        if presses == 1:
+            assert not beside
 
     expect(page.locator("body")).not_to_have_css("position", "fixed")
     assert page.evaluate("window.scrollY") == 200

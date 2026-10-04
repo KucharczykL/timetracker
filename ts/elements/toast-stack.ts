@@ -278,14 +278,25 @@ function isToastMessage(payload: unknown): payload is ToastMessage {
   );
 }
 
+interface ToastHosting {
+  dialog: HTMLDialogElement;
+  region: HTMLElement;
+}
+
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
-  /** In the top modal; null without one. */
-  private region: HTMLElement | null = null;
+  /** The region and the modal holding it. */
+  private hosting: ToastHosting | null = null;
+  /** Its own aria-live, muted while hosting. */
+  private politeness: string | null = null;
 
   private get container(): HTMLElement {
-    return this.region ?? this;
+    if (this.hosting && !this.hosting.region.isConnected) {
+      reportClientError("toast-stack", "modal region was detached", { toast: false });
+      this.moveInto(topModal());
+    }
+    return this.hosting?.region ?? this;
   }
 
   connectedCallback(): void {
@@ -308,15 +319,16 @@ class ToastStackElement extends HTMLElement {
   /** Toasts follow the top modal. */
   private rehost(): void {
     const dialog = topModal();
-    if (dialog === (this.region?.parentElement ?? null)) return;
+    if (dialog === (this.hosting?.dialog ?? null)) return;
     this.moveInto(dialog);
   }
 
   private moveInto(dialog: HTMLDialogElement | null): void {
-    const previous = this.region;
-    const next = dialog ? this.buildRegion() : null;
-    if (!previous && !next) return;
-    const container = next ?? this;
+    const previous = this.hosting;
+    if (!previous && !dialog) return;
+    if (!previous) this.politeness = this.getAttribute("aria-live");
+    const next = dialog ? { dialog, region: this.buildRegion() } : null;
+    const container = next?.region ?? this;
     for (const toast of this.store.toasts) {
       const node = this.nodes.get(toast.id);
       if (node) container.appendChild(node);
@@ -325,9 +337,12 @@ class ToastStackElement extends HTMLElement {
       this.store.setFocused(toast.id, false);
     }
     // A filled region announces no moves.
-    if (dialog && next) dialog.appendChild(next);
-    previous?.remove();
-    this.region = next;
+    if (next) next.dialog.appendChild(next.region);
+    previous?.region.remove();
+    this.hosting = next;
+    // One polite live region at a time.
+    if (next) this.setAttribute("aria-live", "off");
+    else if (this.politeness !== null) this.setAttribute("aria-live", this.politeness);
   }
 
   private buildRegion(): HTMLElement {
@@ -338,6 +353,7 @@ class ToastStackElement extends HTMLElement {
         region.setAttribute(attribute.name, attribute.value);
       }
     }
+    if (this.politeness !== null) region.setAttribute("aria-live", this.politeness);
     return region;
   }
 

@@ -1,5 +1,6 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
+import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -16,7 +17,7 @@ declare global {
   }
 }
 
-/** Calls the layer's finish exactly once. */
+/** Idempotent; the leave must call it. */
 export type FinishLeave = () => void;
 
 export interface ModalOptions {
@@ -25,7 +26,11 @@ export interface ModalOptions {
   initialFocus?: () => HTMLElement | null;
   /** Must call finish, now or later. */
   leave?: (finish: FinishLeave) => void;
-  /** Escape, backdrop, dismiss control; default close. */
+  /** Escape, backdrop, dismiss control; default close.
+   *
+   * Best effort: the browser may close anyway.
+   * onClosed is the one hook that always runs.
+   */
   dismiss?: () => void;
   /** Runs last, after focus return. */
   onClosed?: () => void;
@@ -35,7 +40,7 @@ export type ModalState = "closed" | "open" | "leaving";
 
 export interface Modal {
   /** False when refused; true when open. */
-  open(opener?: HTMLElement | null): boolean;
+  open(opener?: HTMLElement): boolean;
   close(): void;
   /** False while leaving. */
   isOpen(): boolean;
@@ -56,7 +61,7 @@ interface Entry {
   opener: HTMLElement | null;
   generation: Generation;
   /** The layer's cap on a leave. */
-  leaveLimit: TimerHandle;
+  leaveLimit: TimerHandle | null;
   focusInitial(): void;
 }
 
@@ -77,13 +82,15 @@ const LOCKED_BODY_STYLES = [
 type LockedStyle =
   | (typeof LOCKED_HTML_STYLES)[number]
   | (typeof LOCKED_BODY_STYLES)[number];
-type StyleValues = Readonly<Partial<Record<LockedStyle, string>>>;
+type StyleValues<Names extends readonly LockedStyle[]> = Readonly<
+  Record<Names[number], string>
+>;
 
 interface ScrollLockSnapshot {
   readonly scrollLeft: number;
   readonly scrollTop: number;
-  readonly html: StyleValues;
-  readonly body: StyleValues;
+  readonly html: StyleValues<typeof LOCKED_HTML_STYLES>;
+  readonly body: StyleValues<typeof LOCKED_BODY_STYLES>;
 }
 
 const attached = new WeakSet<HTMLDialogElement>();
@@ -123,22 +130,26 @@ function notifyChange(): void {
 function markBackdrops(): void {
   shown.forEach((entry, index) => {
     // Only the topmost shown dialog dims.
-    entry.dialog.toggleAttribute("data-modal-covered", index !== shown.length - 1);
-    entry.dialog.toggleAttribute("data-modal-over", index > 0);
+    entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.covered, index !== shown.length - 1);
+    entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.over, index > 0);
   });
 }
 
-function captureStyles(
+function captureStyles<Names extends readonly LockedStyle[]>(
   element: HTMLElement,
-  names: readonly LockedStyle[],
-): StyleValues {
-  return Object.fromEntries(names.map((name) => [name, element.style[name]]));
+  names: Names,
+): StyleValues<Names> {
+  return Object.fromEntries(
+    names.map((name) => [name, element.style[name]]),
+  ) as StyleValues<Names>;
 }
 
-function restoreStyles(element: HTMLElement, values: StyleValues): void {
-  for (const [name, value] of Object.entries(values)) {
-    element.style[name as LockedStyle] = value;
-  }
+function restoreStyles<Names extends readonly LockedStyle[]>(
+  element: HTMLElement,
+  names: Names,
+  values: StyleValues<Names>,
+): void {
+  for (const name of names) element.style[name] = values[name as Names[number]];
 }
 
 function lockDocumentScroll(): void {
@@ -175,12 +186,12 @@ function unlockDocumentScroll(): void {
   if (!snapshot) return;
   scrollLock = null;
   const html = document.documentElement;
-  restoreStyles(html, snapshot.html);
-  restoreStyles(document.body, snapshot.body);
+  restoreStyles(html, LOCKED_HTML_STYLES, snapshot.html);
+  restoreStyles(document.body, LOCKED_BODY_STYLES, snapshot.body);
   // Restore instantly despite smooth scrolling.
   html.style.scrollBehavior = "auto";
   window.scrollTo(snapshot.scrollLeft, snapshot.scrollTop);
-  html.style.scrollBehavior = snapshot.html.scrollBehavior ?? "";
+  html.style.scrollBehavior = snapshot.html.scrollBehavior;
 }
 
 function finishRemoved(): void {
@@ -218,8 +229,11 @@ function tabbableElements(dialog: HTMLDialogElement): HTMLElement[] {
   );
 }
 
-function isReachable(element: HTMLElement): boolean {
-  return element.isConnected && !element.closest("[hidden], [inert]");
+/** Connected, shown, and not in a closed dialog. */
+export function isReachable(element: HTMLElement): boolean {
+  if (!element.isConnected || element.closest("[hidden], [inert]")) return false;
+  const dialog = nearestDialog(element);
+  return dialog === null || dialog.open;
 }
 
 /** The opener, else a reachable drop-down toggle. */
@@ -256,19 +270,24 @@ function closeAbove(entry: Entry): void {
   for (const above of shown.slice(index + 1).reverse()) finish(above);
 }
 
+function clearLeaveLimit(entry: Entry): void {
+  if (entry.leaveLimit !== null) window.clearTimeout(entry.leaveLimit);
+  entry.leaveLimit = null;
+}
+
 /** Idempotent. */
 function finish(entry: Entry): void {
   if (entry.state === "closed") return;
   closeAbove(entry);
   entry.state = "closed";
   entry.generation += 1;
-  window.clearTimeout(entry.leaveLimit);
+  clearLeaveLimit(entry);
   if (entry.dialog.open) entry.dialog.close();
   const index = shown.indexOf(entry);
   if (index !== -1) shown.splice(index, 1);
   removeSurface(entry.surface);
-  entry.dialog.removeAttribute("data-modal-covered");
-  entry.dialog.removeAttribute("data-modal-over");
+  entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
+  entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
   markBackdrops();
   if (shown.length === 0) {
     stopWatchingRemovals();
@@ -276,7 +295,7 @@ function finish(entry: Entry): void {
   }
   returnFocus(entry);
   notifyChange();
-  // A throwing hook spares the rest.
+  // Layer already settled; a throw is reported.
   try {
     entry.options.onClosed?.();
   } catch (error) {
@@ -296,12 +315,15 @@ function refuseOpen(entry: Entry, detail: string): false {
   return false;
 }
 
-function open(entry: Entry, opener: HTMLElement | null | undefined): boolean {
+function open(entry: Entry, opener: HTMLElement | undefined): boolean {
   if (entry.state === "open") return true;
+  // A leave is timing, not a defect.
   if (entry.state === "leaving" || shown.some((other) => other.state === "leaving")) {
     return false;
   }
-  if (!entry.surface.host.isConnected || !entry.dialog.isConnected) return false;
+  if (!entry.surface.host.isConnected || !entry.dialog.isConnected) {
+    return refuseOpen(entry, "dialog or host is detached");
+  }
   const active = document.activeElement;
   entry.opener = opener ?? (active instanceof HTMLElement ? active : null);
   lockDocumentScroll();
@@ -314,7 +336,7 @@ function open(entry: Entry, opener: HTMLElement | null | undefined): boolean {
     }
     return refuseOpen(entry, `showModal refused: ${String(error)}`);
   }
-  // A cancelled beforetoggle returns quietly.
+  // A cancelled beforetoggle is reported, not thrown.
   if (!entry.dialog.open) return refuseOpen(entry, "showModal left the dialog closed");
   entry.state = "open";
   entry.generation += 1;
@@ -363,14 +385,26 @@ function close(entry: Entry): void {
 }
 
 export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {}): Modal {
-  if (!dialog.hasAttribute("data-modal")) {
+  if (!dialog.hasAttribute(MODAL_ATTRIBUTES.modal)) {
     throw new TypeError("attachModal requires a <dialog data-modal>.");
+  }
+  if (options.host && !options.host.contains(dialog)) {
+    throw new TypeError("attachModal: the host must contain the dialog.");
   }
   if (attached.has(dialog)) {
     throw new TypeError("attachModal: this dialog already has a modal.");
   }
   attached.add(dialog);
   let backdropPointer: PointerId | null = null;
+
+  function chosenInitialFocus(): HTMLElement | null {
+    try {
+      return options.initialFocus?.() ?? null;
+    } catch (error) {
+      report(`initialFocus threw: ${String(error)}`);
+      return null;
+    }
+  }
 
   const entry: Entry = {
     dialog,
@@ -379,20 +413,29 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     state: "closed",
     opener: null,
     generation: 0,
-    leaveLimit: 0,
+    leaveLimit: null,
     focusInitial: () => {
       const target =
-        options.initialFocus?.() ??
-        Array.from(dialog.querySelectorAll<HTMLElement>("[data-modal-initial-focus]")).find(
-          (element) => nearestDialog(element) === dialog,
-        );
+        chosenInitialFocus() ??
+        Array.from(
+          dialog.querySelectorAll<HTMLElement>(`[${MODAL_ATTRIBUTES.initial_focus}]`),
+        ).find((element) => nearestDialog(element) === dialog);
       target?.focus();
     },
   };
   const dismiss = (): void => {
     if (entry.state !== "open") return;
-    if (options.dismiss) options.dismiss();
-    else close(entry);
+    if (!options.dismiss) {
+      close(entry);
+      return;
+    }
+    try {
+      options.dismiss();
+    } catch (error) {
+      // A broken veto must not trap anyone.
+      report(`dismiss threw: ${String(error)}`);
+      close(entry);
+    }
   };
   const ownsEvent = (event: Event): boolean => nearestDialog(event.target) === dialog;
 
@@ -434,7 +477,7 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
   });
   dialog.addEventListener("click", (event) => {
     if (!ownsEvent(event)) return;
-    if ((event.target as Element).closest("[data-modal-dismiss]")) dismiss();
+    if ((event.target as Element).closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) dismiss();
   });
 
   return {
@@ -450,7 +493,7 @@ export function resetModalLayerForTests(): void {
   for (const entry of shown) {
     entry.state = "closed";
     entry.generation += 1;
-    window.clearTimeout(entry.leaveLimit);
+    clearLeaveLimit(entry);
     removeSurface(entry.surface);
     if (entry.dialog.open) entry.dialog.close();
   }

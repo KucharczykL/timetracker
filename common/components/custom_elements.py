@@ -36,6 +36,7 @@ from common.components.core import (
     Node,
     as_children,
 )
+from common.components.modal import MODAL_ATTRIBUTES, ModalDialog
 from common.components.primitives import (
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
@@ -47,7 +48,6 @@ from common.components.primitives import (
     ButtonSize,
     ControlButton,
     ControlLink,
-    Dialog,
     Div,
     EllipsisTrigger,
     Fieldset,
@@ -1269,32 +1269,6 @@ def Dropdown(
     )
 
 
-type ModalAlign = Literal["center", "end"]
-
-#: A transparent hit area; the panel is visible.
-#: No transform/filter/contain: toast region needs viewport.
-#: clip: hidden lets focus scroll the panel.
-_MODAL_DIALOG_CLASS = (
-    "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-clip "
-    "border-0 bg-transparent p-0 text-inherit open:flex open:justify-center "
-    "backdrop:bg-dark-backdrop/70 "
-    # Only the topmost shown modal dims.
-    "data-modal-covered:backdrop:opacity-0! "
-    "data-modal-covered:backdrop:transition-none! "
-    "data-modal-over:not-data-modal-covered:backdrop:opacity-100! "
-    "data-modal-over:backdrop:transition-none!"
-)
-_MODAL_ALIGN_CLASS: dict[ModalAlign, str] = {
-    "center": "open:items-center",
-    "end": "open:items-end",
-}
-
-
-def modal_dialog_class(*, align: ModalAlign = "center") -> str:
-    """The classes every ``<dialog data-modal>`` wears."""
-    return f"{_MODAL_DIALOG_CLASS} {_MODAL_ALIGN_CLASS[align]}"
-
-
 #: Only a close fades; uncovering stays instant.
 _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "
@@ -1328,19 +1302,16 @@ def BottomSheet(
     title_id = f"{id}-title"
     close_button = ControlButton(
         [
-            ("data-modal-dismiss", ""),
+            (MODAL_ATTRIBUTES["dismiss"], ""),
             ("aria-label", close_label),
             ("class", "shrink-0 focus:ring-inset"),
         ],
         variant="ghost",
     )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
-    target = Dialog(
-        [
-            ("data-modal", ""),
-            ("data-bottom-sheet", ""),
-            ("aria-labelledby", title_id),
-            ("class", f"{modal_dialog_class(align='end')} {_SHEET_DIALOG_CLASS}"),
-        ],
+    target = ModalDialog(
+        [("data-bottom-sheet", ""), ("aria-labelledby", title_id)],
+        align="end",
+        class_=_SHEET_DIALOG_CLASS,
     )[
         Div(
             data_sheet_panel="",

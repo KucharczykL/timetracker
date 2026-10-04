@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { attachModal, isModalOpen, MODAL_CHANGE, topModal } from "./modal-layer.js";
+import {
+  attachModal,
+  isModalOpen,
+  isReachable,
+  MODAL_CHANGE,
+  topModal,
+} from "./modal-layer.js";
 import { openSurfaces, pushSurface, removeSurface, type Surface } from "./surface-stack.js";
 
 let changes = 0;
@@ -107,11 +113,13 @@ describe("open", () => {
     expect(document.activeElement).toBe(first(other));
   });
 
-  it("answers false for a disconnected host", () => {
+  it("reports and refuses a disconnected host", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const dialog = document.createElement("dialog");
     dialog.setAttribute("data-modal", "");
     expect(attachModal(dialog).open()).toBe(false);
     expect(isModalOpen()).toBe(false);
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("detached"));
   });
 
   it("reports a refused showModal and leaves nothing locked", () => {
@@ -826,5 +834,112 @@ describe("more focus and dismissal", () => {
     expect(modal.state()).toBe("leaving");
     finish();
     expect(modal.state()).toBe("closed");
+  });
+});
+
+describe("caller hooks", () => {
+  it("routes the backdrop and the dismiss control through dismiss", () => {
+    const dialog = mountDialog();
+    const dismiss = vi.fn();
+    const modal = attachModal(dialog, { dismiss });
+    modal.open();
+    pointer("pointerdown", dialog);
+    pointer("pointerup", dialog);
+    dismissControl(dialog).click();
+    expect(dismiss).toHaveBeenCalledTimes(2);
+    expect(modal.isOpen()).toBe(true);
+  });
+
+  it("calls no dismiss during a leave", () => {
+    const dialog = mountDialog();
+    const dismiss = vi.fn();
+    const modal = attachModal(dialog, { dismiss, leave: () => {} });
+    modal.open();
+    modal.close();
+    dismissControl(dialog).click();
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it("reports a throwing dismiss and closes anyway", () => {
+    const logged = silenceReports();
+    const dialog = mountDialog();
+    const modal = attachModal(dialog, {
+      dismiss: () => {
+        throw new Error("broken veto");
+      },
+    });
+    modal.open();
+    cancel(dialog);
+    expect(modal.state()).toBe("closed");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("dismiss threw"));
+  });
+
+  it("reports a throwing initialFocus and keeps the open whole", () => {
+    const logged = silenceReports();
+    const dialog = mountDialog();
+    dismissControl(dialog).setAttribute("data-modal-initial-focus", "");
+    const modal = attachModal(dialog, {
+      initialFocus: () => {
+        throw new Error("broken focus");
+      },
+    });
+    expect(modal.open()).toBe(true);
+    expect(changes).toBe(1);
+    expect(document.activeElement).toBe(dismissControl(dialog));
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("initialFocus threw"));
+  });
+
+  it("refuses a host that does not hold the dialog", () => {
+    const dialog = mountDialog();
+    expect(() => attachModal(dialog, { host: mountOpener() })).toThrow(TypeError);
+  });
+});
+
+describe("reachability", () => {
+  it("skips an opener inside a closed dialog", () => {
+    const closed = document.createElement("dialog");
+    const toggle = document.createElement("button");
+    toggle.setAttribute("data-toggle", "");
+    const dropdown = document.createElement("drop-down");
+    const opener = mountOpener(closed);
+    dropdown.append(toggle, closed);
+    document.body.append(dropdown);
+    const modal = attachModal(mountDialog());
+    modal.open(opener);
+    modal.close();
+    expect(isReachable(opener)).toBe(false);
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("wraps Tab past hidden, disabled and untabbable edges", () => {
+    const dialog = mountDialog();
+    const panel = dialog.querySelector<HTMLElement>("[data-panel]")!;
+    panel.insertAdjacentHTML("afterbegin", '<input disabled><button tabindex="-1">x</button>');
+    panel.insertAdjacentHTML("beforeend", "<button hidden>y</button>");
+    attachModal(dialog).open();
+    dismissControl(dialog).focus();
+    pressTab(dismissControl(dialog));
+    expect(document.activeElement).toBe(first(dialog));
+    pressTab(first(dialog), true);
+    expect(document.activeElement).toBe(dismissControl(dialog));
+  });
+
+  it("leaves Tab alone in a dialog with nothing to tab to", () => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("data-modal", "");
+    dialog.innerHTML = "<p>Text only</p>";
+    document.body.append(dialog);
+    attachModal(dialog).open();
+    expect(pressTab(dialog).defaultPrevented).toBe(false);
+  });
+});
+
+describe("scrollbar", () => {
+  it("pads the body by the scrollbar it hides", () => {
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(985);
+    document.body.style.paddingRight = "5px";
+    attachModal(mountDialog()).open();
+    expect(document.body.style.paddingRight).toBe("20px");
   });
 });

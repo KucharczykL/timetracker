@@ -11,16 +11,15 @@ from common.components.primitives import (
 
 _ToastStack = custom_element_builder("toast-stack")
 
-#: The corner the toasts stack in, off the selection line.
-TOAST_STACK_CLASS = (
-    "fixed z-50 bottom-[var(--selection-line,0px)] right-0 flex flex-col "
-    "items-end pointer-events-none p-4"
-)
+#: The column both toast hosts share.
+_TOAST_COLUMN_CLASS = "fixed right-0 flex flex-col items-end pointer-events-none p-4"
 
-#: Under a modal: top edge, clear of sheets.
+#: The corner the toasts stack in, off the selection line.
+TOAST_STACK_CLASS = f"{_TOAST_COLUMN_CLASS} z-50 bottom-[var(--selection-line,0px)]"
+
+#: Under a modal: top edge, above sheets.
 TOAST_MODAL_REGION_CLASS = (
-    "fixed top-0 right-0 flex flex-col items-end pointer-events-none p-4 "
-    "pt-[max(1rem,env(safe-area-inset-top))]"
+    f"{_TOAST_COLUMN_CLASS} top-0 pt-[max(1rem,env(safe-area-inset-top))]"
 )
 
 

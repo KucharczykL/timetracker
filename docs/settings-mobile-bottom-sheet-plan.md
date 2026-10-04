@@ -1,5 +1,9 @@
 # Mobile settings section bottom-sheet plan (#384)
 
+> Superseded: the sheet sits on the modal layer. The contract is
+> [The modal layer](superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md).
+
+
 **Status:** planned; adversarial review incorporated
 
 **Prepared:** 2026-07-21

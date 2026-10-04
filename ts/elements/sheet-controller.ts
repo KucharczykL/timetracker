@@ -1,6 +1,7 @@
 /** The bottom sheet's slide and lifecycle events. */
 import type { MenuController } from "./menu-behavior.js";
-import { attachModal, type FinishLeave } from "./modal-layer.js";
+import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -18,6 +19,7 @@ interface PendingLeave {
   timer: TimerHandle;
 }
 
+// A missed transitionend; under the layer's cap.
 const CLOSE_FALLBACK_MS = 250;
 
 function prefersReducedMotion(): boolean {
@@ -72,7 +74,7 @@ export function attachSheet(
   }
 
   let entered = false;
-  let openFrame: FrameHandle = 0;
+  let openFrame: FrameHandle | null = null;
   let pendingLeave: PendingLeave | null = null;
   let pendingNavigation: PendingNavigation | null = null;
 
@@ -90,9 +92,13 @@ export function attachSheet(
     dialog.dataset.sheetState = sheetState();
   };
 
+  const cancelOpenFrame = (): void => {
+    if (openFrame !== null) window.cancelAnimationFrame(openFrame);
+    openFrame = null;
+  };
+
   const clearMotion = (): void => {
-    window.cancelAnimationFrame(openFrame);
-    openFrame = 0;
+    cancelOpenFrame();
     if (pendingLeave) window.clearTimeout(pendingLeave.timer);
     pendingLeave = null;
     entered = false;
@@ -103,13 +109,13 @@ export function attachSheet(
     // Native steps would focus the close button.
     initialFocus: () =>
       dialog.querySelector<HTMLElement>("nav a[href]") ??
-      dialog.querySelector<HTMLElement>("[data-modal-dismiss]"),
+      dialog.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.dismiss}]`),
     leave: (finish) => {
       if (prefersReducedMotion()) {
         finish();
         return;
       }
-      window.cancelAnimationFrame(openFrame);
+      cancelOpenFrame();
       pendingLeave = { finish, timer: window.setTimeout(finish, CLOSE_FALLBACK_MS) };
       render();
     },
@@ -128,14 +134,14 @@ export function attachSheet(
   const open = (): void => {
     if (modal.state() !== "closed") return;
     // A hidden trigger: the sheet is unavailable.
-    if (!host.isConnected || toggle.closest("[hidden], [inert]")) return;
+    if (!isReachable(toggle)) return;
     // Safari does not focus a clicked button.
     if (!modal.open(toggle)) return;
     toggle.setAttribute("aria-expanded", "true");
     render();
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
     openFrame = window.requestAnimationFrame(() => {
-      openFrame = 0;
+      openFrame = null;
       entered = true;
       render();
     });

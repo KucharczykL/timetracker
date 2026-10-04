@@ -17,6 +17,7 @@ from common.components.date_range_picker import (
     CalendarDayVariant,
     CalendarTrackVariant,
 )
+from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
     SHAPE_CLASSES,
     YEAR_PICKER_CLASSES,
@@ -129,6 +130,17 @@ class Command(BaseCommand):
                     # every day cell in both pickers.
                     TsConstant(
                         "BUTTON_SHAPE_CLASSES", dict[ButtonShape, str], SHAPE_CLASSES
+                    ),
+                ],
+            ),
+            # The modal layer reads and stamps these.
+            output_dir / "modal-attributes.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant(
+                        "MODAL_ATTRIBUTES",
+                        dict[ModalAttributeRole, str],
+                        dict(MODAL_ATTRIBUTES),
                     ),
                 ],
             ),

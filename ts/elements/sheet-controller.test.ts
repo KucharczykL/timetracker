@@ -6,6 +6,11 @@ import { MODAL_CHANGE } from "./modal-layer.js";
 import { openSurfaces } from "./surface-stack.js";
 
 let reducedMotion = true;
+const CLOSE_FALLBACK_MS = 250;
+
+function expectNoLeaveLimit(logged: ReturnType<typeof vi.spyOn>): void {
+  expect(logged).not.toHaveBeenCalledWith(expect.stringContaining("never called finish"));
+}
 
 function mountSheet(): {
   host: DropdownElement;
@@ -200,7 +205,6 @@ describe('drop-down behavior="sheet"', () => {
     });
     link.dispatchEvent(escape);
     expect(escape.defaultPrevented).toBe(false);
-    expect(dialog.open).toBe(true);
   });
 
   it("closes only when the same pointer starts and ends on the backdrop", () => {
@@ -246,6 +250,7 @@ describe('drop-down behavior="sheet"', () => {
   it("uses the timeout safety net when motion is enabled", () => {
     reducedMotion = false;
     vi.useFakeTimers();
+    const logged = vi.spyOn(console, "error");
     const { host, toggle, dialog } = mountSheet();
     toggle.click();
 
@@ -253,7 +258,8 @@ describe('drop-down behavior="sheet"', () => {
     expect(dialog.open).toBe(true);
     expect(dialog.dataset.sheetState).toBe("closing");
 
-    vi.runAllTimers();
+    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
+    expectNoLeaveLimit(logged);
     expect(dialog.open).toBe(false);
     expect(dialog.dataset.sheetState).toBe("closed");
   });
@@ -378,13 +384,13 @@ describe('drop-down behavior="sheet"', () => {
     expect(toggles[1].getAttribute("aria-expanded")).toBe("true");
 
     hosts[1].close();
-    vi.runAllTimers();
+    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
     expect(dialogs[1].open).toBe(false);
     expect(dialogs[0].open).toBe(true);
     expect(document.body.style.position).toBe("fixed");
 
     hosts[0].close();
-    vi.runAllTimers();
+    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
     expect(document.documentElement.getAttribute("style")).toBe(originalHtmlStyle);
     expect(document.body.getAttribute("style")).toBe(originalBodyStyle);
   });
@@ -436,8 +442,38 @@ describe('drop-down behavior="sheet"', () => {
     host.close();
     toggle.click();
     expect(dialog.dataset.sheetState).toBe("closing");
-    vi.runAllTimers();
+    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
     expect(dialog.open).toBe(false);
     expect(dialog.dataset.sheetState).toBe("closed");
+  });
+
+  it("keeps sliding on another property's transitionend", () => {
+    reducedMotion = false;
+    vi.useFakeTimers();
+    const { host, toggle, dialog, panel } = mountSheet();
+    toggle.click();
+    host.close();
+    const end = new Event("transitionend");
+    Object.defineProperty(end, "propertyName", { value: "opacity" });
+    panel.dispatchEvent(end);
+    expect(dialog.dataset.sheetState).toBe("closing");
+  });
+
+  it("closes a sliding upper sheet once when the lower one closes", () => {
+    reducedMotion = false;
+    vi.useFakeTimers();
+    const { hosts, dialogs } = mountTwoSheets();
+    const hidden = [vi.fn(), vi.fn()];
+    hosts.forEach((host, index) => host.addEventListener("dropdown:hide", hidden[index]));
+    hosts[0].open();
+    hosts[1].open();
+    hosts[1].close();
+    hosts[0].close();
+    vi.runAllTimers();
+    expect(hidden.map((listener) => listener.mock.calls.length)).toEqual([1, 1]);
+    expect(dialogs.map((dialog) => dialog.dataset.sheetState)).toEqual([
+      "closed",
+      "closed",
+    ]);
   });
 });

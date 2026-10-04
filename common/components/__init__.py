@@ -117,6 +117,7 @@ from common.components.library_kit import (
     SummaryRow,
     SummaryValue,
 )
+from common.components.modal import MODAL_ATTRIBUTES, ModalDialog
 from common.components.navigation import AccountMenu, AvatarButton
 from common.components.primitives import (
     COMPACT_SHAPE_CLASSES,
@@ -322,6 +323,7 @@ __all__ = [
     "MATCH_MODES",
     "MATCH_MODE_TOKENS",
     "MICRO_LABEL_CLASS",
+    "MODAL_ATTRIBUTES",
     "PAGE_GUTTER_CLASS",
     "PAGE_SIZE_PRESETS",
     "QUICK_FACETS",
@@ -444,6 +446,7 @@ __all__ = [
     "MatchMode",
     "MatchModeToken",
     "Media",
+    "ModalDialog",
     "ModuleScript",
     "NameWithIcon",
     "Nav",
