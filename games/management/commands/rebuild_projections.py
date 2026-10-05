@@ -16,6 +16,8 @@ from games.events.reconcile import (
     UnresolvedReferences,
 )
 from games.models import UserLibrary
+from games.planner_statistics import analyze_tables
+from games.projections import projection_models
 
 
 class Command(BaseCommand):
@@ -66,10 +68,15 @@ class Command(BaseCommand):
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
         #: The whole census, so one drift hides no other.
         drifted: list[tuple[UserLibrary, int]] = []
-        for library in libraries:
-            rows = self._run_one(library, mode)
-            if rows:
-                drifted.append((library, rows))
+        try:
+            for library in libraries:
+                rows = self._run_one(library, mode)
+                if rows:
+                    drifted.append((library, rows))
+        finally:
+            #: Libraries rebuilt before a failure stay rebuilt.
+            if mode is RebuildMode.REBUILD:
+                analyze_tables(projection_models())
         if drifted and options["fail_on_drift"]:
             total = sum(rows for _library, rows in drifted)
             raise CommandError(

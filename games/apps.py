@@ -5,7 +5,10 @@ from django.core.management import call_command
 from django.db.backends.signals import connection_created
 from django.db.models.signals import post_migrate
 
-from timetracker.database import validate_default_connection
+from timetracker.database import (
+    apply_statement_limit,
+    validate_default_connection,
+)
 
 # from django.utils.timezone import now
 
@@ -21,6 +24,10 @@ class GamesConfig(AppConfig):
         connection_created.connect(
             validate_default_connection,
             dispatch_uid="timetracker.validate_postgres_contract",
+        )
+        connection_created.connect(
+            apply_statement_limit,
+            dispatch_uid="timetracker.statement_limit",
         )
         post_migrate.connect(schedule_tasks, sender=self)
 

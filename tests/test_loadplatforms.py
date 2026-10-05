@@ -1,4 +1,5 @@
 from django.core.management import call_command
+from django.db import connection
 from django.test import TestCase
 
 from common.platform_icons import PLATFORM_ICONS
@@ -11,6 +12,17 @@ class LoadPlatformsTest(TestCase):
 
         self.assertTrue(Platform.objects.filter(name="Steam").exists())
         self.assertTrue(Platform.objects.filter(name="Nintendo Switch").exists())
+
+    def test_leaves_statistics_that_know_the_rows_exist(self):
+        call_command("loadplatforms")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT reltuples FROM pg_class WHERE relname = %s",
+                [Platform._meta.db_table],
+            )
+            estimated = cursor.fetchone()[0]
+        self.assertEqual(estimated, Platform.objects.count())
 
     def test_is_idempotent(self):
         call_command("loadplatforms")

@@ -108,6 +108,53 @@ test database. Django creates, migrates, and removes these disposable databases.
 The Makefile chooses the normal worker count for the host. Set
 `PYTEST_WORKERS=0` only for CI, focused debugging, or an explicit serial run.
 
+## Planner statistics
+
+The planner reads statistics that `ANALYZE` writes. Autovacuum analyzes a
+table late, and after a small write never. Until then the planner often
+estimates one row at each join, and a join over a few hundred rows plans as
+a cartesian product: `valuation_inputs`, the six-table read behind the
+conversion task, ran for more than 30 s against 1.6 ms analyzed.
+
+A command that fills tables analyzes them before it returns, through
+`analyze_tables` in `games/planner_statistics.py`, which names its tables:
+
+- `load_sample_data` analyzes every table it wrote inside its transaction,
+  ahead of the commit that queues the conversion task;
+- `loadplatforms`, `rebuild_projections` (a rebuild, not a check),
+  `publish_valuations`, the bench seed and the reclassification parity
+  command analyze theirs;
+- `make restore-dump` and `make verify-dump` analyze the whole scratch
+  copy. `pg_dump` 18 writes no statistics unless asked to.
+
+## Orphaned backends
+
+PostgreSQL finds a closed client only when it next writes to it. A query
+whose client died keeps running until it finishes. Three limits stop it:
+
+- every connection sends `client_connection_check_interval`
+  (`DATABASE_CLIENT_CONNECTION_CHECK_INTERVAL`, 10 s; see
+  [Configuration](configuration.md)) in libpq's `options`, after any
+  `options` the URL states. The check needs a server on Linux, macOS,
+  illumos or BSD, so the default is 0 where Django runs on Windows.
+  Behind a pooler the check watches the pooler, not the application;
+- a django-q worker limits its statements to `Q_CLUSTER["timeout"]` when
+  it starts (`games/signals.py`), because the cluster kills a task at that
+  limit anyway;
+- a process that serves requests stops a statement at 30 s
+  (`REQUEST_STATEMENT_TIMEOUT`). Gunicorn's `--timeout` does not: under
+  `UvicornWorker`, Django runs a sync view in a thread, the worker's
+  heartbeat continues, and the query runs to its end.
+
+`timetracker.asgi` and `timetracker.wsgi` mark their process before Django
+starts, and the worker marks itself at spawn. A `connection_created`
+receiver then sets the process's limit on each connection it opens. A
+statement over it answers a write with 503 and a sentence of its own.
+
+No limit applies to other commands or migrations: the container migrates
+at start, and `make bench` and the parity commands read for longer than
+any request.
+
 ## Connection pooling
 
 No deployment here runs a connection pooler. Connections go straight to

@@ -1,7 +1,7 @@
 """Seeding, the scenarios, and the scratch teardown."""
 
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from io import StringIO
 from itertools import batched, islice
@@ -11,7 +11,6 @@ from zoneinfo import ZoneInfo
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import connection, transaction
-from django.db.models import Model
 
 from common.keyset import keyset_pages
 from games.bulk_reclassification import (
@@ -57,6 +56,7 @@ from games.models import (
     Playthrough,
     UserLibrary,
 )
+from games.planner_statistics import analyze_tables
 from games.reads.calendar import calendar_day_zone
 from games.reads.events import created_aggregate_id
 
@@ -128,7 +128,8 @@ def seed_library(
             )
         events += 3 * len(batch)
     append_seconds = monotonic() - append_started
-    analyze_tables()
+    #: Else the bench measures the planner's guess.
+    analyze_tables(_SEEDED_TABLES)
 
     return SeedReport(
         catalog_rows=games + spares,
@@ -148,19 +149,6 @@ def _seeded_events(
     run_id = pair[1].aggregate_id
     day = today - timedelta(days=index % SEEDED_DAY_CYCLE)
     return [*pair, *session_events(run_id, day=day, day_zone=day_zone)]
-
-
-def analyze_tables(tables: Sequence[type[Model]] = _SEEDED_TABLES) -> None:
-    """Leave statistics that describe the rows just written.
-
-    Without this the command scenario races autovacuum's one-minute naptime,
-    and measures which index the planner guessed at. Named tables rather than
-    a bare `ANALYZE`, which would rewrite statistics for a whole database the
-    benchmark did not touch.
-    """
-    named = ", ".join(f'"{model._meta.db_table}"' for model in tables)
-    with connection.cursor() as cursor:
-        cursor.execute(f"ANALYZE {named}")
 
 
 def _create_catalog(library: UserLibrary, *, prefix: str, count: int) -> None:

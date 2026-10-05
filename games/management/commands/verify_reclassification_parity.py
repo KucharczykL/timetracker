@@ -8,8 +8,9 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 
 from games.commands.session_reclassification import statement_from_session
-from games.events.benchmark_workload import RECORD_TABLES, analyze_tables
+from games.events.benchmark_workload import RECORD_TABLES
 from games.models import PlayerSession, UserLibrary
+from games.planner_statistics import analyze_tables
 from games.reads.playtime import played_years
 from games.reads.session_figures import (
     highest_average_game,

@@ -113,6 +113,14 @@ def _process_clock_off_the_calendar(settings):
 
 
 @pytest.fixture(autouse=True)
+def _no_process_statement_limit(monkeypatch):
+    """Importing an entry point marks the whole worker."""
+    from timetracker import database
+
+    monkeypatch.setattr(database._ProcessStatements, "timeout_seconds", 0)
+
+
+@pytest.fixture(autouse=True)
 def _reset_settings_caches():
     """Isolate the layered settings resolver between tests.
 

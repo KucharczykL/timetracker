@@ -12,6 +12,7 @@ from typing import NamedTuple
 from django.db import Error as DatabaseRefusal
 from django.http import Http404
 
+from common.filter_execution import is_statement_timeout
 from games.events.append import (
     PayloadNotCanonical,
     StreamSequenceMismatch,
@@ -52,6 +53,9 @@ CONFLICT_STATUS = 409
 #: stated was wrong, and no retry of it can succeed.
 DEFECT_STATUS = 500
 
+#: A statement ran past the process's limit; a retry may succeed.
+TIMED_OUT_STATUS = 503
+
 
 class CommandFailed(Exception):
     """A stated fact could not be recorded.
@@ -90,6 +94,9 @@ _COLLIDED = (
 
 #: What a rejection that states no sentence of its own says.
 REFUSED = "This {subject} cannot take that change. Reload the page and try again."
+
+#: What a statement timeout says.
+TIMED_OUT = "Recording this {subject} took too long. Nothing was saved; try again."
 
 #: What a database refusal says. Every command admits a subset of what
 #: the schema does, so a constraint that fires is a refusal the command
@@ -203,6 +210,11 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
         sentence = error.sentence or REFUSED.format(subject=subject)
         raise CommandFailed(sentence, CONFLICT_STATUS) from error
     except DatabaseRefusal as error:
+        if is_statement_timeout(error):
+            logger.exception("[answers]: a %s ran past its statement timeout.", subject)
+            raise CommandFailed(
+                TIMED_OUT.format(subject=subject), TIMED_OUT_STATUS
+            ) from error
         #: The backstop, never the path a refusal should take. Caught
         #: here rather than deeper because dispatch owns the
         #: transaction and has already rolled it back: nothing was

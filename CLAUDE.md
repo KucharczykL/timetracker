@@ -1592,6 +1592,12 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   (`BottomSheet`, `behavior="sheet"`) is a per-modal opt-in. Scope a
   backdrop transition to the closing state. Contract is
   [The modal layer](docs/superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md)
+- **A bulk write analyzes what it filled** — a command or task that
+  fills or replaces many rows ends with `analyze_tables` from
+  `games/planner_statistics.py`, naming its tables, inside its transaction
+  where one exists. Autovacuum runs late, and a join planned without
+  statistics runs for minutes. See
+  [Planner statistics](docs/database.md#planner-statistics).
 - **Read settings via `config()`** from `timetracker/config.py`, never bare
   `os.environ.get` in `settings.py`. Declare `cast`/`allow_file`/`required_in_prod`
   explicitly. Container-bootstrap flags belong in `entrypoint.sh`.
