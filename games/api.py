@@ -2094,7 +2094,7 @@ def bulk_batches(request, tokens: str = ""):
     return [batch_out(batch) for batch in batches_named(request.user.library, asked)]
 
 
-@bulk_router.post("/batches/{uuid:token}/announced", response={204: None})
+@bulk_router.post("/batches/{token}/announced", response={204: None})
 def bulk_batch_announced(request, token: uuid.UUID):
     """The end's toast was dismissed."""
     if not announce(request.user.library, token):
