@@ -5,6 +5,9 @@ asks the server for the page in dialog mode. The server answers with the
 content alone, or with a result. A view knows nothing about the dialog;
 `render_page()` and one middleware do. Scripting off is not supported.
 
+Two URLs are equal when origin, path and sorted query match; the hash is
+ignored (`normalizedUrl`). Every comparison below uses that rule.
+
 ## Request
 
 Every fetch of the dialog carries `X-Form-Dialog: 1` and
@@ -23,16 +26,19 @@ with a `kind` literal; `gen_element_types` writes them to
 | `page` | `title`, `html`, `modules`, `messages` | `render_page()` |
 | `done` | `url`, `messages` | the middleware |
 | `continue` | `url` | the middleware |
-| `created` | `value`, `label`, `messages` | a view that states its row |
 
-Every answer carries `Vary: X-Form-Dialog` and `Cache-Control: no-store`.
-The client decides by `kind`, never by status.
+`html` is the content's own markup, no wrapper. `url` is absolute. A
+dialog answer carries `Cache-Control: no-store`; `render_page()` adds
+`Vary: X-Form-Dialog` in both modes. The client decides by `kind`, never
+by status. A `created` kind, which names a new row for a picker, is #1501.
 
 - **`page`.** `render_page()` answers a dialog request with the content
-  alone, under the view's status (200, 400, 403, 409, 500). `modules`
-  holds the module scripts of `collect_media(content)` and of `scripts=`,
-  which takes `ModuleScript` nodes only. A component with `js_external`
-  is refused in dialog mode. `messages` holds the consumed queue.
+  alone, under the view's status (200, 400, 403, 409, 500). It builds no
+  navbar and reads nothing for it. `modules` holds the module scripts of
+  `collect_media(content)` and of `scripts=`, now a sequence of
+  `ModuleScript`. A component with `js_external` is refused in dialog
+  mode. `messages` holds the consumed queue. Under DEBUG the fragment's
+  ids are checked unique.
 - **`done` and `continue`.** `FormDialogResultMiddleware` turns a 301, 302,
   303, 307 or 308 with a `Location` into a result. It resolves the
   location's path, relative to the request, against the root urlconf. A
@@ -42,7 +48,6 @@ The client decides by `kind`, never by status.
   urlconf through the same classification.
 - **`ToastMessagesMiddleware`** skips a dialog request; `render_page()` and
   the result middleware own its messages.
-- **`created`.** A view returns it explicitly. #1501 adopts it.
 - **`done` means finished, not saved.** A refusal that redirects arrives
   as `done` with an error message.
 - An answer that is not JSON (a Django 404, a CSRF 403, a proxy error) has
@@ -60,11 +65,12 @@ marked link follows natively. The fetch has a 15 second deadline.
 | `continue` | Fetch its `url` the same way |
 | No kind, failure, timeout | Follow the link |
 
-A chain of `continue` stops after five and follows the last link.
+A chain of five `continue` answers stops and follows the original link.
 
 ## Present
 
-The host imports `modules`, prefixes every id and the references in the
+The host parses `html` into a `<template>`, imports `modules`, and only
+then rewrites and inserts it. It prefixes every id and the references in the
 attributes `form_dialog.py` lists, plus fragment links, and resolves
 `href`, `action` and `formaction` against `response.url`. A form without
 `action` gets that URL. Header chrome titles the dialog with `title` and
@@ -88,25 +94,29 @@ no link closes its dialog.
 |---|---|
 | `page` | Present it in the same dialog |
 | `continue` | Fetch its `url` into the same dialog |
-| `done` or `created`, alone | Close; reload |
-| `done` or `created`, nested | Close the top dialog; toast below |
+| `done`, alone | Close; reload |
+| `done`, nested | Close the top dialog; toast below |
 | No kind | Error toast; the dialog stays |
 | Failure | Unconfirmed toast; the host is stale |
 
-Any result to a POST marks the host stale. When the bottom dialog closes by
+A chain of five `continue` answers stops with an error toast. Any result
+to a POST marks the host stale. When the bottom dialog closes by
 any path and the host is stale, the host reloads.
 
 ## Reload
 
-One reloader, in `<form-dialog>`, serves every trigger: a closing stale
+One reloader, in `<form-dialog>`, serves the dialog triggers: a closing stale
 stack and `page:stale` on `document` (#1507). It waits until no modal is
-open, then runs once. Before it runs, it hands off the waiting messages
-(`ts/toast-handoff.ts`, for the target page, one minute) and stores the
-opener's id, else its `href`, for one load.
+open, then runs once. Before it runs, it writes the waiting messages and
+the opener's id, else its `href`, to `sessionStorage`
+(`ts/toast-handoff.ts`). The next load in the tab reads them within one
+minute, whatever URL it lands on: the target may redirect, as a renamed
+game's page does.
 
 - **Target.** A `done` whose `url` is the host page reloads it. A `done`
   elsewhere (the origin was refused, as after removing the page's own
-  row) navigates to its `url`.
+  row) navigates to its `url`. A marked link carries `?origin=`, so a
+  save that keeps the page returns to it.
 - **Form host.** A host whose `#main-container` lacks `data-read-only`
   never reloads. Its messages show in place; the opener and its form stay
   reachable.
@@ -133,12 +143,14 @@ intercepts it.
 Content must wire on connect and unwire on disconnect. A lookup by field
 name searches its own form first. Page glue is an element
 (`<field-mirror>`). The id-reference contract test covers each route a
-conversion marks.
+conversion marks. A `<refreshing-section>` is refused in dialog content;
+it would fetch the host. A nested `done` tells a lower form's pickers
+nothing; that is #1501.
 
 ## Removed by this design
 
 The page swap (`swap.ts`, `events.ts`, `form-dialog:swapped` and its
 listener in `ts/library-conversion-status.ts`), `id="navbar"`,
 `data-page-title`, the busy classes on `#main-container`, `#main-container`
-extraction from a full page, and the routes' read-only and host-URL
-matching.
+extraction from a full page, the routes' read-only heuristics, and the
+unused `mastered` module script with its `render_page()` parameter.
