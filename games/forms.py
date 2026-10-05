@@ -439,12 +439,14 @@ class _SearchSelectAdapter(forms.Widget):
         placeholder: str,
         autofocus: bool,
         clearable: bool,
+        dialog_create: DialogCreate | None = None,
         attrs=None,
     ):
         super().__init__(attrs)
         self.placeholder = placeholder
         self.autofocus = autofocus
         self.clearable = clearable
+        self.dialog_create = dialog_create
 
     def _render(self, name, attrs, *, shape: ButtonShape, **component) -> str:
         input_id = (attrs or {}).get("id", "")
@@ -456,6 +458,7 @@ class _SearchSelectAdapter(forms.Widget):
                 placeholder=self.placeholder,
                 autofocus=self.autofocus,
                 clearable=self.clearable,
+                dialog_create=self.dialog_create,
                 clear_description_id=field_label_id(input_id) if input_id else None,
                 shape=shape,
                 **component,
@@ -499,10 +502,10 @@ class SearchSelectWidget(_SearchSelectAdapter):
             placeholder=placeholder,
             autofocus=autofocus,
             clearable=clearable,
+            dialog_create=dialog_create,
             attrs=attrs,
         )
         self.none_label = none_label
-        self.dialog_create = dialog_create
         self.search_url = search_url
         self.options_resolver = options_resolver
         self.create = create
@@ -541,7 +544,6 @@ class SearchSelectWidget(_SearchSelectAdapter):
             items_scroll=self.items_scroll,
             prefetch=self.prefetch,
             none_label=self.none_label,
-            dialog_create=self.dialog_create,
             shape=shape,
         )
 
@@ -593,10 +595,15 @@ class TextSearchSelectWidget(_SearchSelectAdapter):
         *,
         suggestions: Sequence[str] = (),
         placeholder: str = "Search or type…",
+        dialog_create: DialogCreate | None = None,
         attrs=None,
     ):
         super().__init__(
-            placeholder=placeholder, autofocus=False, clearable=True, attrs=attrs
+            placeholder=placeholder,
+            autofocus=False,
+            clearable=True,
+            dialog_create=dialog_create,
+            attrs=attrs,
         )
         self.suggestions = tuple(suggestions)
 
@@ -648,6 +655,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
         placeholder: str | None = None,
         clearable: bool = True,
         autofocus: bool = False,
+        dialog_create: DialogCreate | None = None,
         attrs=None,
     ):
         super().__init__(
@@ -656,6 +664,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             else placeholder,
             autofocus=autofocus,
             clearable=clearable,
+            dialog_create=dialog_create,
             attrs=attrs,
         )
 

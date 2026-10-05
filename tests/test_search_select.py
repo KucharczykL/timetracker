@@ -1543,3 +1543,39 @@ class DialogCreateTest(unittest.TestCase):
         create = DialogCreate(reverse_lazy("games:add_game"), "New game")
         html = str(SearchSelect(name="game", dialog_create=create))
         self.assertIn(f'href="{reverse("games:add_game")}"', self._link(html))
+
+
+class DialogCreateWidgetTest(unittest.TestCase):
+    """Every form picker takes the +."""
+
+    def test_every_form_widget_renders_it(self):
+        from django import forms
+
+        from games.forms import (
+            ChoiceSearchSelectWidget,
+            SearchSelectWidget,
+            TextSearchSelectWidget,
+        )
+
+        widgets = {
+            "search": SearchSelectWidget(
+                search_url="/api/devices/search",
+                options_resolver=lambda values: [],
+                dialog_create=NEW_DEVICE,
+            ),
+            "text": TextSearchSelectWidget(dialog_create=NEW_DEVICE),
+            "choice": ChoiceSearchSelectWidget(dialog_create=NEW_DEVICE),
+        }
+        for kind, widget in widgets.items():
+            with self.subTest(kind=kind):
+                field = (
+                    forms.ChoiceField(choices=[("1", "Deck")], widget=widget)
+                    if kind == "choice"
+                    else forms.CharField(widget=widget)
+                )
+
+                class PickerForm(forms.Form):
+                    device = field
+
+                html = str(PickerForm()["device"])
+                self.assertIn('aria-label="New device"', html)
