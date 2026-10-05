@@ -1,2 +1,2 @@
-/** On `document`: the page shows stale data. */
+/** Dispatched on `document`: shown data went stale. */
 export const PAGE_STALE = "page:stale";

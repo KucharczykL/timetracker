@@ -20,21 +20,23 @@ type FormDialogPart = Literal["template", "header", "title", "body"]
 type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
 type AttributeName = str  # e.g. "aria-controls"
 type AbsoluteUrl = str  # e.g. "https://example.com/devices"
-type ModuleUrl = str  # e.g. "/static/js/dist/elements/field-mirror.js"
+type ModulePath = str  # e.g. "/static/js/dist/elements/field-mirror.js"
+type DocumentTitle = str  # e.g. "Add New Device"
+type HtmlText = str  # rendered markup
 
 
 class PageAnswer(TypedDict):
     """The page's content, for the dialog."""
 
     kind: Literal["page"]
-    title: str
-    html: str
-    modules: list[ModuleUrl]
+    title: DocumentTitle
+    html: HtmlText
+    modules: list[ModulePath]
     messages: list[ToastPayload]
 
 
 class DoneAnswer(TypedDict):
-    """Finished; the page at `url` follows."""
+    """Finished; `url` is where it landed."""
 
     kind: Literal["done"]
     url: AbsoluteUrl
@@ -48,7 +50,8 @@ class ContinueAnswer(TypedDict):
     url: AbsoluteUrl
 
 
-type FormDialogAnswer = PageAnswer | DoneAnswer | ContinueAnswer
+#: What a dialog's redirect becomes.
+type RedirectAnswer = DoneAnswer | ContinueAnswer
 
 
 FORM_DIALOG_ATTRIBUTE: Final[FormDialogAttribute] = "data-form-dialog"

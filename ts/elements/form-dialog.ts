@@ -149,6 +149,24 @@ function deadlineAfter(milliseconds: number): AbortSignal {
   return controller.signal;
 }
 
+function noReload(): Reload {
+  return { target: null, messages: [], opener: null };
+}
+
+/** Joins a dialog's abort with a deadline. */
+function eitherAbort(first: AbortSignal, second: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+  for (const signal of [first, second]) {
+    if (signal.aborted) controller.abort();
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return controller.signal;
+}
+
+function isReadOnlyHost(): boolean {
+  return document.getElementById("main-container")?.hasAttribute("data-read-only") ?? false;
+}
+
 function focusedOpener(): OpenerKey | null {
   const active = document.activeElement;
   return active instanceof HTMLElement && active !== document.body ? openerKey(active) : null;
@@ -160,7 +178,7 @@ export class FormDialogElement extends HTMLElement {
   private readonly stack: OpenDialog[] = [];
   /** Something wrote; the host is stale. */
   private stale = false;
-  private reload: Reload = { target: null, messages: [], opener: null };
+  private reload: Reload = noReload();
   private reloadWaiting = false;
   /** The link whose page is loading. */
   private opening: HTMLAnchorElement | null = null;
@@ -197,17 +215,21 @@ export class FormDialogElement extends HTMLElement {
     }
     const entry = this.entryHolding(link);
     if (!entry || link.getAttribute("href")?.startsWith("#")) return;
-    if (this.leadsBack(entry, link.href)) {
-      event.preventDefault();
-      if (!entry.submitting) entry.modal.close();
-    }
+    const firstAbove = this.firstAboveTarget(entry, link.href);
+    if (!firstAbove) return;
+    event.preventDefault();
+    // The layer closes every modal above it.
+    if (!entry.submitting) firstAbove.modal.close();
   };
 
-  /** To the host, or to a dialog below. */
-  private leadsBack(entry: OpenDialog, href: string): boolean {
-    if (sameUrl(href, location.href)) return true;
-    const below = this.stack.slice(0, this.stack.indexOf(entry));
-    return below.some((lower) => sameUrl(href, lower.url));
+  /** Back to the host or a lower dialog. */
+  private firstAboveTarget(entry: OpenDialog, href: string): OpenDialog | null {
+    if (sameUrl(href, location.href)) return this.stack[0];
+    const index = this.stack.indexOf(entry);
+    for (let lower = index - 1; lower >= 0; lower -= 1) {
+      if (sameUrl(href, this.stack[lower].url)) return this.stack[lower + 1];
+    }
+    return null;
   }
 
   private readonly onSubmit = (event: SubmitEvent): void => {
@@ -285,20 +307,32 @@ export class FormDialogElement extends HTMLElement {
         }
         route = routeOpen(await this.fetchAnswer(route.url, { signal: deadline }));
       }
+      if (route.kind === "present" && !(await this.prepare(route.page, route.url, deadline))) {
+        handOffMessages(route.page.messages);
+        browser.assign(url.href);
+        return;
+      }
       if (topModal() !== topAtClick) {
-        // Another modal took over.
+        // The server consumed them; show them anyway.
         report(`a modal overtook the link to ${url.href}`);
+        if (route.kind === "present") showToasts(route.page.messages);
+        if (route.kind === "toast") showToasts(route.messages);
         return;
       }
       switch (route.kind) {
         case "toast":
           showToasts(route.messages);
           return;
+        case "navigate":
+          report(`opening ${url.href} finished at ${route.url.href}`);
+          browser.assign(route.url.href);
+          return;
         case "follow":
+          report(`opening ${url.href} answered no kind`);
           browser.assign(url.href);
           return;
         case "present":
-          if (!(await this.openDialog(route.page, route.url, link, chrome, deadline))) {
+          if (!this.openDialog(route.page, route.url, link, chrome)) {
             handOffMessages(route.page.messages);
             browser.assign(url.href);
           }
@@ -316,13 +350,7 @@ export class FormDialogElement extends HTMLElement {
   }
 
   /** False when the dialog could not open. */
-  private async openDialog(
-    page: Page,
-    url: URL,
-    opener: HTMLElement,
-    chrome: FormDialogChrome,
-    deadline: AbortSignal,
-  ): Promise<boolean> {
+  private openDialog(page: Page, url: URL, opener: HTMLElement, chrome: FormDialogChrome): boolean {
     const template = this.querySelector<HTMLTemplateElement>(
       `template[${FORM_DIALOG_PARTS.template}]`,
     );
@@ -330,7 +358,6 @@ export class FormDialogElement extends HTMLElement {
       report("the host has no template");
       return false;
     }
-    if (!(await this.prepare(page, url, deadline))) return false;
     const chromeFragment = template.content.cloneNode(true) as DocumentFragment;
     prefixIds(chromeFragment, this.nextPrefix());
     const dialog = chromeFragment.querySelector("dialog");
@@ -407,8 +434,13 @@ export class FormDialogElement extends HTMLElement {
     entry.url = url;
   }
 
-  private async present(entry: OpenDialog, page: Page, url: URL): Promise<void> {
-    if (!(await this.prepare(page, url))) {
+  private async present(
+    entry: OpenDialog,
+    page: Page,
+    url: URL,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!(await this.prepare(page, url, signal))) {
       // The person's input stays on screen.
       showToasts(page.messages);
       this.unshown("the answered form could not be shown");
@@ -444,7 +476,9 @@ export class FormDialogElement extends HTMLElement {
     entry.submitting = true;
     form.setAttribute("aria-busy", "true");
     entry.body.setAttribute("aria-busy", "true");
-    const signal = entry.controller.signal;
+    // A hung submit must not trap the person.
+    const signal = eitherAbort(entry.controller.signal, deadlineAfter(LOAD_TIMEOUT_MS));
+    const closed = (): boolean => entry.controller.signal.aborted;
     try {
       let answer: Answer;
       try {
@@ -455,16 +489,21 @@ export class FormDialogElement extends HTMLElement {
         });
       } catch (error) {
         // The close already counted it as a write.
-        if (signal.aborted) return;
+        if (closed()) return;
         this.unconfirmed(`submit failed: ${String(error)}`);
         return;
       }
-      if (answer.kind === "done" || answer.kind === "continue") this.stale = true;
+      const wrote = answer.kind === "done" || answer.kind === "continue";
+      if (wrote) this.stale = true;
       try {
         await this.routeSubmitAnswer(entry, answer, signal);
       } catch (error) {
-        if (signal.aborted) return;
-        this.unconfirmed(`routing the answer failed: ${String(error)}`);
+        if (closed()) return;
+        if (wrote) {
+          this.unconfirmed(`routing the answer failed: ${String(error)}`);
+        } else {
+          this.unshown(`showing the answer failed: ${String(error)}`);
+        }
       }
     } finally {
       entry.submitting = false;
@@ -483,7 +522,7 @@ export class FormDialogElement extends HTMLElement {
       const route = routeSubmit(answer, this.alone(entry));
       switch (route.kind) {
         case "present":
-          await this.present(entry, route.page, route.url);
+          await this.present(entry, route.page, route.url, signal);
           return;
         case "continue":
           if (step >= CONTINUE_LIMIT) {
@@ -515,7 +554,8 @@ export class FormDialogElement extends HTMLElement {
   private unconfirmed(detail: string): void {
     this.stale = true;
     const id = report(detail);
-    errorToast(`The save could not be confirmed. Close this to see the current page (error ${id}).`);
+    const remedy = isReadOnlyHost() ? "Close this to see the current page" : "Reload the page to check";
+    errorToast(`The save could not be confirmed. ${remedy} (error ${id}).`);
   }
 
   /** An answer arrived that cannot be shown. */
@@ -567,9 +607,9 @@ export class FormDialogElement extends HTMLElement {
 
   private runReload(): void {
     const { target, messages, opener } = this.reload;
-    this.reload = { target: null, messages: [], opener: null };
+    this.reload = noReload();
     this.stale = false;
-    if (!document.getElementById("main-container")?.hasAttribute("data-read-only")) {
+    if (!isReadOnlyHost()) {
       // A form host keeps the person's input.
       showToasts(messages);
       return;

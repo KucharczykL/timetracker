@@ -9,8 +9,8 @@ import type {
 
 /** Origin, path and sorted query. */
 export type PageUrl = string;
-/** An absolute module script URL. */
-export type ModuleUrl = string;
+/** A module script URL, resolved absolute. */
+export type ResolvedModuleUrl = string;
 export type Messages = readonly ToastPayload[];
 
 export function normalizedUrl(url: string | URL): PageUrl {
@@ -35,15 +35,20 @@ export interface Page {
   /** Consumed when inserted. */
   readonly content: DocumentFragment;
   readonly title: string;
-  readonly modules: readonly ModuleUrl[];
+  readonly modules: readonly ResolvedModuleUrl[];
   readonly messages: Messages;
 }
 
+// Typed from the wire: a Python rename fails tsc.
+const PAGE: PageAnswer["kind"] = "page";
+const DONE: DoneAnswer["kind"] = "done";
+const CONTINUE: ContinueAnswer["kind"] = "continue";
+
 export type Answer =
   /** `url`: what the content's URLs resolve against. */
-  | { readonly kind: "page"; readonly url: URL; readonly page: Page }
-  | { readonly kind: "done"; readonly url: URL; readonly messages: Messages }
-  | { readonly kind: "continue"; readonly url: URL }
+  | { readonly kind: typeof PAGE; readonly url: URL; readonly page: Page }
+  | { readonly kind: typeof DONE; readonly url: URL; readonly messages: Messages }
+  | { readonly kind: typeof CONTINUE; readonly url: URL }
   /** Not a dialog answer. */
   | { readonly kind: "none"; readonly status: number };
 
@@ -64,13 +69,17 @@ function isTextList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isText);
 }
 
+/** Shape only; `<toast-stack>` checks the rest. */
 function isMessages(value: unknown): value is ToastPayload[] {
-  return Array.isArray(value);
+  return (
+    Array.isArray(value) &&
+    value.every((message) => isText((message as Partial<ToastPayload> | null)?.message))
+  );
 }
 
 function isPage(fields: Fields): fields is Fields & PageAnswer {
   return (
-    fields.kind === "page" &&
+    fields.kind === PAGE &&
     isText(fields.title) &&
     isText(fields.html) &&
     isTextList(fields.modules) &&
@@ -79,11 +88,11 @@ function isPage(fields: Fields): fields is Fields & PageAnswer {
 }
 
 function isDone(fields: Fields): fields is Fields & DoneAnswer {
-  return fields.kind === "done" && isText(fields.url) && isMessages(fields.messages);
+  return fields.kind === DONE && isText(fields.url) && isMessages(fields.messages);
 }
 
 function isContinue(fields: Fields): fields is Fields & ContinueAnswer {
-  return fields.kind === "continue" && isText(fields.url);
+  return fields.kind === CONTINUE && isText(fields.url);
 }
 
 function contentOf(html: string): DocumentFragment {
@@ -97,7 +106,10 @@ function contentOf(html: string): DocumentFragment {
 }
 
 async function fieldsOf(response: Response): Promise<Fields | null> {
-  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return null;
+  if (!(response.headers.get("content-type") ?? "").includes("application/json")) {
+    report(`not a dialog answer (status ${response.status})`);
+    return null;
+  }
   let body: unknown;
   try {
     body = await response.json();
@@ -105,7 +117,9 @@ async function fieldsOf(response: Response): Promise<Fields | null> {
     report(`unreadable JSON (status ${response.status}): ${String(error)}`);
     return null;
   }
-  return typeof body === "object" && body !== null ? (body as Fields) : null;
+  if (typeof body === "object" && body !== null && !Array.isArray(body)) return body as Fields;
+  report(`not an answer object (status ${response.status})`);
+  return null;
 }
 
 /** `requested` stands in for an empty `response.url`. */
@@ -119,12 +133,12 @@ export async function readAnswer(response: Response, requested: URL): Promise<An
       modules: fields.modules.map((module) => new URL(module, url).href),
       messages: fields.messages,
     };
-    return { kind: "page", url, page };
+    return { kind: PAGE, url, page };
   }
   if (fields && isDone(fields)) {
-    return { kind: "done", url: new URL(fields.url, url), messages: fields.messages };
+    return { kind: DONE, url: new URL(fields.url, url), messages: fields.messages };
   }
-  if (fields && isContinue(fields)) return { kind: "continue", url: new URL(fields.url, url) };
+  if (fields && isContinue(fields)) return { kind: CONTINUE, url: new URL(fields.url, url) };
   if (fields) report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);
   return { kind: "none", status: response.status };
 }

@@ -1,5 +1,7 @@
 """A redirect in dialog mode becomes a result."""
 
+import json
+import re
 import uuid
 
 import pytest
@@ -41,10 +43,19 @@ def _answered(request: HttpRequest, response: HttpResponse) -> HttpResponse:
     return FormDialogResultMiddleware(lambda request: response)(request)
 
 
+def _page_messages(client: Client, url: str) -> list[object]:
+    html = client.get(url).content.decode()
+    found = re.search(
+        r'<script id="django-messages" type="application/json">(.*?)</script>', html
+    )
+    assert found is not None
+    return json.loads(found.group(1))
+
+
 @pytest.mark.django_db(transaction=True)
 def test_removal_from_a_list_is_done_with_its_undo(logged_in, owned_library):
     device = create_device(owned_library)
-    origin = reverse("games:list_devices")
+    origin = reverse("games:list_devices") + "?filter=%7B%7D&page=2"
     response = logged_in.post(
         action_url("games:remove_device", device.pk, origin=origin),
         headers=DIALOG_HEADERS,
@@ -52,6 +63,7 @@ def test_removal_from_a_list_is_done_with_its_undo(logged_in, owned_library):
 
     assert response.status_code == 200
     assert response["Cache-Control"] == "no-store"
+    assert FORM_DIALOG_HEADER in response["Vary"]
     answer = response.json()
     assert answer["kind"] == "done"
     assert answer["url"] == SERVER + origin
@@ -59,6 +71,8 @@ def test_removal_from_a_list_is_done_with_its_undo(logged_in, owned_library):
     assert message["action"]["label"] == "Undo"
     assert EVENTS_HEADER not in response
     assert Device.objects.get(pk=device.pk).removed_at is not None
+    # Handed to the dialog, so the reload shows none.
+    assert _page_messages(logged_in, origin) == []
 
 
 @pytest.mark.django_db(transaction=True)
@@ -93,6 +107,8 @@ def test_add_game_then_library_continues(logged_in, game_post):
 def test_sign_in_continues(client):
     response = client.get(reverse("games:add_device"), headers=DIALOG_HEADERS)
 
+    assert response["Cache-Control"] == "no-store"
+    assert FORM_DIALOG_HEADER in response["Vary"]
     answer = response.json()
     assert answer["kind"] == "continue"
     assert answer["url"].startswith(SERVER + reverse("login"))
@@ -110,6 +126,51 @@ def test_a_page_request_is_untouched():
     redirect = HttpResponseRedirect("/devices")
 
     assert _answered(request, redirect) is redirect
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_page_answer_uses_up_the_queue(logged_in, owned_library):
+    device = create_device(owned_library, "Deck")
+    remove = action_url(
+        "games:remove_device", device.pk, origin=reverse("games:list_devices")
+    )
+    logged_in.post(remove)
+    answer = logged_in.get(reverse("games:add_device"), headers=DIALOG_HEADERS).json()
+
+    assert [message["message"] for message in answer["messages"]] == [
+        "Deck removed from your library."
+    ]
+    assert _page_messages(logged_in, reverse("games:list_devices")) == []
+
+
+def test_a_redirect_without_location_passes_through():
+    request = _dialog_request()
+    response = HttpResponse(status=302)
+
+    assert _answered(request, response) is response
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_every_redirect_status_becomes_a_result(status):
+    request = _dialog_request()
+    response = HttpResponse(status=status, headers={"Location": "/login/"})
+
+    assert _answered(request, response).status_code == 200
+
+
+def test_an_unresolvable_path_continues():
+    assert dialog_result(_dialog_request(), "/nowhere/at/all") == {
+        "kind": "continue",
+        "url": SERVER + "/nowhere/at/all",
+    }
+
+
+def test_the_result_keeps_the_redirect_cookies():
+    request = _dialog_request()
+    redirect = HttpResponseRedirect("/login/")
+    redirect.set_cookie("marker", "kept")
+
+    assert _answered(request, redirect).cookies["marker"].value == "kept"
 
 
 def test_continue_leaves_the_queue():

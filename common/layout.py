@@ -278,8 +278,7 @@ def TimetrackerDocument(
     # confirmation page has nothing meaningful to return to, and the
     # READ_ONLY allow-list would refuse an origin naming one anyway.
     try:
-        current_route = resolve(request.path)
-        current_name = f"{current_route.app_name}:{current_route.url_name}"
+        current_name = resolve(request.path).view_name
     except Resolver404:
         current_name = None
     read_only = current_name in READ_ONLY

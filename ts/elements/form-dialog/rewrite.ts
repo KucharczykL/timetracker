@@ -3,7 +3,7 @@ import {
   FORM_DIALOG_ID_ATTRIBUTES,
   FORM_DIALOG_ID_LIST_ATTRIBUTES,
 } from "../../generated/form-dialog.js";
-import type { ModuleUrl } from "./answer.js";
+import type { ResolvedModuleUrl } from "./answer.js";
 /** An element id. */
 export type ElementId = string;
 /** Prepended to every id, e.g. "form-dialog-3-". */
@@ -54,13 +54,13 @@ export function resolveUrls(root: ParentNode, base: URL): void {
   }
 }
 
-export type ModuleLoader = (url: ModuleUrl) => Promise<unknown>;
+export type ModuleLoader = (url: ResolvedModuleUrl) => Promise<unknown>;
 
 const loadModule: ModuleLoader = (url) => import(/* @vite-ignore */ url);
 
 /** Rejects when any module fails. */
 export async function importModules(
-  urls: readonly ModuleUrl[],
+  urls: readonly ResolvedModuleUrl[],
   load: ModuleLoader = loadModule,
 ): Promise<void> {
   await Promise.all(urls.map((url) => load(url)));

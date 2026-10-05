@@ -516,5 +516,26 @@ describe("date-time-field moved", () => {
 
     expect(hidden(fields[0]).value).not.toBe(hidden(fields[1]).value);
   });
+  it("ignores a zone change in another form", () => {
+    const pair = (zone: string) =>
+      `<form>${markup("timestamp_start", "", "", "timestamp_start_timezone")}` +
+      `${zoneRowMarkup("timestamp_start_timezone", "Europe/Prague", zone)}</form>`;
+    document.body.innerHTML = pair("Asia/Tokyo") + pair("Asia/Tokyo");
+    const fields = document.querySelectorAll<HTMLElement>("date-time-field");
+    fillWholeField(fields[0]);
+    const before = hidden(fields[0]).value;
+
+    const otherRow = document.querySelectorAll<HTMLElement>("time-zone-row")[1];
+    otherRow.querySelector<HTMLInputElement>("[data-time-zone-value]")!.value =
+      "America/New_York";
+    otherRow.dispatchEvent(
+      new CustomEvent(TIME_ZONE_ROW_CHANGE_EVENT, {
+        bubbles: true,
+        detail: { fieldName: "timestamp_start_timezone", zone: "America/New_York" },
+      }),
+    );
+
+    expect(hidden(fields[0]).value).toBe(before);
+  });
 });
 

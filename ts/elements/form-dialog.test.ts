@@ -324,6 +324,14 @@ describe("open", () => {
     expect(assigned).toEqual([]);
   });
 
+  it("goes to a done URL that carries no messages", async () => {
+    replies.push(reply(done(`${ORIGIN}/games`)));
+    click(mountLink());
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(assigned).toEqual([`${ORIGIN}/games`]);
+  });
+
   it("fetches a continue answer the same way", async () => {
     replies.push(reply(next(`${ORIGIN}/login/?next=/device/1/edit`)));
     replies.push(reply(page("<form></form>", { title: "Log in" }), `${ORIGIN}/login/?next=/device/1/edit`));
@@ -400,7 +408,32 @@ describe("open", () => {
     const other = coverWithModal();
     await settle();
     expect(openModals()).toHaveLength(1);
+    expect(assigned).toEqual([]);
+    expect(toasts).toEqual([]);
     other.close();
+  });
+
+  it("shows the messages of an answer another modal overtook", async () => {
+    replies.push(reply(page("<form></form>", { messages: [{ message: "Note", type: "info" }] })));
+    click(mountLink());
+    const other = coverWithModal();
+    await settle();
+    expect(toasts).toEqual([[{ message: "Note", type: "info" }]]);
+    expect(openModals()).toHaveLength(1);
+    other.close();
+  });
+
+  it("notices a modal that opens while modules load", async () => {
+    let other: { close(): void } | null = null;
+    document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () => {
+      other = coverWithModal();
+      return Promise.resolve();
+    };
+    replies.push(reply(page("<form></form>", { modules: ["/x.js"] })));
+    click(mountLink());
+    await settle();
+    expect(openModals()).toHaveLength(1);
+    other!.close();
   });
 
   it("removes a dialog the layer refuses", async () => {
@@ -421,6 +454,17 @@ describe("links inside a dialog", () => {
     await settle();
     expect(topModal()).toBeNull();
     expect(reloads).toBe(0);
+  });
+
+  it("closes every dialog on a nested link back to the host", async () => {
+    const lower = await openPage(page(`<a href="/platform/add" data-form-dialog="">New platform</a>`));
+    replies.push(reply(page(`<a href="/device/list">Back to devices</a>`), `${ORIGIN}/platform/add`));
+    click(body(lower).querySelector("a")!);
+    await settle();
+    expect(openModals()).toHaveLength(2);
+    expect(click(body().querySelector("a")!).defaultPrevented).toBe(true);
+    await settle();
+    expect(openModals()).toEqual([]);
   });
 
   it("closes the top dialog on a link back to the one below", async () => {
@@ -690,6 +734,37 @@ describe("submit", () => {
     await settle();
   });
 
+  it("lets a hung submit go after the deadline", async () => {
+    await openPage();
+    vi.useFakeTimers();
+    pending();
+    submit();
+    cancelTop();
+    expect(topModal()).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(15_000);
+    vi.useRealTimers();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be confirmed");
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(reloads).toBe(1);
+  });
+
+  it("says an unshowable refusal was not shown, not unsaved", async () => {
+    await openPage();
+    replies.push(reply(page(`<form method="post"></form>`), EDIT, 409));
+    vi.spyOn(HTMLElement.prototype, "replaceChildren").mockImplementationOnce(() => {
+      throw new Error("broken");
+    });
+    submit();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be shown");
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(0);
+  });
+
   it("keeps the input when a refusal's module fails", async () => {
     await openPage();
     body().querySelector("input")!.value = "Typed";
@@ -779,6 +854,24 @@ describe("reload", () => {
     expect(reloads).toBe(1);
   });
 
+  it("reloads, not navigates, for the host in another spelling", async () => {
+    window.history.replaceState(null, "", "/device/list?b=2&a=1#row");
+    await openPage();
+    replies.push(reply(done(`${ORIGIN}/device/list?a=1&b=2`, SAVED)));
+    submit();
+    await settle();
+    expect(reloads).toBe(1);
+    expect(assigned).toEqual([]);
+  });
+
+  it("names the remedy a form host offers", async () => {
+    document.getElementById("main-container")!.removeAttribute("data-read-only");
+    await openPage();
+    submit();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("Reload the page to check");
+  });
+
   it("reloads on page:stale with no dialog open", async () => {
     document.dispatchEvent(new Event(PAGE_STALE));
     await settle();
@@ -819,6 +912,18 @@ describe("reload", () => {
     expect(document.activeElement?.getAttribute("href")).toBe("/device/1/edit");
   });
 
+  it("focuses the toggle of a closed menu holding the opener", () => {
+    const main = document.getElementById("main-container")!;
+    main.innerHTML = `<drop-down><button data-toggle>Actions</button>
+      <div hidden><a href="/device/1/edit">Edit</a></div></drop-down>`;
+    sessionStorage.setItem(
+      "handoff:opener",
+      JSON.stringify({ at: Date.now(), value: { id: null, href: "/device/1/edit" } }),
+    );
+    remountHost();
+    expect(document.activeElement?.hasAttribute("data-toggle")).toBe(true);
+  });
+
   it("focuses the page when the opener is gone", () => {
     sessionStorage.setItem(
       "handoff:opener",
@@ -848,6 +953,23 @@ describe("CSRF", () => {
     );
     expect(tokens).toContain("after");
     expect(tokens.filter((token) => token !== "after")).toEqual([]);
+  });
+
+  it("rewrites the host's tokens after an answer", async () => {
+    document.cookie = "csrftoken=before";
+    remountHost();
+    const main = document.getElementById("main-container")!;
+    main.removeAttribute("data-read-only");
+    main.innerHTML = `<form method="post"><input type="hidden" name="csrfmiddlewaretoken" value="before"></form>`;
+    await openPage();
+    vi.mocked(fetch).mockImplementationOnce(async (url) => {
+      calls.push([url as URL, undefined]);
+      document.cookie = "csrftoken=after";
+      return respond(reply(done(HOST, SAVED)));
+    });
+    submit();
+    await settle();
+    expect(main.querySelector<HTMLInputElement>("input")!.value).toBe("after");
   });
 
   it("leaves tokens alone while the cookie holds", async () => {

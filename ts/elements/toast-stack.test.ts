@@ -94,7 +94,7 @@ describe("rendering", () => {
   });
 
   it("shows handed-off messages once, after the page's own", () => {
-    handOffMessages([{ message: "Moved" }]);
+    handOffMessages([{ message: "Moved", type: "info" }]);
     document.body.innerHTML = `
       <script id="django-messages" type="application/json">[{"message":"Hello"}]</script>
       <toast-stack></toast-stack>`;

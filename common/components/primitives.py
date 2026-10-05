@@ -1708,8 +1708,7 @@ def CsrfInput(request) -> Node:
 def ModuleScript(filename: str) -> Node:
     """A `<script type="module">` node pointing at a static JS file.
 
-    A node (not a safe string) so it drops straight into a tree — head list or
-    `scripts=` — beside the other `Script`/`Link` nodes, no `Safe(str(...))`."""
+    A node, so it drops into a tree beside other `Script`/`Link` nodes."""
     return Script(type="module", src=static("js/" + filename))
 
 

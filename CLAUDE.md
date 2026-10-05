@@ -1177,8 +1177,8 @@ rest with `stale_purchases`.
 **Toast middleware** (`games/toast_middleware.py`): converts Django messages
 into one `X-Events` header carrying every queued message as a `show-toast`
 list; skipped on a redirect, on a response carrying `X-Reload`, whose page
-reads its messages itself, and on a form dialog request, whose JSON answer
-carries them. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
+reads its messages itself, and on a form dialog request, whose answer
+carries them or leaves them queued. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
 built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 `ts/toast.ts` keeps `window.toast` and `fetchWithEvents`.
 
@@ -1598,7 +1598,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `render_page()` answers `page`, `FormDialogResultMiddleware`
   (`games/form_dialog_middleware.py`) turns a redirect into `done` (a
   `READ_ONLY` target) or `continue`. After a write the element reloads a
-  read-only host once no modal is open, or on `page:stale`; messages and
+  read-only host once no modal is open, or on `page:stale` (nothing sends
+  it yet; background jobs will, #1507); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
   is an element (`<field-mirror>`).
   Content it inserts must wire on connect, unwire on disconnect, and look

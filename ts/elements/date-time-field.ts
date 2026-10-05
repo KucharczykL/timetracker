@@ -115,6 +115,9 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
       this.handleZoneRowChange = (event) => {
         const detail = (event as CustomEvent<TimeZoneRowChangeDetail>).detail;
         if (!detail || detail.fieldName !== this.zoneFieldName) return;
+        // Form-scoped, as `selectedZone` reads it.
+        const row = event.target instanceof Element ? event.target : null;
+        if (row?.closest("form") !== this.closest("form")) return;
         // The digits are the user's; only their meaning moved. Re-encoding
         // the same segment buffers swaps the committed offset — nothing
         // visible in this field changes.

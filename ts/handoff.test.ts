@@ -27,9 +27,9 @@ describe("message hand-off", () => {
   });
 
   it("appends to waiting messages", () => {
-    handOffMessages([{ message: "One" }]);
-    handOffMessages([{ message: "Two" }]);
-    expect(takeHandedOffMessages()).toEqual([{ message: "One" }, { message: "Two" }]);
+    handOffMessages([{ message: "One", type: "info" }]);
+    handOffMessages([{ message: "Two", type: "info" }]);
+    expect(takeHandedOffMessages()).toEqual([{ message: "One", type: "info" }, { message: "Two", type: "info" }]);
   });
 
   it("writes nothing for no messages", () => {
@@ -38,18 +38,40 @@ describe("message hand-off", () => {
   });
 
   it("reaches whatever page loads next", () => {
-    handOffMessages([{ message: "Saved" }]);
+    handOffMessages([{ message: "Saved", type: "info" }]);
     history.replaceState(null, "", "/elsewhere?page=2");
-    expect(takeHandedOffMessages()).toEqual([{ message: "Saved" }]);
+    expect(takeHandedOffMessages()).toEqual([{ message: "Saved", type: "info" }]);
   });
 
   it("drops messages that waited too long", () => {
     const report = reported();
     vi.useFakeTimers();
-    handOffMessages([{ message: "Saved" }]);
+    handOffMessages([{ message: "Saved", type: "info" }]);
     vi.advanceTimersByTime(61_000);
     expect(takeHandedOffMessages()).toEqual([]);
     expect(report).toHaveBeenCalledOnce();
+  });
+
+  it("does not revive expired messages", () => {
+    reported();
+    vi.useFakeTimers();
+    handOffMessages([{ message: "Old", type: "info" }]);
+    vi.advanceTimersByTime(61_000);
+    handOffMessages([{ message: "New", type: "info" }]);
+    expect(takeHandedOffMessages()).toEqual([{ message: "New", type: "info" }]);
+  });
+
+  it("survives storage blocked on every touch", () => {
+    const report = reported();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new DOMException("blocked", "SecurityError");
+    });
+    expect(takeHandedOffMessages()).toEqual([]);
+    expect(takeHandedOffOpener()).toBeNull();
+    expect(report).toHaveBeenCalled();
   });
 
   it("reports storage that throws", () => {
@@ -57,7 +79,7 @@ describe("message hand-off", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("quota");
     });
-    handOffMessages([{ message: "Saved" }]);
+    handOffMessages([{ message: "Saved", type: "info" }]);
     expect(report).toHaveBeenCalledWith("handoff", "quota", { toast: false });
   });
 
@@ -72,11 +94,11 @@ describe("message hand-off", () => {
 
 describe("opener hand-off", () => {
   it("returns the opener once, apart from the messages", () => {
-    handOffMessages([{ message: "Saved" }]);
+    handOffMessages([{ message: "Saved", type: "info" }]);
     handOffOpener({ id: "row-menu", href: "/device/1/edit" });
     expect(takeHandedOffOpener()).toEqual({ id: "row-menu", href: "/device/1/edit" });
     expect(takeHandedOffOpener()).toBeNull();
-    expect(takeHandedOffMessages()).toEqual([{ message: "Saved" }]);
+    expect(takeHandedOffMessages()).toEqual([{ message: "Saved", type: "info" }]);
   });
 
   it("drops an opener that waited too long", () => {

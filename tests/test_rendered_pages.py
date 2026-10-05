@@ -141,11 +141,10 @@ class RenderedPagesTest(TestCase):
                 marker, html, f"Found double-escaped markup ({marker!r}) in output"
             )
 
-    # --- scripts auto-collected from component media (Phase 4) ---------------
+    # --- scripts auto-collected from component media --------------------------
 
     def test_list_page_auto_loads_widget_scripts(self):
-        """The games list view passes no scripts= argument; the quick bar's
-        components declare their JS and Page() collects it."""
+        """The quick bar's components declare their JS; Page() collects it."""
         html = self.get("games:list_games").content.decode()
         self.assertIn("js/dist/elements/quick-filter-bar.js", html)
         self.assertIn("js/dist/elements/search-select.js", html)

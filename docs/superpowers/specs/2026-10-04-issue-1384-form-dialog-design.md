@@ -4,15 +4,13 @@ A link with `data-form-dialog` opens its form page in a modal
 (`form_dialog_link()`; `"bare"` drops the header). Views know nothing of
 the dialog.
 
-Two URLs are equal when origin, path and sorted query match. The hash is
-ignored.
+URLs are equal when origin, path and sorted query match.
 
 ## Request and answers
 
-Every dialog fetch sends `X-Form-Dialog: 1` and `Accept: application/json`
-(`is_form_dialog`, `common/form_dialog.py`). The answer kinds are
-`TypedDict`s in `common/components/form_dialog.py`; codegen writes them to
-`ts/generated/form-dialog.ts`.
+Every dialog fetch sends `X-Form-Dialog: 1` (`is_form_dialog`). The
+answer kinds are `TypedDict`s in `common/components/form_dialog.py`,
+generated to TypeScript.
 
 | `kind` | Fields | Sent by |
 |---|---|---|
@@ -25,28 +23,27 @@ Every dialog fetch sends `X-Form-Dialog: 1` and `Accept: application/json`
 - The middleware reads a redirect's `Location`. A `READ_ONLY` route gives
   `done` with the message queue. Another route on this origin gives
   `continue` and keeps the queue. Another origin passes through.
-- `done` means finished, not saved.
-- An answer that is not JSON has no kind.
-- Dialog answers carry `Cache-Control: no-store`.
-  `ToastMessagesMiddleware` skips dialog requests.
+- `done` means finished, not saved. Non-JSON has no kind.
+- Dialog answers carry `Cache-Control: no-store`; every page varies on
+  the header. `ToastMessagesMiddleware` skips dialog requests.
 
 ## Open
 
 | Answer | Result |
 |---|---|
 | `page` | Present it in a new dialog |
-| `done` | Show its messages |
+| `done` | Show its messages; with none, go to `url` |
 | `continue` | Fetch its `url` |
 | No kind, failure, 15 s | Follow the link |
 
-After five `continue` answers, the link is followed.
+A sixth `continue` follows the link instead.
 
-Presenting imports `modules`, prefixes ids and their references, and
-resolves URLs against the answer's URL. Focus goes to the first invalid
+Presenting drops inline scripts, imports `modules`, prefixes ids and
+their references, and resolves URLs against the answer's URL. Focus goes to the first invalid
 control, else the first control of the form, else the ×.
 
-A link inside a dialog back to the host or to a lower dialog closes the
-dialogs above it. A fragment link stays native. Any other link navigates.
+A link inside a dialog back to the host or to a lower dialog closes every
+dialog above that page. A fragment link stays native. Any other link navigates.
 
 ## Submit
 
@@ -59,15 +56,16 @@ A POST form in a dialog is sent through `fetch`.
 | `done`, alone | Close; reload |
 | `done`, nested | Close the top dialog; show messages below |
 | No kind | Error toast; the dialog stays |
-| Failure | "Not confirmed" toast; the host is stale |
+| Failure, 15 s | "Not confirmed" toast; the host is stale |
 
 A result or a failure makes the host stale.
 
 ## Reload
 
 The element reloads the host once no modal is open, after a stale stack
-closes or on `page:stale` on `document`. A `done` URL that is not the host navigates there. A host
-without `data-read-only` never reloads; its messages show in place.
+closes or on `page:stale` on `document`. A `done` URL that is not the
+host navigates there. A host without `data-read-only` neither reloads
+nor navigates; its messages show in place.
 
 Before it leaves, the element stores the messages and the opener key in
 `sessionStorage` (`ts/handoff.ts`). The next load reads them within one

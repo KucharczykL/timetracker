@@ -82,7 +82,7 @@ export function reportClientError(
     if (reportCount === MAX_REPORTS_PER_PAGE + 1) {
       console.error("client error reporting suppressed (cap reached)");
     }
-    // The console still names an id a toast shows.
+    // The toast's id still reaches the console.
     console.error(`client error [${id}] (not sent) ${context}: ${detail}`);
     return id;
   }

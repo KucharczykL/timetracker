@@ -130,7 +130,7 @@ def render_choice_vocabulary(
 class TsField(NamedTuple):
     name: str  # verbatim Python field name, e.g. "search_url"
     ts_type: TsTypeExpr  # its rendered TS type, e.g. "string"
-    optional: bool = False
+    optional: bool
 
 
 class TsConstant(NamedTuple):
@@ -168,6 +168,11 @@ def _jsonable(value: object) -> object:
     return value
 
 
+def _optional_keys(typed_dict: TypedDictClass) -> frozenset[str]:
+    """`NotRequired` keys; typeshed omits the attribute."""
+    return cast(Any, typed_dict).__optional_keys__
+
+
 def render_filter_metadata_module(
     roots: list[TypedDictClass], constants: Sequence[TsConstant] = ()
 ) -> str:
@@ -189,7 +194,7 @@ def render_filter_metadata_module(
         if name in interfaces:
             return
         interfaces[name] = []  # reserve slot (recursion guard) before descending
-        optional_keys: frozenset[str] = cast(Any, typed_dict).__optional_keys__
+        optional_keys = _optional_keys(typed_dict)
         interfaces[name] = [
             TsField(field_name, ts_type(field_type), field_name in optional_keys)
             for field_name, field_type in get_type_hints(typed_dict).items()

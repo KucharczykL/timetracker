@@ -87,7 +87,7 @@ class FormDialogHostTest(SimpleTestCase):
         module = form_dialog_module()
         self.assertIn(f'"{FORM_DIALOG_ATTRIBUTE}"', module)
         for chrome, value in FORM_DIALOG_CHROME_VALUES.items():
-            self.assertIn(f'"{chrome}": "{value}"', module)
+            self.assertIn(f'"{value}": "{chrome}"', module)
         for part, attribute in FORM_DIALOG_PARTS.items():
             self.assertIn(f'"{part}": "{attribute}"', module)
 

@@ -106,16 +106,9 @@ in `CLAUDE.md`.
 
 ## Hosting one
 
-A widget renders to text, so the node tree ends at the widget and the element's
-`Media` never reaches `collect_media()`. The hosting view threads the script
-itself:
-
-```text
-scripts=ModuleScript("dist/elements/temporal-field.js")
-```
-
-Two views do, both in `games/views/game.py`: Add Game and Edit Game. Each hosts
-the same Editions area, which draws one field per Release row.
+`TemporalWidget` states the element's module as `component_media`.
+`FormFields` attaches it; a field rendered outside it goes through
+`bound_control(field)`, as the Editions area's Release rows do.
 
 ## Storage notes
 

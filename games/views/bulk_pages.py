@@ -34,7 +34,6 @@ WIDE_CONFIRMATION = "max-w-3xl"
 WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
 LEFT_ALONE = "{count} left as {pronoun} so far:"
 
-#: Carries its own script; no `scripts=` needed.
 _ContinuingBatch = custom_element_builder("continuing-batch")
 
 

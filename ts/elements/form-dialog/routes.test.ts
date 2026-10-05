@@ -27,6 +27,13 @@ describe("routeOpen", () => {
     expect(routeOpen(done)).toEqual({ kind: "toast", messages: SAVED });
   });
 
+  it("goes to a result that says nothing", () => {
+    expect(routeOpen({ kind: "done", url: URL_A, messages: [] })).toEqual({
+      kind: "navigate",
+      url: URL_A,
+    });
+  });
+
   it("continues", () => {
     expect(routeOpen(next)).toEqual({ kind: "continue", url: URL_A });
   });

@@ -20,7 +20,6 @@ from common.components.date_range_picker import (
 from common.components.form_dialog import (
     FORM_DIALOG_ATTRIBUTE,
     FORM_DIALOG_CHROME_BY_MARKER,
-    FORM_DIALOG_CHROME_VALUES,
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
@@ -64,17 +63,12 @@ from timetracker.settings_registry import THEME_CHOICES
 
 
 def form_dialog_module() -> str:
-    """The link marker and template parts."""
+    """The form dialog's wire: answers, header, markers."""
     return render_filter_metadata_module(
         [PageAnswer, DoneAnswer, ContinueAnswer],
         constants=[
             TsConstant("FORM_DIALOG_HEADER", str, FORM_DIALOG_HEADER),
             TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
-            TsConstant(
-                "FORM_DIALOG_CHROME",
-                dict[FormDialogChrome, str],
-                dict(FORM_DIALOG_CHROME_VALUES),
-            ),
             TsConstant(
                 "FORM_DIALOG_CHROME_BY_MARKER",
                 dict[str, FormDialogChrome],
@@ -192,7 +186,7 @@ class Command(BaseCommand):
                     ),
                 ],
             ),
-            # `<form-dialog>` finds links and template parts.
+            # The form dialog's wire contract.
             output_dir / "form-dialog.ts": form_dialog_module(),
             # `<game-addon>` shows the parent for these.
             output_dir / "game-kinds.ts": render_filter_metadata_module(

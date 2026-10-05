@@ -7,7 +7,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.urls import Resolver404, resolve
 from django.utils.cache import patch_vary_headers
 
-from common.components.form_dialog import ContinueAnswer, DoneAnswer
+from common.components.form_dialog import ContinueAnswer, DoneAnswer, RedirectAnswer
 from common.form_dialog import FORM_DIALOG_HEADER, is_form_dialog
 from common.notices import toast_payloads
 from games.views.returns import READ_ONLY
@@ -16,9 +16,12 @@ from games.views.returns import READ_ONLY
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 
 
+type LocationHeader = str  # relative or absolute
+
+
 def dialog_result(
-    request: HttpRequest, location: str
-) -> DoneAnswer | ContinueAnswer | None:
+    request: HttpRequest, location: LocationHeader
+) -> RedirectAnswer | None:
     """`done` on a read-only page; else `continue`.
 
     None off-origin: the browser follows it.

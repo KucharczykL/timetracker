@@ -76,7 +76,7 @@ def ModalPanelHeader(
 ) -> Element:
     """A modal panel's title row with its ×.
 
-    `title_id` wins over any id in `title_attributes`.
+    `title_id` beats an id in `title_attributes`.
     """
     close_button = ControlButton(
         [
