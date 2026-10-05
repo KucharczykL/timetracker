@@ -525,7 +525,7 @@ export class FormDialogElement extends HTMLElement {
       const wrote =
         answer.kind === "done" || answer.kind === "continue" || answer.kind === "created";
       // A created row's route decides.
-      if (wrote && answer.kind !== "created") this.stale = true;
+      if (answer.kind === "done" || answer.kind === "continue") this.stale = true;
       try {
         await this.routeSubmitAnswer(entry, answer, signal, wrote);
       } catch (error) {

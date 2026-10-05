@@ -596,7 +596,7 @@ class TextSearchSelectWidget(_SearchSelectAdapter):
         placeholder: str = "Search or type…",
         attrs=None,
     ):
-        #: No +: its value is typed text.
+        # No +: its value is typed text.
         super().__init__(
             placeholder=placeholder, autofocus=False, clearable=True, attrs=attrs
         )

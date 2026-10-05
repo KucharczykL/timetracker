@@ -731,7 +731,8 @@ class GameResolverTest(django.test.TestCase):
             )
         self.assertEqual(len(options), 2)
         self.assertEqual(
-            {o["value"] for o in options}, {str(self.g1.id), str(self.g2.id)}
+            {option["value"] for option in options},
+            {str(self.g1.id), str(self.g2.id)},
         )
 
     def test_searchselect_selected_wraps_resolver(self):
@@ -1576,21 +1577,21 @@ class DialogCreateWidgetTest(unittest.TestCase):
             SearchSelectWidget,
         )
 
-        widgets = {
-            "search": SearchSelectWidget(
-                search_url="/api/devices/search",
-                options_resolver=lambda values: [],
-                dialog_create=NEW_DEVICE,
-            ),
-            "choice": ChoiceSearchSelectWidget(dialog_create=NEW_DEVICE),
-        }
-        for kind, widget in widgets.items():
-            with self.subTest(kind=kind):
-                field = (
-                    forms.ChoiceField(choices=[("1", "Deck")], widget=widget)
-                    if kind == "choice"
-                    else forms.CharField(widget=widget)
+        fields = {
+            "search": forms.CharField(
+                widget=SearchSelectWidget(
+                    search_url="/api/devices/search",
+                    options_resolver=lambda values: [],
+                    dialog_create=NEW_DEVICE,
                 )
+            ),
+            "choice": forms.ChoiceField(
+                choices=[("1", "Deck")],
+                widget=ChoiceSearchSelectWidget(dialog_create=NEW_DEVICE),
+            ),
+        }
+        for kind, field in fields.items():
+            with self.subTest(kind=kind):
 
                 class PickerForm(forms.Form):
                     device = field

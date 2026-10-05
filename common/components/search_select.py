@@ -181,16 +181,14 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # Icon() drops the snippet's baked color classes, so text-body must ride here
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
-#: In the box; the box shows mouse focus.
-_BOX_BUTTON_FOCUS_CLASS = "focus:ring-0 focus-visible:ring-2"
-# ml-auto ends the row; peer-disabled hides it.
-_CLEAR_PLACEMENT_CLASS = f"ml-auto -mr-1 peer-disabled:hidden {_BOX_BUTTON_FOCUS_CLASS}"
+#: Ends the row; box shows mouse focus.
+_BOX_BUTTON_CLASS = (
+    "ml-auto -mr-1 peer-disabled:hidden focus:ring-0 focus-visible:ring-2"
+)
 #: A shown × takes the ml-auto instead.
 #: Literal, so Tailwind sees it.
 _DIALOG_CREATE_CLASS = (
-    "ml-auto -mr-1 peer-disabled:hidden "
-    "[[data-search-select-clear]:not([hidden])~&]:ml-0 "
-    f"{_BOX_BUTTON_FOCUS_CLASS}"
+    f"{_BOX_BUTTON_CLASS} [[data-search-select-clear]:not([hidden])~&]:ml-0"
 )
 #: Shown only between a shown × and the +.
 _DIVIDER_CLASS = (
@@ -329,7 +327,7 @@ def _clear_button(clear: ClearControl) -> Node:
         title="Clear",
         aria_describedby=clear.described_by,
         hidden=not clear.shown,
-        class_=_CLEAR_PLACEMENT_CLASS,
+        class_=_BOX_BUTTON_CLASS,
     )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
 
@@ -337,20 +335,16 @@ def _dialog_create_link(create: DialogCreate) -> Node:
     """The divider and the +."""
     return Fragment(
         Span(aria_hidden="true", class_=_DIVIDER_CLASS),
-        _dialog_create_button(create),
+        ControlButton(
+            form_dialog_link(),
+            href=str(create.url),
+            variant="ghost",
+            size="compact",
+            aria_label=create.label,
+            title=create.label,
+            class_=_DIALOG_CREATE_CLASS,
+        )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])],
     )
-
-
-def _dialog_create_button(create: DialogCreate) -> Node:
-    return ControlButton(
-        form_dialog_link(),
-        href=str(create.url),
-        variant="ghost",
-        size="compact",
-        aria_label=create.label,
-        title=create.label,
-        class_=_DIALOG_CREATE_CLASS,
-    )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])]
 
 
 class _CreateProps(TypedDict, total=False):
@@ -751,6 +745,11 @@ def SearchSelect(
             Span(data_search_select_status="", role="status", class_="sr-only"),
         ]
 
+    clear = (
+        ClearControl(shown=bool(selected), described_by=clear_description_id)
+        if clearable
+        else None
+    )
     children = _combobox_children(
         create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create else None,
         pill_nodes=pills_children,
@@ -761,9 +760,7 @@ def SearchSelect(
         templates=templates,
         home=home,
         marker=marker,
-        clear=ClearControl(shown=bool(selected), described_by=clear_description_id)
-        if clearable
-        else None,
+        clear=clear,
         dialog_create=dialog_create,
         box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
