@@ -5,7 +5,7 @@ import * as clientErrors from "../client-errors.js";
 import "./form-dialog.js";
 
 import type { FormDialogElement } from "./form-dialog.js";
-import { PAGE_STALE } from "./form-dialog/events.js";
+import { FORM_DIALOG_CREATED, PAGE_STALE } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import { attachModal, openModals, resetModalLayerForTests, topModal } from "./modal-layer.js";
 
@@ -48,6 +48,22 @@ function page(
 
 function done(url: string, messages: unknown[] = []): unknown {
   return { kind: "done", url, messages };
+}
+
+const OPTION = { value: "7", label: "Outer Wilds (PC)", data: {} };
+
+function created(url: string, messages: unknown[] = []): unknown {
+  return { kind: "created", url, messages, option: OPTION };
+}
+
+/** Takes every created row its link dispatches. */
+function takeCreated(link: Element): unknown[] {
+  const taken: unknown[] = [];
+  link.addEventListener(FORM_DIALOG_CREATED, (event) => {
+    taken.push((event as CustomEvent).detail);
+    event.preventDefault();
+  });
+  return taken;
 }
 
 function next(url: string): unknown {
@@ -860,6 +876,100 @@ describe("submit", () => {
     await settle();
     expect(calls.map(([, init]) => init?.method ?? "GET")).toEqual(["GET", "POST"]);
     expect(body().textContent).toContain("Next chunk");
+  });
+});
+
+describe("created", () => {
+  it("hands the row to the opener, toasts, and reloads nothing", async () => {
+    const link = mountLink();
+    const taken = takeCreated(link);
+    replies.push(reply(EDIT_FORM));
+    click(link);
+    await settle();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(taken).toEqual([OPTION]);
+    expect(topModal()).toBeNull();
+    expect(toasts.at(-1)).toEqual(SAVED);
+    expect(reloads).toBe(0);
+    expect(assigned).toEqual([]);
+  });
+
+  it("routes as done when nobody takes it", async () => {
+    await openPage();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(reloads).toBe(1);
+    expect(handedOff("messages")).toEqual(SAVED);
+  });
+
+  it("routes as done when the link left the page", async () => {
+    const link = mountLink();
+    const taken = takeCreated(link);
+    replies.push(reply(EDIT_FORM));
+    click(link);
+    await settle();
+    link.remove();
+    replies.push(reply(created(HOST)));
+    submit();
+    await settle();
+    expect(taken).toEqual([]);
+    expect(reloads).toBe(1);
+  });
+
+  it("tells the person when a picker declines", async () => {
+    const main = document.getElementById("main-container")!;
+    main.insertAdjacentHTML(
+      "beforeend",
+      `<search-select><a href="/game/add" data-form-dialog="">+</a></search-select>`,
+    );
+    replies.push(reply(EDIT_FORM));
+    click(main.querySelector("a")!);
+    await settle();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(toasts.flat()).toContainEqual(
+      expect.objectContaining({ type: "error", message: expect.stringContaining("Pick it") }),
+    );
+    expect(reloads).toBe(1);
+  });
+
+  it("closes only the top dialog when a nested opener declines", async () => {
+    const lower = await openPage(page(`<a href="/game/add" data-form-dialog="">New game</a>`));
+    replies.push(reply(EDIT_FORM, `${ORIGIN}/game/add`));
+    click(body(lower).querySelector("a")!);
+    await settle();
+    replies.push(reply(created(EDIT, SAVED)));
+    submit();
+    await settle();
+    expect(openModals()).toEqual([lower]);
+    expect(toasts.at(-1)).toEqual(SAVED);
+    expect(reloads).toBe(0);
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(1);
+  });
+
+  it("lands in the lower dialog and reloads once that closes", async () => {
+    const lower = await openPage(page(`<a href="/game/add" data-form-dialog="">New game</a>`));
+    const taken = takeCreated(body(lower).querySelector("a")!);
+    replies.push(reply(EDIT_FORM, `${ORIGIN}/game/add`));
+    click(body(lower).querySelector("a")!);
+    await settle();
+    replies.push(reply(created(EDIT, SAVED)));
+    submit();
+    await settle();
+    expect(taken).toEqual([OPTION]);
+    expect(openModals()).toEqual([lower]);
+    expect(toasts.at(-1)).toEqual(SAVED);
+    expect(reloads).toBe(0);
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(1);
   });
 });
 

@@ -199,6 +199,8 @@ class AnswerCodegenTest(SimpleTestCase):
         self.assertIn('kind: "page";', module)
         self.assertIn('kind: "done";', module)
         self.assertIn('kind: "continue";', module)
+        self.assertIn('kind: "created";', module)
+        self.assertIn("export interface CreatedOption {", module)
         self.assertIn(f'FORM_DIALOG_HEADER: string = "{FORM_DIALOG_HEADER}"', module)
 
 

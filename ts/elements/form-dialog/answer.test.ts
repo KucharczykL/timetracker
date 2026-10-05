@@ -100,12 +100,40 @@ describe("readAnswer", () => {
     ).toEqual({ kind: "continue", url: new URL("http://x.test/login/") });
   });
 
+  it("reads created with its option", async () => {
+    const option = { value: "1", label: "Outer Wilds", data: { platform: "" } };
+    expect(
+      await readAnswer(
+        jsonResponse({ kind: "created", url: "http://x.test/games", messages: [], option }),
+        FETCHED,
+      ),
+    ).toEqual({ kind: "created", url: new URL("http://x.test/games"), messages: [], option });
+  });
+
+  it("reads created with an unreadable option as done", async () => {
+    vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
+    for (const option of [
+      { value: 1, label: "", data: {} },
+      { value: "1", label: "", data: { a: 1 } },
+      null,
+    ]) {
+      expect(
+        await readAnswer(
+          jsonResponse({ kind: "created", url: "http://x.test/games", messages: [], option }),
+          FETCHED,
+        ),
+      ).toEqual({ kind: "done", url: new URL("http://x.test/games"), messages: [] });
+    }
+    expect(clientErrors.reportClientError).toHaveBeenCalledTimes(3);
+  });
+
   it("reads anything else as no kind", async () => {
     vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
     for (const response of [
       htmlResponse("<h1>Forbidden</h1>", 403),
       htmlResponse("Bad gateway", 502),
       jsonResponse({ kind: "created" }),
+      jsonResponse({ kind: "unknown" }),
       jsonResponse({ kind: "done", url: 3, messages: [] }),
       jsonResponse({ detail: "Not found" }, 404),
     ]) {

@@ -13,6 +13,7 @@ Every dialog fetch sends `X-Form-Dialog: 1`. The answer kinds are
 |---|---|---|
 | `page` | `title`, `html`, `modules`, `messages` | `render_page()` |
 | `done` | `url`, `messages` | `FormDialogResultMiddleware` |
+| `created` | `done`'s, and `option` | `FormDialogResultMiddleware`, for a `CreatedRedirect` |
 | `continue` | `url` | `FormDialogResultMiddleware` |
 
 - `page` holds the content alone, under the view's status.
@@ -21,6 +22,8 @@ Every dialog fetch sends `X-Form-Dialog: 1`. The answer kinds are
   `done` with the message queue. Any other target on this origin gives
   `continue` and keeps the queue. Another origin passes through.
 - `done` means finished, not saved.
+- `created` hands a row to the opening picker. See
+  [A dialog hands a created row to its picker](2026-10-05-issue-1501-dialog-created-design.md).
 - Dialog answers carry `Cache-Control: no-store`.
   `ToastMessagesMiddleware` skips dialog requests.
 

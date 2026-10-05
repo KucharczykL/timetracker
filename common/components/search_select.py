@@ -52,6 +52,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
+from django.utils.functional import Promise
+
 from common.components.core import (
     Attributes,
     Child,
@@ -72,6 +74,8 @@ from common.components.custom_elements import (
     _PresetPanelElement,
     _SearchSelect,
 )
+from common.components.form_dialog import CreatedOption, form_dialog_link
+from common.components.modal import ElementId
 from common.components.primitives import (
     CLOSED_POPOVER,
     DISABLED_WITHIN_CLASS,
@@ -109,12 +113,9 @@ class FieldParam(TypedDict):
 type ParamSources = dict[str, LiteralParam | FieldParam]
 
 
-class SearchSelectOption(TypedDict):
-    value: str | int
-    label: str
-    # Becomes data-* attrs on the row / pill. Values are str only, matching the
-    # TS SearchSelectOption's Record<string, string> — producers stringify ids.
-    data: dict[str, str]
+class SearchSelectOption(CreatedOption):
+    """One picker row; ``data`` becomes its ``data-*``."""
+
     #: Muted after the label; never searched.
     hint: NotRequired[str]
 
@@ -180,8 +181,20 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # Icon() drops the snippet's baked color classes, so text-body must ride here
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
-# ml-auto ends the row; peer-disabled hides it.
-_CLEAR_PLACEMENT_CLASS = "ml-auto -mr-1 peer-disabled:hidden"
+#: Ends the row; box shows mouse focus.
+_BOX_BUTTON_CLASS = (
+    "ml-auto -mr-1 peer-disabled:hidden focus:ring-0 focus-visible:ring-2"
+)
+#: A shown × takes the ml-auto instead.
+#: Literal, so Tailwind sees it.
+_DIALOG_CREATE_CLASS = (
+    f"{_BOX_BUTTON_CLASS} [[data-search-select-clear]:not([hidden])~&]:ml-0"
+)
+#: Shown only between a shown × and the +.
+_DIVIDER_CLASS = (
+    "mx-1 hidden h-5 shrink-0 border-l border-default-medium "
+    "[[data-search-select-clear]:not([hidden])+&]:peer-enabled:block"
+)
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
 #: Picker rows wear the menu item look.
@@ -278,6 +291,60 @@ class EmitCreate:
 
 #: How a create row commits.
 type CreateRow = PostCreate | SelectTyped | EmitCreate
+
+
+type ControlLabel = str  # e.g. "New game"
+
+
+@dataclass(frozen=True, slots=True)
+class DialogCreate:
+    """A + opening ``url`` in a form dialog.
+
+    The view at ``url`` answers with a ``CreatedRedirect``,
+    or the + only reloads the page.
+    """
+
+    url: str | Promise
+    label: ControlLabel
+
+
+@dataclass(frozen=True, slots=True)
+class ClearControl:
+    """The trailing × a box offers."""
+
+    #: A value is held at render.
+    shown: bool
+    #: The ×'s ``aria-describedby`` target.
+    described_by: ElementId | None = None
+
+
+def _clear_button(clear: ClearControl) -> Node:
+    return ControlButton(
+        variant="ghost",
+        size="compact",
+        data_search_select_clear="",
+        aria_label="Clear",
+        title="Clear",
+        aria_describedby=clear.described_by,
+        hidden=not clear.shown,
+        class_=_BOX_BUTTON_CLASS,
+    )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
+
+
+def _dialog_create_link(create: DialogCreate) -> Node:
+    """The divider and the +."""
+    return Fragment(
+        Span(aria_hidden="true", class_=_DIVIDER_CLASS),
+        ControlButton(
+            form_dialog_link(),
+            href=str(create.url),
+            variant="ghost",
+            size="compact",
+            aria_label=create.label,
+            title=create.label,
+            class_=_DIALOG_CREATE_CLASS,
+        )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])],
+    )
 
 
 class _CreateProps(TypedDict, total=False):
@@ -419,7 +486,8 @@ def _combobox_children(
     no_results_text: str = "No results",
     create_row: Node | None = None,
     marker: list[Node] | None = None,
-    clear_button: Node | None = None,
+    clear: ClearControl | None = None,
+    dialog_create: DialogCreate | None = None,
     box_class: str = _BOX_CLASS,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
@@ -435,14 +503,16 @@ def _combobox_children(
     ``home`` places the list; a dialog's list is always visible.
     Pills always sit in the box.
     ``box_class`` styles the field box.
-    ``clear_button`` and ``marker`` follow the input inside it.
+    ``clear``, ``dialog_create`` and ``marker`` follow the input inside it;
+    either control makes the input their ``peer``.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
         ("aria-expanded", "true" if home == "dialog" else "false"),
         ("aria-autocomplete", "list"),
     ]
-    search = Input([*search_attributes, *aria_attributes])
+    peer: Attributes = [("class", "peer")] if clear or dialog_create else []
+    search = Input([*search_attributes, *aria_attributes, *peer])
 
     # role="presentation" keeps the message node from being exposed as a
     # (non-option) child of the listbox.
@@ -479,7 +549,8 @@ def _combobox_children(
     box = Div(data_search_select_box="", class_=box_class)[
         pills,
         search,
-        *([clear_button] if clear_button else []),
+        *([_clear_button(clear)] if clear else []),
+        *([_dialog_create_link(dialog_create)] if dialog_create else []),
         *(marker or []),
     ]
     return [box, options_panel, *(templates or [])]
@@ -512,6 +583,7 @@ def SearchSelect(
     clear_description_id: str | None = None,
     none_label: NoneLabel | None = None,
     shape: ButtonShape = "full",
+    dialog_create: DialogCreate | None = None,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -554,7 +626,10 @@ def SearchSelect(
     ``shape``: the corners the box rounds.
     ``create``: how a create row commits; none offers no row.
     ``max_length``: the most characters the box takes.
+    ``dialog_create``: a + creating the row in a dialog.
     """
+    if dialog_create and panel:
+        raise ValueError("dialog_create is field-hosted only")
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
     if options and option_groups:
@@ -606,20 +681,6 @@ def SearchSelect(
         search_attrs.append(("value", search_value))
     if max_length is not None:
         search_attrs.append(("maxlength", str(max_length)))
-
-    clear_button: Node | None = None
-    if clearable:
-        search_attrs.append(("class", "peer"))
-        clear_button = ControlButton(
-            variant="ghost",
-            size="compact",
-            data_search_select_clear="",
-            aria_label="Clear",
-            title="Clear",
-            aria_describedby=clear_description_id,
-            hidden=not selected,
-            class_=_CLEAR_PLACEMENT_CLASS,
-        )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
     home: ComboboxHome = "dialog" if panel else "drop_down"
 
@@ -684,6 +745,11 @@ def SearchSelect(
             Span(data_search_select_status="", role="status", class_="sr-only"),
         ]
 
+    clear = (
+        ClearControl(shown=bool(selected), described_by=clear_description_id)
+        if clearable
+        else None
+    )
     children = _combobox_children(
         create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create else None,
         pill_nodes=pills_children,
@@ -694,7 +760,8 @@ def SearchSelect(
         templates=templates,
         home=home,
         marker=marker,
-        clear_button=clear_button,
+        clear=clear,
+        dialog_create=dialog_create,
         box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
         else field_box_class(shape),
@@ -779,7 +846,7 @@ def _row_action(
 def _filter_option_row(value: str | int, label: str, *, selected: bool = False) -> Node:
     """A value row; ``selected``: a pill names it."""
     return _option_row(
-        {"value": value, "label": label, "data": {}},
+        {"value": str(value), "label": label, "data": {}},
         selected=selected,
         actions=[
             _row_action("include", "+", "Include"),

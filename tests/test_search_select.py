@@ -26,6 +26,7 @@ from common.components.search_select import (
     OVERWRITE_PRESET_VERB,
     PRESET_SEARCH_PLACEHOLDER,
     SAVE_PRESET_VERB,
+    DialogCreate,
     presets_member,
 )
 from games.models import Game, Platform
@@ -40,6 +41,12 @@ def _tag_around(html: str, marker: str) -> str:
     """The opening tag (``<`` … ``>``) containing the first occurrence of ``marker``."""
     marker_position = html.index(marker)
     return html[html.rindex("<", 0, marker_position) : html.index(">", marker_position)]
+
+
+def _classes(tag: str) -> list[str]:
+    """The class tokens of one opening tag."""
+    found = re.search(r'class="([^"]*)"', tag)
+    return found.group(1).split() if found else []
 
 
 class PillTest(unittest.TestCase):
@@ -723,7 +730,10 @@ class GameResolverTest(django.test.TestCase):
                 _game_options([self.g1.id, self.g2.id], library=self.library)
             )
         self.assertEqual(len(options), 2)
-        self.assertEqual({o["value"] for o in options}, {self.g1.id, self.g2.id})
+        self.assertEqual(
+            {option["value"] for option in options},
+            {str(self.g1.id), str(self.g2.id)},
+        )
 
     def test_searchselect_selected_wraps_resolver(self):
         from games.forms import _game_options
@@ -733,7 +743,7 @@ class GameResolverTest(django.test.TestCase):
             lambda values: _game_options(values, library=self.library),
         )
         self.assertEqual(len(options), 1)
-        self.assertEqual(options[0]["value"], self.g1.id)
+        self.assertEqual(options[0]["value"], str(self.g1.id))
         self.assertEqual(options[0]["data"]["platform"], str(self.platform.id))
         self.assertEqual(options[0]["data"]["platform_name"], "Steam")
 
@@ -773,6 +783,14 @@ class SearchGamesApiTest(django.test.TestCase):
         results = search_games(SimpleNamespace(user=self.user), q="Zelda")
         self.assertEqual(results[0]["data"]["platform"], str(self.platform.id))
         self.assertEqual(results[0]["data"]["platform_name"], "Steam")
+
+    def test_a_row_is_the_game_option(self):
+        from games.api import search_games
+        from games.forms import game_option
+
+        results = search_games(SimpleNamespace(user=self.user), q="Zelda")
+        zelda = Game.objects.get(library=self.library, name="Zelda")
+        self.assertEqual(results, [game_option(zelda)])
 
 
 if __name__ == "__main__":
@@ -1165,8 +1183,12 @@ class ClearableSearchSelectTest(unittest.TestCase):
     def test_search_box_is_its_peer(self):
         clearable = str(SearchSelect(name="device", clearable=True))
         plain = str(SearchSelect(name="device", clearable=False))
-        self.assertIn("peer ", _tag_around(clearable, "data-search-select-search"))
-        self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
+        self.assertIn(
+            "peer", _classes(_tag_around(clearable, "data-search-select-search"))
+        )
+        self.assertNotIn(
+            "peer", _classes(_tag_around(plain, "data-search-select-search"))
+        )
         self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
 
     def test_every_personality_holds_the_button_in_its_field_box(self):
@@ -1494,3 +1516,91 @@ def test_a_form_re_render_carries_an_ended_devices_hint(owned_library):
     (option,) = device_options([device.pk], library=owned_library)
 
     assert (option["label"], option.get("hint")) == ("Switch", "Sold")
+
+
+NEW_DEVICE = DialogCreate("/device/add", "New device")
+
+
+class DialogCreateTest(unittest.TestCase):
+    def _link(self, html: str) -> str:
+        return _tag_around(html, "data-form-dialog=")
+
+    def test_renders_a_dialog_link(self):
+        tag = self._link(str(SearchSelect(name="device", dialog_create=NEW_DEVICE)))
+        self.assertTrue(tag.startswith("<a"))
+        self.assertIn('href="/device/add"', tag)
+        self.assertIn('aria-label="New device"', tag)
+        self.assertIn('title="New device"', tag)
+
+    def test_none_without_it(self):
+        self.assertNotIn("data-form-dialog=", str(SearchSelect(name="device")))
+
+    def test_follows_the_clear_and_precedes_the_marker(self):
+        html = str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        link = html.index("data-form-dialog=")
+        self.assertLess(html.index("data-search-select-clear"), link)
+        self.assertLess(link, html.index("data-search-select-marker"))
+
+    def test_a_disabled_box_hides_it(self):
+        html = str(
+            SearchSelect(name="device", clearable=False, dialog_create=NEW_DEVICE)
+        )
+        self.assertIn("peer", _classes(_tag_around(html, "data-search-select-search")))
+        self.assertIn("peer-disabled:hidden", self._link(html))
+
+    def test_a_panel_refuses_it(self):
+        with self.assertRaises(ValueError):
+            SearchSelect(name="device", panel=True, dialog_create=NEW_DEVICE)
+
+    def test_the_divider_sits_between_clear_and_plus(self):
+        html = str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        divider = html.index('aria-hidden="true" class="mx-1')
+        self.assertLess(html.index("data-search-select-clear"), divider)
+        self.assertLess(divider, html.index("data-form-dialog="))
+
+    def test_a_lazy_url_renders(self):
+        from django.urls import reverse, reverse_lazy
+
+        create = DialogCreate(reverse_lazy("games:add_game"), "New game")
+        html = str(SearchSelect(name="game", dialog_create=create))
+        self.assertIn(f'href="{reverse("games:add_game")}"', self._link(html))
+
+
+class DialogCreateWidgetTest(unittest.TestCase):
+    """Every form picker takes the +."""
+
+    def test_every_form_widget_renders_it(self):
+        from django import forms
+
+        from games.forms import (
+            ChoiceSearchSelectWidget,
+            SearchSelectWidget,
+        )
+
+        fields = {
+            "search": forms.CharField(
+                widget=SearchSelectWidget(
+                    search_url="/api/devices/search",
+                    options_resolver=lambda values: [],
+                    dialog_create=NEW_DEVICE,
+                )
+            ),
+            "choice": forms.ChoiceField(
+                choices=[("1", "Deck")],
+                widget=ChoiceSearchSelectWidget(dialog_create=NEW_DEVICE),
+            ),
+        }
+        for kind, field in fields.items():
+            with self.subTest(kind=kind):
+
+                class PickerForm(forms.Form):
+                    device = field
+
+                html = str(PickerForm()["device"])
+                self.assertIn('aria-label="New device"', html)
+
+    def test_a_text_widget_takes_no_plus(self):
+        from games.forms import TextSearchSelectWidget
+
+        with self.assertRaises(TypeError):
+            TextSearchSelectWidget(dialog_create=NEW_DEVICE)  # type: ignore[call-arg]

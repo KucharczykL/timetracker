@@ -2,6 +2,8 @@
 import { reportClientError } from "../../client-errors.js";
 import type {
   ContinueAnswer,
+  CreatedAnswer,
+  CreatedOption,
   DoneAnswer,
   PageAnswer,
   ToastPayload,
@@ -43,12 +45,20 @@ export interface Page {
 const PAGE: PageAnswer["kind"] = "page";
 const DONE: DoneAnswer["kind"] = "done";
 const CONTINUE: ContinueAnswer["kind"] = "continue";
+const CREATED: CreatedAnswer["kind"] = "created";
 
 export type Answer =
   /** `url`: what the content's URLs resolve against. */
   | { readonly kind: typeof PAGE; readonly url: URL; readonly page: Page }
   | { readonly kind: typeof DONE; readonly url: URL; readonly messages: Messages }
   | { readonly kind: typeof CONTINUE; readonly url: URL }
+  /** Done, with the row it made. */
+  | {
+      readonly kind: typeof CREATED;
+      readonly url: URL;
+      readonly messages: Messages;
+      readonly option: Readonly<CreatedOption>;
+    }
   /** Not a dialog answer. */
   | { readonly kind: "none"; readonly status: number };
 
@@ -89,6 +99,33 @@ function isPage(fields: Fields): fields is Fields & PageAnswer {
 
 function isDone(fields: Fields): fields is Fields & DoneAnswer {
   return fields.kind === DONE && isText(fields.url) && isMessages(fields.messages);
+}
+
+function isTextRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every(isText)
+  );
+}
+
+function isOption(value: unknown): value is CreatedOption {
+  const option = value as Partial<CreatedOption> | null;
+  return (
+    typeof option === "object" &&
+    option !== null &&
+    isText(option.value) &&
+    isText(option.label) &&
+    isTextRecord(option.data)
+  );
+}
+
+/** The option is checked apart: a bad one is still done. */
+function isCreated(
+  fields: Fields,
+): fields is Fields & Omit<CreatedAnswer, "option"> & { option: unknown } {
+  return fields.kind === CREATED && isText(fields.url) && isMessages(fields.messages);
 }
 
 function isContinue(fields: Fields): fields is Fields & ContinueAnswer {
@@ -138,6 +175,15 @@ export async function readAnswer(response: Response, requested: URL): Promise<An
   }
   if (isDone(fields)) {
     return { kind: DONE, url: new URL(fields.url, url), messages: fields.messages };
+  }
+  if (isCreated(fields)) {
+    const target = new URL(fields.url, url);
+    if (isOption(fields.option)) {
+      return { kind: CREATED, url: target, messages: fields.messages, option: fields.option };
+    }
+    // Saved all the same.
+    report(`created answer with an unreadable option: ${JSON.stringify(fields.option)}`);
+    return { kind: DONE, url: target, messages: fields.messages };
   }
   if (isContinue(fields)) return { kind: CONTINUE, url: new URL(fields.url, url) };
   report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);

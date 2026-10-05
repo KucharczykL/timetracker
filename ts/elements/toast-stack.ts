@@ -511,6 +511,7 @@ class ToastStackElement extends HTMLElement {
     }
     switch (answer.kind) {
       case "done":
+      case "created":
         this.addAll([...answer.messages], "action");
         document.dispatchEvent(new CustomEvent(PAGE_STALE));
         return;
