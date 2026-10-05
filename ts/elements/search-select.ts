@@ -1278,11 +1278,11 @@ const initWidget = (containerElement: Element): boolean => {
   // A + dialog's created row lands here.
   container.addEventListener(FORM_DIALOG_CREATED, (event) => {
     if (search.disabled) return;
+    upsertOption(event.detail);
+    selectOption(event.detail);
+    // Taken only once it landed.
     event.preventDefault();
     event.stopPropagation();
-    const option = (event as CustomEvent<FormDialogCreatedDetail>).detail;
-    upsertOption(option);
-    selectOption(option);
   });
 
   // Commit a value from code, firing no change.

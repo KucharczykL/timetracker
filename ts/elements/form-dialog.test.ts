@@ -920,6 +920,40 @@ describe("created", () => {
     expect(reloads).toBe(1);
   });
 
+  it("tells the person when a picker declines", async () => {
+    const main = document.getElementById("main-container")!;
+    main.insertAdjacentHTML(
+      "beforeend",
+      `<search-select><a href="/game/add" data-form-dialog="">+</a></search-select>`,
+    );
+    replies.push(reply(EDIT_FORM));
+    click(main.querySelector("a")!);
+    await settle();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(toasts.flat()).toContainEqual(
+      expect.objectContaining({ type: "error", message: expect.stringContaining("Pick it") }),
+    );
+    expect(reloads).toBe(1);
+  });
+
+  it("closes only the top dialog when a nested opener declines", async () => {
+    const lower = await openPage(page(`<a href="/game/add" data-form-dialog="">New game</a>`));
+    replies.push(reply(EDIT_FORM, `${ORIGIN}/game/add`));
+    click(body(lower).querySelector("a")!);
+    await settle();
+    replies.push(reply(created(EDIT, SAVED)));
+    submit();
+    await settle();
+    expect(openModals()).toEqual([lower]);
+    expect(toasts.at(-1)).toEqual(SAVED);
+    expect(reloads).toBe(0);
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(1);
+  });
+
   it("lands in the lower dialog and reloads once that closes", async () => {
     const lower = await openPage(page(`<a href="/game/add" data-form-dialog="">New game</a>`));
     const taken = takeCreated(body(lower).querySelector("a")!);

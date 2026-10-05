@@ -73,7 +73,7 @@ from common.duration_presentation import (
     duration_presentation_for_request,
 )
 from common.filter_execution import execute_filter, regex_timeout_view
-from common.form_dialog import created_row
+from common.form_dialog import CreatedRedirect
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.temporal_presentation import (
@@ -445,9 +445,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
                         origin=origin_from(request),
                     )
                 )
-            return created_row(
-                redirect(return_url(request, fallback="games:list_games")),
-                game_option(game),
+            return CreatedRedirect(
+                return_url(request, fallback="games:list_games"),
+                option=game_option(game),
             )
 
     return render_page(

@@ -1012,8 +1012,8 @@ Submodules re-exported via `common/components/__init__.py`:
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `dialog_create` adds a + after it,
-  and the shell `_combobox_children` builds both (`ClearControl`), #1501; `none_label` pins a row that holds
-  none — an empty hidden input, key present — apart from nothing picked,
+  and the shell `_combobox_children` builds both (`ClearControl`), #1501;
+  `none_label` pins a row that holds none — an empty hidden input, key present — apart from nothing picked,
   key absent; × then holds none, and the change event states `none`, #1288),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
@@ -1553,7 +1553,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   completeness guard fails. Origin travels only in `?origin=` query parameter —
   never session, never form body — and is validated against `READ_ONLY` route set,
   so it can never name mutating target. It is `origin` rather than `next` because
-  Django's auth views own `next`.
+  Django's auth views own `next`. One exception: a picker's + carries none,
+  because a widget holds no request and a form page is no valid origin.
 - **No route mutates on GET** — removal answers GET with `ConfirmPage` and acts on
   POST at same URL (which is what lets `?origin=` ride through confirmation for
   free); write them as one `confirm_and_remove()` call. Anything else that changes
@@ -1619,10 +1620,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
   [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md).
-  A picker's + (`dialog_create=DialogCreate(url, label)`, any form widget;
-  `NEW_GAME` on every game picker) opens a create page; the view tags its
-  redirect `created_row(redirect(...), option)` with the picker's own option
-  helper, and `<form-dialog>` hands the `created` row to the link's
+  A picker's + (`dialog_create=DialogCreate(url, label)`, any form widget
+  but the text one; `NEW_GAME` on every form game picker) opens a create
+  page; the view answers `CreatedRedirect(url, option=...)` with the
+  picker's own option helper, and `<form-dialog>` hands the `created` row to the link's
   `<search-select>` through `form-dialog:created`. Contract is
   [A dialog hands a created row to its picker](docs/superpowers/specs/2026-10-05-issue-1501-dialog-created-design.md)
 - **A bulk write analyzes what it filled** — a command or task that

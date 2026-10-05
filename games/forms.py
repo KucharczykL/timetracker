@@ -43,7 +43,6 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.elements import Fieldset
-from common.components.form_dialog import CreatedOption
 from common.components.icon_picker import IconChoice, IconPicker
 from common.components.primitives import (
     SHAPE_CLASSES,
@@ -292,7 +291,7 @@ def game_option_data(game: Game) -> dict[str, str]:
     }
 
 
-def game_option(game: Game) -> CreatedOption:
+def game_option(game: Game) -> SearchSelectOption:
     """A game as its picker rows read."""
     return {
         "value": str(game.id),
@@ -308,8 +307,8 @@ NEW_GAME = DialogCreate(reverse_lazy("games:add_game"), "New game")
 def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     """Resolve game ids (or instances) to SearchSelectOptions via one pk__in query."""
     return [
-        SearchSelectOption(**game_option(g))
-        for g in Game.objects.for_library(library)
+        game_option(game)
+        for game in Game.objects.for_library(library)
         .filter(pk__in=values)
         .select_related("platform")
         .in_display_order()
@@ -595,15 +594,11 @@ class TextSearchSelectWidget(_SearchSelectAdapter):
         *,
         suggestions: Sequence[str] = (),
         placeholder: str = "Search or type…",
-        dialog_create: DialogCreate | None = None,
         attrs=None,
     ):
+        #: No +: its value is typed text.
         super().__init__(
-            placeholder=placeholder,
-            autofocus=False,
-            clearable=True,
-            dialog_create=dialog_create,
-            attrs=attrs,
+            placeholder=placeholder, autofocus=False, clearable=True, attrs=attrs
         )
         self.suggestions = tuple(suggestions)
 

@@ -74,7 +74,8 @@ from common.components.custom_elements import (
     _PresetPanelElement,
     _SearchSelect,
 )
-from common.components.form_dialog import form_dialog_link
+from common.components.form_dialog import CreatedOption, form_dialog_link
+from common.components.modal import ElementId
 from common.components.primitives import (
     CLOSED_POPOVER,
     DISABLED_WITHIN_CLASS,
@@ -112,12 +113,9 @@ class FieldParam(TypedDict):
 type ParamSources = dict[str, LiteralParam | FieldParam]
 
 
-class SearchSelectOption(TypedDict):
-    value: str | int
-    label: str
-    # Becomes data-* attrs on the row / pill. Values are str only, matching the
-    # TS SearchSelectOption's Record<string, string> — producers stringify ids.
-    data: dict[str, str]
+class SearchSelectOption(CreatedOption):
+    """One picker row; ``data`` becomes its ``data-*``."""
+
     #: Muted after the label; never searched.
     hint: NotRequired[str]
 
@@ -187,7 +185,7 @@ _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]
 _BOX_BUTTON_FOCUS_CLASS = "focus:ring-0 focus-visible:ring-2"
 # ml-auto ends the row; peer-disabled hides it.
 _CLEAR_PLACEMENT_CLASS = f"ml-auto -mr-1 peer-disabled:hidden {_BOX_BUTTON_FOCUS_CLASS}"
-#: A shown × ends the row instead.
+#: A shown × takes the ml-auto instead.
 #: Literal, so Tailwind sees it.
 _DIALOG_CREATE_CLASS = (
     "ml-auto -mr-1 peer-disabled:hidden "
@@ -197,7 +195,7 @@ _DIALOG_CREATE_CLASS = (
 #: Shown only between a shown × and the +.
 _DIVIDER_CLASS = (
     "mx-1 hidden h-5 shrink-0 border-l border-default-medium "
-    "[[data-search-select-clear]:not([hidden])+&]:block peer-disabled:hidden"
+    "[[data-search-select-clear]:not([hidden])+&]:peer-enabled:block"
 )
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
@@ -297,22 +295,29 @@ class EmitCreate:
 type CreateRow = PostCreate | SelectTyped | EmitCreate
 
 
-@dataclass(frozen=True)
+type ControlLabel = str  # e.g. "New game"
+
+
+@dataclass(frozen=True, slots=True)
 class DialogCreate:
-    """A + link opening ``url`` in a dialog."""
+    """A + opening ``url`` in a form dialog.
+
+    The view at ``url`` answers with a ``CreatedRedirect``,
+    or the + only reloads the page.
+    """
 
     url: str | Promise
-    label: str
+    label: ControlLabel
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ClearControl:
     """The trailing × a box offers."""
 
-    #: Something is held or typed at render.
+    #: A value is held at render.
     shown: bool
     #: The ×'s ``aria-describedby`` target.
-    described_by: str | None = None
+    described_by: ElementId | None = None
 
 
 def _clear_button(clear: ClearControl) -> Node:
@@ -329,7 +334,7 @@ def _clear_button(clear: ClearControl) -> Node:
 
 
 def _dialog_create_link(create: DialogCreate) -> Node:
-    """The +; its dialog's created row lands here."""
+    """The divider and the +."""
     return Fragment(
         Span(aria_hidden="true", class_=_DIVIDER_CLASS),
         _dialog_create_button(create),
@@ -629,6 +634,8 @@ def SearchSelect(
     ``max_length``: the most characters the box takes.
     ``dialog_create``: a + creating the row in a dialog.
     """
+    if dialog_create and panel:
+        raise ValueError("dialog_create is field-hosted only")
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
     if options and option_groups:
@@ -754,7 +761,9 @@ def SearchSelect(
         templates=templates,
         home=home,
         marker=marker,
-        clear=ClearControl(bool(selected), clear_description_id) if clearable else None,
+        clear=ClearControl(shown=bool(selected), described_by=clear_description_id)
+        if clearable
+        else None,
         dialog_create=dialog_create,
         box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
@@ -840,7 +849,7 @@ def _row_action(
 def _filter_option_row(value: str | int, label: str, *, selected: bool = False) -> Node:
     """A value row; ``selected``: a pill names it."""
     return _option_row(
-        {"value": value, "label": label, "data": {}},
+        {"value": str(value), "label": label, "data": {}},
         selected=selected,
         actions=[
             _row_action("include", "+", "Include"),

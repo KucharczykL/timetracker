@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponseRedirect
 
 from common.components.form_dialog import CreatedOption
 
@@ -16,18 +16,9 @@ def is_form_dialog(request: HttpRequest) -> bool:
     return request.headers.get(FORM_DIALOG_HEADER) == "1"
 
 
-#: The attribute a tagged redirect carries.
-_CREATED_ATTRIBUTE: Final = "form_dialog_created"
+class CreatedRedirect(HttpResponseRedirect):
+    """A redirect carrying the row it made."""
 
-
-def created_row[Response: HttpResponse](
-    response: Response, option: CreatedOption
-) -> Response:
-    """Tags a redirect with the row it made."""
-    setattr(response, _CREATED_ATTRIBUTE, option)
-    return response
-
-
-def created_option(response: HttpResponse) -> CreatedOption | None:
-    """The row a redirect was tagged with."""
-    return getattr(response, _CREATED_ATTRIBUTE, None)
+    def __init__(self, url: str, *, option: CreatedOption) -> None:
+        super().__init__(url)
+        self.option = option

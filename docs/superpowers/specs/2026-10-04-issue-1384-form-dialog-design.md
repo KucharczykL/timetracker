@@ -13,7 +13,7 @@ Every dialog fetch sends `X-Form-Dialog: 1`. The answer kinds are
 |---|---|---|
 | `page` | `title`, `html`, `modules`, `messages` | `render_page()` |
 | `done` | `url`, `messages` | `FormDialogResultMiddleware` |
-| `created` | `done`'s, and `option` | A redirect tagged by `created_row()` |
+| `created` | `done`'s, and `option` | `FormDialogResultMiddleware`, for a `CreatedRedirect` |
 | `continue` | `url` | `FormDialogResultMiddleware` |
 
 - `page` holds the content alone, under the view's status.

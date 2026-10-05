@@ -42,6 +42,22 @@ function deliver(host: HTMLElement): CustomEvent {
 describe("<search-select> created row", () => {
   beforeEach(() => document.body.replaceChildren());
 
+  it("takes nothing when the row cannot land", () => {
+    const host = mount();
+    // insertBefore then names a node outside the panel.
+    host.querySelector("[data-search-select-no-results]")!.remove();
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent): void => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", onError);
+    const event = deliver(host);
+    window.removeEventListener("error", onError);
+    expect(errors).toHaveLength(1);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("selects the row, announces the change, and takes the event", () => {
     const host = mount();
     const changes: SearchSelectChangeDetail[] = [];

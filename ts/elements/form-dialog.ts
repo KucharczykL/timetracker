@@ -42,9 +42,9 @@ interface OpenDialog {
   readonly dialog: HTMLDialogElement;
   readonly body: HTMLElement;
   readonly chrome: FormDialogChrome;
-  readonly opener: OpenerKey | null;
+  readonly openerKey: OpenerKey | null;
   /** The link; a created row goes there. */
-  readonly openerElement: HTMLElement;
+  readonly opener: HTMLElement;
   readonly modal: Modal;
   /** Aborts the in-flight submit on close. */
   readonly controller: AbortController;
@@ -66,6 +66,9 @@ interface FormRequest {
   readonly url: URL;
   readonly body: FormData;
 }
+
+/** An element that takes created rows. */
+const PICKER = "search-select";
 
 /** Past this, a load gives up. */
 const LOAD_TIMEOUT_MS = 15_000;
@@ -265,7 +268,7 @@ export class FormDialogElement extends HTMLElement {
   private readonly onPageStale = (): void => {
     this.stale = true;
     // Focus inside a dialog dies with the reload.
-    const opener = this.stack[0]?.opener ?? focusedOpener();
+    const opener = this.stack[0]?.openerKey ?? focusedOpener();
     this.reload = mergeReload(this.reload, { opener });
     this.requestReload();
   };
@@ -405,8 +408,8 @@ export class FormDialogElement extends HTMLElement {
       dialog,
       body,
       chrome,
-      opener: openerKey(opener),
-      openerElement: opener,
+      openerKey: openerKey(opener),
+      opener,
       modal,
       controller: new AbortController(),
       url,
@@ -566,7 +569,7 @@ export class FormDialogElement extends HTMLElement {
           if (this.handOver(entry, route.option)) {
             // Only a lower dialog's close reloads.
             if (this.lowerDialogHolds(entry)) this.stale = true;
-            // Else closed() counts it as a write.
+            // Clear it, or closed() marks stale.
             entry.submitting = false;
             this.finish(entry, { kind: "closeTop", messages: route.fallback.messages });
           } else {
@@ -602,19 +605,32 @@ export class FormDialogElement extends HTMLElement {
 
   /** True when the opener took the row. */
   private handOver(entry: OpenDialog, option: FormDialogCreatedDetail): boolean {
-    const link = entry.openerElement;
-    if (!link.isConnected) return false;
+    const link = entry.opener;
+    const picker = link.closest(PICKER);
+    if (!link.isConnected) {
+      if (picker) this.declined("its picker left the page", option);
+      return false;
+    }
     const event = new CustomEvent<FormDialogCreatedDetail>(FORM_DIALOG_CREATED, {
       bubbles: true,
       cancelable: true,
       detail: option,
     });
-    return !link.dispatchEvent(event);
+    if (!link.dispatchEvent(event)) return true;
+    // A plain link reads it as done.
+    if (picker) this.declined("its picker declined it", option);
+    return false;
+  }
+
+  /** Saved, yet the field stays empty. */
+  private declined(reason: string, option: FormDialogCreatedDetail): void {
+    const id = report(`created row ${option.value} not handed over: ${reason}`);
+    errorToast(`Saved, but the field could not take it. Pick it from the list (error ${id}).`);
   }
 
   private lowerDialogHolds(entry: OpenDialog): boolean {
     return this.stack.some(
-      (other) => other !== entry && other.body.contains(entry.openerElement),
+      (other) => other !== entry && other.body.contains(entry.opener),
     );
   }
 
@@ -660,7 +676,7 @@ export class FormDialogElement extends HTMLElement {
     const index = this.stack.indexOf(entry);
     if (index !== -1) this.stack.splice(index, 1);
     if (this.stack.length > 0 || !this.stale) return;
-    this.reload = mergeReload(this.reload, { opener: entry.opener });
+    this.reload = mergeReload(this.reload, { opener: entry.openerKey });
     this.requestReload();
   }
 

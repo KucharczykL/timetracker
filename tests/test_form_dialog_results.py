@@ -16,7 +16,7 @@ from django.urls import URLPattern, URLResolver, get_resolver, reverse
 from tracked_games import create_tracked_game
 
 from common.components import Div, Fragment
-from common.form_dialog import FORM_DIALOG_HEADER, created_row
+from common.form_dialog import FORM_DIALOG_HEADER, CreatedRedirect
 from common.layout import render_page
 from common.returns import action_url
 from games.form_dialog_middleware import FormDialogResultMiddleware, dialog_result
@@ -344,7 +344,7 @@ OPTION = {"value": "1", "label": "Outer Wilds (PC)", "data": {}}
 def test_a_tagged_redirect_to_a_read_only_page_is_created():
     request = _dialog_request()
     messages.success(request, "Saved")
-    redirect = created_row(HttpResponseRedirect(reverse("games:list_games")), OPTION)
+    redirect = CreatedRedirect(reverse("games:list_games"), option=OPTION)
 
     assert json.loads(_answered(request, redirect).content) == {
         "kind": "created",
@@ -354,16 +354,20 @@ def test_a_tagged_redirect_to_a_read_only_page_is_created():
     }
 
 
-def test_a_tagged_redirect_to_a_form_page_continues():
+def test_a_tagged_redirect_to_a_form_page_continues(caplog, capture_games_logger):
     request = _dialog_request()
-    redirect = created_row(HttpResponseRedirect(reverse("games:add_game")), OPTION)
+    redirect = CreatedRedirect(reverse("games:add_game"), option=OPTION)
 
-    assert json.loads(_answered(request, redirect).content)["kind"] == "continue"
+    with capture_games_logger():
+        answer = json.loads(_answered(request, redirect).content)
+
+    assert answer["kind"] == "continue"
+    assert "hands it to no picker" in caplog.text
 
 
 def test_a_tagged_redirect_outside_dialog_mode_stays():
     request = RequestFactory().post("/")
-    redirect = created_row(HttpResponseRedirect("/devices"), OPTION)
+    redirect = CreatedRedirect("/devices", option=OPTION)
 
     assert _answered(request, redirect) is redirect
 
@@ -379,3 +383,19 @@ def test_add_game_answers_the_created_game(logged_in, game_post, owned_library):
     assert answer["kind"] == "created"
     assert answer["option"] == game_option(game)
     assert answer["url"] == SERVER + reverse("games:list_games")
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_add_game_refused_tracking_hands_over_nothing(
+    logged_in, game_post, monkeypatch
+):
+    monkeypatch.setattr(
+        "games.views.game.track_game_for_request", lambda *args, **kwargs: False
+    )
+
+    response = logged_in.post(
+        reverse("games:add_game"), game_post("Outer Wilds"), headers=DIALOG_HEADERS
+    )
+
+    assert response.json()["kind"] == "done"

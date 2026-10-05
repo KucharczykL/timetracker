@@ -1547,6 +1547,16 @@ class DialogCreateTest(unittest.TestCase):
         self.assertIn("peer", _classes(_tag_around(html, "data-search-select-search")))
         self.assertIn("peer-disabled:hidden", self._link(html))
 
+    def test_a_panel_refuses_it(self):
+        with self.assertRaises(ValueError):
+            SearchSelect(name="device", panel=True, dialog_create=NEW_DEVICE)
+
+    def test_the_divider_sits_between_clear_and_plus(self):
+        html = str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        divider = html.index('aria-hidden="true" class="mx-1')
+        self.assertLess(html.index("data-search-select-clear"), divider)
+        self.assertLess(divider, html.index("data-form-dialog="))
+
     def test_a_lazy_url_renders(self):
         from django.urls import reverse, reverse_lazy
 
@@ -1564,7 +1574,6 @@ class DialogCreateWidgetTest(unittest.TestCase):
         from games.forms import (
             ChoiceSearchSelectWidget,
             SearchSelectWidget,
-            TextSearchSelectWidget,
         )
 
         widgets = {
@@ -1573,7 +1582,6 @@ class DialogCreateWidgetTest(unittest.TestCase):
                 options_resolver=lambda values: [],
                 dialog_create=NEW_DEVICE,
             ),
-            "text": TextSearchSelectWidget(dialog_create=NEW_DEVICE),
             "choice": ChoiceSearchSelectWidget(dialog_create=NEW_DEVICE),
         }
         for kind, widget in widgets.items():
@@ -1589,3 +1597,9 @@ class DialogCreateWidgetTest(unittest.TestCase):
 
                 html = str(PickerForm()["device"])
                 self.assertIn('aria-label="New device"', html)
+
+    def test_a_text_widget_takes_no_plus(self):
+        from games.forms import TextSearchSelectWidget
+
+        with self.assertRaises(TypeError):
+            TextSearchSelectWidget(dialog_create=NEW_DEVICE)  # type: ignore[call-arg]

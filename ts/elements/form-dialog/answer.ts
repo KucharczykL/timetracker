@@ -57,7 +57,7 @@ export type Answer =
       readonly kind: typeof CREATED;
       readonly url: URL;
       readonly messages: Messages;
-      readonly option: CreatedOption;
+      readonly option: Readonly<CreatedOption>;
     }
   /** Not a dialog answer. */
   | { readonly kind: "none"; readonly status: number };
@@ -121,13 +121,11 @@ function isOption(value: unknown): value is CreatedOption {
   );
 }
 
-function isCreated(fields: Fields): fields is Fields & CreatedAnswer {
-  return (
-    fields.kind === CREATED &&
-    isText(fields.url) &&
-    isMessages(fields.messages) &&
-    isOption(fields.option)
-  );
+/** The option is checked apart: a bad one is still done. */
+function isCreated(
+  fields: Fields,
+): fields is Fields & Omit<CreatedAnswer, "option"> & { option: unknown } {
+  return fields.kind === CREATED && isText(fields.url) && isMessages(fields.messages);
 }
 
 function isContinue(fields: Fields): fields is Fields & ContinueAnswer {
@@ -179,12 +177,13 @@ export async function readAnswer(response: Response, requested: URL): Promise<An
     return { kind: DONE, url: new URL(fields.url, url), messages: fields.messages };
   }
   if (isCreated(fields)) {
-    return {
-      kind: CREATED,
-      url: new URL(fields.url, url),
-      messages: fields.messages,
-      option: fields.option,
-    };
+    const target = new URL(fields.url, url);
+    if (isOption(fields.option)) {
+      return { kind: CREATED, url: target, messages: fields.messages, option: fields.option };
+    }
+    // Saved all the same.
+    report(`created answer with an unreadable option: ${JSON.stringify(fields.option)}`);
+    return { kind: DONE, url: target, messages: fields.messages };
   }
   if (isContinue(fields)) return { kind: CONTINUE, url: new URL(fields.url, url) };
   report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);
