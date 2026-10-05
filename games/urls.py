@@ -154,6 +154,11 @@ urlpatterns = [
         name="state_list_columns",
     ),
     path(
+        "bulk/batch/<uuidv7:token>/stop/",
+        bulk.stop_bulk_batch,
+        name="stop_bulk_batch",
+    ),
+    path(
         "bulk/undo/<uuidv7:correlation_id>/",
         bulk.undo_bulk_action,
         name="undo_bulk_action",

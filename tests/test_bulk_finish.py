@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from django.contrib.messages import get_messages
+from bulk_posts import said
 from django.http import QueryDict
 from django.urls import reverse
 from session_rows import timed_row, tracked_run
@@ -96,7 +96,7 @@ def _post(**fields: str) -> QueryDict:
 def test_a_statement_states_an_aware_instant_and_a_known_zone():
     """Both rules where every caller meets them, not in `decode` alone.
 
-    A naive instant encodes to an offsetless string the next chunk refuses,
+    A naive instant encodes to an offsetless string the run refuses,
     and a zone tzdata lost reaches the database as a defect.
     """
     from games.bulk_finish import FinishStatement
@@ -121,11 +121,7 @@ def test_a_statement_with_no_zone_survives_too():
 
 
 def test_settling_is_idempotent(owned_library):
-    """Chunk two holds no `<browser-time-zone>` and no zone field.
-
-    The waypoint renders hidden pairs alone, so every chunk after the first
-    settles the answer the chunk before it gave.
-    """
+    """A reconfirmation posts a settled answer back."""
     first = settle_finish(
         owned_library,
         _post(
@@ -195,8 +191,8 @@ def test_a_row_that_is_not_running_is_refused_and_named(client_in, owned_library
     assert not LibraryEvent.objects.filter(
         aggregate_id=finished.pk, event_type="library.playersession.ended"
     ).exists()
-    said = [str(message) for message in get_messages(answer.wsgi_request)]
-    assert any("1 left as it is" in sentence for sentence in said), said
+    sentences = said(answer)
+    assert any("1 left as it is" in sentence for sentence in sentences), sentences
 
 
 def test_the_confirmation_posted_twice_ends_every_row_once(
@@ -230,16 +226,11 @@ def test_the_confirmation_posted_twice_ends_every_row_once(
 def test_a_batch_spanning_two_chunks_ends_every_row_at_one_instant(
     client_in, owned_library, game, monkeypatch
 ):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [a_running_session(owned_library, game, offset) for offset in range(3)]
 
     confirmation = client_in.post(FINISH_URL, {STATEMENT_FIELD: some(*sessions)})
-    answer = client_in.post(FINISH_URL, posted(confirmation))
-    while posted(answer).get(TOKEN_FIELD):
-        fields = posted(answer)
-        if not json.loads(fields[PROGRESS_FIELD])["rows"]:
-            break
-        answer = client_in.post(FINISH_URL, fields)
+    client_in.post(FINISH_URL, posted(confirmation))
 
     instants = set()
     for session in sessions:

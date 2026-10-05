@@ -118,7 +118,7 @@ static half on uv, and nothing but your `make check` runs the suite.
 | Task | Command |
 |------|---------|
 | Install dependencies | `make init` (Python via uv + npm packages, loads platform fixtures) |
-| Development server | `make dev` (Django runserver + Tailwind watcher + `tsc --watch`) |
+| Development server | `make dev` (Django runserver + Tailwind watcher + `tsc --watch` + qcluster, which runs bulk acts) |
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-fast` / `make test-e2e`; a path in `ARGS` replaces the directory those two pin) |
@@ -799,16 +799,28 @@ table. The parts an act is built from (`Resolution`, `RowOutcome`,
 `FilterJson`, ...) live in `games/bulk_parts.py`, which imports no act, so
 a half two acts share (`games/bulk_games.py`) reads them without reaching
 the table; the table holds `BulkAction` alone. `games/views/bulk.py` runs any of them: one route, two POSTs told apart
-by a submission token that **is** the batch's correlation id, so a batch
-spanning chunks stays one batch. A chunk is the rows one request acts on inside
-`CHUNK_BUDGET` and is no transaction -- each row is its own dispatch, keyed
-from the token and the row, so a token posted twice acts once. The tally rides
-the progress form and counts four things apart: moved, already so, refused, and
-gone since the confirmation. A defect ends the batch; the rows done stay done
-and keep their Undo. The log names every row left alone, the ones a Stop or a
-defect never reached included. `<continuing-batch>` posts the waypoint's form
-on connect, so only Stop is pressed. The Undo reads the act's name out of the
-batch's `source_metadata` and its rows through `undo_rows` -- for
+by a submission token that **is** the batch's correlation id. The press
+stores a `BulkBatch` row and queues chunk 0 on the cluster in one transaction,
+then redirects (#1507); `games/bulk_jobs.py` runs it. A chunk is the rows one
+task acts on inside `CHUNK_BUDGET` and is no transaction -- each row is its
+own dispatch, keyed from the token and the row, so a row run twice acts once.
+The tally lives on the row, written after each row with `position`, and counts
+four things apart: moved, already so, refused, and gone since the
+confirmation. Every write after the creation is fenced by `chunk` and
+`attempts` and skips an ended row; CHECKs bind `ended_at` to an ended state.
+A stale chunk does nothing, an overtaken one stops, a third start fails. A
+defect or the cluster's timeout stores `failed`; the rows done stay done and
+keep their Undo. Stop (`stop_bulk_batch`) ends the batch between chunks and
+fences out a run in flight; a live batch silent for `STALE_AFTER` has no
+worker, and Stop or Undo ends it at once. One Undo of a batch runs at a time
+(a partial unique constraint). The log names every row left alone. `Page()` embeds the library's
+batches; `ts/bulk-batch-status.ts` toasts them, polls `/api/bulk/batches`, and
+dispatches `page:stale` when one from this page ends; behind a modal,
+`<toast-stack>` posts a toast action as a dialog request. Tests drain chunks on
+commit (`tests/bulk_batches.py`; `held_batches` holds them, and a batch
+ending `failed` fails the test unless it asks for `failing_batches`). The Undo reads
+the act's name off the batch row, or for an older batch out of its
+`source_metadata`, and its rows through `undo_rows` -- for
 `EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the
 reads that answer from events rather than a projection
 (`conversion_review` is another) -- and runs as a
@@ -817,7 +829,8 @@ base narrowed by the statement's filter, never the filter alone, and an
 unreadable filter refuses rather than widening the act --
 `apply_structured_filter` fails open, which a list may do and an act may not.
 Contract is
-[The bulk runner](docs/superpowers/specs/2026-09-20-issue-713-bulk-runner-design.md). #1134's
+[The bulk runner](docs/superpowers/specs/2026-09-20-issue-713-bulk-runner-design.md)
+and [Background jobs](docs/superpowers/specs/2026-10-05-issue-1507-bulk-jobs-design.md). #1134's
 `playergame.remove` takes games off the Games list through
 `remove_from_library`/`restore_to_library` in `games/writes/playergame.py`,
 which stamp or clear the catalog row only where the library owns it, refuse a
@@ -1163,7 +1176,8 @@ conversion state; a settings write clears the resolver cache on commit; a raw
 delete of a row an event references is refused.
 
 **Background tasks**: django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
-broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
+broker) runs bulk batches chunk by chunk (`run_bulk_batch`) and
+`games.tasks.convert_prices()` on schedule, fetching rates from
 `cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and valuing purchases in the
 resolved `DEFAULT_DISPLAY_CURRENCY`. One run values every `PurchaseValuation`
 and publishes the set; a purchase whose rate the source lacks is skipped, and a

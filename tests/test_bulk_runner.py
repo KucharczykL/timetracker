@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from typing import NamedTuple
 
 import pytest
+from bulk_posts import newest_batch, said
 from django.contrib.messages import get_messages
 from django.contrib.messages.storage.base import Message
 from django.urls import reverse
@@ -22,6 +23,7 @@ from common.duration_presentation import (
 )
 from games import bulk_reclassification
 from games.bulk_actions import _TABLE, BULK_ACTIONS, BulkAction
+from games.bulk_jobs import ENDED_BY_A_DEFECT, STOPPED_BY_HAND, Tally, batch_toast
 from games.bulk_parts import BulkChoice, Control, RefusedAct, RowOutcome
 from games.bulk_reclassification import (
     IN_THE_BUCKET,
@@ -32,6 +34,7 @@ from games.bulk_reclassification import (
 from games.commands.session_reclassification import statement_from_session
 from games.events.dispatch import CommandRejected
 from games.models import (
+    BulkBatch,
     Game,
     HistoricalPlaytime,
     LibraryEvent,
@@ -42,13 +45,11 @@ from games.models import (
 from games.reads.events import batch_aggregate_ids
 from games.views.bulk import (
     CHOICE_FIELD,
-    ENDED_BY_A_DEFECT,
-    NOT_THIS_BATCH,
+    NOTHING_TO_UNDO,
     PROGRESS_FIELD,
     STATEMENT_FIELD,
-    STOP_FIELD,
-    STOPPED_BY_HAND,
     TOKEN_FIELD,
+    UNDO_OF_AN_UNDO,
     UNKNOWN_ACT,
 )
 from games.views.session_reclassification import review_filter
@@ -232,7 +233,7 @@ def test_a_short_row_is_noted_and_converted_all_the_same(
     done = act(client_in, asked)
 
     assert done.status_code == 302
-    assert [str(message) for message in toasts(done)] == ["1 of 1 done."]
+    assert said_by(newest_batch(owned_library)) == ["1 of 1 done."]
     assert HistoricalPlaytime.objects.count() == 1
 
 
@@ -360,6 +361,16 @@ def tally_of(response) -> dict:
     return json.loads(posted(response)[PROGRESS_FIELD])
 
 
+def batch_of(library, token) -> BulkBatch:
+    return BulkBatch.objects.get(library=library, token=token)
+
+
+def said_by(batch: BulkBatch) -> list[str]:
+    """The tally sentence, then each reason."""
+    batch.refresh_from_db()
+    return [Tally.of(batch).sentence(ended=batch.is_terminal), *batch.reasons]
+
+
 def test_a_batch_converts_every_row_and_returns(client_in, owned_library, game):
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
@@ -382,7 +393,7 @@ def test_every_chunk_of_a_batch_shares_one_correlation_id(
     A fresh correlation id per request would make a two-chunk batch two
     batches, and its Undo would find half of it.
     """
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(3)
@@ -391,13 +402,10 @@ def test_every_chunk_of_a_batch_shares_one_correlation_id(
     token = posted(confirmation)[TOKEN_FIELD]
 
     response = act(client_in, confirmation)
-    #: Each request spends its budget after one row.
-    assert response.status_code == 200
-    assert tally_of(response)["done"] == 1
-    while response.status_code == 200:
-        response = act(client_in, response)
 
     assert response.status_code == 302
+    #: One row a chunk.
+    assert batch_of(owned_library, token).chunk == 2
     assert HistoricalPlaytime.objects.count() == 3
     correlations = set(
         LibraryEvent.objects.filter(
@@ -419,21 +427,19 @@ def test_the_same_token_twice_converts_nothing_twice(client_in, owned_library, g
 
 
 def test_a_row_gone_since_the_confirmation_is_counted_lost(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game
 ):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
     staying = a_written_session(owned_library, game)
     leaving = a_written_session(owned_library, game, day=date(2026, 3, 6))
     confirmation = confirm(client_in, some(staying, leaving))
+    #: Gone between the confirmation and the press.
+    PlayerSession.objects.filter(pk=leaving.pk).update(removed_at=timezone.now())
 
     response = act(client_in, confirmation)
-    #: Gone between the confirmation and its own chunk.
-    PlayerSession.objects.filter(pk=leaving.pk).update(removed_at=timezone.now())
-    while response.status_code == 200:
-        response = act(client_in, response)
 
     assert response.status_code == 302
     assert HistoricalPlaytime.objects.count() == 1
+    assert newest_batch(owned_library).lost == 1
 
 
 def test_a_refused_row_leaves_the_rest_done(client_in, owned_library, game):
@@ -472,40 +478,31 @@ def test_a_refused_row_is_counted_and_its_reason_reaches_the_person(
     done = act(client_in, asked)
 
     assert done.status_code == 302
-    assert [str(message) for message in toasts(done)] == [
+    assert said_by(newest_batch(owned_library)) == [
         "1 of 1 done, 2 left as they are.",
         IN_THE_BUCKET,
     ]
 
 
 def test_a_row_lost_in_one_chunk_is_still_counted_by_the_next(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, held_batches
 ):
-    """The tally rides the form, so a count must survive the round trip.
-
-    A row counted lost in the chunk that met it is answered for by a
-    later chunk, and a counter the progress field dropped would make
-    the batch's own answer disagree with what it did.
-    """
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    """The tally survives between chunks."""
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(3)
     ]
-    confirmation = confirm(client_in, some(*sessions))
-
-    response = act(client_in, confirmation)
+    act(client_in, confirm(client_in, some(*sessions)))
+    batch = newest_batch(owned_library)
+    held_batches.run_one()
     #: Gone between the first chunk and the one that would reach it.
-    PlayerSession.objects.filter(pk=sessions[1].pk).update(removed_at=timezone.now())
-    middle = act(client_in, response)
-    assert tally_of(middle)["lost"] == 1
-    last = act(client_in, middle)
+    ordered = [uuid.UUID(key) for key in batch.rows]
+    PlayerSession.objects.filter(pk=ordered[1]).update(removed_at=timezone.now())
 
-    assert last.status_code == 302
-    assert [str(message) for message in toasts(last)] == [
-        "2 of 3 done, 1 no longer there.",
-        NOT_AVAILABLE,
-    ]
+    held_batches.run_all()
+
+    assert said_by(batch) == ["2 of 3 done, 1 no longer there.", NOT_AVAILABLE]
 
 
 def test_every_row_left_alone_is_logged_with_its_library(
@@ -531,7 +528,7 @@ def test_every_row_left_alone_is_logged_with_its_library(
 
 
 def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The act stops; what committed stays committed.
 
@@ -558,13 +555,11 @@ def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
 
     response = act(client_in, confirm(client_in, some(*sessions)))
 
-    assert response.status_code == DEFECT_STATUS
+    assert response.status_code == 302
     assert HistoricalPlaytime.objects.count() == 1
-    #: A defect admits no second press.
-    assert (
-        BULK_ACTIONS["session.reclassify"].confirm_label.encode()
-        not in response.content
-    )
+    batch = newest_batch(owned_library)
+    assert batch.state == BulkBatch.State.FAILED
+    assert (batch.done, batch.position) == (1, 1)
 
 
 def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_library):
@@ -585,12 +580,10 @@ def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_libra
 
 
 def test_a_row_the_library_does_not_hold_ends_the_batch(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The chunk re-resolved these rows, so nothing inside can miss."""
     from django.http import Http404
-
-    from games.writes.answers import DEFECT_STATUS
 
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
@@ -607,18 +600,14 @@ def test_a_row_the_library_does_not_hold_ends_the_batch(
 
     monkeypatch.setattr(bulk_reclassification, "reclassify_session", absent_after_one)
 
-    response = act(client_in, confirm(client_in, some(*sessions)))
+    act(client_in, confirm(client_in, some(*sessions)))
 
-    assert response.status_code == DEFECT_STATUS
     assert HistoricalPlaytime.objects.count() == 1
-    assert (
-        BULK_ACTIONS["session.reclassify"].confirm_label.encode()
-        not in response.content
-    )
+    assert newest_batch(owned_library).state == BulkBatch.State.FAILED
 
 
 def test_a_defect_still_offers_the_batch_its_undo(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The rows it did reach stay done, so the way back must be offered.
 
@@ -644,12 +633,11 @@ def test_a_defect_still_offers_the_batch_its_undo(
     confirmation = confirm(client_in, some(*sessions))
     token = posted(confirmation)[TOKEN_FIELD]
 
-    stopped = act(client_in, confirmation)
+    act(client_in, confirmation)
 
-    assert stopped.status_code == DEFECT_STATUS
-    assert [toast["action"]["url"] for toast in page_toasts(stopped)] == [
-        undo_url(token)
-    ]
+    toast = batch_toast(batch_of(owned_library, token))
+    assert toast["type"] == "error"
+    assert toast.get("action") == {"label": "Undo", "url": undo_url(token)}
 
     undone = client_in.post(undo_url(token), {})
 
@@ -659,7 +647,7 @@ def test_a_defect_still_offers_the_batch_its_undo(
 
 
 def test_an_undo_a_defect_stopped_offers_no_undo_of_its_own(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The answer's rule, read by the defect page too."""
     from games.writes.answers import DEFECT_STATUS, CommandFailed
@@ -674,72 +662,66 @@ def test_an_undo_a_defect_stopped_offers_no_undo_of_its_own(
 
     monkeypatch.setattr(bulk_reclassification, "undo_reclassification", breaks)
 
-    stopped = client_in.post(undo_url(token), {})
+    client_in.post(undo_url(token), {})
 
-    assert stopped.status_code == DEFECT_STATUS
-    assert [toast.get("action") for toast in page_toasts(stopped)] == [None]
+    undoing = BulkBatch.objects.get(undoes=uuid.UUID(token))
+    assert undoing.state == BulkBatch.State.FAILED
+    assert "action" not in batch_toast(undoing)
 
 
-def test_a_progress_page_carries_the_tally_and_the_rest(
-    client_in, owned_library, game, monkeypatch
+def stop_url(token) -> str:
+    return reverse("games:stop_bulk_batch", args=[token])
+
+
+def test_stopping_ends_the_batch_between_chunks(
+    client_in, owned_library, game, monkeypatch, held_batches
 ):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(3)
     ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    held_batches.run_one()
 
-    response = act(client_in, confirm(client_in, some(*sessions)))
-
-    carried = tally_of(response)
-    assert carried["done"] == 1
-    assert len(carried["rows"]) == 2
-
-
-def test_a_waypoint_says_what_has_been_left_alone_so_far(
-    client_in, owned_library, game, monkeypatch
-):
-    """A batch of thousands is read at its waypoints, not at its answer.
-
-    The reasons ride the tally from the confirmation onwards, so the
-    page a person watches can say them rather than holding them back
-    until the batch ends.
-    """
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
-    sessions = [
-        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
-        for offset in range(2)
-    ]
-    in_the_bucket = a_bucket_session(
-        a_bucket(owned_library, game), day=date(2026, 4, 1)
-    )
-
-    progressing = act(client_in, confirm(client_in, some(*sessions, in_the_bucket)))
-
-    assert progressing.status_code == 200
-    page = progressing.content.decode()
-    assert "1 left as it is so far:" in page
-    assert html_module.escape(IN_THE_BUCKET) in page
-
-
-def test_stopping_ends_the_batch_where_it_stands(
-    client_in, owned_library, game, monkeypatch
-):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
-    sessions = [
-        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
-        for offset in range(3)
-    ]
-    progressing = act(client_in, confirm(client_in, some(*sessions)))
-
-    stopped = act(client_in, progressing, **{STOP_FIELD: "1"})
+    stopped = client_in.post(stop_url(token))
+    held_batches.run_all()
 
     assert stopped.status_code == 302
     assert HistoricalPlaytime.objects.count() == 1
+    batch = batch_of(owned_library, token)
+    assert batch.state == BulkBatch.State.STOPPED
+    assert said_by(batch) == ["1 of 3 done, 2 not reached."]
+
+
+def test_another_librarys_batch_cannot_be_stopped(
+    client, owned_library, game, django_user_model
+):
+    batch = BulkBatch.objects.create(
+        token=uuid.uuid7(),
+        library=owned_library,
+        action="session.reclassify",
+        origin="/",
+        rows=[],
+    )
+    stranger = django_user_model.objects.create_user("stranger", password="pw")
+    client.force_login(stranger)
+
+    assert client.post(stop_url(batch.token)).status_code == 404
+    batch.refresh_from_db()
+    assert batch.stop_requested_at is None
 
 
 def test_stopping_names_the_rows_it_left(
-    client_in, owned_library, game, monkeypatch, caplog, capture_games_logger
+    client_in,
+    owned_library,
+    game,
+    monkeypatch,
+    caplog,
+    capture_games_logger,
+    held_batches,
 ):
     """A Stop leaves rows behind, and the log is where they are named.
 
@@ -747,21 +729,23 @@ def test_stopping_names_the_rows_it_left(
     rows it did not reach, and a person who presses Stop by accident
     has only the log to read them back from.
     """
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(3)
     ]
     confirmation = confirm(client_in, some(*sessions))
     token = posted(confirmation)[TOKEN_FIELD]
-    progressing = act(client_in, confirmation)
+    act(client_in, confirmation)
+    held_batches.run_one()
+    client_in.post(stop_url(token))
 
     with capture_games_logger() as captured:
         captured.set_level(logging.INFO, logger="games")
-        act(client_in, progressing, **{STOP_FIELD: "1"})
+        held_batches.run_all()
 
     said = " ".join(record.message for record in caplog.records)
-    left = [key for key in tally_of(progressing)["rows"]]
+    left = batch_of(owned_library, token).rows[1:]
     assert len(left) == 2
     for key in left:
         assert key in said
@@ -770,7 +754,13 @@ def test_stopping_names_the_rows_it_left(
 
 
 def test_a_defect_names_the_rows_it_left(
-    client_in, owned_library, game, monkeypatch, caplog, capture_games_logger
+    client_in,
+    owned_library,
+    game,
+    monkeypatch,
+    caplog,
+    capture_games_logger,
+    failing_batches,
 ):
     """The row that met the defect, and the rows behind it.
 
@@ -799,9 +789,8 @@ def test_a_defect_names_the_rows_it_left(
 
     with capture_games_logger() as captured:
         captured.set_level(logging.INFO, logger="games")
-        stopped = act(client_in, confirmation)
+        act(client_in, confirmation)
 
-    assert stopped.status_code == DEFECT_STATUS
     said = " ".join(record.message for record in caplog.records)
     #: The row the defect was met on, and the one it never reached.
     assert ordered[1] in said
@@ -840,13 +829,14 @@ def page_toasts(response) -> list[dict]:
     )
 
 
-def actions_of(response) -> list[str]:
-    """The URL each toast's action posts to, for the toasts that carry one."""
-    return [
-        json.loads(message.extra_tags)["action"]["url"]
-        for message in toasts(response)
-        if message.extra_tags
-    ]
+def undoing(token) -> BulkBatch:
+    """The Undo batch of this one."""
+    return BulkBatch.objects.get(undoes=uuid.UUID(token))
+
+
+def action_of(batch: BulkBatch) -> str | None:
+    action = batch_toast(batch).get("action")
+    return action["url"] if action else None
 
 
 def test_the_answer_of_a_batch_offers_the_batch_its_undo(
@@ -856,18 +846,18 @@ def test_the_answer_of_a_batch_offers_the_batch_its_undo(
     confirmation = confirm(client_in, some(session))
     token = posted(confirmation)[TOKEN_FIELD]
 
-    done = act(client_in, confirmation)
+    act(client_in, confirmation)
 
-    assert actions_of(done) == [undo_url(token)]
+    assert action_of(batch_of(owned_library, token)) == undo_url(token)
 
 
 def test_a_batch_that_did_nothing_offers_no_undo(client_in, owned_library, game):
     """Nothing to take back, so no press that says there is."""
     in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
 
-    done = act(client_in, confirm(client_in, some(in_the_bucket)))
+    act(client_in, confirm(client_in, some(in_the_bucket)))
 
-    assert actions_of(done) == []
+    assert action_of(newest_batch(owned_library)) is None
 
 
 def test_undoing_a_batch_restores_every_session_and_removes_every_record(
@@ -910,9 +900,9 @@ def test_a_batch_undo_reads_only_the_aggregate_its_inverse_takes(
     assert batch_aggregate_ids(owned_library, batch, "historicalplaytime")
     assert len(batch_aggregate_ids(owned_library, batch, "playersession")) == 2
 
-    undone = client_in.post(undo_url(token), {})
+    client_in.post(undo_url(token), {})
 
-    assert [str(message) for message in toasts(undone)] == ["2 of 2 done."]
+    assert said_by(undoing(token)) == ["2 of 2 done."]
     assert PlayerSession.objects.alive().count() == 2
 
 
@@ -940,8 +930,7 @@ def test_a_record_restated_since_is_named_and_the_rest_are_undone(
     assert PlayerSession.objects.get(pk=sessions[0].pk).removed_at is not None
     assert PlayerSession.objects.get(pk=sessions[1].pk).removed_at is None
     #: One refused row of an Undo, counted and said in its own number.
-    first = next(str(message) for message in toasts(undone))
-    assert first == "1 of 2 done, 1 left as it is."
+    assert said_by(undoing(token))[0] == "1 of 2 done, 1 left as it is."
 
 
 def test_a_batch_undo_chunks_under_its_own_token(
@@ -959,21 +948,19 @@ def test_a_batch_undo_chunks_under_its_own_token(
     confirmation = confirm(client_in, some(*sessions))
     token = posted(confirmation)[TOKEN_FIELD]
     act(client_in, confirmation)
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
 
     response = client_in.post(undo_url(token), {})
-    assert response.status_code == 200
-    undo_token = posted(response)[TOKEN_FIELD]
-    assert undo_token != token
-    while response.status_code == 200:
-        response = act(client_in, response, url=undo_url(token))
 
     assert response.status_code == 302
+    undo_token = undoing(token).token
+    assert undo_token != uuid.UUID(token)
+    assert undoing(token).chunk == 2
     assert PlayerSession.objects.alive().count() == 3
     restored = LibraryEvent.objects.filter(
         library=owned_library, event_type="library.playersession.restored"
     )
-    assert {event.correlation_id for event in restored} == {uuid.UUID(undo_token)}
+    assert {event.correlation_id for event in restored} == {undo_token}
 
 
 def test_a_row_undone_by_hand_is_counted_apart_from_one_the_undo_moved(
@@ -1001,9 +988,7 @@ def test_a_row_undone_by_hand_is_counted_apart_from_one_the_undo_moved(
     undone = client_in.post(undo_url(token), {})
 
     assert undone.status_code == 302
-    assert [str(message) for message in toasts(undone)] == [
-        "1 of 2 done, 1 already done."
-    ]
+    assert said_by(undoing(token)) == ["1 of 2 done, 1 already done."]
     assert PlayerSession.objects.alive().count() == 2
 
 
@@ -1013,49 +998,70 @@ def test_an_undo_offers_no_further_undo(client_in, owned_library, game):
     token = posted(confirmation)[TOKEN_FIELD]
     landed(client_in, act(client_in, confirmation))
 
-    undone = client_in.post(undo_url(token), {})
+    client_in.post(undo_url(token), {})
 
-    assert actions_of(undone) == []
+    assert action_of(undoing(token)) is None
 
 
-def test_an_undo_leaves_alone_a_key_its_batch_never_wrote(
-    client_in, owned_library, game
-):
-    """A forged progress is counted and lost, as on the way forward.
-
-    The tally rides the form, so a person can name any key in it. The
-    Undo acts on the rows its own batch wrote, and a key that is not one
-    of them reaches no dispatch to answer a defect.
-    """
+def test_an_undo_reads_its_rows_on_the_server(client_in, owned_library, game):
+    """Posted keys reach no Undo."""
     session = a_written_session(owned_library, game)
     confirmation = confirm(client_in, some(session))
     token = posted(confirmation)[TOKEN_FIELD]
-    landed(client_in, act(client_in, confirmation))
+    act(client_in, confirmation)
+    forged = str(uuid.uuid7())
 
-    undone = client_in.post(
+    client_in.post(
         undo_url(token),
-        {
-            TOKEN_FIELD: str(uuid.uuid7()),
-            PROGRESS_FIELD: json.dumps(
-                {
-                    "rows": [str(uuid.uuid7())],
-                    "done": 0,
-                    "unchanged": 0,
-                    "lost": 0,
-                    "refused": 0,
-                    "reasons": [],
-                    "total": 1,
-                }
-            ),
-        },
+        {TOKEN_FIELD: forged, PROGRESS_FIELD: json.dumps({"rows": [forged]})},
     )
 
+    assert undoing(token).rows == [str(session.pk)]
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None
+
+
+def test_an_undo_waits_for_its_batch_to_end(
+    client_in, owned_library, game, held_batches
+):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+
+    refused = client_in.post(undo_url(token), {})
+
+    assert refused.status_code == 400
+    assert not BulkBatch.objects.filter(undoes=uuid.UUID(token)).exists()
+
+
+def test_an_undo_pressed_twice_while_it_runs_starts_once(
+    client_in, owned_library, game, chunk_queue
+):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    chunk_queue.held = True
+
+    client_in.post(undo_url(token), {})
+    client_in.post(undo_url(token), {})
+
+    assert BulkBatch.objects.filter(undoes=uuid.UUID(token)).count() == 1
+    #: The press is the end's acknowledgement.
+    assert batch_of(owned_library, token).announced_at is not None
+
+
+def test_an_undo_with_nothing_left_starts_nothing(client_in, owned_library, game):
+    in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
+    confirmation = confirm(client_in, some(in_the_bucket))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+
+    undone = client_in.post(undo_url(token), {})
+
     assert undone.status_code == 302
-    said = [str(message) for message in toasts(undone)]
-    assert NOT_THIS_BATCH in said
-    assert any("1 no longer there" in sentence for sentence in said)
-    #: The batch's own row was never touched by the forgery.
-    assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
+    assert NOTHING_TO_UNDO in said(undone)
+    assert not BulkBatch.objects.filter(undoes=uuid.UUID(token)).exists()
 
 
 def test_a_correlation_that_names_no_batch_is_not_found(client_in, owned_library):
@@ -1087,6 +1093,24 @@ def test_an_act_the_table_no_longer_holds_refuses(client_in, owned_library, game
     confirmation = confirm(client_in, some(session))
     token = posted(confirmation)[TOKEN_FIELD]
     act(client_in, confirmation)
+    BulkBatch.objects.filter(token=uuid.UUID(token)).update(action="session.retired")
+
+    response = client_in.post(undo_url(token), {})
+
+    assert response.status_code == 400
+    assert UNKNOWN_ACT.encode() in response.content
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
+
+
+def test_a_batch_without_a_row_reads_its_act_from_events(
+    client_in, owned_library, game
+):
+    """Batches run before the batch rows."""
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    BulkBatch.objects.filter(token=uuid.UUID(token)).delete()
     LibraryEvent.objects.filter(correlation_id=uuid.UUID(token)).update(
         source_metadata={"bulk": {"action": "session.retired"}}
     )
@@ -1095,7 +1119,6 @@ def test_an_act_the_table_no_longer_holds_refuses(client_in, owned_library, game
 
     assert response.status_code == 400
     assert UNKNOWN_ACT.encode() in response.content
-    assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
 
 
 def test_an_ordinary_act_is_no_batch(client_in, owned_user, owned_library, game):
@@ -1306,21 +1329,20 @@ def test_a_refused_settle_keeps_the_token_and_the_rows(
     assert str(session.pk) in response.content.decode()
 
 
-def test_every_chunk_of_a_batch_settles_the_choice_again(
+def test_the_choice_is_settled_once_and_stored(
     client_in, owned_library, game, asker, monkeypatch
 ):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(3)
     ]
 
     response = act(client_in, confirm(client_in, some(*sessions), url=ASK), url=ASK)
-    while response.status_code == 200:
-        response = act(client_in, response, url=ASK)
 
     assert response.status_code == 302
-    assert asker.settled == [PICKED, PICKED, PICKED]
+    assert newest_batch(owned_library).choice == PICKED
+    assert asker.settled == [PICKED]
     assert asker.seen == [PICKED, PICKED, PICKED]
 
 
@@ -1365,29 +1387,96 @@ def test_a_confirmations_press_wears_the_acts_colour(
     assert solid in _confirm_button(response, label)
 
 
-def test_an_offer_that_refuses_mid_batch_ends_the_batch_with_its_undo(
-    client_in, owned_library, game, asker, monkeypatch
+def test_an_undo_of_a_stopped_batch_takes_back_only_its_done_rows(
+    client_in, owned_library, game, monkeypatch, held_batches
 ):
-    """The rows done stay done, and keep the press that takes them back.
-
-    A page saying nothing happened would strand every row the
-    batch had already written.
-    """
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(3)
     ]
-    acted = act(client_in, confirm(client_in, some(*sessions), url=ASK), url=ASK)
-    assert tally_of(acted)["done"] == 1
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    held_batches.run_one()
+    client_in.post(stop_url(token))
+    held_batches.run_all()
 
-    #: The settle refuses first, so the runner re-asks; the
-    #: offer then turns the whole act down.
-    asker.refusing.append(NO_GAME)
-    answer = client_in.post(ASK, {**posted(acted), CHOICE_FIELD: "nonsense"})
+    client_in.post(undo_url(token), {})
+    held_batches.run_all()
 
-    assert answer.status_code == 302
-    said = [str(message) for message in toasts(answer)]
-    assert any("1 of 3 done" in one for one in said)
-    assert any(NO_GAME in one for one in said)
-    assert actions_of(answer), "the rows already written keep their undo"
+    assert said_by(undoing(token)) == ["1 of 1 done."]
+    assert PlayerSession.objects.alive().count() == 3
+    assert HistoricalPlaytime.objects.alive().count() == 0
+
+
+def test_an_undo_pressed_after_an_undo_ended_finds_everything_back(
+    client_in, owned_library, game
+):
+    """A new Undo; each row already so."""
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    client_in.post(undo_url(token), {})
+
+    client_in.post(undo_url(token), {})
+
+    undos = BulkBatch.objects.filter(undoes=uuid.UUID(token)).order_by("created_at")
+    assert said_by(undos.last()) == ["0 of 1 done, 1 already done."]
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None
+
+
+def test_an_undo_of_an_undo_says_so(client_in, owned_library, game):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    client_in.post(undo_url(token), {})
+
+    response = client_in.post(undo_url(str(undoing(token).token)), {})
+
+    assert response.status_code == 400
+    assert html_module.escape(UNDO_OF_AN_UNDO) in response.content.decode()
+
+
+def test_an_undo_ends_a_batch_no_worker_owns(
+    client_in, owned_library, game, chunk_queue
+):
+    """Stale, so Undo stops it first."""
+    from games.bulk_jobs import STALE_AFTER
+
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    chunk_queue.held = True
+    act(client_in, confirmation)
+    #: One row done, then the worker vanished.
+    chunk_queue.run_one()
+    BulkBatch.objects.filter(token=uuid.UUID(token)).update(
+        state=BulkBatch.State.RUNNING,
+        ended_at=None,
+        updated_at=timezone.now() - STALE_AFTER - timedelta(minutes=1),
+    )
+    chunk_queue.held = False
+
+    client_in.post(undo_url(token), {})
+
+    assert batch_of(owned_library, token).state == BulkBatch.State.STOPPED
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None
+
+
+def test_an_undo_answers_a_dialog_request_as_done(client_in, owned_library, game):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+
+    response = client_in.post(
+        undo_url(token) + "?origin=/tracker/session/list",
+        {},
+        headers={"X-Form-Dialog": "1"},
+    )
+
+    assert response.json()["kind"] == "done"
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None

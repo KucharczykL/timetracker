@@ -33,12 +33,10 @@ keep: "Keep: Steam Deck", or "Keep: mixed" when the rows differ.
 
 A ⊘ has priority over a value in its field.
 
-The first press posts the form; each later chunk posts `CHOICE_FIELD`.
-`settle_edit` decodes that, else validates the form, and checks that the
-device is live. Its answer is `encode()`, so settling twice gives the same
-text. A refused settle shows the confirmation again on the same token. A
-second statement in one batch is correct, because each row's Undo reads its
-own events.
+The press posts the form. `settle_edit` decodes `CHOICE_FIELD`, else
+validates the form, and checks that the device is live. Its answer is
+`encode()`, stored on the batch, so settling twice gives the same text. A
+refused settle shows the confirmation again on the same token.
 
 ## The act
 

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.untracked_games
 
 #: Measured, not guessed. Constant across row counts.
 #: One of them reads the column choice, once.
-PURCHASE_LIST_QUERIES = 17
+PURCHASE_LIST_QUERIES = 18
 
 
 @pytest.fixture

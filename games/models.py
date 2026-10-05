@@ -1180,6 +1180,114 @@ class BatchChange(models.Model):
         return f"{self.model_label} {self.row_id}.{self.field} in {self.batch}"
 
 
+#: Named so a caught violation names which.
+BULK_BATCH_TOKEN_CONSTRAINT = "unique_bulk_batch_token"
+BULK_BATCH_LIVE_UNDO_CONSTRAINT = "one_live_undo_per_bulk_batch"
+
+
+class BulkBatch(models.Model):
+    """One bulk act, run in the background."""
+
+    class State(models.TextChoices):
+        QUEUED = "queued"
+        RUNNING = "running"
+        FINISHED = "finished"
+        STOPPED = "stopped"
+        FAILED = "failed"
+
+    #: The states nothing moves on from.
+    TERMINAL: ClassVar[frozenset[State]] = frozenset(
+        {State.FINISHED, State.STOPPED, State.FAILED}
+    )
+    #: The states a runner still owns.
+    LIVE: ClassVar[frozenset[State]] = frozenset({State.QUEUED, State.RUNNING})
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("library", "token"), name=BULK_BATCH_TOKEN_CONSTRAINT
+            ),
+            models.UniqueConstraint(
+                fields=("library", "undoes"),
+                condition=Q(undoes__isnull=False, state__in=("queued", "running")),
+                name=BULK_BATCH_LIVE_UNDO_CONSTRAINT,
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    state__in=("queued", "running", "finished", "stopped", "failed")
+                ),
+                name="bulk_batch_state_known",
+            ),
+            models.CheckConstraint(
+                condition=Q(state__in=("queued", "running"), ended_at__isnull=True)
+                | Q(
+                    state__in=("finished", "stopped", "failed"),
+                    ended_at__isnull=False,
+                ),
+                name="bulk_batch_ended_exactly_when_terminal",
+            ),
+            models.CheckConstraint(
+                condition=Q(announced_at__isnull=True) | Q(ended_at__isnull=False),
+                name="bulk_batch_announced_after_its_end",
+            ),
+            models.CheckConstraint(
+                condition=Q(position__lte=F("total")),
+                name="bulk_batch_position_within_rows",
+            ),
+            models.CheckConstraint(
+                condition=Q(undoes__isnull=True) | Q(choice=""),
+                name="bulk_batch_undo_states_no_choice",
+            ),
+        )
+        indexes = (models.Index(fields=("library", "state")),)
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    #: The batch's correlation id.
+    token = models.UUIDField()
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="+"
+    )
+    action = models.CharField(max_length=100)
+    #: The batch an Undo takes back.
+    undoes = models.UUIDField(null=True)
+    #: The settled answer; empty for none.
+    choice = models.TextField(blank=True, default="")
+    origin = models.TextField()
+    #: Row keys as text; read through `keys`.
+    rows = models.JSONField()
+    #: Index into `rows` of the next key.
+    position = models.PositiveIntegerField(default=0)
+    total = models.PositiveIntegerField(default=0)
+    done = models.PositiveIntegerField(default=0)
+    unchanged = models.PositiveIntegerField(default=0)
+    refused = models.PositiveIntegerField(default=0)
+    lost = models.PositiveIntegerField(default=0)
+    reasons = models.JSONField(default=list)
+    #: The chunk due next.
+    chunk = models.PositiveIntegerField(default=0)
+    #: How often the due chunk started.
+    attempts = models.PositiveIntegerField(default=0)
+    state = models.CharField(max_length=16, choices=State, default=State.QUEUED)
+    stop_requested_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    ended_at = models.DateTimeField(null=True)
+    #: Set once the end was acknowledged.
+    announced_at = models.DateTimeField(null=True)
+
+    def __str__(self):
+        return f"{self.action} {self.token} ({self.state})"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state in self.TERMINAL
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """The row keys, in order."""
+        return tuple(str(key) for key in self.rows)
+
+
 class SiteSetting(models.Model):
     """DB layer of the settings resolver: a global runtime override for a
     site-scoped setting. Deliberately no user FK — per-user prefs live on

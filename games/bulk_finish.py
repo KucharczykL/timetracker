@@ -1,10 +1,6 @@
 """Finishing running sessions, in bulk.
 
-One act, one instant. The runner fingerprints each command's input, so a
-payload that differs between two posts of one chunk raises
-`IdempotencyKeyMismatch` and counts every finished row refused.
-`timezone.now()` inside `run` is such a payload, which is why the instant
-is stamped into the confirmation's HTML and carried in the choice.
+One instant, stamped at the confirmation.
 """
 
 import uuid
@@ -64,20 +60,14 @@ _SEPARATOR = "|"
 class FinishStatement:
     """The instant a batch ends at, and its zone.
 
-    Named rather than a bare pair: it crosses three boundaries as one
-    string — the hidden field, `settle`'s answer, and the waypoint.
+    One string: field, settle, batch row.
     """
 
     ended_at: datetime
     ended_at_zone: ZoneName | None
 
     def __post_init__(self) -> None:
-        """The two rules `decode` reads, where every caller meets them.
-
-        A naive instant encodes to an offsetless string the next chunk
-        refuses, and a zone tzdata lost reaches the database as a defect
-        with no sentence. Both are a round trip away from their cause.
-        """
+        """Offset required; zone tzdata knows."""
         if self.ended_at.tzinfo is None:
             raise ValueError(
                 f"{self.ended_at!r} states no offset, so it names no moment."
@@ -90,7 +80,7 @@ class FinishStatement:
 
     @classmethod
     def decode(cls, raw: ChoiceValue) -> FinishStatement:
-        """The pair a form or a waypoint stated.
+        """The pair a form or batch row stated.
 
         Refuses what it cannot read: a guess is a second instant.
         """
@@ -117,14 +107,7 @@ class FinishStatement:
 def offer_finish(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Offered:
-    """The instant stamped into the form, and the zone.
-
-    The instant is the form's, not the POST's. One confirmation can be
-    posted twice, and `ConfirmPage` has no submit-once guard: each row the
-    first post ended is dispatched again under the same key. Stamped, the
-    payload matches and those rows replay; minted per POST, every one of
-    them is reported refused.
-    """
+    """One instant for every row: the page's."""
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
@@ -142,13 +125,7 @@ def offer_finish(
 
 
 def settle_finish(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """The stamped instant, and whatever zone is at hand.
-
-    Re-run on every chunk over its own last answer: from chunk two the
-    waypoint renders hidden pairs alone, so there is no zone field, only
-    the choice holding both halves. Taking the zone only where the value
-    states none is what makes `settle(settle(x)) == settle(x)`.
-    """
+    """The stamped instant; a zone where none."""
     #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
 
@@ -159,7 +136,7 @@ def settle_finish(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     return FinishStatement(stated.ended_at, browser.key if browser else None).encode()
 
 
-#: A reconfirmation stamps a second instant for the rows left.
+#: A reconfirmation stamps a fresh instant.
 FINISH: BulkChoice[PlayerSession] = BulkChoice(offer=offer_finish, settle=settle_finish)
 
 
@@ -170,11 +147,7 @@ def _source(name: str) -> dict[str, object]:
 def _stated(choice: ChoiceValue | None) -> FinishStatement:
     """The pair every row of this batch is finished on.
 
-    A `None` choice is a defect: the runner settles before it runs, so the act
-    cannot reach a row without one. `CommandRejected` under `answered` and not
-    a bare exception — `_run_a_chunk` catches only `Http404` and
-    `CommandFailed`, and anything else skips the log that names every row the
-    batch never reached.
+    A `None` choice is a defect.
     """
     with answered("session"):
         if choice is None:

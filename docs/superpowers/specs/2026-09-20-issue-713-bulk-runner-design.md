@@ -30,23 +30,21 @@ One route, `/bulk/<action>/`, origin-aware. The submission token tells its two
 POSTs apart. A POST with no token resolves the statement under the library and
 answers a confirmation: the act, the count, the rows to a cap, each refusal
 with its reason, a fresh token, and the resolved keys. A POST with a token
-acts. The keys and the tally each ride one field, so the runner keeps nothing
-between requests. The token is the batch's correlation id, a UUIDv7.
+stores the batch and returns. The token is the batch's correlation id, a
+UUIDv7. [Background jobs](2026-10-05-issue-1507-bulk-jobs-design.md) runs it.
 
 ## The chunk
 
-A chunk is the rows one request acts on inside `CHUNK_BUDGET`. A chunk is no
+A chunk is the rows one task acts on inside `CHUNK_BUDGET`. A chunk is no
 transaction. Each row is its own dispatch, keyed from the token and the row, so
-a token posted twice acts once. Rows left over render a waypoint, which states
-the tally, posts the rest back, and offers a Stop. `<continuing-batch>` posts
-that form on connect.
+a row run twice acts once. Rows left over go to the next chunk.
 
 The tally counts four things apart: rows moved, rows already in that state,
 rows refused on their merits, and rows gone since the confirmation. It keeps
 each reason once, apart from the counts, because one sentence can stand over
 many rows. A defect ends the batch, and the rows done stay done.
 
-The answer states counts and sentences. The log states keys, under the batch's
+The toast states counts and sentences. The log states keys, under the batch's
 identity, for every row left alone: refused by the resolve, refused by the
 command, or reached by no dispatch after a Stop or a defect.
 
@@ -55,7 +53,7 @@ command, or reached by no dispatch after a Stop or a defect.
 Every append shares the correlation id, and states the act's name in its source
 metadata. The Undo reads one event to learn the act, then the aggregates of
 that act's aggregate type to learn the rows. It applies the inverse as a batch
-of its own: its own token, correlation id, budget, waypoint and answer. A name
+of its own: its own token, correlation id, budget and toast. A name
 the table does not hold is refused. A correlation that states no name is not
 found. `LibraryEvent` declares two indexes beside its sequence:
 `(library, correlation_id)` for the batch reader, and `(library, aggregate_id)`

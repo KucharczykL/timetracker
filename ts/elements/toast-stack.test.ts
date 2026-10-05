@@ -510,3 +510,86 @@ describe("under a modal", () => {
   });
 });
 
+
+describe("an action pressed behind a modal", () => {
+  const fetchMock = vi.fn();
+
+  function answer(body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function pressUndo(): HTMLFormElement {
+    show({
+      message: "Session removed.",
+      type: "success",
+      action: { label: "Undo", url: "/session/x/restore" },
+    } as Payload);
+    const form = document.querySelector<HTMLFormElement>("form[data-toast-action]")!;
+    form.requestSubmit(form.querySelector("button")!);
+    return form;
+  }
+
+  function openModal(): Modal {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("data-modal", "");
+    dialog.innerHTML = "<div><button>Inside</button></div>";
+    document.body.append(dialog);
+    const modal = attachModal(dialog);
+    modal.open();
+    return modal;
+  }
+
+  beforeEach(() => {
+    document.cookie = "csrftoken=t; path=/";
+    document.body.innerHTML =
+      '<toast-stack action-class="ghost-look" modal-region-class="region-look"></toast-stack>';
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+    document.cookie = "csrftoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  });
+
+  it("posts natively with no modal open", () => {
+    const native = vi.spyOn(HTMLFormElement.prototype, "requestSubmit");
+    pressUndo();
+    expect(native).toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("posts as a dialog, shows the messages and marks the page stale", async () => {
+    openModal();
+    fetchMock.mockResolvedValue(
+      answer({ kind: "done", url: "/session/list", messages: [{ message: "Restored.", type: "success" }] }),
+    );
+    const stale = vi.fn();
+    document.addEventListener("page:stale", stale);
+
+    pressUndo();
+    await vi.advanceTimersByTimeAsync(1);
+
+    document.removeEventListener("page:stale", stale);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/session/x/restore");
+    expect(init.method).toBe("POST");
+    expect(init.headers["X-Form-Dialog"]).toBe("1");
+    expect(toasts().map(messageOf)).toContain("Restored.");
+    expect(stale).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to a native post for an answer that is no dialog's", async () => {
+    openModal();
+    const native = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(new Response("<html></html>", { status: 400 }));
+
+    pressUndo();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(native).toHaveBeenCalledTimes(1);
+  });
+});

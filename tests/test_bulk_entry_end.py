@@ -5,8 +5,7 @@ import uuid
 from datetime import date
 
 import pytest
-from bulk_posts import act_url, posted, selection
-from django.contrib.messages import get_messages
+from bulk_posts import act_url, posted, said, selection
 from django.db import transaction
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
@@ -108,10 +107,6 @@ def _end(client, *entries, way="sold", day=SOLD_DAY, note=""):
 
 def _undo(client, token):
     return client.post(reverse("games:undo_bulk_action", args=[token]))
-
-
-def said(response) -> list[str]:
-    return [str(message) for message in get_messages(response.wsgi_request)]
 
 
 def _state(library: UserLibrary, command: Command) -> None:

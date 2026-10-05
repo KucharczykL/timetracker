@@ -4,7 +4,7 @@ import json
 import uuid
 
 import pytest
-from bulk_posts import act_url, posted, selection
+from bulk_posts import act_url, posted, said, selection
 from django.http import QueryDict
 from django.urls import reverse
 
@@ -25,7 +25,7 @@ from games.views.bulk import (
     CHOICE_FIELD,
     STATEMENT_FIELD,
     TOKEN_FIELD,
-    UNKNOWN_ACT,
+    UNDO_OF_AN_UNDO,
     _act_of,
 )
 from games.writes.platform import PLATFORM_REMOVED
@@ -212,7 +212,7 @@ def test_the_undo_refuses_a_platform_removed_since(logged_in, amiga, dos):
 
     assert _held(amiga)[0] == "Home"
     assert _held(dos)[0] == "PC"
-    assert PLATFORM_REMOVED in response.content.decode()
+    assert any(PLATFORM_REMOVED in sentence for sentence in said(response))
 
 
 def test_an_undo_batch_offers_no_undo(logged_in, amiga):
@@ -226,7 +226,7 @@ def test_an_undo_batch_offers_no_undo(logged_in, amiga):
     response = logged_in.post(reverse("games:undo_bulk_action", args=[undo_batch]))
 
     assert response.status_code == 400
-    assert UNKNOWN_ACT in response.content.decode()
+    assert UNDO_OF_AN_UNDO in response.content.decode()
     assert _held(amiga)[0] == "Commodore"
 
 

@@ -7,7 +7,7 @@ import uuid
 from dataclasses import fields as dataclass_fields
 
 import pytest
-from django.contrib.messages import get_messages
+from bulk_posts import said
 from django.http import Http404, QueryDict
 from django.urls import reverse
 from session_rows import tracked_run
@@ -142,10 +142,6 @@ def _run(client, *games, **answers: str):
 
 def _undo(client, token):
     return client.post(reverse("games:undo_bulk_action", args=[token]))
-
-
-def said(response) -> list[str]:
-    return [str(message) for message in get_messages(response.wsgi_request)]
 
 
 def _post(**fields: str) -> QueryDict:

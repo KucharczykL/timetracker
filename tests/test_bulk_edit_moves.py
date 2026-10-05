@@ -6,8 +6,8 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from bulk_posts import said
 from devices import create_device
-from django.contrib.messages import get_messages
 from django.http import QueryDict
 from django.urls import reverse
 from django.utils import timezone
@@ -683,16 +683,16 @@ def test_a_batch_refuses_a_cross_game_row_and_moves_the_rest(
 ):
     """The game is the row's rule, so one bad row is one refusal.
 
-    A continuation's rows can span two games, which is why the
-    settle says nothing about the game. The tally is the person's
-    to edit, so this is the shape that reaches the runner.
+    Rows posted at the press can span two games, which is why
+    the settle says nothing about the game. The hidden field is the
+    person's to edit, so this is the shape that reaches the runner.
     """
     target = tracked_run(owned_library, game)
     ours = a_recorded_session(owned_user, a_run(owned_library, game, name="Second"))
     theirs = a_recorded_session(owned_user, tracked_run(owned_library, other_game))
 
     fields = _posted(_confirm(client_in, ours))
-    #: Both rows, as a person editing the progress form would state.
+    #: Both rows, as an edited hidden field states.
     fields[PROGRESS_FIELD] = json.dumps(
         {"rows": [str(ours.pk), str(theirs.pk)], "total": 2}
     )
@@ -704,9 +704,7 @@ def test_a_batch_refuses_a_cross_game_row_and_moves_the_rest(
     theirs.refresh_from_db()
     assert ours.playthrough_id == target.pk
     assert theirs.playthrough_id != target.pk
-    assert ANOTHER_GAME in " ".join(
-        str(message) for message in get_messages(answer.wsgi_request)
-    )
+    assert ANOTHER_GAME in " ".join(said(answer))
 
 
 def test_run_before_reads_an_earlier_move(owned_user, owned_library, game):

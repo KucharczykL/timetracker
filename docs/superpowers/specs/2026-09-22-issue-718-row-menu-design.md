@@ -52,8 +52,8 @@ the first show.
 
 `FINISH_SESSION` is a `BulkAction` over sessions, on the shared scope and
 resolve in `games/bulk_sessions.py`. One batch ends each row at one instant: the confirmation stamps it into
-the choice, and each chunk carries it. A new instant in each chunk gives a
-different fingerprint, and the runner then counts every finished row as refused.
+the choice, and the batch stores it. A new instant on a redelivered row would
+give a different fingerprint, and its keyed dispatch would refuse it.
 The inverse states the timing again with no end, which is the row running.
 
 ## The title

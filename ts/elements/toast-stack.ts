@@ -1,8 +1,12 @@
 /** The page's toasts: the store and its element. */
 import { reportClientError } from "../client-errors.js";
 import { getCsrfToken } from "../csrf.js";
+import { FORM_DIALOG_HEADER } from "../generated/form-dialog.js";
 import { readToastStackProps } from "../generated/props.js";
 import { takeHandedOffMessages } from "../handoff.js";
+import { type Answer, readAnswer } from "./form-dialog/answer.js";
+import { PAGE_STALE } from "./form-dialog/events.js";
+import { browser } from "./form-dialog/navigation.js";
 import { MODAL_CHANGE, topModal } from "./modal-layer.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
@@ -479,8 +483,44 @@ class ToastStackElement extends HTMLElement {
     button.textContent = action.label;
     // The wrapper's click would dismiss.
     button.addEventListener("click", (event) => event.stopPropagation());
+    form.addEventListener("submit", (event) => {
+      // Navigating would close the open modals.
+      if (topModal() === null) return;
+      event.preventDefault();
+      void this.postBehindModal(form);
+    });
     form.append(token, button);
     return form;
+  }
+
+  /** Answered as a dialog; the page reloads later. */
+  private async postBehindModal(form: HTMLFormElement): Promise<void> {
+    const url = new URL(form.action, location.href);
+    let answer: Answer;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: { [FORM_DIALOG_HEADER]: "1", Accept: "application/json" },
+      });
+      answer = await readAnswer(response, url);
+    } catch (error) {
+      reportClientError("toast-stack[action]", String(error), { toast: false });
+      answer = { kind: "none", status: 0 };
+    }
+    switch (answer.kind) {
+      case "done":
+        this.addAll([...answer.messages], "action");
+        document.dispatchEvent(new CustomEvent(PAGE_STALE));
+        return;
+      case "continue":
+        browser.assign(answer.url.href);
+        return;
+      default:
+        // Not a dialog answer: the page shows it.
+        form.submit();
+    }
   }
 
   private updateToast(wrapper: HTMLElement, toast: Toast): void {
