@@ -655,7 +655,7 @@ class TemporalFieldElement extends HTMLElement implements UnsetTarget {
     }
     if (!this.paintCopy) return;
     this.paintCopy();
-    // On the document: a later source still counts.
+    // Document-wide: a later source counts.
     document.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, this.paintCopy);
   }
 

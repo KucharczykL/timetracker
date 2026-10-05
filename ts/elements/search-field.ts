@@ -27,7 +27,7 @@ class SearchFieldElement extends HTMLElement {
     this.removeEventListener("keydown", this.onKeydown);
   }
 
-  // Enter applies, as in a facet input. The bar owns the submit.
+  // Enter applies; the bar owns submit.
   private onKeydown = (event: KeyboardEvent): void => {
     if (event.key !== "Enter") return;
     const input = (event.target as HTMLElement | null)?.closest("[data-match-value]");
