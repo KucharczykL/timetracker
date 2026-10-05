@@ -12,8 +12,6 @@ from common.components import (
     ControlButton,
     Form,
     FormFields,
-    Fragment,
-    ModuleScript,
 )
 from common.layout import render_page
 from games.forms import ChoiceSearchSelectWidget
@@ -56,11 +54,6 @@ def letter_page_view(request: HttpRequest) -> HttpResponse:
             ControlButton(type="submit")["Save"],
         ],
         title="Fixed choices harness",
-        # No bubbling Media, no navbar: load both.
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/drop-down.js"),
-        ),
     )
 
 

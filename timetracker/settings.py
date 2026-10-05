@@ -102,6 +102,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "games.toast_middleware.ToastMessagesMiddleware",
+    "games.form_dialog_middleware.FormDialogResultMiddleware",
 ]
 
 if DEBUG:

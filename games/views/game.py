@@ -36,7 +36,6 @@ from common.components import (
     GameStatusSelector,
     Icon,
     Link,
-    ModuleScript,
     NameWithIcon,
     Node,
     P,
@@ -467,8 +466,6 @@ def add_game(request: HttpRequest) -> HttpResponse:
             )["Submit & Add to library"],
         ),
         title="Add New Game",
-        #: Release rows render outside FormFields.
-        scripts=ModuleScript("dist/elements/temporal-field.js"),
     )
 
 
@@ -577,8 +574,6 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             width_class="max-w-xl md:max-w-4xl",
         ),
         title="Edit Game",
-        #: Release rows render outside FormFields.
-        scripts=ModuleScript("dist/elements/temporal-field.js"),
         #: The same tail renders an invalid form.
         status=refused_status,
     )
@@ -1452,7 +1447,6 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         request,
         content,
         title=f"Game Overview - {game.name}",
-        mastered=game.tracked_mastered,
     )
 
 

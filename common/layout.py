@@ -15,15 +15,18 @@ from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.http import HttpRequest, HttpResponse
+from django.core.exceptions import ImproperlyConfigured
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.urls import reverse
+from django.utils.cache import patch_vary_headers
 from django.utils.safestring import SafeText
 from django.utils.translation import get_language
 
 from common.components.core import Document, Safe
 from common.components.elements import Footer, LinkTag
+from common.components.form_dialog import PageAnswer
 from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
     PAGE_GUTTER_CLASS,
@@ -38,6 +41,7 @@ from common.components.primitives import (
     Title,
 )
 from common.components.toast import ToastStack
+from common.form_dialog import FORM_DIALOG_HEADER, is_form_dialog
 from common.keyset import keyset_pages
 from common.notices import toast_payloads
 from games.templatetags.version import version, version_modified_at
@@ -52,22 +56,6 @@ if TYPE_CHECKING:
     from common.components import Node
     from common.returns import OriginUrl
     from games.models import PlayerSession
-
-_MAIN_SCRIPT_A = """
-            document.addEventListener('DOMContentLoaded', () => {
-                if (window.mountCrownIcon) {
-                    window.mountCrownIcon('#crown-icon-mount-point', {
-                        mastered: """
-_MAIN_SCRIPT_B = """
-                    });
-                }
-            });
-        """
-
-
-def _main_script(mastered: bool) -> str:
-    return _MAIN_SCRIPT_A + ("true" if mastered else "false") + _MAIN_SCRIPT_B
-
 
 #: One page usually answers the whole scan.
 RESUME_PAGE_SIZE = 50
@@ -248,9 +236,7 @@ def Navbar(
                 csrf_token=csrf_token,
             ),
         ]
-    return Nav(
-        id="navbar", class_="bg-neutral-primary-soft border-b border-default py-4"
-    )[
+    return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
             class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} {PAGE_GUTTER_CLASS} "
             "flex items-center gap-x-3 mx-auto"
@@ -263,16 +249,13 @@ def TimetrackerDocument(
     *,
     request: HttpRequest,
     title: str = "",
-    scripts: Node | SafeText | str = "",
-    mastered: bool = False,
     is_settings_page: bool = False,
 ) -> Document:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
 
     Scripts are collected from `content`'s component tree: every component
     declares its JS via `Media`, and `collect_media` gathers (deduped) the union
-    for the whole page. The `scripts` argument remains for page-specific glue
-    that isn't owned by a reusable component (e.g. the add-form helpers).
+    for the whole page.
     """
     from django.urls import Resolver404, resolve
 
@@ -335,7 +318,6 @@ def TimetrackerDocument(
     )
     if request.user.is_authenticated:
         collected_scripts += str(ModuleScript("dist/library-conversion-status.js"))
-    all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
     # Embed as JSON; guard against `</script>` breaking out of the tag.
     messages_json = json.dumps(toast_payloads(request)).replace("</", "<\\/")
@@ -346,10 +328,7 @@ def TimetrackerDocument(
             f"({date_time_presentation.format(version_modified_at(), 'datetime')})"
         ]
 
-        script_body = Safe(all_scripts)
-        mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
-            _main_script(mastered)
-        ]
+        script_body = Safe(collected_scripts)
         theme_attributes = [
             ("lang", get_language() or settings.LANGUAGE_CODE),
             (
@@ -458,19 +437,13 @@ def TimetrackerDocument(
                         navbar,
                         Div(
                             id="main-container",
-                            data_page_title=title,
                             data_read_only=read_only,
                             tabindex="-1",
-                            class_=(
-                                f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS} "
-                                # Busy while a form dialog refreshes it.
-                                "aria-busy:cursor-progress aria-busy:opacity-60"
-                            ),
+                            class_=f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS}",
                         )[content],
                         version_footer_note,
                     ],
                     script_body,
-                    mastered_script_IS_THIS_REALLY_NEEDED,
                     toast_container,
                     form_dialog_host,
                 ],
@@ -485,25 +458,52 @@ def TimetrackerDocument(
     return html_document(title=title)
 
 
+def _dialog_answer(
+    request: HttpRequest, content: Node | SafeText | str, *, title: str, status: int
+) -> HttpResponse:
+    """The content alone, for the form dialog."""
+    from common.components import Fragment, assert_unique_element_ids, collect_media
+
+    media = collect_media(content)
+    if media.js_external:
+        raise ImproperlyConfigured(
+            f"A form dialog imports modules only, not {media.js_external!r}"
+        )
+    fragment = Fragment(content)
+    if settings.DEBUG:
+        assert_unique_element_ids(fragment)
+    answer = PageAnswer(
+        kind="page",
+        title=title,
+        html=str(fragment),
+        modules=[static("js/" + name) for name in media.js],
+        messages=toast_payloads(request),
+    )
+    response = JsonResponse(answer, status=status)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 def render_page(
     request: HttpRequest,
     content: Node | SafeText | str,
     *,
     title: str = "",
-    scripts: Node | SafeText | str = "",
-    mastered: bool = False,
     is_settings_page: bool = False,
     status: int = 200,
 ) -> HttpResponse:
-    """`render()`-style shortcut: build a full page and return an HttpResponse."""
-    return HttpResponse(
-        TimetrackerDocument(
-            content,
-            request=request,
-            title=title,
-            scripts=scripts,
-            mastered=mastered,
-            is_settings_page=is_settings_page,
-        ),
-        status=status,
-    )
+    """`render()`-style shortcut: the full page, or dialog content."""
+    if is_form_dialog(request):
+        response = _dialog_answer(request, content, title=title, status=status)
+    else:
+        response = HttpResponse(
+            TimetrackerDocument(
+                content,
+                request=request,
+                title=title,
+                is_settings_page=is_settings_page,
+            ),
+            status=status,
+        )
+    patch_vary_headers(response, (FORM_DIALOG_HEADER,))
+    return response

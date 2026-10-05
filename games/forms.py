@@ -1016,11 +1016,7 @@ class TemporalWidget(forms.Widget):
     posted text, not a parsed draft, so a submission the grammar refuses
     re-renders the characters a person typed.
 
-    A widget renders to text, so the node tree ends here and the custom
-    element's `Media` never reaches `collect_media()`. The hosting view
-    must thread `scripts=ModuleScript("dist/elements/temporal-field.js")`
-    itself, the way the purchase and play-event pages already do for the
-    date picker. #969 is the first page that hosts one.
+    `component_media` carries the element's module.
     """
 
     #: A ⊘ stands beside it.

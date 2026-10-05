@@ -31,12 +31,11 @@ from common.components import (
     Input,
     Label,
     Node,
-    Safe,
     Span,
     Template,
     custom_element_builder,
 )
-from common.components.primitives import field_label_id
+from common.components.primitives import bound_control, field_label_id
 from games.catalog_form import (
     EDITION_COUNT_FIELD,
     EDITION_PLACEHOLDER,
@@ -188,7 +187,7 @@ def _remove_button(title: str, naming: list[tuple[str, str]]) -> Node:
 
 
 def _hidden_fields(form: BaseForm) -> list[Node]:
-    return [Safe(str(field)) for field in form if field.is_hidden]
+    return [bound_control(field) for field in form if field.is_hidden]
 
 
 def _non_field_errors(form: BaseForm) -> list[Node]:
@@ -210,7 +209,7 @@ def _labelled(
             for_=field.id_for_label,
             id_=field_label_id(field.id_for_label) or None,
         )[str(field.label)],
-        Safe(str(field)),
+        bound_control(field),
     ]
     errors = FieldErrors(field.errors)
     if errors is not None:

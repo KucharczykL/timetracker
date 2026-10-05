@@ -24,8 +24,11 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
+    ContinueAnswer,
+    DoneAnswer,
     FormDialogChrome,
     FormDialogPart,
+    PageAnswer,
 )
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
@@ -48,6 +51,7 @@ from common.criteria import (
     ModifierToken,
 )
 from common.date_time_presentation import DateTimePresentationConfig
+from common.form_dialog import FORM_DIALOG_HEADER
 from games.models import ADDON_KINDS
 from games.views.catalog_section import (
     CATALOG_NAME_KINDS,
@@ -62,8 +66,9 @@ from timetracker.settings_registry import THEME_CHOICES
 def form_dialog_module() -> str:
     """The link marker and template parts."""
     return render_filter_metadata_module(
-        [],
+        [PageAnswer, DoneAnswer, ContinueAnswer],
         constants=[
+            TsConstant("FORM_DIALOG_HEADER", str, FORM_DIALOG_HEADER),
             TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
             TsConstant(
                 "FORM_DIALOG_CHROME",

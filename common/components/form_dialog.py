@@ -1,7 +1,7 @@
 """Links that open their form page in a modal."""
 
 from collections.abc import Mapping
-from typing import Final, Literal
+from typing import Final, Literal, TypedDict
 
 from common.components.core import Attributes, Node
 from common.components.custom_elements import OVERLAY_SURFACE_CLASS
@@ -13,11 +13,43 @@ from common.components.modal import (
     titled_header,
 )
 from common.components.primitives import FORM_MAX_WIDTH_CLASS, custom_element_builder
+from common.notices import ToastPayload
 
 type FormDialogChrome = Literal["header", "bare"]
 type FormDialogPart = Literal["template", "header", "title", "body"]
 type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
 type AttributeName = str  # e.g. "aria-controls"
+type AbsoluteUrl = str  # e.g. "https://example.com/devices"
+type ModuleUrl = str  # e.g. "/static/js/dist/elements/field-mirror.js"
+
+
+class PageAnswer(TypedDict):
+    """The page's content, for the dialog."""
+
+    kind: Literal["page"]
+    title: str
+    html: str
+    modules: list[ModuleUrl]
+    messages: list[ToastPayload]
+
+
+class DoneAnswer(TypedDict):
+    """Finished; the page at `url` follows."""
+
+    kind: Literal["done"]
+    url: AbsoluteUrl
+    messages: list[ToastPayload]
+
+
+class ContinueAnswer(TypedDict):
+    """Fetch `url` into the same dialog."""
+
+    kind: Literal["continue"]
+    url: AbsoluteUrl
+
+
+type FormDialogAnswer = PageAnswer | DoneAnswer | ContinueAnswer
+
 
 FORM_DIALOG_ATTRIBUTE: Final[FormDialogAttribute] = "data-form-dialog"
 

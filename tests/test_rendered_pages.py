@@ -182,9 +182,7 @@ class RenderedPagesTest(TestCase):
         html = self.get("games:list_playthroughs").content.decode()
         # No script tag should appear escaped anywhere on the page.
         self.assertNotIn("&lt;script", html)
-        # Inline JS keeps its quotes (escaping would yield &#x27;).
-        self.assertIn("document.addEventListener('DOMContentLoaded'", html)
-        self.assertNotIn("&#x27;DOMContentLoaded&#x27;", html)
+        self.assertIn('<script type="module" src=', html)
         # Correct charset markup, not <meta name="charset">.
         self.assertIn('<meta charset="utf-8"', html)
         # A single, un-escaped django-messages JSON block.
