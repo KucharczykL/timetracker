@@ -15,7 +15,11 @@ import {
   takeHandedOffOpener,
 } from "../handoff.js";
 import { type Answer, type Messages, type Page, readAnswer, sameUrl } from "./form-dialog/answer.js";
-import { PAGE_STALE } from "./form-dialog/events.js";
+import {
+  FORM_DIALOG_CREATED,
+  type FormDialogCreatedDetail,
+  PAGE_STALE,
+} from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import { focusOpener, openerKey } from "./form-dialog/opener.js";
 import {
@@ -25,7 +29,7 @@ import {
   prefixIds,
   resolveUrls,
 } from "./form-dialog/rewrite.js";
-import { assertNever, routeOpen, routeSubmit } from "./form-dialog/routes.js";
+import { assertNever, type DoneRoute, routeOpen, routeSubmit } from "./form-dialog/routes.js";
 import {
   attachModal,
   isModalOpen,
@@ -39,6 +43,8 @@ interface OpenDialog {
   readonly body: HTMLElement;
   readonly chrome: FormDialogChrome;
   readonly opener: OpenerKey | null;
+  /** The link itself; a created row goes there. */
+  readonly openerElement: HTMLElement;
   readonly modal: Modal;
   /** Aborts the in-flight submit on close. */
   readonly controller: AbortController;
@@ -400,6 +406,7 @@ export class FormDialogElement extends HTMLElement {
       body,
       chrome,
       opener: openerKey(opener),
+      openerElement: opener,
       modal,
       controller: new AbortController(),
       url,
@@ -512,8 +519,10 @@ export class FormDialogElement extends HTMLElement {
         this.unconfirmed(`submit failed: ${String(error)}`);
         return;
       }
-      const wrote = answer.kind === "done" || answer.kind === "continue";
-      if (wrote) this.stale = true;
+      const wrote =
+        answer.kind === "done" || answer.kind === "continue" || answer.kind === "created";
+      // A created row's route decides.
+      if (wrote && answer.kind !== "created") this.stale = true;
       try {
         await this.routeSubmitAnswer(entry, answer, signal, wrote);
       } catch (error) {
@@ -550,15 +559,20 @@ export class FormDialogElement extends HTMLElement {
           answer = await this.fetchAnswer(route.url, { signal });
           continue;
         case "close":
-          this.reload = mergeReload(this.reload, {
-            target: route.target,
-            messages: route.messages,
-          });
-          entry.modal.close();
-          return;
         case "closeTop":
-          entry.modal.close();
-          showToasts(route.messages);
+          this.finish(entry, route);
+          return;
+        case "created":
+          if (this.handOver(entry, route.option)) {
+            // Only a lower dialog's close reloads.
+            if (this.lowerDialogHolds(entry)) this.stale = true;
+            // Else closed() counts it as a write.
+            entry.submitting = false;
+            this.finish(entry, { kind: "closeTop", messages: route.fallback.messages });
+          } else {
+            this.stale = true;
+            this.finish(entry, route.fallback);
+          }
           return;
         case "error":
           if (wrote) {
@@ -571,6 +585,37 @@ export class FormDialogElement extends HTMLElement {
           assertNever(route);
       }
     }
+  }
+
+  private finish(entry: OpenDialog, route: DoneRoute): void {
+    if (route.kind === "close") {
+      this.reload = mergeReload(this.reload, {
+        target: route.target,
+        messages: route.messages,
+      });
+      entry.modal.close();
+      return;
+    }
+    entry.modal.close();
+    showToasts(route.messages);
+  }
+
+  /** True when the opener took the row. */
+  private handOver(entry: OpenDialog, option: FormDialogCreatedDetail): boolean {
+    const link = entry.openerElement;
+    if (!link.isConnected) return false;
+    const event = new CustomEvent<FormDialogCreatedDetail>(FORM_DIALOG_CREATED, {
+      bubbles: true,
+      cancelable: true,
+      detail: option,
+    });
+    return !link.dispatchEvent(event);
+  }
+
+  private lowerDialogHolds(entry: OpenDialog): boolean {
+    return this.stack.some(
+      (other) => other !== entry && other.body.contains(entry.openerElement),
+    );
   }
 
   /** A write may have landed unseen. */

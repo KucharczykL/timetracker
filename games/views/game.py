@@ -73,6 +73,7 @@ from common.duration_presentation import (
     duration_presentation_for_request,
 )
 from common.filter_execution import execute_filter, regex_timeout_view
+from common.form_dialog import created_row
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
 from common.temporal_presentation import (
@@ -103,7 +104,7 @@ from games.filters import (
     parse_game_filter,
 )
 from games.formatting import session_time_range
-from games.forms import GAME_FORM_GROUPS, GameForm
+from games.forms import GAME_FORM_GROUPS, GameForm, game_option
 from games.list_columns import column_choice
 from games.models import (
     Edition,
@@ -444,7 +445,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
                         origin=origin_from(request),
                     )
                 )
-            return redirect(return_url(request, fallback="games:list_games"))
+            return created_row(
+                redirect(return_url(request, fallback="games:list_games")),
+                game_option(game),
+            )
 
     return render_page(
         request,

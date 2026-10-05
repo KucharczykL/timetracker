@@ -17,6 +17,7 @@ from games.end_ways import END_WAY_LABELS, EndWay
 from games.endpoints import ENTRY_ACCESS_END
 from games.events.idempotency import IdempotencyKey, key_answered
 from games.forms import (
+    NEW_GAME,
     PrimitiveWidgetsMixin,
     RadioListWidget,
     SearchSelectWidget,
@@ -226,6 +227,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
                     search_url=GAME_SEARCH_URL,
                     options_resolver=partial(_game_options, library=library),
                     autofocus=True,
+                    dialog_create=NEW_GAME,
                 ),
             )
             params = {"game_id": {"field": self.add_prefix("game")}}

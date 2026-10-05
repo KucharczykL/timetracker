@@ -16,11 +16,12 @@ from django.urls import URLPattern, URLResolver, get_resolver, reverse
 from tracked_games import create_tracked_game
 
 from common.components import Div, Fragment
-from common.form_dialog import FORM_DIALOG_HEADER
+from common.form_dialog import FORM_DIALOG_HEADER, created_row
 from common.layout import render_page
 from common.returns import action_url
 from games.form_dialog_middleware import FormDialogResultMiddleware, dialog_result
-from games.models import Device
+from games.forms import game_option
+from games.models import Device, Game
 from games.toast_middleware import EVENTS_HEADER, ToastMessagesMiddleware
 from games.views.returns import READ_ONLY
 
@@ -335,3 +336,46 @@ def test_a_rewritten_token_survives_sign_in(owned_user):
 
     assert response.status_code == 200
     assert response.json()["kind"] == "done"
+
+
+OPTION = {"value": "1", "label": "Outer Wilds (PC)", "data": {}}
+
+
+def test_a_tagged_redirect_to_a_read_only_page_is_created():
+    request = _dialog_request()
+    messages.success(request, "Saved")
+    redirect = created_row(HttpResponseRedirect(reverse("games:list_games")), OPTION)
+
+    assert json.loads(_answered(request, redirect).content) == {
+        "kind": "created",
+        "url": SERVER + reverse("games:list_games"),
+        "messages": [{"message": "Saved", "type": "success"}],
+        "option": OPTION,
+    }
+
+
+def test_a_tagged_redirect_to_a_form_page_continues():
+    request = _dialog_request()
+    redirect = created_row(HttpResponseRedirect(reverse("games:add_game")), OPTION)
+
+    assert json.loads(_answered(request, redirect).content)["kind"] == "continue"
+
+
+def test_a_tagged_redirect_outside_dialog_mode_stays():
+    request = RequestFactory().post("/")
+    redirect = created_row(HttpResponseRedirect("/devices"), OPTION)
+
+    assert _answered(request, redirect) is redirect
+
+
+@pytest.mark.django_db(transaction=True)
+def test_add_game_answers_the_created_game(logged_in, game_post, owned_library):
+    response = logged_in.post(
+        reverse("games:add_game"), game_post("Outer Wilds"), headers=DIALOG_HEADERS
+    )
+
+    answer = response.json()
+    game = Game.objects.get(library=owned_library, name="Outer Wilds")
+    assert answer["kind"] == "created"
+    assert answer["option"] == game_option(game)
+    assert answer["url"] == SERVER + reverse("games:list_games")

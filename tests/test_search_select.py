@@ -26,6 +26,7 @@ from common.components.search_select import (
     OVERWRITE_PRESET_VERB,
     PRESET_SEARCH_PLACEHOLDER,
     SAVE_PRESET_VERB,
+    DialogCreate,
     presets_member,
 )
 from games.models import Game, Platform
@@ -723,7 +724,9 @@ class GameResolverTest(django.test.TestCase):
                 _game_options([self.g1.id, self.g2.id], library=self.library)
             )
         self.assertEqual(len(options), 2)
-        self.assertEqual({o["value"] for o in options}, {self.g1.id, self.g2.id})
+        self.assertEqual(
+            {o["value"] for o in options}, {str(self.g1.id), str(self.g2.id)}
+        )
 
     def test_searchselect_selected_wraps_resolver(self):
         from games.forms import _game_options
@@ -733,7 +736,7 @@ class GameResolverTest(django.test.TestCase):
             lambda values: _game_options(values, library=self.library),
         )
         self.assertEqual(len(options), 1)
-        self.assertEqual(options[0]["value"], self.g1.id)
+        self.assertEqual(options[0]["value"], str(self.g1.id))
         self.assertEqual(options[0]["data"]["platform"], str(self.platform.id))
         self.assertEqual(options[0]["data"]["platform_name"], "Steam")
 
@@ -773,6 +776,14 @@ class SearchGamesApiTest(django.test.TestCase):
         results = search_games(SimpleNamespace(user=self.user), q="Zelda")
         self.assertEqual(results[0]["data"]["platform"], str(self.platform.id))
         self.assertEqual(results[0]["data"]["platform_name"], "Steam")
+
+    def test_a_row_is_the_game_option(self):
+        from games.api import search_games
+        from games.forms import game_option
+
+        results = search_games(SimpleNamespace(user=self.user), q="Zelda")
+        zelda = Game.objects.get(library=self.library, name="Zelda")
+        self.assertEqual(results, [game_option(zelda)])
 
 
 if __name__ == "__main__":
@@ -1494,3 +1505,41 @@ def test_a_form_re_render_carries_an_ended_devices_hint(owned_library):
     (option,) = device_options([device.pk], library=owned_library)
 
     assert (option["label"], option.get("hint")) == ("Switch", "Sold")
+
+
+NEW_DEVICE = DialogCreate("/device/add", "New device")
+
+
+class DialogCreateTest(unittest.TestCase):
+    def _link(self, html: str) -> str:
+        return _tag_around(html, "data-form-dialog=")
+
+    def test_renders_a_dialog_link(self):
+        tag = self._link(str(SearchSelect(name="device", dialog_create=NEW_DEVICE)))
+        self.assertTrue(tag.startswith("<a"))
+        self.assertIn('href="/device/add"', tag)
+        self.assertIn('aria-label="New device"', tag)
+        self.assertIn('title="New device"', tag)
+
+    def test_none_without_it(self):
+        self.assertNotIn("data-form-dialog=", str(SearchSelect(name="device")))
+
+    def test_follows_the_clear_and_precedes_the_marker(self):
+        html = str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        link = html.index("data-form-dialog=")
+        self.assertLess(html.index("data-search-select-clear"), link)
+        self.assertLess(link, html.index("data-search-select-marker"))
+
+    def test_a_disabled_box_hides_it(self):
+        html = str(
+            SearchSelect(name="device", clearable=False, dialog_create=NEW_DEVICE)
+        )
+        self.assertIn("peer ", _tag_around(html, "data-search-select-search"))
+        self.assertIn("peer-disabled:hidden", self._link(html))
+
+    def test_a_lazy_url_renders(self):
+        from django.urls import reverse, reverse_lazy
+
+        create = DialogCreate(reverse_lazy("games:add_game"), "New game")
+        html = str(SearchSelect(name="game", dialog_create=create))
+        self.assertIn(f'href="{reverse("games:add_game")}"', self._link(html))

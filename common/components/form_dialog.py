@@ -44,6 +44,23 @@ class DoneAnswer(TypedDict):
     messages: list[ToastPayload]
 
 
+class CreatedOption(TypedDict):
+    """The made row, as its picker shows it."""
+
+    value: str
+    label: str
+    data: dict[str, str]
+
+
+class CreatedAnswer(TypedDict):
+    """Done, with the row it made."""
+
+    kind: Literal["created"]
+    url: AbsoluteUrl
+    messages: list[ToastPayload]
+    option: CreatedOption
+
+
 class ContinueAnswer(TypedDict):
     """Fetch `url` into the same dialog."""
 
@@ -52,7 +69,7 @@ class ContinueAnswer(TypedDict):
 
 
 #: What a dialog's redirect becomes.
-type RedirectAnswer = DoneAnswer | ContinueAnswer
+type RedirectAnswer = DoneAnswer | CreatedAnswer | ContinueAnswer
 #: Every answer kind the dialog reads.
 type DialogAnswer = PageAnswer | RedirectAnswer
 

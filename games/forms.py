@@ -13,6 +13,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.db.models import Q, QuerySet
 from django.forms.models import ModelChoiceIterator
 from django.http import QueryDict
+from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.choices import normalize_choices
 from django.utils.datastructures import MultiValueDict
@@ -42,6 +43,7 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.elements import Fieldset
+from common.components.form_dialog import CreatedOption
 from common.components.icon_picker import IconChoice, IconPicker
 from common.components.primitives import (
     SHAPE_CLASSES,
@@ -54,6 +56,7 @@ from common.components.primitives import (
     Radio,
     field_label_id,
 )
+from common.components.search_select import DialogCreate
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
@@ -289,14 +292,23 @@ def game_option_data(game: Game) -> dict[str, str]:
     }
 
 
+def game_option(game: Game) -> CreatedOption:
+    """A game as its picker rows read."""
+    return {
+        "value": str(game.id),
+        "label": game.search_label,
+        "data": game_option_data(game),
+    }
+
+
+#: The + on every game picker.
+NEW_GAME = DialogCreate(reverse_lazy("games:add_game"), "New game")
+
+
 def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     """Resolve game ids (or instances) to SearchSelectOptions via one pk__in query."""
     return [
-        {
-            "value": g.id,
-            "label": g.search_label,
-            "data": game_option_data(g),
-        }
+        SearchSelectOption(**game_option(g))
         for g in Game.objects.for_library(library)
         .filter(pk__in=values)
         .select_related("platform")
@@ -480,6 +492,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         autofocus=False,
         clearable: bool = True,
         none_label: NoneLabel | None = None,
+        dialog_create: DialogCreate | None = None,
         attrs=None,
     ):
         super().__init__(
@@ -489,6 +502,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             attrs=attrs,
         )
         self.none_label = none_label
+        self.dialog_create = dialog_create
         self.search_url = search_url
         self.options_resolver = options_resolver
         self.create = create
@@ -527,6 +541,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             items_scroll=self.items_scroll,
             prefetch=self.prefetch,
             none_label=self.none_label,
+            dialog_create=self.dialog_create,
             shape=shape,
         )
 
@@ -1526,6 +1541,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
             search_url="/api/games/search",
             options_resolver=_game_options,
             autofocus=True,
+            dialog_create=NEW_GAME,
         ),
     )
     playthrough = forms.ModelChoiceField(
@@ -2125,6 +2141,7 @@ class GameForm(
             search_url="/api/games/search",
             options_resolver=_parent_options,
             params={"kind": {"value": GameKind.MAIN.value}},
+            dialog_create=NEW_GAME,
         ),
     )
     excluded_from_dropped = forms.BooleanField(required=False, label="Dropped figures")
@@ -2346,6 +2363,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
             search_url="/api/games/search",
             options_resolver=_game_options,
             autofocus=True,
+            dialog_create=NEW_GAME,
         ),
     )
 

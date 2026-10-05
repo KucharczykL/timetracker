@@ -91,17 +91,21 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
     def test_search_answers_in_display_order(self):
         request = SimpleNamespace(user=self.user)
         self.assertEqual(
-            [row["value"] for row in search_games(request, limit=100)], self.expected
+            [row["value"] for row in search_games(request, limit=100)],
+            [str(game_id) for game_id in self.expected],
         )
         #: Five cuts between the two tied on sort_name.
         self.assertEqual(
             [row["value"] for row in search_games(request, limit=5)],
-            self.expected[:5],
+            [str(game_id) for game_id in self.expected[:5]],
         )
 
     def test_picker_resolves_selected_games_in_display_order(self):
         options = _game_options(list(reversed(self.expected)), library=self.library)
-        self.assertEqual([option["value"] for option in options], self.expected)
+        self.assertEqual(
+            [option["value"] for option in options],
+            [str(game_id) for game_id in self.expected],
+        )
 
     def test_game_resolutions_answer_in_display_order(self):
         for resolution in (game_resolution, game_edit_resolution):

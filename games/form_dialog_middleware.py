@@ -7,8 +7,13 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.urls import Resolver404, resolve
 from django.utils.cache import patch_vary_headers
 
-from common.components.form_dialog import ContinueAnswer, DoneAnswer, RedirectAnswer
-from common.form_dialog import FORM_DIALOG_HEADER, is_form_dialog
+from common.components.form_dialog import (
+    ContinueAnswer,
+    CreatedAnswer,
+    DoneAnswer,
+    RedirectAnswer,
+)
+from common.form_dialog import FORM_DIALOG_HEADER, created_option, is_form_dialog
 from common.notices import toast_payloads
 from games.views.returns import READ_ONLY
 
@@ -58,6 +63,14 @@ class FormDialogResultMiddleware:
         answer = dialog_result(request, response["Location"])
         if answer is None:
             return response
+        option = created_option(response)
+        if option is not None and answer["kind"] == "done":
+            answer = CreatedAnswer(
+                kind="created",
+                url=answer["url"],
+                messages=answer["messages"],
+                option=option,
+            )
         result = JsonResponse(answer)
         result["Cache-Control"] = "no-store"
         patch_vary_headers(result, (FORM_DIALOG_HEADER,))

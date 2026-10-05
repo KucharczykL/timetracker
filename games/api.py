@@ -82,7 +82,7 @@ from games.forms import (
     DeviceForm,
     PlatformForm,
     device_option,
-    game_option_data,
+    game_option,
     hinted_release_options,
 )
 from games.models import (
@@ -385,14 +385,7 @@ def search_games(request, q: str = "", limit: int = 10, kind: GameKind | None = 
         qs = qs.filter(
             Q(name__icontains=q) | Q(library=library, sort_name__icontains=q)
         )
-    return [
-        {
-            "value": g.id,
-            "label": g.search_label,
-            "data": game_option_data(g),
-        }
-        for g in qs[:limit]
-    ]
+    return [game_option(game) for game in qs[:limit]]
 
 
 @game_router.patch("/{game_id}/status", response={204: None})

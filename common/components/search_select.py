@@ -52,6 +52,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
+from django.utils.functional import Promise
+
 from common.components.core import (
     Attributes,
     Child,
@@ -72,6 +74,7 @@ from common.components.custom_elements import (
     _PresetPanelElement,
     _SearchSelect,
 )
+from common.components.form_dialog import form_dialog_link
 from common.components.primitives import (
     CLOSED_POPOVER,
     DISABLED_WITHIN_CLASS,
@@ -182,6 +185,14 @@ _UNCOMMITTED_SEARCH_CLASS = (
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # ml-auto ends the row; peer-disabled hides it.
 _CLEAR_PLACEMENT_CLASS = "ml-auto -mr-1 peer-disabled:hidden"
+#: After a shown ×: a divider, no auto margin.
+#: Literal, so Tailwind sees it.
+_DIALOG_CREATE_CLASS = (
+    "ml-auto -mr-1 peer-disabled:hidden "
+    "[[data-search-select-clear]:not([hidden])~&]:ml-0 "
+    "before:mr-1 before:h-5 before:border-l before:border-default-medium "
+    "before:hidden [[data-search-select-clear]:not([hidden])~&]:before:block"
+)
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
 #: Picker rows wear the menu item look.
@@ -278,6 +289,27 @@ class EmitCreate:
 
 #: How a create row commits.
 type CreateRow = PostCreate | SelectTyped | EmitCreate
+
+
+@dataclass(frozen=True)
+class DialogCreate:
+    """A + link opening ``url`` in a dialog."""
+
+    url: str | Promise
+    label: str
+
+
+def _dialog_create_link(create: DialogCreate) -> Node:
+    """The +; its dialog's created row lands here."""
+    return ControlButton(
+        form_dialog_link(),
+        href=str(create.url),
+        variant="ghost",
+        size="compact",
+        aria_label=create.label,
+        title=create.label,
+        class_=_DIALOG_CREATE_CLASS,
+    )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])]
 
 
 class _CreateProps(TypedDict, total=False):
@@ -419,7 +451,7 @@ def _combobox_children(
     no_results_text: str = "No results",
     create_row: Node | None = None,
     marker: list[Node] | None = None,
-    clear_button: Node | None = None,
+    trailing: list[Node] | None = None,
     box_class: str = _BOX_CLASS,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
@@ -435,7 +467,7 @@ def _combobox_children(
     ``home`` places the list; a dialog's list is always visible.
     Pills always sit in the box.
     ``box_class`` styles the field box.
-    ``clear_button`` and ``marker`` follow the input inside it.
+    ``trailing`` and ``marker`` follow the input inside it.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -479,7 +511,7 @@ def _combobox_children(
     box = Div(data_search_select_box="", class_=box_class)[
         pills,
         search,
-        *([clear_button] if clear_button else []),
+        *(trailing or []),
         *(marker or []),
     ]
     return [box, options_panel, *(templates or [])]
@@ -512,6 +544,7 @@ def SearchSelect(
     clear_description_id: str | None = None,
     none_label: NoneLabel | None = None,
     shape: ButtonShape = "full",
+    dialog_create: DialogCreate | None = None,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -554,6 +587,7 @@ def SearchSelect(
     ``shape``: the corners the box rounds.
     ``create``: how a create row commits; none offers no row.
     ``max_length``: the most characters the box takes.
+    ``dialog_create``: a + creating the row in a dialog.
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
@@ -607,9 +641,10 @@ def SearchSelect(
     if max_length is not None:
         search_attrs.append(("maxlength", str(max_length)))
 
+    if clearable or dialog_create:
+        search_attrs.append(("class", "peer"))
     clear_button: Node | None = None
     if clearable:
-        search_attrs.append(("class", "peer"))
         clear_button = ControlButton(
             variant="ghost",
             size="compact",
@@ -694,7 +729,10 @@ def SearchSelect(
         templates=templates,
         home=home,
         marker=marker,
-        clear_button=clear_button,
+        trailing=[
+            *([clear_button] if clear_button else []),
+            *([_dialog_create_link(dialog_create)] if dialog_create else []),
+        ],
         box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
         else field_box_class(shape),

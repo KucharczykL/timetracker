@@ -38,6 +38,7 @@ import { readSearchSelectProps } from "../generated/props.js";
 import { followPointer } from "../pointer-follow.js";
 // Defines the host a delegated widget opens.
 import "./drop-down.js";
+import { FORM_DIALOG_CREATED, type FormDialogCreatedDetail } from "./form-dialog/events.js";
 
 //: Every row a person can highlight and pick.
 const NAVIGABLE_ROWS =
@@ -1273,6 +1274,16 @@ const initWidget = (containerElement: Element): boolean => {
     syncUncommitted();
     if (emit) emitChange(option);
   };
+
+  // A + dialog's created row lands here.
+  container.addEventListener(FORM_DIALOG_CREATED, (event) => {
+    if (search.disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const option = (event as CustomEvent<FormDialogCreatedDetail>).detail;
+    upsertOption(option);
+    selectOption(option);
+  });
 
   // Commit a value from code, firing no change.
   container._searchSelectSetSelected = (value: string, label?: string) => {
