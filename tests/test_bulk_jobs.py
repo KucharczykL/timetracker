@@ -201,7 +201,7 @@ def test_a_redelivered_chunk_resumes_at_its_position(
             run_chunk(batch.pk, 0)
     finally:
         bulk_reclassification.reclassify_session = real
-    #: A hard crash writes nothing more; undo the failure mark.
+    #: A crash writes no failure mark.
     BulkBatch.objects.filter(pk=batch.pk).update(state=BulkBatch.State.RUNNING)
 
     run_chunk(batch.pk, 0)

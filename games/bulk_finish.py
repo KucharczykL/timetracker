@@ -1,8 +1,6 @@
 """Finishing running sessions, in bulk.
 
-One act, one instant, stamped into the confirmation and carried in the
-choice: a `timezone.now()` inside `run` would differ on a redelivered
-chunk, and the keyed dispatch would refuse it.
+One instant, stamped at the confirmation.
 """
 
 import uuid
@@ -62,20 +60,14 @@ _SEPARATOR = "|"
 class FinishStatement:
     """The instant a batch ends at, and its zone.
 
-    Named rather than a bare pair: it crosses three boundaries as one
-    string — the hidden field, `settle`'s answer, and the batch row.
+    One string: field, settle, batch row.
     """
 
     ended_at: datetime
     ended_at_zone: ZoneName | None
 
     def __post_init__(self) -> None:
-        """The two rules `decode` reads, where every caller meets them.
-
-        A naive instant encodes to an offsetless string the runner
-        refuses, and a zone tzdata lost reaches the database as a defect
-        with no sentence. Both are a round trip away from their cause.
-        """
+        """Offset required; zone tzdata knows."""
         if self.ended_at.tzinfo is None:
             raise ValueError(
                 f"{self.ended_at!r} states no offset, so it names no moment."
@@ -140,11 +132,7 @@ def offer_finish(
 
 
 def settle_finish(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """The stamped instant, and whatever zone is at hand.
-
-    Takes the zone only where the value states none, so
-    `settle(settle(x)) == settle(x)`.
-    """
+    """The stamped instant; a zone where none."""
     #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
 
@@ -166,8 +154,7 @@ def _source(name: str) -> dict[str, object]:
 def _stated(choice: ChoiceValue | None) -> FinishStatement:
     """The pair every row of this batch is finished on.
 
-    A `None` choice is a defect: the press settles before the batch is
-    stored, so the act cannot reach a row without one.
+    A `None` choice is a defect.
     """
     with answered("session"):
         if choice is None:

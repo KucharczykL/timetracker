@@ -1,4 +1,4 @@
-"""A batch runs in the background; its toast follows it.
+"""A background batch, followed by its toast.
 
 The act is offered by the selection line, so the pass starts where a
 person starts: the session list, narrowed to the review.

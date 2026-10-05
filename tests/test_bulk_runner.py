@@ -403,7 +403,7 @@ def test_every_chunk_of_a_batch_shares_one_correlation_id(
     response = act(client_in, confirmation)
 
     assert response.status_code == 302
-    #: Each chunk spends its budget after one row.
+    #: One row a chunk.
     assert batch_of(owned_library, token).chunk == 2
     assert HistoricalPlaytime.objects.count() == 3
     correlations = set(
@@ -486,7 +486,7 @@ def test_a_refused_row_is_counted_and_its_reason_reaches_the_person(
 def test_a_row_lost_in_one_chunk_is_still_counted_by_the_next(
     client_in, owned_library, game, monkeypatch, held_batches
 ):
-    """The tally lives on the row, so a count survives between chunks."""
+    """The tally survives between chunks."""
     monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     sessions = [
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))

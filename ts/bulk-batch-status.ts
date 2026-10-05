@@ -1,4 +1,4 @@
-/** Bulk batches running in the background, as toasts. */
+/** Background bulk batches, as toasts. */
 import { getCsrfToken } from "./csrf.js";
 import type { ToastAction } from "./elements/toast-stack.js";
 
@@ -24,7 +24,7 @@ export interface BatchOut {
 const POLL_INTERVAL_MS = 2_000;
 const TOAST_PREFIX = "bulk-batch:";
 
-/** The page under a batch has changed. */
+/** The page under a batch changed. */
 export const PAGE_STALE = "page:stale";
 
 function isAction(value: unknown): value is ToastAction {

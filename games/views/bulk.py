@@ -456,13 +456,13 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
     """
     user = cast(User, request.user)
     target = library_batch(user.library, correlation_id)
-    #: A batch run before the batch rows has none.
+    #: Older batches have no row.
     if target is None:
         declared = _act_of(user.library, correlation_id)
     elif target.undoes is None:
         declared = bulk_action(target.action)
     else:
-        #: Undoing an Undo is pressing the act again.
+        #: Undoing an Undo is pressing again.
         declared = None
     if declared is None:
         logger.warning("[bulk]: %s names an act nothing declares", correlation_id)

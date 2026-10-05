@@ -45,15 +45,13 @@ ANNOUNCE_WINDOW = timedelta(days=1)
 STOPPED_BY_HAND = "The batch was stopped before this row was reached."
 ENDED_BY_A_DEFECT = "A problem on our side ended the batch before this row was reached."
 
-#: The log's words for the row the defect was met on, which is not
-#: unreached: an act whose run states two writes may have made the
-#: first one. `playergame.remove` appends its event, then stamps.
+#: A two-write act may half-finish.
 MET_THE_DEFECT = (
     "A problem on our side was met on this row. An act that states two writes "
     "may have made the first, so read this row before acting on it again."
 )
 
-#: A toast's title for an act the table lost.
+#: Title for an act the table lost.
 UNKNOWN_TITLE = "A bulk change"
 
 type BatchToken = uuid.UUID
@@ -140,11 +138,10 @@ def _as_it_is(count: int) -> str:
 class BatchAct:
     """What one batch does to each of its rows."""
 
-    #: The idempotency key's prefix, so an act and its undo
-    #: never share a key space.
+    #: Key prefix; act and undo never share.
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
-    #: Its own fact is bound; the row and the keys remain.
+    #: Its own fact bound.
     run: BoundRow
 
 
@@ -235,11 +232,7 @@ def start_batch(
     origin: str,
     undoes: uuid.UUID | None = None,
 ) -> BulkBatch:
-    """Store the batch and queue its first chunk.
-
-    The queue row commits with the batch row. A token pressed twice
-    answers the batch the first press stored.
-    """
+    """Store the batch; queue chunk 0 with it."""
     try:
         with transaction.atomic():
             batch = BulkBatch.objects.create(
@@ -270,11 +263,7 @@ class _Overtaken(Exception):
 
 
 def run_chunk(batch_id: uuid.UUID, chunk: int) -> None:
-    """Run one chunk of a batch.
-
-    A stale chunk number, a terminal state, or a start another
-    delivery overtook returns at once.
-    """
+    """Run one chunk; stale deliveries do nothing."""
     batch = BulkBatch.objects.filter(pk=batch_id).first()
     if batch is None or batch.chunk != chunk or batch.is_terminal:
         return
@@ -335,7 +324,7 @@ def _run(batch: BulkBatch, act: BatchAct, chunk: int, attempts: int) -> None:
             batch.token,
         )
         _fail(batch, act.name, tally, position, this_run=this_run)
-        #: The cluster's timeout leaves through here.
+        #: The cluster's timeout leaves here.
         if not isinstance(error, Exception):
             raise
 
@@ -365,7 +354,7 @@ def _one_row(
                 correlation_id=batch.token,
             )
         except Http404 as absent:
-            #: This batch re-resolved the row moments ago.
+            #: Resolved moments ago, so ours.
             raise _Defect(f"a row library {batch.library_id} does not hold") from absent
         except CommandFailed as failure:
             if failure.status_code != CONFLICT_STATUS:
@@ -498,7 +487,7 @@ def _stop_action(batch: BulkBatch) -> ToastAction:
 
 
 def _undo_action(batch: BulkBatch) -> ToastAction | None:
-    """Only where something moved, never on an Undo."""
+    """Where something moved; never an Undo."""
     if batch.undoes is not None or not batch.done or bulk_action(batch.action) is None:
         return None
     return Undo(reverse("games:undo_bulk_action", args=[batch.token]))
