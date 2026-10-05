@@ -46,7 +46,7 @@ def contains_regex_modifier(filter_json: str) -> bool:
     return visit(parsed)
 
 
-def _is_statement_timeout(exc: BaseException) -> bool:
+def is_statement_timeout(exc: BaseException) -> bool:
     current: BaseException | None = exc
     while current is not None:
         if getattr(current, "sqlstate", None) == "57014":
@@ -65,7 +65,7 @@ def run_with_statement_timeout[R](callback: Callable[[], R]) -> R:
                 )
             return callback()
     except OperationalError as exc:
-        if _is_statement_timeout(exc):
+        if is_statement_timeout(exc):
             raise FilterQueryTimeout from exc
         raise
 

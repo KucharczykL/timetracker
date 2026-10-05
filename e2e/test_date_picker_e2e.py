@@ -183,8 +183,7 @@ def date_picker_page_view(request):
         presentation=presentation,
         label="Purchased",
         name="date_purchased",
-        # A stored value, so the no-JS case can assert the field still shows
-        # the date rather than rendering blank.
+        # A stored value the pre-upgrade field still shows.
         value="2024-03-15",
     )
     html = f"""<!DOCTYPE html>
@@ -215,16 +214,10 @@ urlpatterns = [
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_date_picker_e2e")
-def test_js_disabled_leaves_the_field_visible_but_inert(live_server, browser):
-    """With scripting off the element never upgrades, so `inert` is never
-    removed: the field still shows its stored date, but cannot be focused or
-    typed into.
+def test_before_upgrade_the_field_is_visible_but_inert(live_server, browser):
+    """Before upgrade the field shows its date, inert.
 
-    That is the intended degraded state now that the `<noscript>` native input
-    is gone (#539). Showing the date read-only beats both alternatives — a
-    blank field (what the old `:not(:defined)` rule would leave behind), and a
-    field that looks editable while silently discarding input, since the
-    segments carry no `name` and are never submitted.
+    Disabling scripts holds the page in that state.
     """
 
     context = browser.new_context(java_script_enabled=False)

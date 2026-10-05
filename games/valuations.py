@@ -9,6 +9,7 @@ from uuid import UUID
 from django.db import transaction
 
 from games.models import PurchaseValuation, UserLibrary
+from games.planner_statistics import analyze_tables
 
 type CurrencyCode = str  # "EUR"
 type RateYear = int  # 2024
@@ -128,6 +129,7 @@ def publish_valuations(
     """Replace the library's valuations whole.
 
     The caller holds the transaction and the conversion state's lock.
+    The ANALYZE holds its own table lock until commit.
     """
     if not transaction.get_connection().in_atomic_block:
         raise RuntimeError("Valuations publish inside a transaction.")
@@ -137,3 +139,4 @@ def publish_valuations(
         raise ValueError(f"Valuations of another library than {library.pk}: {foreign}")
     PurchaseValuation.objects.filter(library=library).delete()
     PurchaseValuation.objects.bulk_create(rows)
+    analyze_tables((PurchaseValuation,))

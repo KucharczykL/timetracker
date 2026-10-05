@@ -67,5 +67,4 @@ value of a field that has a default. Do not host such a field in a
 ## Out of scope
 
 - Multi-select over fixed choices.
-- Scripting off: #1290.
 - The ⊘ toggle of bulk forms: #1302.

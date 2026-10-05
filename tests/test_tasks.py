@@ -1,6 +1,7 @@
 import pytest
 from django.core.management import call_command
 from django_q.models import Schedule
+from django_q.signals import post_spawn
 
 
 @pytest.mark.django_db
@@ -22,3 +23,13 @@ def test_schedule_convert_prices_creates_one_daily_recovery_schedule():
     assert not Schedule.objects.filter(
         func="games.tasks.convert_prices",
     ).exists()
+
+
+def test_a_worker_limits_its_statements_to_the_cluster_timeout():
+    from django_q.conf import Conf
+
+    from timetracker import database
+
+    post_spawn.send(sender="django_q", proc_name="a worker")
+
+    assert database._ProcessStatements.timeout_seconds == Conf.TIMEOUT

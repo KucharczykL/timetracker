@@ -218,12 +218,7 @@ class DatePickerTest(SimpleTestCase):
         self.assertIn('data-toggle=""', html)
 
     def test_no_noscript_fallback(self):
-        """The native fallback is gone (#539).
-
-        It was the only ``<noscript>`` in the app, and the forms it guarded
-        cannot be submitted without scripting anyway — their game/games fields
-        are required ``SearchSelect`` widgets.
-        """
+        """No ``<noscript>`` native fallback renders."""
 
         html = str(
             DatePicker(

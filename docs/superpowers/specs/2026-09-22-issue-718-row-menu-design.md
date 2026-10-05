@@ -63,8 +63,7 @@ empty half is refused where the act is declared.
 
 ## What the shape prevents
 
-A row shows no act without scripting: only `ts/elements/drop-down.ts` removes
-the panel's `hidden`. No page shows one row's facts, which is #1258.
+No page shows one row's facts, which is #1258.
 
 An act is declared twice, as a route and as a `BulkAction`. A rule the command
 gains reaches both; a rule the screen gains reaches one.

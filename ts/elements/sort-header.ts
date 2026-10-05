@@ -6,7 +6,7 @@
  * shift-click target (add/cycle this column within the existing multi-column
  * sort). All sort math is done server-side; this element only routes a
  * shift-click to the alternate target. Plain click falls through to the native
- * link, so headers still work without JavaScript.
+ * link.
  */
 class SortHeaderElement extends HTMLElement {
     connectedCallback(): void {

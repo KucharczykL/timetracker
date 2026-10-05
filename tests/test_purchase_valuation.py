@@ -633,3 +633,14 @@ def test_the_audit_command_runs_the_valuation_check(owned_library):
         )
 
     assert "PurchaseValuation.purchase_id" in output.getvalue()
+
+
+def test_publication_analyzes_the_valuations(owned_library, monkeypatch):
+    """Valuation reads plan on these."""
+    analyzed: list[object] = []
+    monkeypatch.setattr("games.valuations.analyze_tables", analyzed.append)
+
+    with transaction.atomic():
+        publish_valuations(owned_library, [])
+
+    assert analyzed == [(PurchaseValuation,)]

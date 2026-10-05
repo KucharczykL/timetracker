@@ -234,8 +234,7 @@ Generalise that pattern instead of adding a modal:
 - The bespoke `_delete_game_confirmation_modal`, its view and its
   `game/<id>/delete/confirm` route are deleted.
 - Row delete buttons stay plain links — they now lead to a confirmation page
-  rather than destroying on click, so the no-JS path survives and no prefetcher
-  can delete anything.
+  rather than destroying on click, so no prefetcher can delete anything.
 
 ## Authentication hole found while classifying
 
@@ -277,7 +276,7 @@ Fixed here in its own commit, with a test that asserts every view reachable from
   origin — neither is reachable by the parity backstop.
 - **E2E**: filter the games list, edit a game, save, assert the browser is back
   on the filtered URL *and* that the filter is still applied (a different row
-  set than unfiltered); delete a game from its detail page, assert it lands on
+  set than unfiltered); remove a game from its detail page, assert it lands on
   the games list rather than a 404.
 
 ## Commit sequence

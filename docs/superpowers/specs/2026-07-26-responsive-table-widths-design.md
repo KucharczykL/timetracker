@@ -412,8 +412,8 @@ so mobile's two-column view becomes an emergent outcome rather than a hardcoded
 breakpoint, and a user column-toggle feature layers on top as an explicit
 priority override.
 
-Server-rendered initial state keeps the current `max-md` set, so a no-JS page is
-exactly as good as today. The element must therefore **strip those classes on
+Server-rendered initial state keeps the current `max-md` set until the element
+upgrades. The element must therefore **strip those classes on
 mount** before applying its own decision — otherwise the two systems fight. At
 widths where the JS decision differs from the CSS one this produces a visible
 column-pop on load; decide whether to accept it or to gate the swap on first
@@ -473,7 +473,7 @@ inherits the drop state the same way it inherits alignment.)
 
 - At 390 / 768 / 1280 on all 10 data tables: no wrapper scroll, and the Name
   column is at least ~150px, without any per-table constant.
-- No-JS render matches today's `max-md` behavior, and the mounted element's
+- The pre-upgrade render matches today's `max-md` behavior, and the mounted element's
   decision replaces it without leaving both systems active.
 - Natural widths are recovered correctly when the page mounts at 390px, where
   every hideable column starts at `display: none`.
@@ -491,9 +491,8 @@ introduces the toggle.)
 Only meaningful once Phase 3 exists: priority-plus makes overflow *rare*, this
 makes it *navigable* in the cases that remain. With JavaScript on there are
 none: priority-plus drops columns until the table fits at every width, so the
-pin is inert for those users. It earns its place on the no-JS path above `md`,
-where every column renders at once and the region genuinely scrolls, and later
-on the columns a user deliberately enables beyond the fit budget.
+pin is inert there. It earns its place where content overflows anyway, and on
+the columns a user deliberately enables beyond the fit budget.
 
 ### 4a — sticky first column
 
@@ -588,18 +587,18 @@ right-edge **`box-shadow`** lives inside
 `@container scroll-state(scrollable: inline-start)`. Verified in Chrome 149: no
 shadow at rest, shadow once scrolled, none again on return. Priority-plus makes
 most tables fit at most widths, so an unconditional shadow would draw a permanent
-seam down every list page for a scroll that is usually not happening. Where the
+edge shadow down every list page for a scroll that is usually not happening. Where the
 query is unsupported the shadow never paints and the pin still works — the cue
 degrades, the feature does not.
 
 The offset is mirrored under `rtl` (`md:rtl:…:shadow-[-4px_…]`): the query and
-the pin are logical, but a shadow offset is physical, so an unmirrored seam
+the pin are logical, but a shadow offset is physical, so an unmirrored edge shadow
 paints into the table's own edge instead of over the content sliding beneath it.
 
 `box-shadow`, never `filter: drop-shadow`: `filter` makes the cell a containing
 block for the `position: fixed` panels it hosts.
 
-**The seam only paints in the separated border model.** Chrome draws no
+**The edge shadow only paints in the separated border model.** Chrome draws no
 box-shadow on a table cell under `border-collapse: collapse`, so the rule
 computes, `getComputedStyle` reports it, the container query flips it on scroll
 — and the screen shows nothing. Verified by substituting an opaque 20px red
@@ -608,7 +607,7 @@ therefore carry `border-separate border-spacing-0`, which also settles the
 collapsed-border trap below: a `<tr>` border is ignored in the separated model,
 so the row divider moves onto the cells and travels with the pinned cell instead
 of being painted over by it. Stats cards keep the collapsed model — no pin, no
-seam. `container-type: scroll-state`
+edge shadow. `container-type: scroll-state`
 does not — a fixed descendant stays at viewport coordinates under one (measured),
 so the region can host the query without tripping the shell's prohibition.
 
@@ -626,11 +625,11 @@ Traps, all confirmed or flagged:
   row's `hover:bg-neutral-tertiary-medium` cannot false-match — update it to
   match the header row with the same anti-false-match property.
 - **Collapsed borders do not travel (resolved).** The trap was real but reached
-  from the other direction: the collapsed model's first casualty was the seam,
+  from the other direction: the collapsed model's first casualty was the edge shadow,
   not the divider. Data tables now use `border-separate border-spacing-0`, so
   cells own their borders — the divider is a cell `border-b` and moves with the
   pinned cell by construction. A screenshot at page scale could not have settled
-  this either way; the deciding evidence was the seam failing to paint at all.
+  this either way; the deciding evidence was the edge shadow failing to paint at all.
 - **Phase 1 is not a prerequisite.** An earlier draft made it one, on the
   strength of the occlusion the CSS elevation above removes. (The two probes
   report different totals — 18/24 in § Phase 1 against a real page, 24/24 here

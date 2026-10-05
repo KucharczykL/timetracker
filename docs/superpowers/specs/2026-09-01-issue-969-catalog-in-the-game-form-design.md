@@ -187,12 +187,11 @@ Django's own form prefix, which `TemporalWidget` already honours because Django
 hands it the prefixed name, so nothing in `timetracker/temporal.py` changes; the
 clone rewrites the index the prefix states.
 
-There is no scripting-off path to a new row. A popup that writes one is
+A popup that writes one is
 refused: it commits an Edition of its own, which is the second write path this
 whole design closes, and on Add Game there is no saved Game to hang one on. A submit
 button that re-renders the draft one row longer is refused as well — it works,
-but nobody is asked to carry it. What survives scripting off is every row the
-page already holds: they edit, they validate and they save.
+but nobody is asked to carry it.
 `docs/temporal.md` keeps its contract, which is about the widget and not about
 the form that hosts it.
 

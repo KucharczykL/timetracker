@@ -272,6 +272,22 @@ def test_restore_loads_a_dump_written_before_0034(tooling, pre_0034_dump, scratc
     assert _rows(tooling, scratch_url, "SELECT count(*) FROM probe_release") == ["2"]
 
 
+def test_restore_leaves_statistics_that_know_the_rows_exist(
+    tooling, pre_0034_dump, scratch
+):
+    """Otherwise the copy plans without statistics."""
+    scratch_url = tooling.restore(
+        pre_0034_dump, database=TARGET_DATABASE, database_url=scratch
+    )
+
+    assert _rows(
+        tooling,
+        scratch_url,
+        "SELECT relname, reltuples FROM pg_class"
+        " WHERE relname IN ('probe_game', 'probe_release') ORDER BY relname",
+    ) == ["probe_game|3", "probe_release|2"]
+
+
 def test_the_generated_columns_hold_their_computed_values(
     tooling, pre_0034_dump, scratch
 ):

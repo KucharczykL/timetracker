@@ -20,8 +20,7 @@ def settle_layout(page: Page) -> None:
     and counting frames only approximates the wait; the element reports its
     own settled state, which a resize invalidates synchronously.
 
-    Elements that never upgraded (the no-JS pages) have no ``isSettled`` and
-    are skipped.
+    Elements that never upgraded have no ``isSettled`` and are skipped.
     """
     page.evaluate("() => document.fonts.ready")
     page.wait_for_function(TABLES_SETTLED)

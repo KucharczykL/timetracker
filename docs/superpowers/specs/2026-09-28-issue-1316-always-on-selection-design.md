@@ -27,7 +27,7 @@ header cell, the row header cell and the line use the same inset, so the
 boxes align without measurement.
 
 The header box is outside the sort link. The first header cell uses `py-2`,
-so the header row keeps its height. With no scripting, the header box is
+so the header row keeps its height. Before upgrade, the header box is
 hidden. A selectable table without a header is refused, because the header
 holds the only check-all shown while nothing is selected. Both boxes set
 `autocomplete="off"`, so a restored form state does not show a false check.
@@ -64,5 +64,4 @@ Selection actions follow the table." A restored selection says nothing.
 
 Vitest covers the line and the count, both check-alls, the zero rule, focus,
 the region, and stored values. End-to-end tests prove the aligned boxes at
-two widths, the line and a tabbed box, Clear's focus and scroll, and a page
-with no scripting.
+two widths, the line and a tabbed box, and Clear's focus and scroll.

@@ -1,5 +1,7 @@
 """PostgreSQL URL parsing and connection-contract startup wiring."""
 
+import sys
+
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
@@ -86,11 +88,21 @@ def test_file_database_url_wins_over_plain_environment(monkeypatch, tmp_path):
         config_module.reset_caches()
 
 
-def _settings_with(monkeypatch, tmp_path, value: str | None):
+def _settings_with(
+    monkeypatch,
+    tmp_path,
+    value: str | None,
+    *,
+    url: str = "postgresql://timetracker@127.0.0.1/tracker",
+    check_interval: str | None = None,
+):
     from timetracker import config as config_module
     from timetracker.database import required_database_settings
 
-    monkeypatch.setenv("DATABASE_URL", "postgresql://timetracker@127.0.0.1/tracker")
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.delenv("DATABASE_CLIENT_CONNECTION_CHECK_INTERVAL", raising=False)
+    if check_interval is not None:
+        monkeypatch.setenv("DATABASE_CLIENT_CONNECTION_CHECK_INTERVAL", check_interval)
     monkeypatch.delenv("TIMETRACKER_MANAGED_DATABASE_URL", raising=False)
     monkeypatch.delenv("DISABLE_SERVER_SIDE_CURSORS", raising=False)
     if value is not None:
@@ -154,3 +166,104 @@ def test_connection_validation_ignores_non_default_connections(monkeypatch):
     )
 
     validate_default_connection(sender=None, connection=Connection())
+
+
+def test_a_backend_checks_for_its_client_every_10s(monkeypatch, tmp_path):
+    """A dead client's query stops within the interval."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    settings = _settings_with(monkeypatch, tmp_path, None)
+    assert settings["OPTIONS"] == {"options": "-c client_connection_check_interval=10s"}
+
+
+def test_django_on_windows_sends_no_check_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "win32")
+    settings = _settings_with(monkeypatch, tmp_path, None)
+    assert settings["OPTIONS"] == {}
+
+
+def test_the_check_interval_keeps_the_urls_options(monkeypatch, tmp_path):
+    settings = _settings_with(
+        monkeypatch,
+        tmp_path,
+        None,
+        url="postgresql://db.example/tracker?options=-c%20search_path%3Dpublic",
+        check_interval="3",
+    )
+    assert settings["OPTIONS"] == {
+        "options": "-c search_path=public -c client_connection_check_interval=3s"
+    }
+
+
+def test_a_zero_check_interval_sends_no_option(monkeypatch, tmp_path):
+    settings = _settings_with(monkeypatch, tmp_path, None, check_interval="0")
+    assert settings["OPTIONS"] == {}
+
+
+@pytest.mark.parametrize("value", ["10s", "-5", ""])
+def test_a_check_interval_that_is_no_count_of_seconds_names_itself(
+    monkeypatch, tmp_path, value
+):
+    with pytest.raises(
+        ImproperlyConfigured, match="DATABASE_CLIENT_CONNECTION_CHECK_INTERVAL"
+    ):
+        _settings_with(monkeypatch, tmp_path, None, check_interval=value)
+
+
+@pytest.mark.django_db
+def test_the_server_accepts_the_check_interval():
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("SHOW client_connection_check_interval")
+        assert cursor.fetchone()[0] != "0"
+
+
+def _fresh_statement_timeout() -> str:
+    from django.db import connections
+
+    fresh = connections.create_connection("default")
+    try:
+        with fresh.cursor() as cursor:
+            cursor.execute("SHOW statement_timeout")
+            return cursor.fetchone()[0]
+    finally:
+        fresh.close()
+
+
+@pytest.mark.django_db
+def test_a_command_keeps_no_statement_limit():
+    assert _fresh_statement_timeout() == "0"
+
+
+@pytest.mark.django_db
+def test_a_process_serving_requests_stops_a_statement_at_30s(monkeypatch):
+    from timetracker.database import limit_request_statements
+
+    monkeypatch.delenv("REQUEST_STATEMENT_TIMEOUT", raising=False)
+    limit_request_statements()
+
+    assert _fresh_statement_timeout() == "30s"
+
+
+@pytest.mark.django_db
+def test_a_request_limit_of_0_lifts_it(monkeypatch):
+    from timetracker.database import limit_request_statements
+
+    monkeypatch.setenv("REQUEST_STATEMENT_TIMEOUT", "0")
+    limit_request_statements()
+
+    assert _fresh_statement_timeout() == "0"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("entry_point", ["timetracker.asgi", "timetracker.wsgi"])
+def test_each_entry_point_marks_its_process(monkeypatch, entry_point):
+    import importlib
+
+    from timetracker import database
+
+    monkeypatch.delenv("REQUEST_STATEMENT_TIMEOUT", raising=False)
+    sys.modules.pop(entry_point, None)
+    importlib.import_module(entry_point)
+
+    assert database._ProcessStatements.timeout_seconds == 30

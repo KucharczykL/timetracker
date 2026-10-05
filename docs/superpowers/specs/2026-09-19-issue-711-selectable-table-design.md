@@ -7,8 +7,7 @@ wave is [Selectable tables](2026-09-19-selectable-tables-wave-design.md).
 ## Always shown
 
 Selection is not a mode. Each row shows a checkbox at all times. The element
-makes the row checkboxes when it connects. A page with no scripting shows no
-checkbox, and the line stays hidden. Escape clears the selection. An overlay
+makes the row checkboxes when it connects. Escape clears the selection. An overlay
 that closes on that Escape keeps it, because each marks such a press spent.
 The table reads that mark in the task after the press, because an overlay
 may answer before this table or after it.

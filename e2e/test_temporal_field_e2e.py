@@ -151,23 +151,3 @@ def test_a_range_reaches_both_ends(live_server, page):
     page.click("button[type=submit]")
 
     assert page.inner_text("#stored") == "1984/1986"
-
-
-@override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
-def test_the_same_value_stores_with_no_script(live_server, browser):
-    """The script enhances. Without it the native controls stand."""
-    context = browser.new_context(java_script_enabled=False)
-    page = context.new_page()
-    page.goto(f"{live_server.url}/test-temporal/")
-
-    assert page.is_visible("[data-temporal-input='start_year']")
-    assert page.is_hidden("[data-temporal-segments='start']")
-
-    page.select_option("[data-temporal-input='kind']", "date")
-    page.fill("[data-temporal-input='start_year']", "1984")
-    page.fill("[data-temporal-input='start_month']", "6")
-    page.fill("[data-temporal-input='start_day']", "22")
-    page.click("button[type=submit]")
-
-    assert page.inner_text("#stored") == "1984-06-22"
-    context.close()

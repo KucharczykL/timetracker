@@ -6,8 +6,7 @@
  * — hidden — a segmented date, three nameless toggles, a disabled radio
  * group for how the value ends, the disclosure and any copy button.
  * This element hides the first set, shows the second, and derives the
- * shape from what a person fills. With no script the first set stands and
- * stores the same value.
+ * shape from what a person fills.
  *
  * The segments ride the shared engine (date-field-core.ts) through a
  * partial-date codec. Its value goes to an unnamed scratch input, never to

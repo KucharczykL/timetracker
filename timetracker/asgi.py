@@ -13,6 +13,11 @@ from django.core.asgi import get_asgi_application
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "timetracker.settings")
 
+from timetracker.database import limit_request_statements
+
+#: Before Django opens a connection.
+limit_request_statements()
+
 application = get_asgi_application()
 
 from games.readiness import assert_library_structure

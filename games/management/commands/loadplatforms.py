@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from games.models import Platform
+from games.planner_statistics import analyze_tables
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "platforms.yaml"
 
@@ -35,6 +36,7 @@ class Command(BaseCommand):
                         f"Fixture platform {platform.name!r}: {refusal.messages[0]}"
                     ) from refusal
                 created_count += 1
+        analyze_tables((Platform,))
         self.stdout.write(
             self.style.SUCCESS(
                 f"Platforms: {created_count} created, {skipped_count} already existed."

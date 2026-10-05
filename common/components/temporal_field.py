@@ -15,10 +15,8 @@ parts a person filled, which is why there is no precision control here.
 
 Only what a script would use is rendered hidden: the segments, the
 nameless toggles, the end-shape radios, the disclosure and any copy
-button. Every
-posted control is shown, so
-with no script a person still reaches both endpoints and both
-qualifiers. The element hides what a person does not need yet.
+button. Every posted control is shown; the element hides what a
+person does not need yet.
 
 Nothing the element hides carries a Tailwind ``display`` utility: the
 ``hidden`` attribute is a user-agent rule any such class outranks.
@@ -143,7 +141,6 @@ def TemporalField(
             uncertain=data["start_uncertain"],
         ),
         _end_shape_group(name=name),
-        # Shown: no script means no way to reveal an end date.
         Div(data_temporal_end_group="")[
             _endpoint_group(
                 name=name,

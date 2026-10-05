@@ -16,11 +16,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.db.models import F
 from django.utils import timezone
 from session_rows import timed_row, tracked_run
 
 from common.platform_icons import PLATFORM_ICONS
+from games.management.commands.load_sample_data import loaded_tables
 from games.models import (
     Device,
     ExchangeRate,
@@ -224,6 +226,22 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     #: The fixture carries no valuation.
     state = PurchaseConversionState.objects.get(library=owner.library)
     assert state.requested_version > state.published_version
+
+
+@pytest.mark.django_db(transaction=True)
+def test_committed_sample_load_leaves_statistics_that_know_the_rows_exist(owner):
+    """The queued conversion task plans on these."""
+    call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    estimated = {}
+    counted = {}
+    with connection.cursor() as cursor:
+        for model in loaded_tables():
+            table = model._meta.db_table
+            cursor.execute("SELECT reltuples FROM pg_class WHERE relname = %s", [table])
+            estimated[table] = cursor.fetchone()[0]
+            counted[table] = model._base_manager.count()
+    assert estimated == counted
 
 
 @pytest.mark.django_db(transaction=True)

@@ -52,7 +52,7 @@ not take the native control classes.
 The widget renders native controls: a select for the kind, number inputs for the
 parts, and a pair of qualifier checkboxes inside each endpoint. A day, a month, a
 year, a decade, a range, an asymmetric range, and an unknown value each round-trip
-with scripting off.
+through the posted controls.
 
 This is the contract #965 enhances. The element hides controls and binds
 segments; it introduces no input the server cannot read.

@@ -280,18 +280,6 @@ def test_clear_hands_focus_to_the_header_without_scrolling(page: Page, live_serv
     assert page.evaluate("() => window.scrollY") == before
 
 
-def test_no_scripting_shows_no_checkbox_and_no_line(browser, live_server):
-    context = browser.new_context(java_script_enabled=False)
-    try:
-        page = context.new_page()
-        page.goto(live_server.url + "/test-selectable-table/")
-        expect(_header_check_all(page)).to_be_hidden()
-        expect(_checkboxes(page)).to_have_count(0)
-        expect(_line(page)).to_be_hidden()
-    finally:
-        context.close()
-
-
 def test_the_checkbox_leads_the_name_it_marks(page: Page, live_server):
     """First in the row the name states, and centred on it.
 

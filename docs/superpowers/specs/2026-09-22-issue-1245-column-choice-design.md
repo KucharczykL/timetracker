@@ -52,8 +52,7 @@ Reset. A column that refuses to hide shows a checked and disabled box. An
 unchecked box sends nothing, thus the sent keys are the full set of shown
 columns, and a pinned column stays shown. Reset is a named submit button, read
 before the boxes. The route accepts POST at `lists/<mode>/columns/` and is
-`ORIGIN_AWARE`. Without scripts the panel does not open, but the server still
-sends the person's columns.
+`ORIGIN_AWARE`.
 
 The Playthrough column of the session list is always declared. No page decides if
 a run is important, and a person who hides it sees no run name.
@@ -61,9 +60,7 @@ a run is important, and a person who hides it sees no run name.
 ## Not in this work
 
 A preset with its own columns
-([#1261](https://github.com/KucharczykL/timetracker/issues/1261)), the choice
-without scripts
-([#1262](https://github.com/KucharczykL/timetracker/issues/1262)), column order
+([#1261](https://github.com/KucharczykL/timetracker/issues/1261)), column order
 and width ([#521](https://github.com/KucharczykL/timetracker/issues/521)), and
 the controls of the quick filter bar
 ([#1267](https://github.com/KucharczykL/timetracker/issues/1267)).
