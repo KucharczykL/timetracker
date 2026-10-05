@@ -7,6 +7,7 @@ import uuid
 import pytest
 from devices import create_device
 from django.contrib import messages
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -14,7 +15,9 @@ from django.test import Client, RequestFactory
 from django.urls import URLPattern, URLResolver, get_resolver, reverse
 from tracked_games import create_tracked_game
 
+from common.components import Div, Fragment
 from common.form_dialog import FORM_DIALOG_HEADER
+from common.layout import render_page
 from common.returns import action_url
 from games.form_dialog_middleware import FormDialogResultMiddleware, dialog_result
 from games.models import Device
@@ -101,6 +104,71 @@ def test_add_game_then_library_continues(logged_in, game_post):
     assert answer == {"kind": "continue", "url": answer["url"]}
     resolved = get_resolver().resolve(answer["url"].removeprefix(SERVER).split("?")[0])
     assert resolved.view_name == "games:add_library_entry"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_continue_hands_the_queue_to_the_next_answer(
+    logged_in, owned_library, game_post
+):
+    device = create_device(owned_library, "Deck")
+    logged_in.post(
+        action_url(
+            "games:remove_device", device.pk, origin=reverse("games:list_devices")
+        )
+    )
+    continued = logged_in.post(
+        reverse("games:add_game"),
+        {**game_post("Outer Wilds"), "submit_and_add_to_library": ""},
+        headers=DIALOG_HEADERS,
+    ).json()
+    assert continued["kind"] == "continue"
+
+    answer = logged_in.get(continued["url"], headers=DIALOG_HEADERS).json()
+
+    assert answer["kind"] == "page"
+    assert [message["message"] for message in answer["messages"]] == [
+        "Deck removed from your library."
+    ]
+    assert _page_messages(logged_in, reverse("games:list_devices")) == []
+
+
+#: Pages a form dialog presents.
+_FORM_ROUTES = (
+    "games:add_device",
+    "games:add_platform",
+    "games:add_game",
+    "games:add_session",
+    "games:add_playthrough",
+)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("route", _FORM_ROUTES)
+def test_a_form_page_answers_in_dialog_mode_under_debug(
+    logged_in, debug_page_rendering, route
+):
+    response = logged_in.get(reverse(route), headers=DIALOG_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "page"
+
+
+def test_dialog_content_repeating_an_id_is_refused(settings):
+    settings.DEBUG = True
+    request = _dialog_request()
+    request.user = AnonymousUser()
+    content = Fragment(Div(id="twice"), Div(id="twice"))
+
+    with pytest.raises(ValueError, match="twice"):
+        render_page(request, content, title="T")
+
+
+def test_dialog_content_is_unchecked_outside_debug():
+    request = _dialog_request()
+    request.user = AnonymousUser()
+    content = Fragment(Div(id="twice"), Div(id="twice"))
+
+    assert render_page(request, content, title="T").status_code == 200
 
 
 @pytest.mark.django_db

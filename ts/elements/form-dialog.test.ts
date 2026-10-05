@@ -362,6 +362,14 @@ describe("open", () => {
     expect(assigned).toEqual([EDIT]);
   });
 
+  it("stays on a form host when the open fails", async () => {
+    document.getElementById("main-container")!.removeAttribute("data-read-only");
+    click(mountLink());
+    await settle();
+    expect(assigned).toEqual([]);
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not open here");
+  });
+
   it("follows the link when a module fails", async () => {
     document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () =>
       Promise.reject(new Error("404"));
@@ -467,6 +475,22 @@ describe("links inside a dialog", () => {
     expect(openModals()).toEqual([]);
   });
 
+  it("reloads after a nested write and a link back to the host", async () => {
+    const lower = await openPage(page(`<a href="/platform/add" data-form-dialog="">New platform</a>`));
+    const nested = page(`<form method="post"></form><a href="/device/list">Back</a>`);
+    replies.push(reply(nested, `${ORIGIN}/platform/add`));
+    click(body(lower).querySelector("a")!);
+    await settle();
+    replies.push(reply(next(`${ORIGIN}/platform/add`)));
+    replies.push(reply(nested, `${ORIGIN}/platform/add`));
+    submit();
+    await settle();
+    click(body().querySelector("a")!);
+    await settle();
+    expect(openModals()).toEqual([]);
+    expect(reloads).toBe(1);
+  });
+
   it("closes the top dialog on a link back to the one below", async () => {
     const lower = await openPage(page(`<a href="/platform/add" data-form-dialog="">New platform</a>`));
     replies.push(reply(page(`<a href="/device/1/edit">Cancel</a>`), `${ORIGIN}/platform/add`));
@@ -541,6 +565,38 @@ describe("submit", () => {
     expect(openDialog()).toBe(dialog);
     expect(dialog.querySelector("[data-form-dialog-title]")!.textContent).toBe("Add to library");
     expect(body().querySelector("form")!.getAttribute("action")).toBe(`${ORIGIN}/entry/add?game=1`);
+  });
+
+  it("follows a continue that ends in done", async () => {
+    await openPage();
+    replies.push(reply(next(`${ORIGIN}/entry/add`)));
+    replies.push(reply(done(HOST, SAVED), `${ORIGIN}/entry/add`));
+    submit();
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(reloads).toBe(1);
+    expect(handedOff("messages")).toEqual(SAVED);
+  });
+
+  it("calls a write whose next answer has no kind unconfirmed", async () => {
+    await openPage();
+    replies.push(reply(next(`${ORIGIN}/entry/add`)));
+    replies.push(errorPage(405, `${ORIGIN}/entry/add`));
+    submit();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be confirmed");
+    expect(JSON.stringify(toasts.at(-1))).not.toContain("save failed");
+  });
+
+  it("calls a write whose next page cannot be shown unconfirmed", async () => {
+    await openPage();
+    document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () =>
+      Promise.reject(new Error("404"));
+    replies.push(reply(next(`${ORIGIN}/entry/add`)));
+    replies.push(reply(page("<form></form>", { modules: ["/x.js"] }), `${ORIGIN}/entry/add`));
+    submit();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be confirmed");
   });
 
   it("stops a continue chain with an error toast", async () => {
@@ -833,9 +889,64 @@ describe("reload", () => {
     await settle();
     expect(openModals()).toHaveLength(1);
     expect(reloads).toBe(0);
+    expect(toasts).toEqual([]);
     other.close();
     await settle();
     expect(reloads).toBe(1);
+    expect(handedOff("messages")).toEqual(SAVED);
+  });
+
+  it("goes to a done URL elsewhere once another modal closes", async () => {
+    const other = coverWithModal();
+    replies.push(reply(EDIT_FORM));
+    click(mountLink());
+    await settle();
+    replies.push(reply(done(`${ORIGIN}/games`, SAVED)));
+    submit();
+    await settle();
+    other.close();
+    await settle();
+    expect(assigned).toEqual([`${ORIGIN}/games`]);
+    expect(handedOff("messages")).toEqual(SAVED);
+  });
+
+  it("hands off a done's messages when a modal above closes too", async () => {
+    await openPage();
+    let release: (response: Response) => void = () => {};
+    vi.mocked(fetch).mockImplementationOnce(
+      () => new Promise<Response>((resolve) => (release = resolve)),
+    );
+    submit();
+    coverWithModal();
+    release(respond(reply(done(HOST, SAVED))));
+    await settle();
+    expect(openModals()).toEqual([]);
+    expect(reloads).toBe(1);
+    expect(handedOff("messages")).toEqual(SAVED);
+  });
+
+  it("shows the messages and stays when storage refuses them", async () => {
+    await openPage();
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    replies.push(reply(done(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(reloads).toBe(0);
+    expect(toasts.at(-1)).toEqual(SAVED);
+  });
+
+  it("keeps the opener's key on page:stale inside a dialog", async () => {
+    const link = mountLink();
+    replies.push(reply(EDIT_FORM));
+    click(link);
+    await settle();
+    document.dispatchEvent(new Event(PAGE_STALE));
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(1);
+    expect(handedOff("opener")).toEqual({ id: link.id, href: "/device/1/edit" });
   });
 
   it("reloads once for a stale close and a page:stale", async () => {

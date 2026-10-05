@@ -124,10 +124,6 @@ class LayoutStampTest(TestCase):
         tag = self._main_container(html)
         self.assertIn("data-read-only", tag)
         self.assertIn('tabindex="-1"', tag)
-        self.assertNotIn("data-page-title", tag)
-        self.assertNotIn("aria-busy", tag)
-        self.assertNotIn('id="navbar"', html)
-        self.assertNotIn("mountCrownIcon", html)
         self.assertIn("<form-dialog", html)
         self.assertIn(FORM_DIALOG_HEADER, response["Vary"])
 

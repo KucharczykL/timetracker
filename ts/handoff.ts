@@ -41,7 +41,12 @@ function isStamped(value: unknown): value is Stamped {
 function isOpenerKey(value: unknown): value is OpenerKey {
   const candidate = value as OpenerKey | null;
   const textOrNull = (part: unknown): boolean => part === null || typeof part === "string";
-  return candidate !== null && textOrNull(candidate.id) && textOrNull(candidate.href);
+  return (
+    candidate !== null &&
+    textOrNull(candidate.id) &&
+    textOrNull(candidate.href) &&
+    (candidate.id !== null || candidate.href !== null)
+  );
 }
 
 function isMessageList(value: unknown): value is unknown[] {
@@ -70,11 +75,14 @@ function forget(key: StorageKey): void {
   }
 }
 
-function stash(key: StorageKey, value: unknown): void {
+/** False when storage refused it. */
+function stash(key: StorageKey, value: unknown): boolean {
   try {
     sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), value }));
+    return true;
   } catch (error) {
     report(messageOf(error));
+    return false;
   }
 }
 
@@ -100,9 +108,9 @@ function take<Value>(key: StorageKey, isValue: (value: unknown) => value is Valu
   return stamped.value;
 }
 
-/** Appends to fresh messages waiting already. */
-export function handOffMessages(payloads: readonly ToastPayload[]): void {
-  if (payloads.length === 0) return;
+/** False when they could not be stored. */
+export function handOffMessages(payloads: readonly ToastPayload[]): boolean {
+  if (payloads.length === 0) return true;
   let earlier: unknown[] = [];
   try {
     const waiting = peek(MESSAGES_KEY);
@@ -110,10 +118,10 @@ export function handOffMessages(payloads: readonly ToastPayload[]): void {
   } catch (error) {
     report(messageOf(error));
   }
-  stash(MESSAGES_KEY, [...earlier, ...payloads]);
+  return stash(MESSAGES_KEY, [...earlier, ...payloads]);
 }
 
-/** Unchecked: storage is a trust boundary. */
+/** Items unchecked; `<toast-stack>` validates each. */
 export function takeHandedOffMessages(): unknown[] {
   return take(MESSAGES_KEY, isMessageList) ?? [];
 }

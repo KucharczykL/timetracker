@@ -169,7 +169,12 @@ def _jsonable(value: object) -> object:
 
 
 def _optional_keys(typed_dict: TypedDictClass) -> frozenset[str]:
-    """`NotRequired` keys; typeshed omits the attribute."""
+    """`NotRequired` keys.
+
+    Cast: `TypedDictClass` is bare `type` to mypy.
+    """
+    if not is_typeddict(typed_dict):
+        raise TypeError(f"ts_codegen: {typed_dict!r} is not a TypedDict")
     return cast(Any, typed_dict).__optional_keys__
 
 

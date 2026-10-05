@@ -137,8 +137,12 @@ describe("client-errors", () => {
       reportClientError("ctx-cap", `detail-${index}`);
     }
     expect(fetchMock).toHaveBeenCalledTimes(25);
-    reportClientError("ctx-cap", "detail-26");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = reportClientError("ctx-cap", "detail-26");
     expect(fetchMock).toHaveBeenCalledTimes(25); // no 26th POST
+    expect(logged).toHaveBeenCalledWith(
+      `client error [${id}] (not sent) ctx-cap: detail-26`,
+    );
   });
 
   it("a deduped repeat does not consume cap budget", () => {

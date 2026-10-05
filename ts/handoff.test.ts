@@ -109,6 +109,15 @@ describe("opener hand-off", () => {
     expect(takeHandedOffOpener()).toBeNull();
   });
 
+  it("refuses an opener naming nothing", () => {
+    reported();
+    sessionStorage.setItem(
+      "handoff:opener",
+      JSON.stringify({ at: Date.now(), value: { id: null, href: null } }),
+    );
+    expect(takeHandedOffOpener()).toBeNull();
+  });
+
   it("refuses a malformed opener", () => {
     const report = reported();
     sessionStorage.setItem("handoff:opener", JSON.stringify({ at: Date.now(), value: { id: 3 } }));

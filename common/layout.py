@@ -253,9 +253,8 @@ def TimetrackerDocument(
 ) -> Document:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
 
-    Scripts are collected from `content`'s component tree: every component
-    declares its JS via `Media`, and `collect_media` gathers (deduped) the union
-    for the whole page.
+    Scripts are collected from the toast stack, `content`, the navbar
+    and the dialog host: every component declares its JS via `Media`.
     """
     from django.urls import Resolver404, resolve
 

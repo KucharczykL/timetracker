@@ -895,7 +895,7 @@ title=...)` instead of Django's `render()`. Assembles full HTML document via
 `Page()` — analogous to FastHTML's `fast_app()`: `<head>`, navbar, toast
 container, FOUC-prevention script, and **JS includes** (calls
 `collect_media(content)`, emits `<script>` tags automatically; there is no
-`scripts=`). A request carrying `X-Form-Dialog` gets the content alone as
+`scripts=`). A request carrying `X-Form-Dialog: 1` gets the content alone as
 a JSON `page` answer instead. Navbar shows today's/last-7-days playtime
 from `model_counts` context processor.
 

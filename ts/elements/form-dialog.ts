@@ -31,7 +31,6 @@ import {
   isModalOpen,
   type Modal,
   MODAL_CHANGE,
-  openModals,
   topModal,
 } from "./modal-layer.js";
 
@@ -51,9 +50,9 @@ interface OpenDialog {
 /** What the next reload carries. */
 interface Reload {
   /** Null: the host page itself. */
-  target: URL | null;
-  messages: Messages;
-  opener: OpenerKey | null;
+  readonly target: URL | null;
+  readonly messages: Messages;
+  readonly opener: OpenerKey | null;
 }
 
 /** What a POST sends. */
@@ -131,11 +130,11 @@ function formRequest(form: HTMLFormElement, submitter: HTMLElement | null): Form
   return { url: new URL(target, location.href), body: new FormData(form, submitter) };
 }
 
-/** Rejects once `signal` aborts. */
+/** Rejects once `signal` aborts, close included. */
 function raceAbort<Result>(work: Promise<Result>, signal: AbortSignal | undefined): Promise<Result> {
   if (!signal) return work;
   return new Promise((resolve, reject) => {
-    const abort = (): void => reject(new DOMException("timed out", "AbortError"));
+    const abort = (): void => reject(new DOMException("aborted", "AbortError"));
     if (signal.aborted) abort();
     signal.addEventListener("abort", abort, { once: true });
     work.then(resolve, reject);
@@ -153,6 +152,15 @@ function noReload(): Reload {
   return { target: null, messages: [], opener: null };
 }
 
+/** Last target, every message, first opener. */
+function mergeReload(current: Reload, more: Partial<Reload>): Reload {
+  return {
+    target: more.target ?? current.target,
+    messages: [...current.messages, ...(more.messages ?? [])],
+    opener: current.opener ?? more.opener ?? null,
+  };
+}
+
 /** Joins a dialog's abort with a deadline. */
 function eitherAbort(first: AbortSignal, second: AbortSignal): AbortSignal {
   const controller = new AbortController();
@@ -161,12 +169,6 @@ function eitherAbort(first: AbortSignal, second: AbortSignal): AbortSignal {
     signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
   return controller.signal;
-}
-
-/** Leaves for `url`; its load toasts `messages`. */
-function leaveFor(url: URL, messages: Messages): void {
-  handOffMessages(messages);
-  browser.assign(url.href);
 }
 
 function isReadOnlyHost(): boolean {
@@ -256,7 +258,9 @@ export class FormDialogElement extends HTMLElement {
 
   private readonly onPageStale = (): void => {
     this.stale = true;
-    this.reload.opener ??= focusedOpener();
+    // Focus inside a dialog dies with the reload.
+    const opener = this.stack[0]?.opener ?? focusedOpener();
+    this.reload = mergeReload(this.reload, { opener });
     this.requestReload();
   };
 
@@ -264,9 +268,9 @@ export class FormDialogElement extends HTMLElement {
     return this.stack.find((entry) => entry.body.contains(node));
   }
 
+  /** No form dialog below; other modals wait. */
   private alone(entry: OpenDialog): boolean {
-    const open = openModals();
-    return open.length === 1 && open[0] === entry.dialog;
+    return this.stack[0] === entry;
   }
 
   /** A sign-in rotated it; every form follows. */
@@ -300,8 +304,7 @@ export class FormDialogElement extends HTMLElement {
       const marker = link.getAttribute(FORM_DIALOG_ATTRIBUTE);
       const chrome = chromeOf(marker);
       if (!chrome) {
-        report(`unknown chrome "${marker}"`);
-        browser.assign(url.href);
+        this.followLink(url, [], `unknown chrome "${marker}"`);
         return;
       }
       let route = routeOpen(await this.fetchAnswer(url, { signal: deadline }));
@@ -314,7 +317,7 @@ export class FormDialogElement extends HTMLElement {
         route = routeOpen(await this.fetchAnswer(route.url, { signal: deadline }));
       }
       if (route.kind === "present" && !(await this.prepare(route.page, route.url, deadline))) {
-        leaveFor(url, route.page.messages);
+        this.followLink(url, route.page.messages, `the page at ${url.href} could not be fitted`);
         return;
       }
       if (topModal() !== topAtClick) {
@@ -330,27 +333,38 @@ export class FormDialogElement extends HTMLElement {
           return;
         case "navigate":
           report(`opening ${url.href} finished at ${route.url.href}`);
-          browser.assign(route.url.href);
+          // A form host keeps the person's input.
+          if (isReadOnlyHost()) browser.assign(route.url.href);
           return;
         case "follow":
-          report(`opening ${url.href} answered no kind`);
-          browser.assign(url.href);
+          this.followLink(url, [], `opening ${url.href} answered no kind`);
           return;
         case "present":
           if (!this.openDialog(route.page, route.url, link, chrome)) {
-            leaveFor(url, route.page.messages);
+            this.followLink(url, route.page.messages, `the dialog for ${url.href} failed`);
           }
           return;
         default:
           assertNever(route);
       }
     } catch (error) {
-      report(`open failed: ${String(error)}`);
-      browser.assign(url.href);
+      this.followLink(url, [], `open failed: ${String(error)}`);
     } finally {
       this.opening = null;
       link.removeAttribute("aria-busy");
     }
+  }
+
+  /** On a form host, stays and says so. */
+  private followLink(url: URL, messages: Messages, detail: string): void {
+    const id = report(detail);
+    if (isReadOnlyHost()) {
+      handOffMessages(messages);
+      browser.assign(url.href);
+      return;
+    }
+    showToasts(messages);
+    errorToast(`This could not open here. Open the link in a new tab (error ${id}).`);
   }
 
   /** False when the dialog could not open. */
@@ -443,11 +457,12 @@ export class FormDialogElement extends HTMLElement {
     page: Page,
     url: URL,
     signal: AbortSignal,
+    wrote: boolean,
   ): Promise<void> {
     if (!(await this.prepare(page, url, signal))) {
       // The person's input stays on screen.
       showToasts(page.messages);
-      this.unshown("the answered form could not be shown");
+      this.unshownAnswer(wrote, "the answered form could not be shown");
       return;
     }
     if (this.stack.includes(entry)) {
@@ -500,14 +515,10 @@ export class FormDialogElement extends HTMLElement {
       const wrote = answer.kind === "done" || answer.kind === "continue";
       if (wrote) this.stale = true;
       try {
-        await this.routeSubmitAnswer(entry, answer, signal);
+        await this.routeSubmitAnswer(entry, answer, signal, wrote);
       } catch (error) {
         if (closed()) return;
-        if (wrote) {
-          this.unconfirmed(`routing the answer failed: ${String(error)}`);
-        } else {
-          this.unshown(`showing the answer failed: ${String(error)}`);
-        }
+        this.unshownAnswer(wrote, `routing the answer failed: ${String(error)}`);
       }
     } finally {
       entry.submitting = false;
@@ -516,17 +527,19 @@ export class FormDialogElement extends HTMLElement {
     }
   }
 
+  /** `wrote`: the first answer was a result. */
   private async routeSubmitAnswer(
     entry: OpenDialog,
     first: Answer,
     signal: AbortSignal,
+    wrote: boolean,
   ): Promise<void> {
     let answer = first;
     for (let step = 0; ; step += 1) {
       const route = routeSubmit(answer, this.alone(entry));
       switch (route.kind) {
         case "present":
-          await this.present(entry, route.page, route.url, signal);
+          await this.present(entry, route.page, route.url, signal, wrote);
           return;
         case "continue":
           if (step >= CONTINUE_LIMIT) {
@@ -537,8 +550,10 @@ export class FormDialogElement extends HTMLElement {
           answer = await this.fetchAnswer(route.url, { signal });
           continue;
         case "close":
-          this.reload.target = route.target;
-          this.reload.messages = [...this.reload.messages, ...route.messages];
+          this.reload = mergeReload(this.reload, {
+            target: route.target,
+            messages: route.messages,
+          });
           entry.modal.close();
           return;
         case "closeTop":
@@ -546,7 +561,11 @@ export class FormDialogElement extends HTMLElement {
           showToasts(route.messages);
           return;
         case "error":
-          this.refused(route.status);
+          if (wrote) {
+            this.unconfirmed(`the next answer had no kind (status ${route.status})`);
+          } else {
+            this.refused(route.status);
+          }
           return;
         default:
           assertNever(route);
@@ -560,6 +579,15 @@ export class FormDialogElement extends HTMLElement {
     const id = report(detail);
     const remedy = isReadOnlyHost() ? "Close this to see the current page" : "Reload the page to check";
     errorToast(`The save could not be confirmed. ${remedy} (error ${id}).`);
+  }
+
+  /** After a write, the save is unconfirmed. */
+  private unshownAnswer(wrote: boolean, detail: string): void {
+    if (wrote) {
+      this.unconfirmed(detail);
+    } else {
+      this.unshown(detail);
+    }
   }
 
   /** An answer arrived that cannot be shown. */
@@ -587,7 +615,7 @@ export class FormDialogElement extends HTMLElement {
     const index = this.stack.indexOf(entry);
     if (index !== -1) this.stack.splice(index, 1);
     if (this.stack.length > 0 || !this.stale) return;
-    this.reload.opener ??= entry.opener;
+    this.reload = mergeReload(this.reload, { opener: entry.opener });
     this.requestReload();
   }
 
@@ -618,7 +646,11 @@ export class FormDialogElement extends HTMLElement {
       showToasts(messages);
       return;
     }
-    handOffMessages(messages);
+    if (!handOffMessages(messages)) {
+      // Unstorable: show them; the page stays stale.
+      showToasts(messages);
+      return;
+    }
     if (opener) handOffOpener(opener);
     if (target && !sameUrl(target, location.href)) {
       browser.assign(target.href);

@@ -1,7 +1,7 @@
 """Generate TypeScript contracts from registered elements and Python vocabularies."""
 
 from pathlib import Path
-from typing import get_type_hints
+from typing import TypeAliasType, get_args, get_type_hints
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand
 # Importing the components package triggers element registration at import time.
 import common.components
 import common.criteria
-from common.components.custom_elements import render_props_module
+from common.components.custom_elements import TypedDictClass, render_props_module
 from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
@@ -23,11 +23,9 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
-    ContinueAnswer,
-    DoneAnswer,
+    DialogAnswer,
     FormDialogChrome,
     FormDialogPart,
-    PageAnswer,
 )
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
@@ -62,10 +60,21 @@ from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES
 
 
+def _union_members(union: object) -> list[TypedDictClass]:
+    """A union's members, nested aliases unfolded."""
+    members: list[TypedDictClass] = []
+    for member in get_args(union):
+        if isinstance(member, TypeAliasType):
+            members.extend(_union_members(member.__value__))
+        else:
+            members.append(member)
+    return members
+
+
 def form_dialog_module() -> str:
     """The form dialog's wire: answers, header, markers."""
     return render_filter_metadata_module(
-        [PageAnswer, DoneAnswer, ContinueAnswer],
+        _union_members(DialogAnswer.__value__),
         constants=[
             TsConstant("FORM_DIALOG_HEADER", str, FORM_DIALOG_HEADER),
             TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),

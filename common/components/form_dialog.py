@@ -20,9 +20,10 @@ type FormDialogPart = Literal["template", "header", "title", "body"]
 type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
 type AttributeName = str  # e.g. "aria-controls"
 type AbsoluteUrl = str  # e.g. "https://example.com/devices"
-type ModulePath = str  # e.g. "/static/js/dist/elements/field-mirror.js"
+type ModulePath = str  # static URL: a path, or absolute when hosted
 type DocumentTitle = str  # e.g. "Add New Device"
 type HtmlText = str  # rendered markup
+type ChromeMarker = str  # the marker's value: "" or "bare"
 
 
 class PageAnswer(TypedDict):
@@ -52,12 +53,14 @@ class ContinueAnswer(TypedDict):
 
 #: What a dialog's redirect becomes.
 type RedirectAnswer = DoneAnswer | ContinueAnswer
+#: Every answer kind the dialog reads.
+type DialogAnswer = PageAnswer | RedirectAnswer
 
 
 FORM_DIALOG_ATTRIBUTE: Final[FormDialogAttribute] = "data-form-dialog"
 
 #: The marker's value per chrome.
-FORM_DIALOG_CHROME_VALUES: Mapping[FormDialogChrome, str] = {
+FORM_DIALOG_CHROME_VALUES: Mapping[FormDialogChrome, ChromeMarker] = {
     "header": "",
     "bare": "bare",
 }
@@ -92,7 +95,7 @@ FORM_DIALOG_ID_LIST_ATTRIBUTES: tuple[AttributeName, ...] = (
 
 require_every_key(FormDialogChrome, FORM_DIALOG_CHROME_VALUES)
 #: The client decodes a marker back to its chrome.
-FORM_DIALOG_CHROME_BY_MARKER: Mapping[str, FormDialogChrome] = {
+FORM_DIALOG_CHROME_BY_MARKER: Mapping[ChromeMarker, FormDialogChrome] = {
     marker: chrome for chrome, marker in FORM_DIALOG_CHROME_VALUES.items()
 }
 if len(FORM_DIALOG_CHROME_BY_MARKER) != len(FORM_DIALOG_CHROME_VALUES):

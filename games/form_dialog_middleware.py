@@ -12,11 +12,11 @@ from common.form_dialog import FORM_DIALOG_HEADER, is_form_dialog
 from common.notices import toast_payloads
 from games.views.returns import READ_ONLY
 
-#: Redirects that carry a `Location`.
-_REDIRECTS = frozenset({301, 302, 303, 307, 308})
-
-
+type HttpStatus = int  # e.g. 302
 type LocationHeader = str  # relative or absolute
+
+#: Redirects that carry a `Location`.
+_REDIRECTS: frozenset[HttpStatus] = frozenset({301, 302, 303, 307, 308})
 
 
 def dialog_result(
@@ -24,7 +24,8 @@ def dialog_result(
 ) -> RedirectAnswer | None:
     """`done` on a read-only page; else `continue`.
 
-    None off-origin: the browser follows it.
+    `done` consumes the message queue. None off-origin:
+    the element then follows the link.
     """
     url = request.build_absolute_uri(location)
     target = urlsplit(url)

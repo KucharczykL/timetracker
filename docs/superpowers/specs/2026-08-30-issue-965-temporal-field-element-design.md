@@ -13,10 +13,9 @@ The server renders the native controls of #964. `connectedCallback` hides the
 controls a person does not need yet, and binds the segments. Remove the script
 and the form still works, because the element writes the same named inputs.
 
-A widget renders to text, so the node tree stops at `TemporalWidget.render()`
-and this element's `Media` never reaches `collect_media()`. A page that hosts
-the field threads `scripts=ModuleScript("dist/elements/temporal-field.js")`
-itself, the way the purchase and play-event pages do for the date picker.
+`TemporalWidget` states the element's module as `component_media`.
+`FormFields` attaches it; a field rendered outside it goes through
+`bound_control(field)`.
 
 ## The segments come from the existing core
 

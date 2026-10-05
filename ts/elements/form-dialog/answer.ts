@@ -32,7 +32,7 @@ export function sameUrl(left: string | URL, right: string | URL): boolean {
 }
 
 export interface Page {
-  /** Consumed when inserted. */
+  /** Fitted by prepare, emptied by fill; once. */
   readonly content: DocumentFragment;
   readonly title: string;
   readonly modules: readonly ResolvedModuleUrl[];
