@@ -67,6 +67,19 @@ describe("client-errors", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("clips each field to the endpoint's limits", () => {
+    reportClientError("ctx-long", "d".repeat(900));
+    const body = JSON.parse(String(fetchMock.mock.calls.at(-1)![1].body));
+    expect(body.detail).toHaveLength(500);
+    expect(body.context.length).toBeLessThanOrEqual(200);
+    expect(body.url.length).toBeLessThanOrEqual(200);
+  });
+
+  it("answers a repeat with the id it logged", () => {
+    const first = reportClientError("ctx-same-id", "detail");
+    expect(reportClientError("ctx-same-id", "detail")).toBe(first);
+  });
+
   it("reports distinct details under one context separately", () => {
     reportClientError("ctx-two", "first");
     reportClientError("ctx-two", "second");
@@ -124,8 +137,12 @@ describe("client-errors", () => {
       reportClientError("ctx-cap", `detail-${index}`);
     }
     expect(fetchMock).toHaveBeenCalledTimes(25);
-    reportClientError("ctx-cap", "detail-26");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = reportClientError("ctx-cap", "detail-26");
     expect(fetchMock).toHaveBeenCalledTimes(25); // no 26th POST
+    expect(logged).toHaveBeenCalledWith(
+      `client error [${id}] (not sent) ctx-cap: detail-26`,
+    );
   });
 
   it("a deduped repeat does not consume cap budget", () => {

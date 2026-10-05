@@ -104,6 +104,11 @@ function openEntries(): Entry[] {
   return shown.filter((entry) => entry.state === "open");
 }
 
+/** Open dialogs, in opening order. */
+export function openModals(): readonly HTMLDialogElement[] {
+  return openEntries().map((entry) => entry.dialog);
+}
+
 export function topModal(): HTMLDialogElement | null {
   return openEntries().at(-1)?.dialog ?? null;
 }
@@ -237,7 +242,7 @@ export function isReachable(element: HTMLElement): boolean {
 }
 
 /** The opener, else a reachable drop-down toggle. */
-function focusReturnTarget(opener: HTMLElement | null): HTMLElement | null {
+export function focusReturnTarget(opener: HTMLElement | null): HTMLElement | null {
   if (!opener) return null;
   if (isReachable(opener)) return opener;
   let dropdown = opener.closest<HTMLElement>("drop-down");

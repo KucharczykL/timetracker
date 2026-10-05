@@ -1,7 +1,7 @@
 """Generate TypeScript contracts from registered elements and Python vocabularies."""
 
 from pathlib import Path
-from typing import get_type_hints
+from typing import TypeAliasType, get_args, get_type_hints
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -9,13 +9,23 @@ from django.core.management.base import BaseCommand
 # Importing the components package triggers element registration at import time.
 import common.components
 import common.criteria
-from common.components.custom_elements import render_props_module
+from common.components.custom_elements import TypedDictClass, render_props_module
 from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
     CALENDAR_WEEKDAY_CLASS,
     CalendarDayVariant,
     CalendarTrackVariant,
+)
+from common.components.form_dialog import (
+    FORM_DIALOG_ATTRIBUTE,
+    FORM_DIALOG_CHROME_BY_MARKER,
+    FORM_DIALOG_ID_ATTRIBUTES,
+    FORM_DIALOG_ID_LIST_ATTRIBUTES,
+    FORM_DIALOG_PARTS,
+    DialogAnswer,
+    FormDialogChrome,
+    FormDialogPart,
 )
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
@@ -38,6 +48,7 @@ from common.criteria import (
     ModifierToken,
 )
 from common.date_time_presentation import DateTimePresentationConfig
+from common.form_dialog import FORM_DIALOG_HEADER
 from games.models import ADDON_KINDS
 from games.views.catalog_section import (
     CATALOG_NAME_KINDS,
@@ -47,6 +58,46 @@ from games.views.catalog_section import (
 from timetracker.config import SETTING_SOURCE_CHOICES
 from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES
+
+
+def _union_members(union: object) -> list[TypedDictClass]:
+    """A union's members, nested aliases unfolded."""
+    members: list[TypedDictClass] = []
+    for member in get_args(union):
+        if isinstance(member, TypeAliasType):
+            members.extend(_union_members(member.__value__))
+        else:
+            members.append(member)
+    return members
+
+
+def form_dialog_module() -> str:
+    """The form dialog's wire: answers, header, markers."""
+    return render_filter_metadata_module(
+        _union_members(DialogAnswer.__value__),
+        constants=[
+            TsConstant("FORM_DIALOG_HEADER", str, FORM_DIALOG_HEADER),
+            TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
+            TsConstant(
+                "FORM_DIALOG_CHROME_BY_MARKER",
+                dict[str, FormDialogChrome],
+                dict(FORM_DIALOG_CHROME_BY_MARKER),
+            ),
+            TsConstant(
+                "FORM_DIALOG_PARTS",
+                dict[FormDialogPart, str],
+                dict(FORM_DIALOG_PARTS),
+            ),
+            TsConstant(
+                "FORM_DIALOG_ID_ATTRIBUTES", list[str], list(FORM_DIALOG_ID_ATTRIBUTES)
+            ),
+            TsConstant(
+                "FORM_DIALOG_ID_LIST_ATTRIBUTES",
+                list[str],
+                list(FORM_DIALOG_ID_LIST_ATTRIBUTES),
+            ),
+        ],
+    )
 
 
 class Command(BaseCommand):
@@ -144,6 +195,8 @@ class Command(BaseCommand):
                     ),
                 ],
             ),
+            # The form dialog's wire contract.
+            output_dir / "form-dialog.ts": form_dialog_module(),
             # `<game-addon>` shows the parent for these.
             output_dir / "game-kinds.ts": render_filter_metadata_module(
                 [],

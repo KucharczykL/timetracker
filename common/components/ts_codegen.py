@@ -28,6 +28,7 @@ import types
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from typing import (
+    Any,
     Literal,
     NamedTuple,
     TypeAliasType,
@@ -129,6 +130,7 @@ def render_choice_vocabulary(
 class TsField(NamedTuple):
     name: str  # verbatim Python field name, e.g. "search_url"
     ts_type: TsTypeExpr  # its rendered TS type, e.g. "string"
+    optional: bool
 
 
 class TsConstant(NamedTuple):
@@ -166,6 +168,16 @@ def _jsonable(value: object) -> object:
     return value
 
 
+def _optional_keys(typed_dict: TypedDictClass) -> frozenset[str]:
+    """`NotRequired` keys.
+
+    Cast: `TypedDictClass` is bare `type` to mypy.
+    """
+    if not is_typeddict(typed_dict):
+        raise TypeError(f"ts_codegen: {typed_dict!r} is not a TypedDict")
+    return cast(Any, typed_dict).__optional_keys__
+
+
 def render_filter_metadata_module(
     roots: list[TypedDictClass], constants: Sequence[TsConstant] = ()
 ) -> str:
@@ -187,8 +199,9 @@ def render_filter_metadata_module(
         if name in interfaces:
             return
         interfaces[name] = []  # reserve slot (recursion guard) before descending
+        optional_keys = _optional_keys(typed_dict)
         interfaces[name] = [
-            TsField(field_name, ts_type(field_type))
+            TsField(field_name, ts_type(field_type), field_name in optional_keys)
             for field_name, field_type in get_type_hints(typed_dict).items()
         ]
 
@@ -251,7 +264,10 @@ def render_filter_metadata_module(
     interface_blocks = [
         "export interface {name} {{\n{body}\n}}".format(
             name=name,
-            body="\n".join(f"  {field.name}: {field.ts_type};" for field in fields),
+            body="\n".join(
+                f"  {field.name}{'?' if field.optional else ''}: {field.ts_type};"
+                for field in fields
+            ),
         )
         for name, fields in interfaces.items()
     ]

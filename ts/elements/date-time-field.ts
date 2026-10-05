@@ -100,7 +100,10 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
   private handleZoneRowChange: ((event: Event) => void) | null = null;
 
   connectedCallback(): void {
-    if (this.initialized) return;
+    if (this.initialized) {
+      this.listenForZoneRow();
+      return;
+    }
     this.initialized = true;
     this.zoneFieldName = readDateTimeFieldProps(this).zoneFieldName;
     // The residual (seconds, microseconds) is read from the value the field was
@@ -112,6 +115,9 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
       this.handleZoneRowChange = (event) => {
         const detail = (event as CustomEvent<TimeZoneRowChangeDetail>).detail;
         if (!detail || detail.fieldName !== this.zoneFieldName) return;
+        // Form-scoped, as `selectedZone` reads it.
+        const row = event.target instanceof Element ? event.target : null;
+        if (row?.closest("form") !== this.closest("form")) return;
         // The digits are the user's; only their meaning moved. Re-encoding
         // the same segment buffers swaps the committed offset — nothing
         // visible in this field changes.
@@ -123,7 +129,7 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
           this.codec,
         );
       };
-      document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, this.handleZoneRowChange);
+      this.listenForZoneRow();
     }
     this.initCalendar();
     this.initField();
@@ -136,7 +142,12 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
     // new row's zone changes.
     if (this.handleZoneRowChange) {
       document.removeEventListener(TIME_ZONE_ROW_CHANGE_EVENT, this.handleZoneRowChange);
-      this.handleZoneRowChange = null;
+    }
+  }
+
+  private listenForZoneRow(): void {
+    if (this.handleZoneRowChange) {
+      document.addEventListener(TIME_ZONE_ROW_CHANGE_EVENT, this.handleZoneRowChange);
     }
   }
 
@@ -144,7 +155,8 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
    * the codec then falls back to the account display zone. */
   private selectedZone(): string | null {
     if (!this.zoneFieldName) return null;
-    const row = document.querySelector<HTMLElement>(
+    // Form-scoped: two forms may share names.
+    const row = (this.closest("form") ?? document).querySelector<HTMLElement>(
       `time-zone-row[field-name="${this.zoneFieldName}"]`,
     );
     if (!row) return null;
@@ -274,7 +286,7 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
     const copyButton = this.querySelector<HTMLElement>("[data-date-time-copy]");
     copyButton?.addEventListener("click", () => {
       const targetName = copyButton.getAttribute("data-date-time-copy") ?? "";
-      const target = document.querySelector<DateTimeFieldElement>(
+      const target = (this.closest("form") ?? document).querySelector<DateTimeFieldElement>(
         `date-time-field[field-name="${targetName}"]`,
       );
       target?.setValue(resolveHidden(this)?.value ?? "");

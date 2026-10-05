@@ -141,11 +141,10 @@ class RenderedPagesTest(TestCase):
                 marker, html, f"Found double-escaped markup ({marker!r}) in output"
             )
 
-    # --- scripts auto-collected from component media (Phase 4) ---------------
+    # --- scripts auto-collected from component media --------------------------
 
     def test_list_page_auto_loads_widget_scripts(self):
-        """The games list view passes no scripts= argument; the quick bar's
-        components declare their JS and Page() collects it."""
+        """The quick bar's components declare their JS; Page() collects it."""
         html = self.get("games:list_games").content.decode()
         self.assertIn("js/dist/elements/quick-filter-bar.js", html)
         self.assertIn("js/dist/elements/search-select.js", html)
@@ -182,9 +181,7 @@ class RenderedPagesTest(TestCase):
         html = self.get("games:list_playthroughs").content.decode()
         # No script tag should appear escaped anywhere on the page.
         self.assertNotIn("&lt;script", html)
-        # Inline JS keeps its quotes (escaping would yield &#x27;).
-        self.assertIn("document.addEventListener('DOMContentLoaded'", html)
-        self.assertNotIn("&#x27;DOMContentLoaded&#x27;", html)
+        self.assertIn('<script type="module" src=', html)
         # Correct charset markup, not <meta name="charset">.
         self.assertIn('<meta charset="utf-8"', html)
         # A single, un-escaped django-messages JSON block.
@@ -262,7 +259,8 @@ class RenderedPagesTest(TestCase):
 
     def test_add_game_form(self):
         html = self.get("games:add_game").content.decode()
-        self.assertIn("dist/add_game.js", html)
+        self.assertIn("<field-mirror", html)
+        self.assertIn("dist/elements/field-mirror.js", html)
         self.assertIn("submit_and_add_to_library", html)
         self.assertIn("Submit &amp; Add to library", html)  # & correctly escaped
         self.assertNotIn("Create Purchase", html)

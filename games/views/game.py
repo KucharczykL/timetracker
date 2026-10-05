@@ -36,7 +36,6 @@ from common.components import (
     GameStatusSelector,
     Icon,
     Link,
-    ModuleScript,
     NameWithIcon,
     Node,
     P,
@@ -57,6 +56,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.components.field_mirror import FieldMirror
 from common.components.game_addon import GameAddon
 from common.components.primitives import (
     SECTION_SURFACE_CLASS,
@@ -454,6 +454,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             fields=Fragment(
                 FormFields(form, groups=GAME_FORM_GROUPS),
                 GameAddon("kind", "parent"),
+                FieldMirror("name", "sort_name"),
                 editions_area(graph),
                 references_area(references),
             ),
@@ -465,11 +466,6 @@ def add_game(request: HttpRequest) -> HttpResponse:
             )["Submit & Add to library"],
         ),
         title="Add New Game",
-        #: Release rows render outside FormFields.
-        scripts=Fragment(
-            ModuleScript("dist/elements/temporal-field.js"),
-            ModuleScript("dist/add_game.js"),
-        ),
     )
 
 
@@ -578,8 +574,6 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             width_class="max-w-xl md:max-w-4xl",
         ),
         title="Edit Game",
-        #: Release rows render outside FormFields.
-        scripts=ModuleScript("dist/elements/temporal-field.js"),
         #: The same tail renders an invalid form.
         status=refused_status,
     )
@@ -1453,7 +1447,6 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         request,
         content,
         title=f"Game Overview - {game.name}",
-        mastered=game.tracked_mastered,
     )
 
 

@@ -594,18 +594,20 @@ function bindControls(host: HTMLElement): void {
 }
 
 /**
- * The button that copies another field.
+ * The copy button; answers its painter, if any.
  *
  * The source may be absent: a value no segment can hold renders the
  * native controls alone. Treat that as a source stating nothing.
  */
-function initCopyControl(host: HTMLElement): void {
+function initCopyControl(host: HTMLElement): (() => void) | null {
   const button = host.querySelector<HTMLButtonElement>("[data-temporal-copy]");
-  if (!button) return;
+  if (!button) return null;
   const sourceName = button.getAttribute("data-temporal-copy") ?? "";
   // Resolved on every press: the source may upgrade after this row does.
   const findSource = () =>
-    document.querySelector<HTMLElement>(`temporal-field[field-name="${sourceName}"]`);
+    (host.closest("form") ?? document).querySelector<HTMLElement>(
+      `temporal-field[field-name="${sourceName}"]`,
+    );
   const unfilledTitle = button.getAttribute("title") ?? "";
   const paint = () => {
     const source = findSource();
@@ -616,25 +618,25 @@ function initCopyControl(host: HTMLElement): void {
     else button.setAttribute("title", unfilledTitle);
   };
   button.hidden = false;
-  paint();
-  // On the document, because a source that upgrades later is still a source.
-  document.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, paint);
   button.addEventListener("click", () => {
     const source = findSource();
     if (source) copyTemporalDraft(source, host);
   });
+  return paint;
 }
 
-function initField(host: HTMLElement): void {
+/** Wires the field; answers its copy painter. */
+function initField(host: HTMLElement): (() => void) | null {
   revealSegments(host);
   bindEngine(host);
   bindControls(host);
   adoptDraft(host, readDraft(host));
   ENDPOINTS.forEach((endpoint) => paintQualifiers(host, endpoint));
-  initCopyControl(host);
+  const paintCopy = initCopyControl(host);
   // A field nobody has touched announces nothing.
   const region = host.querySelector("[data-temporal-announcement]");
   if (region) region.textContent = "";
+  return paintCopy;
 }
 
 /** Every key empty. */
@@ -642,12 +644,24 @@ const EMPTY_DRAFT = Object.fromEntries(DRAFT_KEYS.map((key) => [key, ""])) as Te
 
 class TemporalFieldElement extends HTMLElement implements UnsetTarget {
   private initialized = false;
+  private paintCopy: (() => void) | null = null;
   private readonly hold = new UnsetHold<TemporalDraft>();
 
   connectedCallback(): void {
-    if (this.initialized) return;
-    this.initialized = true;
-    initField(this);
+    if (!this.initialized) {
+      this.initialized = true;
+      this.paintCopy = initField(this);
+    }
+    if (!this.paintCopy) return;
+    this.paintCopy();
+    // Document-wide: any source's change repaints.
+    document.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, this.paintCopy);
+  }
+
+  disconnectedCallback(): void {
+    if (this.paintCopy) {
+      document.removeEventListener(TEMPORAL_FIELD_CHANGE_EVENT, this.paintCopy);
+    }
   }
 
   unsetValue(): void {

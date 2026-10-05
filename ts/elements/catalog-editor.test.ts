@@ -333,6 +333,15 @@ describe("names", () => {
     expect(markText()).toBe("Show the DOS release in the library");
   });
 
+  it("stops listening for pageshow once removed", () => {
+    const editor = document.querySelector("catalog-editor")!;
+    editor.remove();
+    editor.querySelector<HTMLSelectElement>(`${release} select`)!.value = "d";
+    window.dispatchEvent(new Event("pageshow"));
+    const mark = editor.querySelector(`${release} span[data-catalog-name]`)!;
+    expect(mark.textContent).toBe("Show the Amiga release in the library");
+  });
+
   it("corrects a stale name on arrival", () => {
     // As a browser restores a changed select.
     document.body.innerHTML = NAMED.replace(

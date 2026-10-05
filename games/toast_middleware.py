@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib import messages as django_messages
 from django.contrib.messages import constants as message_constants
 
+from common.form_dialog import is_form_dialog
 from common.notices import toast_payloads
 
 #: Events the page dispatches, as JSON.
@@ -20,6 +21,10 @@ class ToastMessagesMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
+
+        # The dialog's answers carry their own.
+        if is_form_dialog(request):
+            return response
 
         # Redirects and reloads keep their messages.
         # Reading them here marks the storage used, so MessageMiddleware

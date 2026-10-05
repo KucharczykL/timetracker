@@ -894,10 +894,10 @@ code.
 title=...)` instead of Django's `render()`. Assembles full HTML document via
 `Page()` — analogous to FastHTML's `fast_app()`: `<head>`, navbar, toast
 container, FOUC-prevention script, and **JS includes** (calls
-`collect_media(content)`, emits `<script>` tags automatically, so views do **not**
-pass `scripts=` for component-owned JS). `scripts=` remains only for page-specific
-glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
-today's/last-7-days playtime from `model_counts` context processor.
+`collect_media(content)`, emits `<script>` tags automatically; there is no
+`scripts=`). A request carrying `X-Form-Dialog: 1` gets the content alone as
+a JSON `page` answer instead. Navbar shows today's/last-7-days playtime
+from `model_counts` context processor.
 
 **Playtime reads** (`games/reads/playtime.py`, #697, #709): every playtime
 figure sums two sources, sessions and historical playtime records, and comes
@@ -1035,7 +1035,7 @@ Submodules re-exported via `common/components/__init__.py`:
   cannot bubble. A widget declares `component_media` (`MediaWidget` in
   `primitives.py`: the pickers, date picker, date-time, temporal, time zone
   row, and `UnsetWidget` with its inner widget's) and `FormFields` attaches
-  it. A view threads `scripts=` only for a field rendered outside `FormFields`
+  it; a field rendered outside it goes through `bound_control(field)`
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, native controls for date at any
@@ -1047,8 +1047,7 @@ Submodules re-exported via `common/components/__init__.py`:
   Its posted names and their draft keys live in `timetracker/temporal.py`
   (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in
   `games/forms.py` reads back. Its Release rows render outside `FormFields`,
-  so Add Game and Edit Game (`games/views/game.py`), which host the same
-  Editions area, thread `scripts=ModuleScript("dist/elements/temporal-field.js")`. Grammar and wire contract in
+  through `bound_control`. Grammar and wire contract in
   [Temporal](docs/temporal.md)
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired
@@ -1176,8 +1175,9 @@ rest with `stale_purchases`.
 
 **Toast middleware** (`games/toast_middleware.py`): converts Django messages
 into one `X-Events` header carrying every queued message as a `show-toast`
-list; skipped on a redirect and on a response carrying `X-Reload`, whose page
-reads its messages itself. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
+list; skipped on a redirect, on a response carrying `X-Reload`, whose page
+reads its messages itself, and on a form dialog request, whose answer
+carries them or leaves them queued. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
 built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 `ts/toast.ts` keeps `window.toast` and `fetchWithEvents`.
 
@@ -1527,8 +1527,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   baked class and duplicate-attribute HTML impossible.
 - **JS-bearing components declare `Media`, they don't rely on the view** — give
   component `class Media: js = (...)` or `return node.with_media(Media(js=...))`.
-  `Page()` collects and emits it. Never re-add `scripts=ModuleScript(...)`
-  threading in view for component that can declare own dependency.
+  `Page()` collects and emits it; `render_page()` takes no `scripts=`.
 - **Filter views** accept `?filter=<JSON>`; free-text search rides inside it as
   `search` criterion (no `?search_string=`). New criteria go in
   `games/filters.py`; new criterion *types* go in `common/criteria.py`.
@@ -1592,6 +1591,19 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   (`BottomSheet`, `behavior="sheet"`) is a per-modal opt-in. Scope a
   backdrop transition to the closing state. Contract is
   [The modal layer](docs/superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md)
+- **A form page opens in a modal by marking its link**, opt-in per link (#1384):
+  `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no
+  header. `<form-dialog>` fetches in dialog mode (`X-Form-Dialog`):
+  `render_page()` answers `page`, `FormDialogResultMiddleware`
+  (`games/form_dialog_middleware.py`) turns a redirect into `done` (a
+  `READ_ONLY` target) or `continue`. After a write the element reloads a
+  read-only host once no modal is open, or on `page:stale` (nothing sends
+  it yet; background jobs will, #1507); messages and
+  the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
+  is an element (`<field-mirror>`).
+  Content it inserts must wire on connect, unwire on disconnect, and look
+  up a field name in its own form first. Contract is
+  [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md)
 - **A bulk write analyzes what it filled** — a command or task that
   fills or replaces many rows ends with `analyze_tables` from
   `games/planner_statistics.py`, naming its tables, inside its transaction

@@ -1708,8 +1708,7 @@ def CsrfInput(request) -> Node:
 def ModuleScript(filename: str) -> Node:
     """A `<script type="module">` node pointing at a static JS file.
 
-    A node (not a safe string) so it drops straight into a tree — head list or
-    `scripts=` — beside the other `Script`/`Link` nodes, no `Safe(str(...))`."""
+    A node, so it drops into a tree beside other `Script`/`Link` nodes."""
     return Script(type="module", src=static("js/" + filename))
 
 
@@ -1979,7 +1978,7 @@ class MediaWidget(Protocol):
     def component_media(self) -> Media: ...
 
 
-def _bound_control(field) -> Node:
+def bound_control(field) -> Node:
     """A bound field's markup, keeping widget media."""
     control = Safe(str(field))
     # Widget text drops its component's media.
@@ -1997,7 +1996,7 @@ def _form_field_row(
     presentation = presentation or FormFieldPresentation()
     is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
     label = _form_field_label(field, presentation.label_extra)
-    control = _bound_control(field)
+    control = bound_control(field)
     if presentation.decorate_control is not None:
         control = presentation.decorate_control(control)
     errors = FieldErrors(field.errors)
@@ -2161,7 +2160,7 @@ def FormFields(
     embedded_by_host: dict[str, list[Node]] = {}
     for embedded_name, host_name in embedded.items():
         embedded_field = form[embedded_name]
-        embed_parts: list[Node] = [_bound_control(embedded_field)]
+        embed_parts: list[Node] = [bound_control(embedded_field)]
         embed_errors = FieldErrors(embedded_field.errors)
         if embed_errors:
             embed_parts.append(embed_errors)

@@ -1,16 +1,18 @@
 """The dialog every modal on the modal layer wears."""
 
 from collections.abc import Collection, Mapping
-from typing import Literal, TypeAliasType, get_args
+from typing import Literal, NamedTuple, TypeAliasType, get_args
 
-from common.components.core import Attributes, Element
-from common.components.elements import Dialog
+from common.components.core import Attributes, Child, Element, HTMLAttribute
+from common.components.elements import Dialog, Div, PlainH2, Span
+from common.components.primitives import ControlButton
 
 type ModalAlign = Literal["center", "end"]
 type ModalAttributeRole = Literal[
     "modal", "dismiss", "initial_focus", "covered", "over"
 ]
 type ModalAttribute = str  # e.g. "data-modal-covered"
+type ElementId = str  # e.g. "form-dialog-title"
 
 #: The attributes ts/elements/modal-layer.ts reads and stamps.
 MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
@@ -40,15 +42,15 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 }
 
 
-def _require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
+def require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
     """Refuses a table missing a Literal member."""
     members = set(get_args(alias.__value__))
     if set(table) != members:
         raise TypeError(f"{alias.__name__} table keys {set(table)} != {members}")
 
 
-_require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)
-_require_every_key(ModalAlign, _MODAL_ALIGN_CLASS)
+require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)
+require_every_key(ModalAlign, _MODAL_ALIGN_CLASS)
 
 
 def ModalDialog(
@@ -61,4 +63,70 @@ def ModalDialog(
     return Dialog(
         [(MODAL_ATTRIBUTES["modal"], ""), *attributes],
         class_=f"{_MODAL_DIALOG_CLASS} {_MODAL_ALIGN_CLASS[align]} {class_}".strip(),
+    )
+
+
+def ModalPanelHeader(
+    title: Child,
+    *,
+    title_id: ElementId,
+    close_label: str = "Close dialog",
+    attributes: Attributes = (),
+    title_attributes: Attributes = (),
+) -> Element:
+    """A modal panel's title row with its ×.
+
+    `title_id` beats an id in `title_attributes`.
+    """
+    close_button = ControlButton(
+        [
+            (MODAL_ATTRIBUTES["dismiss"], ""),
+            ("aria-label", close_label),
+            ("class", "shrink-0 focus:ring-inset"),
+        ],
+        variant="ghost",
+    )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    return Div(
+        attributes,
+        class_=(
+            "flex shrink-0 items-center justify-between gap-4 "
+            "border-b border-default-medium bg-surface-overlay px-4 py-3"
+        ),
+    )[
+        PlainH2(
+            [
+                ("id", title_id),
+                *title_attributes,
+                ("class", "text-type-section text-heading"),
+            ],
+        )[title],
+        close_button,
+    ]
+
+
+class TitledHeader(NamedTuple):
+    """A header and the attribute naming its dialog."""
+
+    labelled_by: HTMLAttribute
+    header: Element
+
+
+def titled_header(
+    title: Child,
+    *,
+    title_id: ElementId,
+    close_label: str = "Close dialog",
+    attributes: Attributes = (),
+    title_attributes: Attributes = (),
+) -> TitledHeader:
+    """Pairs a header with its dialog's name."""
+    return TitledHeader(
+        ("aria-labelledby", title_id),
+        ModalPanelHeader(
+            title,
+            title_id=title_id,
+            close_label=close_label,
+            attributes=attributes,
+            title_attributes=title_attributes,
+        ),
     )

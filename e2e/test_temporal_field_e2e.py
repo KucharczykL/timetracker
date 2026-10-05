@@ -14,7 +14,7 @@ from django.test import override_settings
 from django.urls import path
 from django.views.decorators.csrf import csrf_exempt
 
-from common.components import ControlButton, Form, FormFields, ModuleScript
+from common.components import ControlButton, Form, FormFields
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_format_profile,
@@ -64,8 +64,6 @@ def _render_form_page(
             ControlButton(type="submit")["Save"],
         ],
         title="Temporal harness",
-        # A widget renders to text, so its element's Media never bubbles.
-        scripts=ModuleScript("dist/elements/temporal-field.js"),
     )
 
 

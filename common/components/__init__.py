@@ -104,6 +104,7 @@ from common.components.filters import (
     field_widget_templates,
     parse_filter_dict,
 )
+from common.components.form_dialog import FormDialogHost, form_dialog_link
 from common.components.library_kit import (
     CopyableFactValue,
     CopyControl,
@@ -117,7 +118,7 @@ from common.components.library_kit import (
     SummaryRow,
     SummaryValue,
 )
-from common.components.modal import MODAL_ATTRIBUTES, ModalDialog
+from common.components.modal import MODAL_ATTRIBUTES, ModalDialog, ModalPanelHeader
 from common.components.navigation import AccountMenu, AvatarButton
 from common.components.primitives import (
     COMPACT_SHAPE_CLASSES,
@@ -421,6 +422,7 @@ __all__ = [
     "FilterSummary",
     "Footer",
     "Form",
+    "FormDialogHost",
     "FormFieldGroup",
     "FormFieldPresentation",
     "FormFields",
@@ -447,6 +449,7 @@ __all__ = [
     "MatchModeToken",
     "Media",
     "ModalDialog",
+    "ModalPanelHeader",
     "ModuleScript",
     "NameWithIcon",
     "Nav",
@@ -551,6 +554,7 @@ __all__ = [
     "drop_columns",
     "field_widget",
     "field_widget_templates",
+    "form_dialog_link",
     "is_quick_editable",
     "make_row",
     "normalize_attributes",

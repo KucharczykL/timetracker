@@ -10,7 +10,7 @@ media-bearing components subclass :class:`BaseComponent` and implement
 Nodes are *lazy*: they hold structure and render to HTML only when asked
 (``str(node)`` / ``node.__html__()`` / :func:`render`). This is what lets
 ``TimetrackerDocument()`` walk a finished tree and collect every component's declared JS
-(:class:`Media`) instead of each view threading ``scripts=`` by hand.
+(:class:`Media`).
 """
 
 import hashlib

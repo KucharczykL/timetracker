@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "../toast.js";
+import { handOffMessages } from "../handoff.js";
 import { attachModal, type Modal } from "./modal-layer.js";
 import { pushSurface } from "./surface-stack.js";
 import "./toast-stack.js";
@@ -90,6 +91,16 @@ describe("rendering", () => {
       <toast-stack></toast-stack>`;
 
     expect(toasts().map(messageOf)).toEqual(["Hello"]);
+  });
+
+  it("shows handed-off messages once, after the page's own", () => {
+    handOffMessages([{ message: "Moved", type: "info" }]);
+    document.body.innerHTML = `
+      <script id="django-messages" type="application/json">[{"message":"Hello"}]</script>
+      <toast-stack></toast-stack>`;
+
+    expect(toasts().map(messageOf)).toEqual(["Hello", "Moved"]);
+    expect(sessionStorage.length).toBe(0);
   });
 
   it("detaches its listeners on disconnect", () => {
