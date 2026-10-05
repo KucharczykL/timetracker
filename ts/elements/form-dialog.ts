@@ -156,10 +156,6 @@ function deadlineAfter(milliseconds: number): AbortSignal {
   return controller.signal;
 }
 
-function hostIsReadOnly(): boolean {
-  return document.getElementById("main-container")?.hasAttribute("data-read-only") ?? false;
-}
-
 export class FormDialogElement extends HTMLElement {
   /** Swapped in by tests. */
   loadModule?: ModuleLoader;
@@ -264,9 +260,10 @@ export class FormDialogElement extends HTMLElement {
     const url = new URL(link.href);
     const deadline = deadlineAfter(LOAD_TIMEOUT_MS);
     try {
-      const chrome = chromeOf(link.getAttribute(FORM_DIALOG_ATTRIBUTE));
+      const marker = link.getAttribute(FORM_DIALOG_ATTRIBUTE);
+      const chrome = chromeOf(marker);
       if (!chrome) {
-        report(`unknown chrome "${link.getAttribute(FORM_DIALOG_ATTRIBUTE)}"`);
+        report(`unknown chrome "${marker}"`);
         browser.assign(url.href);
         return;
       }
@@ -404,8 +401,7 @@ export class FormDialogElement extends HTMLElement {
     if (!(await this.prepare(page, url))) {
       // The person's input stays on screen.
       showToasts(page.messages);
-      const id = report("the answered form could not be shown");
-      errorToast(`The answer could not be shown. Reload the page to see it (error ${id}).`);
+      this.unshown("the answered form could not be shown");
       return;
     }
     if (this.stack.includes(entry)) {
@@ -497,8 +493,13 @@ export class FormDialogElement extends HTMLElement {
   private answerBroke(answer: Answer, detail: string): void {
     if (answer.redirected) {
       this.unconfirmed(detail);
-      return;
+    } else {
+      this.unshown(detail);
     }
+  }
+
+  /** An answer arrived that cannot be shown. */
+  private unshown(detail: string): void {
     const id = report(detail);
     errorToast(`The answer could not be shown. Reload the page to see it (error ${id}).`);
   }
@@ -599,7 +600,8 @@ export class FormDialogElement extends HTMLElement {
 
   /** Brings the host page up to date. */
   private async refresh(refresh: Refresh): Promise<void> {
-    if (!hostIsReadOnly()) {
+    const main = document.getElementById("main-container");
+    if (!main?.hasAttribute("data-read-only")) {
       // A form host keeps the person's input.
       this.stale = false;
       showToasts(refresh.swap?.messages ?? []);
@@ -611,12 +613,11 @@ export class FormDialogElement extends HTMLElement {
       browser.reload();
       return;
     }
-    const main = document.getElementById("main-container");
-    main?.setAttribute("aria-busy", "true");
+    main.setAttribute("aria-busy", "true");
     try {
       await this.swapIn(refresh);
     } finally {
-      main?.removeAttribute("aria-busy");
+      main.removeAttribute("aria-busy");
     }
   }
 

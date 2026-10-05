@@ -8,21 +8,21 @@ function report(detail: string): void {
 /** Copies a field into another until edited. */
 class FieldMirrorElement extends HTMLElement {
   private form: HTMLFormElement | null = null;
-  private source = "";
-  private target = "";
+  private sourceField = "";
+  private targetField = "";
   /** The person took the target over. */
   private targetEdited = false;
 
   connectedCallback(): void {
-    const { sourceField, targetField } = readFieldMirrorProps(this);
-    this.source = sourceField;
-    this.target = targetField;
+    const props = readFieldMirrorProps(this);
+    this.sourceField = props.sourceField;
+    this.targetField = props.targetField;
     this.form = this.closest("form");
     if (!this.form) {
       report("no enclosing form");
       return;
     }
-    if (!this.targetInput()) report(`no [name="${targetField}"] in its form`);
+    if (!this.targetInput()) report(`no [name="${this.targetField}"] in its form`);
     this.form.addEventListener("input", this.onInput);
   }
 
@@ -32,17 +32,17 @@ class FieldMirrorElement extends HTMLElement {
   }
 
   private targetInput(): HTMLInputElement | null {
-    return this.form?.querySelector<HTMLInputElement>(`[name="${this.target}"]`) ?? null;
+    return this.form?.querySelector<HTMLInputElement>(`[name="${this.targetField}"]`) ?? null;
   }
 
   private readonly onInput = (event: Event): void => {
     const changed = event.target;
     if (!(changed instanceof HTMLInputElement)) return;
-    if (changed.name === this.target) {
+    if (changed.name === this.targetField) {
       this.targetEdited = true;
       return;
     }
-    if (changed.name !== this.source || this.targetEdited) return;
+    if (changed.name !== this.sourceField || this.targetEdited) return;
     const target = this.targetInput();
     // A programmatic write fires no input.
     if (target) target.value = changed.value;
