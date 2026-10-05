@@ -4,8 +4,6 @@ import type { AnswerPage } from "./answer.js";
 import { SWAPPED } from "./events.js";
 import { importModules, type ModuleLoader } from "./rewrite.js";
 
-export { SWAPPED };
-
 /** An element id. */
 export type ElementId = string;
 

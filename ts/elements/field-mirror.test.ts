@@ -17,8 +17,9 @@ function mount(): HTMLFormElement {
   return document.querySelector("form")!;
 }
 
-const field = (form: HTMLFormElement, name: string) =>
-  form.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+function field(form: HTMLFormElement, name: string): HTMLInputElement {
+  return form.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+}
 
 describe("field-mirror", () => {
   it("copies the source into the target of its own form", () => {

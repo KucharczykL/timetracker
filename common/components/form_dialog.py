@@ -47,20 +47,17 @@ _PANEL_CLASS = (
     f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
 
+#: The link loading, or the body submitting.
+_BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
+
 _FormDialog = custom_element_builder("form-dialog")
-
-
-#: The link while its page loads.
-_LINK_BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
-#: The body while its form submits.
-_BODY_BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
 
 
 def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
     """Marks a link to open in a dialog."""
     return (
         (FORM_DIALOG_ATTRIBUTE, FORM_DIALOG_CHROME_VALUES[chrome]),
-        ("class", _LINK_BUSY_CLASS),
+        ("class", _BUSY_CLASS),
     )
 
 
@@ -79,8 +76,7 @@ def FormDialogHost() -> Node:
                     Div(
                         [(FORM_DIALOG_PARTS["body"], "")],
                         class_=(
-                            "min-h-0 overflow-y-auto overscroll-contain p-4 "
-                            f"{_BODY_BUSY_CLASS}"
+                            f"min-h-0 overflow-y-auto overscroll-contain p-4 {_BUSY_CLASS}"
                         ),
                     ),
                 ]

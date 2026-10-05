@@ -177,6 +177,20 @@ export class FormDialogElement extends HTMLElement {
     return readAnswer(response, url);
   }
 
+  private postForm(
+    form: HTMLFormElement,
+    submitter: HTMLElement | null,
+    signal?: AbortSignal,
+  ): Promise<Answer> {
+    const target =
+      submitter?.getAttribute("formaction") ?? form.getAttribute("action") ?? location.href;
+    return this.fetchAnswer(new URL(target, location.href), {
+      method: "POST",
+      body: new FormData(form, submitter),
+      signal,
+    });
+  }
+
   private async openFrom(link: HTMLAnchorElement): Promise<void> {
     this.opening = true;
     link.setAttribute("aria-busy", "true");
@@ -341,16 +355,10 @@ export class FormDialogElement extends HTMLElement {
     entry.submitting = true;
     form.setAttribute("aria-busy", "true");
     entry.body.setAttribute("aria-busy", "true");
-    const target =
-      submitter?.getAttribute("formaction") ?? form.getAttribute("action") ?? location.href;
     try {
       let answer: Answer;
       try {
-        answer = await this.fetchAnswer(new URL(target, location.href), {
-          method: "POST",
-          body: new FormData(form, submitter),
-          signal: entry.controller.signal,
-        });
+        answer = await this.postForm(form, submitter, entry.controller.signal);
       } catch (error) {
         // The close already counted it as a write.
         if (entry.controller.signal.aborted) return;
@@ -410,13 +418,9 @@ export class FormDialogElement extends HTMLElement {
     this.undoing.add(form);
     form.setAttribute("aria-busy", "true");
     try {
-      const target = form.getAttribute("action") ?? location.href;
       let answer: Answer;
       try {
-        answer = await this.fetchAnswer(new URL(target, location.href), {
-          method: "POST",
-          body: new FormData(form),
-        });
+        answer = await this.postForm(form, null);
       } catch (error) {
         this.unconfirmed(`undo failed: ${String(error)}`);
         return;
@@ -446,8 +450,7 @@ export class FormDialogElement extends HTMLElement {
     entry.dialog.remove();
     const index = this.stack.indexOf(entry);
     if (index !== -1) this.stack.splice(index, 1);
-    if (this.stack.length > 0 || !(entry.pendingSwap || this.stale)) return;
-    this.refreshWhenAlone(entry);
+    if (this.stack.length === 0 && (entry.pendingSwap || this.stale)) this.refreshWhenAlone(entry);
   }
 
   /** Waits until no modal covers the page. */

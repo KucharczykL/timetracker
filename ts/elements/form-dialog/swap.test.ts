@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AnswerPage } from "./answer.js";
-import { refocusAfterSwap, swapHostPage, SWAPPED } from "./swap.js";
+import { SWAPPED } from "./events.js";
+import { refocusAfterSwap, swapHostPage } from "./swap.js";
 
 function fragmentOf(html: string): DocumentFragment {
   const template = document.createElement("template");
