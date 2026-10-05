@@ -6,7 +6,7 @@ range, or a year somebody is not sure of. One column holds all of it:
 domain over text, checked in the database by `timetracker_temporal_is_valid`.
 
 This page states the grammar, where a value is refused, the one rule that keeps
-a stored value safe, the wire a form posts it on, what works with no script, and
+a stored value safe, the wire a form posts it on, the element, and
 what a page must thread to host the control.
 
 ## The grammar
@@ -86,13 +86,12 @@ names are derived from them. The Game form has one for the work,
 `original_release_date`, and one per Release row, each prefixed by the row it
 belongs to: `edition-0-release-1-release_date`.
 
-## With no script
+## The element
 
-The whole value round-trips with scripting off. The control is a shape select,
-then four number inputs and two checkboxes per endpoint. The server rebuilds the
-value from what they post.
+The posted controls are a shape select, then four number inputs and two
+checkboxes per endpoint. The server rebuilds the value from what they post.
 
-`<temporal-field>` (`ts/elements/temporal-field.ts`) only enhances. It hides the
+`<temporal-field>` (`ts/elements/temporal-field.ts`) hides the
 number inputs and shows a segmented date, offers a whole-decade box and an
 open-start box, gives the end a three-way shape radio group, and puts the
 second endpoint behind a disclosure. Nothing it does is needed to save a value,

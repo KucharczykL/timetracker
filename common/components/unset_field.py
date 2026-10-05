@@ -66,7 +66,7 @@ def UnsetField(
             aria_describedby=describedby,
             class_=f"{_HIDDEN_UNTIL_DEFINED} {_PRESSED_CLASS}",
         )[Icon("no-symbol", [("aria-hidden", "true"), ("class", "size-5")])]
-        # Without scripting, the checkbox is the control.
+        # Before upgrade, the checkbox is the control.
         fallback = Label(
             class_=(
                 f"{control_button_class(variant='segmented', color='gray', shape=shape)}"

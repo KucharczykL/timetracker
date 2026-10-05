@@ -678,8 +678,7 @@ def BrowserTimeZoneInput(field_name: str = BROWSER_TIME_ZONE_FIELD) -> Node:
 
     Submitted by forms that record *when and where* something happened without
     a datetime field to hang a picker on — finishing and resetting a session.
-    Empty without JavaScript, which the server treats as "unlabelled endpoint"
-    rather than an error.
+    Empty reads as an unlabelled endpoint.
     """
     from common.components.custom_elements import _BrowserTimeZone
 

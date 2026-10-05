@@ -7,10 +7,9 @@
  * in input.css), so a row added to the live tbody inherits the
  * current decision without carrying any state of its own.
  *
- * The no-JS fallback (the `max-md` positional hiding) is scoped to
- * `responsive-table:not(:defined)`, so it stops matching the instant this
- * module registers the element; the first measured decision is applied
- * synchronously inside the upgrade, leaving no frame where both systems act.
+ * Before upgrade, `max-md` positional hiding applies through
+ * `responsive-table:not(:defined)`; it stops matching in the upgrade that
+ * applies the first measured decision, so the two never overlap.
  *
  * Per-column policy rides on the header cells: data-priority (drop order),
  * data-wrap (free text; measures capped because its max-content width is the
@@ -202,7 +201,7 @@ export class ResponsiveTableElement extends HTMLElement {
    * max-content with the drop classes lifted, read, and reverted — all inside
    * one task, so no intermediate state is ever painted. In table layout the
    * header cell's resolved width IS the column's width, and a column at
-   * display:none under the no-JS fallback becomes measurable the moment the
+   * display:none before upgrade becomes measurable the moment the
    * classes are lifted.
    */
   private measureNaturalWidths(table: HTMLTableElement): number[] {

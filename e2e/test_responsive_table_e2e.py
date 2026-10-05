@@ -2,7 +2,7 @@
 
 The contract, stated in rendered geometry: a data table never produces
 wrapper scroll at any common viewport — columns drop by priority instead —
-the name column keeps its floor on mobile, and the no-JS fallback still
+the name column keeps its floor on mobile, and before upgrade the table
 behaves exactly like the old positional hiding.
 """
 
@@ -132,10 +132,8 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.fixture
-def no_js_page(live_server, browser: Browser, django_user_model):
-    """The no-JS fallback path: <responsive-table> never defines, so the
-    :not(:defined)-scoped positional hiding stays live. Login is a plain form
-    POST, so it works without scripts."""
+def pre_upgrade_page(live_server, browser: Browser, django_user_model):
+    """Pre-upgrade page: positional hiding stays live."""
     context = browser.new_context(java_script_enabled=False)
     page = context.new_page()
     yield _login(page, live_server, django_user_model)
@@ -253,13 +251,13 @@ def test_an_added_row_inherits_the_current_decision(
     assert hidden_before["visible"] < hidden_before["total"]
 
 
-def test_no_js_fallback_matches_the_old_positional_hiding(
-    no_js_page: Page, live_server, populated
+def test_before_upgrade_matches_the_old_positional_hiding(
+    pre_upgrade_page: Page, live_server, populated
 ):
     """Without the element the :not(:defined) rules are today's exact
     behavior: middle columns hidden below md, everything visible above it —
     including the overflow the element exists to remove."""
-    page = no_js_page
+    page = pre_upgrade_page
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
 
     page.set_viewport_size({"width": 500, "height": 900})
@@ -270,24 +268,3 @@ def test_no_js_fallback_matches_the_old_positional_hiding(
     visible_wide = page.evaluate(VISIBLE_HEADER_COUNT)
     total = page.evaluate("() => document.querySelectorAll('thead th').length")
     assert visible_wide == total
-
-
-def test_no_js_scroll_region_still_scrolls(no_js_page: Page, live_server, populated):
-    """The keyboard-reachable region earns its keep exactly here: with no JS
-    nothing drops columns above md, purchases genuinely overflows, and the
-    server-rendered role/tabindex make that scroll reachable."""
-    page = no_js_page
-    page.set_viewport_size({"width": 1024, "height": 900})
-    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-
-    region = page.get_by_role("region", name="Purchases")
-    region.focus()
-    scrolled = region.evaluate(
-        """(element) => {
-            element.scrollLeft = element.scrollWidth;
-            return {left: element.scrollLeft, over: element.scrollWidth
-                - element.clientWidth};
-        }"""
-    )
-    assert scrolled["over"] > 0, "purchases no longer overflows without JS at 1024"
-    assert scrolled["left"] > 0, "the region does not actually scroll"

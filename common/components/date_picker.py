@@ -8,10 +8,8 @@ calendar (pick commits and closes; no presets, no anchor) instead of an
 anchor-style range.
 
 The committed value lives in one hidden ISO-date input named after the real
-Django field, so ``DateField`` binding is unchanged. There is no no-JS
-fallback: the forms this appears on cannot be submitted without scripting
-anyway (their game/games fields are required ``SearchSelect`` widgets). The
-field is rendered ``inert`` and freed on upgrade, so before the script lands
+Django field, so ``DateField`` binding is unchanged. The field is
+rendered ``inert`` and freed on upgrade, so before the script lands
 it shows the stored date but cannot be typed into — its segments carry no
 ``name``, so anything typed there would be discarded. All behaviour is wired
 by ``ts/elements/date-picker.ts``.

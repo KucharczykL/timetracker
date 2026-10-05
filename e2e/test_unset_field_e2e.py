@@ -207,20 +207,6 @@ def test_an_emptied_field_keeps(live_server, page: Page, console_errors):
 
 
 @HARNESS
-def test_without_scripting_the_checkbox_states_none(live_server, browser):
-    context = browser.new_context(java_script_enabled=False)
-    page = context.new_page()
-    try:
-        _open(page, live_server)
-        expect(page.get_by_role("button", name="No note")).to_be_hidden()
-        page.get_by_role("checkbox", name="No note").check()
-        _submit(page)
-        assert page.inner_text("#note") == "''"
-    finally:
-        context.close()
-
-
-@HARNESS
 def test_composites_state_none_and_restore(live_server, page: Page, console_errors):
     _open(page, live_server)
     _submit(page)

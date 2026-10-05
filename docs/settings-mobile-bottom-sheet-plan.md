@@ -427,7 +427,7 @@ Modify:
   prescribes priority-plus
 
 Record the reuse boundary, semantic contract, mobile trigger, top-layer
-geometry, scroll-lock ownership, same-DOM rule, and no-JS fallback. Keep the
+geometry, scroll-lock ownership, and same-DOM rule. Keep the
 quick-filter priority-plus convention intact.
 
 ### 2. Add the controller factory plug point
@@ -645,7 +645,7 @@ before the epic is declared complete.
 4. `feat(settings): replace mobile priority-plus nav with sheet`
    - same-DOM movement, sticky trigger, anchor focus, and settings tests.
 5. `test(settings): harden bottom-sheet browser contract`
-   - real-browser interaction, resize, no-JS, and desktop regression coverage
+   - real-browser interaction, resize, and desktop regression coverage
      if those tests are too large to review cleanly in the feature commit.
 
 Each commit stages only its named files. The user's existing `Makefile` change
@@ -691,7 +691,7 @@ The mobile section navigator is complete when:
 
 - its closed state is self-explanatory on first encounter;
 - all section destinations are available in one bottom sheet;
-- semantic, keyboard, touch, focus, scroll, motion, and no-JS contracts pass;
+- semantic, keyboard, touch, focus, scroll, and motion contracts pass;
 - the single section-link DOM survives every responsive transition;
 - the existing dropdown menu controller remains behaviorally unchanged;
 - the desktop rail retains all existing guarantees;

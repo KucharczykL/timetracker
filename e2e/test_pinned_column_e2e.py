@@ -4,11 +4,9 @@ The pin is only correct if three things hold at once: the column stays put
 while the rest scrolls, its surface is opaque in both themes, and it does not
 swallow the panels that live inside it.
 
-Scrolling is exercised without JavaScript. With <responsive-table> live, no
-list table overflows at any width — priority-plus drops columns until it fits —
-so the no-JS path above md is where every column renders at once and the region
-genuinely scrolls. That is the same state a user-toggleable column set will
-produce deliberately, and the CSS under test is identical in both.
+Scrolling is exercised before <responsive-table> upgrades, held there by
+disabling scripts: above md every column renders and the region scrolls.
+Upgraded, priority-plus drops columns until the table fits.
 """
 
 import re
@@ -38,8 +36,8 @@ LONG_NAME = (
     "Name Column And Therefore Must Be Clipped By Its Rendered Width"
 )
 
-# Wide enough that the md-gated scroll padding applies and the no-JS fallback
-# shows every column; narrow enough that purchases still overflows by ~300px.
+# Wide enough that the md-gated scroll padding applies and the pre-upgrade
+# state shows every column; narrow enough that purchases still overflows by ~300px.
 WIDE: ViewportSize = {"width": 800, "height": 900}
 # The pin classes are all md:-gated (sticky, z-index, bg-inherit, the edge
 # shadow) — below md the same cell is max-md:max-w-0 and nothing is pinned, so
@@ -113,9 +111,8 @@ def authenticated_page(live_server, page: Page, django_user_model) -> Page:
 
 
 @pytest.fixture
-def no_js_page(live_server, browser: Browser, django_user_model):
-    """Every column renders at once, so the region overflows. Login is a plain
-    form POST, so it works without scripts."""
+def pre_upgrade_page(live_server, browser: Browser, django_user_model):
+    """Pre-upgrade page: every column renders, so it overflows."""
     context = browser.new_context(java_script_enabled=False)
     page = context.new_page()
     yield _login(page, live_server, django_user_model)
@@ -127,7 +124,7 @@ def _open(page: Page, live_server, url_name: str, viewport: ViewportSize) -> Non
     page.goto(f"{live_server.url}{reverse(url_name)}")
     # <responsive-table> coalesces its column-drop decision into a later frame,
     # so a measurement taken right after a resize reads the previous one. The
-    # shared helper polls the element's own settled state; on the no-JS pages
+    # shared helper polls the element's own settled state; on a pre-upgrade page
     # there is no element and it falls through to the font wait.
     settle_layout(page)
 
@@ -152,12 +149,12 @@ PIN_OFFSET = f"""
 
 @pytest.mark.parametrize("url_name", ["games:list_purchases", "games:list_games"])
 def test_the_pinned_column_stays_at_the_regions_start_edge(
-    no_js_page: Page, live_server, populated, url_name: str
+    pre_upgrade_page: Page, live_server, populated, url_name: str
 ):
-    page = no_js_page
+    page = pre_upgrade_page
     _open(page, live_server, url_name, WIDE)
     assert page.evaluate(OVERFLOW) > 0, (
-        "the fixture no longer overflows without JS; the pin has nothing to do "
+        "the fixture no longer overflows before upgrade; the pin has nothing to do "
         "and this test would pass vacuously"
     )
     at_rest = page.evaluate(PIN_OFFSET)
@@ -171,11 +168,11 @@ def test_the_pinned_column_stays_at_the_regions_start_edge(
 
 
 def test_the_pinned_column_pins_to_the_right_edge_under_rtl(
-    no_js_page: Page, live_server, populated
+    pre_upgrade_page: Page, live_server, populated
 ):
     """`start-0` is a logical inset: under rtl the scroll start edge is the
     right one, where a physical `left-0` would pin to the wrong side."""
-    page = no_js_page
+    page = pre_upgrade_page
     _open(page, live_server, "games:list_purchases", WIDE)
     page.evaluate("() => document.documentElement.setAttribute('dir', 'rtl')")
     assert page.evaluate(OVERFLOW) > 0, "no overflow under rtl; nothing to measure"
@@ -212,9 +209,9 @@ def test_the_pinned_column_pins_to_the_right_edge_under_rtl(
 
 
 def test_the_shadow_appears_only_once_the_region_is_scrolled(
-    no_js_page: Page, live_server, populated
+    pre_upgrade_page: Page, live_server, populated
 ):
-    page = no_js_page
+    page = pre_upgrade_page
     _open(page, live_server, "games:list_purchases", WIDE)
     assert page.evaluate(OVERFLOW) > 0, "no overflow; the shadow could never appear"
     cell = page.locator("tbody tr th").first
@@ -236,9 +233,8 @@ def test_the_shadow_appears_only_once_the_region_is_scrolled(
     )
     # The scroll-state container query recomputes on its own rendering step,
     # not synchronously with the scroll. settle_layout has nothing to poll on
-    # a no-JS page (there is no <responsive-table> to report settled), and
-    # Page.wait_for_function's default rAF-driven polling never wakes on a
-    # page with scripting disabled — so this polls with Playwright's own
+    # a pre-upgrade page, and Page.wait_for_function's rAF-driven polling
+    # never wakes with scripts disabled — so this polls with Playwright's own
     # timer instead, which does not depend on the page's own event loop.
     box_shadow = "none"
     for _ in range(20):
@@ -250,14 +246,14 @@ def test_the_shadow_appears_only_once_the_region_is_scrolled(
 
 
 def test_a_control_scrolled_under_the_pin_is_cleared_of_it_on_focus(
-    no_js_page: Page, live_server, populated
+    pre_upgrade_page: Page, live_server, populated
 ):
     """The scroll padding reserves the region's start edge. A control that is
     already onscreen but painted behind the sticky pinned column reads as
     "visible enough" to the browser without that reservation, so nothing
     scrolls it clear on focus — it stays hidden under the pin. It is
     `md:`-gated, so this only holds at the wide viewport."""
-    page = no_js_page
+    page = pre_upgrade_page
     _open(page, live_server, "games:list_games", WIDE)
     assert page.evaluate(OVERFLOW) > 0, "no overflow; nothing can park under the pin"
     # Plant the next control under the pin.

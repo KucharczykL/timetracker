@@ -77,4 +77,3 @@ platform, "Unspecified" or ×. A keystroke is not a commit.
 - The ⊘ toggle of bulk forms: #1302.
 - The fixed-choice adapter: #1301. In a two-state form, its empty choice is
   `none_label`.
-- Scripting off: #1290.

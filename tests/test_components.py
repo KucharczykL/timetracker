@@ -2746,7 +2746,7 @@ class RowMenuSlotTest(SimpleTestCase):
 class ResponsiveTableGateTest(SimpleTestCase):
     """Phase 3 of the width policy: a data table mounts <responsive-table>,
     its header cells carry the per-column drop policy, and the positional
-    max-md hiding survives only as a :not(:defined) no-JS fallback."""
+    max-md hiding applies only before the element upgrades."""
 
     @staticmethod
     def _render(columns, rows, **kwargs):
@@ -2794,8 +2794,7 @@ class ResponsiveTableGateTest(SimpleTestCase):
         self.assertNotIn("data-priority", result)
 
     def test_fallback_hiding_is_scoped_to_the_undefined_element(self):
-        """No-JS keeps today's max-md behavior; the selector dies the instant
-        the element upgrades, so the CSS and the element never both act."""
+        """Before upgrade max-md hides; upgrade ends the rule."""
         result = self._data_table(
             [components.Column("Name"), components.Column("Date")],
             [components.make_row("Game", "2025")],

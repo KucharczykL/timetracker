@@ -69,8 +69,7 @@ def ColumnPicker(
 ) -> Node:
     """The header icon and the panel it opens.
 
-    Nothing wraps a list's table in a form, thus the panel holds its own. Once
-    the panel is open the statement needs no script.
+    Nothing wraps a list's table in a form, thus the panel holds its own.
     """
     trigger = IconTrigger(
         #: A glyph says nothing to a pointer. The row menu beside it states
