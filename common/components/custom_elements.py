@@ -584,16 +584,6 @@ class ResponsiveTableProps(TypedDict):
 register_element("responsive-table", "ResponsiveTable", ResponsiveTableProps)
 
 
-# Built in games/views/bulk_pages.py; behavior in
-# ts/elements/continuing-batch.ts. The batch's state rides the hidden
-# fields of the form it posts, so it states no props.
-class ContinuingBatchProps(TypedDict):
-    pass
-
-
-register_element("continuing-batch", "ContinuingBatch", ContinuingBatchProps)
-
-
 # Built in games/views/game.py; behavior in ts/elements/refreshing-section.ts.
 class RefreshingSectionProps(TypedDict):
     event: str

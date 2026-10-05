@@ -207,10 +207,11 @@ init: ensure-python ensure-postgres
 
 server: ensure-postgres ensure-node-deps gen-element-types
 	@pnpm concurrently \
-		--names "Django,TS" \
-		--prefix-colors "blue,green" \
+		--names "Django,TS,Q" \
+		--prefix-colors "blue,green,yellow" \
 		"uv run --frozen python -Wa manage.py runserver $(DEV_HOST):$(DEV_PORT)" \
-		"pnpm exec tsc --watch"
+		"pnpm exec tsc --watch" \
+		"uv run --frozen python manage.py qcluster"
 
 gen-element-types: ensure-postgres
 	uv run --frozen python manage.py gen_element_types
@@ -245,11 +246,12 @@ test-ts: ts
 dev: export DEV_LOGIN_PREFILL := admin:admin
 dev: ensure-postgres ensure-python ensure-node-deps gen-element-types
 	@pnpm concurrently \
-		--names "Django,Tailwind,TS" \
-		--prefix-colors "blue,green,magenta" \
+		--names "Django,Tailwind,TS,Q" \
+		--prefix-colors "blue,green,magenta,yellow" \
 		"uv run --frozen python -Wa manage.py runserver $(DEV_HOST):$(DEV_PORT)" \
 		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
-		"pnpm exec tsc --watch"
+		"pnpm exec tsc --watch" \
+		"uv run --frozen python manage.py qcluster"
 
 # `make dev` reachable from another device on the LAN (phone testing of touch
 # targets, responsive layout). Binds every interface instead of loopback, and
@@ -278,11 +280,12 @@ dev-lan: ensure-python ensure-node-deps gen-element-types
 	@$(LAN_HOST_CHECK)
 	@echo "==> Open http://$(LAN_HOST):$(DEV_PORT) on your phone (login admin/admin)."
 	@pnpm concurrently \
-		--names "Django,Tailwind,TS" \
-		--prefix-colors "blue,green,magenta" \
+		--names "Django,Tailwind,TS,Q" \
+		--prefix-colors "blue,green,magenta,yellow" \
 		"uv run --frozen python -Wa manage.py runserver 0.0.0.0:$(DEV_PORT)" \
 		"pnpm tailwindcss -i ./common/input.css -o ./games/static/base.css --watch" \
-		"pnpm exec tsc --watch"
+		"pnpm exec tsc --watch" \
+		"uv run --frozen python manage.py qcluster"
 
 
 caddy:

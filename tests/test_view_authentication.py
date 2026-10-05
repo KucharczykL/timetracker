@@ -52,6 +52,7 @@ def world(owned_library):
         #: The mode of one list, for the same reason.
         "mode": "sessions",
         "correlation_id": uuid.uuid7(),
+        "token": uuid.uuid7(),
         #: The redirect to login comes before any read.
         "entry_id": uuid.uuid7(),
         "sequence": 1,

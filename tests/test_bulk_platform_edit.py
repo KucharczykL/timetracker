@@ -4,7 +4,7 @@ import json
 import uuid
 
 import pytest
-from bulk_posts import act_url, posted, selection
+from bulk_posts import act_url, posted, said, selection
 from django.http import QueryDict
 from django.urls import reverse
 
@@ -212,7 +212,7 @@ def test_the_undo_refuses_a_platform_removed_since(logged_in, amiga, dos):
 
     assert _held(amiga)[0] == "Home"
     assert _held(dos)[0] == "PC"
-    assert PLATFORM_REMOVED in response.content.decode()
+    assert any(PLATFORM_REMOVED in sentence for sentence in said(response))
 
 
 def test_an_undo_batch_offers_no_undo(logged_in, amiga):

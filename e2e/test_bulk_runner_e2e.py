@@ -1,4 +1,4 @@
-"""A batch walks its own chunks, with nobody pressing Continue.
+"""A batch runs in the background; its toast follows it.
 
 The act is offered by the selection line, so the pass starts where a
 person starts: the session list, narrowed to the review.
@@ -46,18 +46,11 @@ def _state_the_whole_review(page: Page, live_server, count: int) -> str:
     return listed
 
 
-def test_a_batch_carries_itself_from_one_chunk_to_the_next(
+def test_a_batch_runs_every_chunk_and_says_so(
     live_server, page: Page, e2e_user, e2e_library, monkeypatch
 ):
-    """Three rows, one a chunk, and one press.
-
-    The budget is nothing, so each request acts on a single row and the
-    two that follow are the element's doing. Stop is not pressed here:
-    the element posts as soon as it connects, so which of the two wins a
-    real race is a race. That Stop keeps the element quiet is a vitest,
-    and that the route ends a batch is `tests/test_bulk_runner.py`.
-    """
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    """Three rows, one a chunk, and one press."""
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     _long_sessions(e2e_library, (5, 6, 7))
     errors: list[str] = []
     page.on(
@@ -72,8 +65,7 @@ def test_a_batch_carries_itself_from_one_chunk_to_the_next(
     page.get_by_role("button", name=ACT).click()
     page.get_by_role("button", name=ACT).click()
 
-    #: Server-rendered, and the last thing the batch does, so the rows
-    #: are committed by the time it shows.
+    #: Server-rendered after the chunks ran inline.
     expect(page.get_by_text("3 of 3 done.")).to_be_visible()
     page.wait_for_url(listed)
     assert PlayerSession.objects.alive().count() == 0
@@ -100,3 +92,47 @@ def test_the_batchs_toast_offers_an_undo_that_puts_every_session_back(
     expect(page.locator("tbody tr[data-selection-key]")).to_have_count(2)
     assert PlayerSession.objects.alive().count() == 2
     assert HistoricalPlaytime.objects.alive().count() == 0
+
+
+def test_a_held_batch_can_be_stopped_and_ends_on_the_next_load(
+    live_server, page: Page, e2e_user, e2e_library, monkeypatch, held_batches
+):
+    """Stop, a closed page, then the end's Undo."""
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
+    _long_sessions(e2e_library, (5, 6, 7))
+    _login(page, live_server)
+
+    listed = _state_the_whole_review(page, live_server, 3)
+    page.get_by_role("button", name=ACT).click()
+    page.get_by_role("button", name=ACT).click()
+    expect(page.get_by_text("waiting to start.")).to_be_visible()
+    held_batches.run_one()
+
+    page.get_by_role("button", name="Stop").click()
+    page.wait_for_url(listed)
+    expect(page.get_by_text("stopping.")).to_be_visible()
+    page.goto(f"{live_server.url}/tracker/library")
+    held_batches.run_all()
+    page.goto(listed)
+
+    expect(page.get_by_text("stopped. 1 of 3 done, 2 not reached.")).to_be_visible()
+    expect(page.get_by_role("button", name="Undo")).to_be_visible()
+    assert HistoricalPlaytime.objects.alive().count() == 1
+
+
+def test_a_page_refreshes_its_batch_while_it_runs(
+    live_server, page: Page, e2e_user, e2e_library, held_batches
+):
+    """The poll replaces the toast in place."""
+    _long_sessions(e2e_library, (5, 6))
+    _login(page, live_server)
+
+    _state_the_whole_review(page, live_server, 2)
+    page.get_by_role("button", name=ACT).click()
+    page.get_by_role("button", name=ACT).click()
+    expect(page.get_by_text("waiting to start.")).to_be_visible()
+
+    held_batches.run_all()
+
+    expect(page.get_by_text("2 of 2 done.")).to_be_visible()
+    expect(page.get_by_text("waiting to start.")).to_have_count(0)

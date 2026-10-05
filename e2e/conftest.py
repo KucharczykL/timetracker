@@ -12,6 +12,7 @@ from django.utils import timezone
 #: browser tests too. pytest puts each suite's own directory on the path.
 sys.path.append(str(Path(__file__).resolve().parents[1] / "tests"))
 
+from bulk_batches import chunk_queue, held_batches  # noqa: F401
 from calendar_days import process_zone_off_the_calendar
 
 from timetracker import config as config_module

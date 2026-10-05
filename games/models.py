@@ -1180,6 +1180,70 @@ class BatchChange(models.Model):
         return f"{self.model_label} {self.row_id}.{self.field} in {self.batch}"
 
 
+class BulkBatch(models.Model):
+    """One bulk act, run in the background."""
+
+    class State(models.TextChoices):
+        QUEUED = "queued"
+        RUNNING = "running"
+        FINISHED = "finished"
+        STOPPED = "stopped"
+        FAILED = "failed"
+
+    #: The states nothing moves on from.
+    TERMINAL: ClassVar[frozenset[str]] = frozenset(
+        {State.FINISHED, State.STOPPED, State.FAILED}
+    )
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("library", "token"), name="unique_bulk_batch_token"
+            ),
+        )
+        indexes = (models.Index(fields=("library", "state")),)
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    #: The batch's correlation id.
+    token = models.UUIDField()
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="+"
+    )
+    action = models.CharField(max_length=100)
+    #: The batch an Undo takes back.
+    undoes = models.UUIDField(null=True)
+    #: The settled answer; empty for none.
+    choice = models.TextField(blank=True, default="")
+    origin = models.TextField()
+    rows = models.JSONField()
+    #: Index into `rows` of the next key.
+    position = models.PositiveIntegerField(default=0)
+    total = models.PositiveIntegerField(default=0)
+    done = models.PositiveIntegerField(default=0)
+    unchanged = models.PositiveIntegerField(default=0)
+    refused = models.PositiveIntegerField(default=0)
+    lost = models.PositiveIntegerField(default=0)
+    reasons = models.JSONField(default=list)
+    #: The chunk due next.
+    chunk = models.PositiveIntegerField(default=0)
+    #: How often the due chunk started.
+    attempts = models.PositiveIntegerField(default=0)
+    state = models.CharField(max_length=16, choices=State, default=State.QUEUED)
+    stop_requested_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    ended_at = models.DateTimeField(null=True)
+    #: Set once the end's toast was seen.
+    announced_at = models.DateTimeField(null=True)
+
+    def __str__(self):
+        return f"{self.action} {self.token} ({self.state})"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state in self.TERMINAL
+
+
 class SiteSetting(models.Model):
     """DB layer of the settings resolver: a global runtime override for a
     site-scoped setting. Deliberately no user FK — per-user prefs live on

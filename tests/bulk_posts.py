@@ -3,9 +3,12 @@
 import html as html_module
 import json
 
+from django.contrib.messages import get_messages
 from django.urls import reverse
 
 from games.bulk_actions import BulkAction
+from games.bulk_jobs import batch_toast
+from games.models import BulkBatch
 from games.views.bulk import (
     CHOICE_FIELD,
     PROGRESS_FIELD,
@@ -46,3 +49,16 @@ def press(client, action: BulkAction, *rows, follow: bool = False):
     url = act_url(action)
     confirmation = client.post(url, {STATEMENT_FIELD: selection(*rows)})
     return client.post(url, posted(confirmation), follow=follow)
+
+
+def said(response) -> list[str]:
+    """Messages queued, the newest batch's toast, its reasons."""
+    queued = [str(message) for message in get_messages(response.wsgi_request)]
+    newest = newest_batch(response.wsgi_request.user.library)
+    if newest is None:
+        return queued
+    return [*queued, batch_toast(newest)["message"], *newest.reasons]
+
+
+def newest_batch(library) -> BulkBatch | None:
+    return BulkBatch.objects.filter(library=library).order_by("-created_at").first()

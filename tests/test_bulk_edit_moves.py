@@ -6,8 +6,8 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from bulk_posts import said
 from devices import create_device
-from django.contrib.messages import get_messages
 from django.http import QueryDict
 from django.urls import reverse
 from django.utils import timezone
@@ -704,9 +704,7 @@ def test_a_batch_refuses_a_cross_game_row_and_moves_the_rest(
     theirs.refresh_from_db()
     assert ours.playthrough_id == target.pk
     assert theirs.playthrough_id != target.pk
-    assert ANOTHER_GAME in " ".join(
-        str(message) for message in get_messages(answer.wsgi_request)
-    )
+    assert ANOTHER_GAME in " ".join(said(answer))
 
 
 def test_run_before_reads_an_earlier_move(owned_user, owned_library, game):

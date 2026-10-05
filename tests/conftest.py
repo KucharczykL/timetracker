@@ -3,6 +3,7 @@ import logging
 import uuid
 
 import pytest
+from bulk_batches import chunk_queue, held_batches  # noqa: F401
 from calendar_days import process_zone_off_the_calendar
 from django.db.models.signals import post_save
 from django.utils import timezone

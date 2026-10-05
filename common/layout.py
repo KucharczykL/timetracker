@@ -316,6 +316,7 @@ def TimetrackerDocument(
     )
     if request.user.is_authenticated:
         collected_scripts += str(ModuleScript("dist/library-conversion-status.js"))
+        collected_scripts += str(ModuleScript("dist/bulk-batch-status.js"))
 
     # Embed as JSON; guard against `</script>` breaking out of the tag.
     messages_json = json.dumps(toast_payloads(request)).replace("</", "<\\/")
@@ -346,6 +347,7 @@ def TimetrackerDocument(
             ),
         ]
         if request.user.is_authenticated:
+            from games.bulk_jobs import batch_out, visible_batches
             from games.models import PurchaseConversionState
 
             conversion = PurchaseConversionState.objects.get(
@@ -367,6 +369,11 @@ def TimetrackerDocument(
                 separators=(",", ":"),
             )
 
+            bulk_batches = json.dumps(
+                [batch_out(batch) for batch in visible_batches(request.user.library)],
+                separators=(",", ":"),
+            )
+
             resolved = resolve_for_user_with_origin(request.user, "THEME")
             inherited = resolve_with_origin("THEME")
             personal = resolved.value if resolved.source is SettingSource.USER else ""
@@ -377,6 +384,8 @@ def TimetrackerDocument(
                         "data-library-conversion-status-url",
                         "/api/conversion/status",
                     ),
+                    ("data-bulk-batches", bulk_batches),
+                    ("data-bulk-batches-url", "/api/bulk/batches"),
                     ("data-theme-preference", str(resolved.value)),
                     ("data-theme-personal-preference", str(personal)),
                     ("data-theme-inherited-preference", str(inherited.value)),

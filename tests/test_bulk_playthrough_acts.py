@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 
 import pytest
-from django.contrib.messages import get_messages
+from bulk_posts import said
 from django.http import QueryDict
 from django.urls import reverse
 from django.utils import timezone
@@ -121,11 +121,6 @@ def _run(client, url, *runs):
 def _undo(client, token):
     """Press the Undo the batch's answer offers."""
     return client.post(reverse("games:undo_bulk_action", args=[token]))
-
-
-def said(response) -> list[str]:
-    """Every sentence the answer queued."""
-    return [str(message) for message in get_messages(response.wsgi_request)]
 
 
 def _status_events(game):

@@ -7,21 +7,18 @@ from django.template.defaultfilters import pluralize
 
 from common.components import (
     ConfirmPage,
-    ControlButton,
     Div,
-    Form,
     Fragment,
     Li,
     P,
     Ul,
 )
-from common.components.core import Node, Safe
+from common.components.core import Node
 from common.components.primitives import (
     FORM_MAX_WIDTH_CLASS,
     Column,
     Input,
     StyledTable,
-    custom_element_builder,
     make_row,
 )
 from games.bulk_actions import BulkAction
@@ -30,11 +27,8 @@ from games.bulk_parts import Presentations, Refused
 #: A page that asks for a fact beside its rows.
 WIDE_CONFIRMATION = "max-w-3xl"
 
-#: The confirmation's words, and the waypoint's.
+#: The confirmation's words.
 WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
-LEFT_ALONE = "{count} left as {pronoun} so far:"
-
-_ContinuingBatch = custom_element_builder("continuing-batch")
 
 
 def _reasons(refused: Sequence[Refused]) -> list[str]:
@@ -42,7 +36,7 @@ def _reasons(refused: Sequence[Refused]) -> list[str]:
     return list(dict.fromkeys(entry.sentence for entry in refused))
 
 
-def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
+def _refusals(count: int, reasons: Sequence[str]) -> Node:
     """How many rows are left, and why.
 
     The count is rows, the list is reasons: one sentence can stand over
@@ -53,7 +47,7 @@ def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
     pronoun = "it is" if count == 1 else "they are"
     return Div(class_="mb-4")[
         P(class_="text-type-body text-body mb-2")[
-            lead.format(count=count, pronoun=pronoun)
+            WILL_BE_LEFT_ALONE.format(count=count, pronoun=pronoun)
         ],
         Ul(class_="list-disc ps-5 text-type-body text-body")[
             Fragment(*(Li()[reason] for reason in reasons))
@@ -153,7 +147,7 @@ def ConfirmBatch(
         details=Fragment(
             *(Input(type="hidden", name=name, value=value) for name, value in hidden),
             _caution(action, rows),
-            _refusals(len(refused), _reasons(refused), WILL_BE_LEFT_ALONE),
+            _refusals(len(refused), _reasons(refused)),
             _sample(action, rows, total, sample_cap, presentations),
         ),
         choice=choice,
@@ -168,54 +162,3 @@ def ConfirmBatch(
         #: The act declares one colour.
         confirm_color=action.color,
     )
-
-
-def ProgressBatch(
-    action: BulkAction[Any],
-    *,
-    done: int,
-    total: int,
-    refused: int,
-    reasons: Sequence[str],
-    hidden: Sequence[tuple[str, str]],
-    post_url: str,
-    csrf_token: str,
-    stop_name: str,
-) -> Node:
-    """How far the batch got.
-
-    Continue is for a reader whose element posts nothing.
-    """
-    return _ContinuingBatch()[
-        Div(class_="mx-auto w-full max-w-xl p-5 @container")[
-            P(class_="text-type-heading text-heading mb-2")[
-                action.title.for_count(total)
-            ],
-            P(class_="text-type-body text-body mb-4")[
-                f"{done} of {total} done. Continuing with the rest."
-            ],
-            _refusals(refused, reasons, LEFT_ALONE),
-            Form(method="post", action=post_url, data_continuing_batch_form="")[
-                Safe(
-                    '<input type="hidden" name="csrfmiddlewaretoken" '
-                    f'value="{csrf_token}">'
-                ),
-                Fragment(
-                    *(
-                        Input(type="hidden", name=name, value=value)
-                        for name, value in hidden
-                    )
-                ),
-                Div(class_="flex flex-wrap items-center gap-2")[
-                    ControlButton(type="submit", color="blue")["Continue"],
-                    ControlButton(
-                        type="submit",
-                        name=stop_name,
-                        value="1",
-                        color="gray",
-                        data_continuing_batch_stop="",
-                    )["Stop"],
-                ],
-            ],
-        ]
-    ]

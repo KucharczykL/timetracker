@@ -42,6 +42,7 @@ from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
 from games.api_creation import RowRefused, created_by_form, refusal_sentence
+from games.bulk_jobs import BatchOut, announce, batch_out, batches_named
 from games.catalog_release import release_on_platform
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import EntryStatement
@@ -2077,6 +2078,31 @@ def conversion_status(request):
 
 
 api.add_router("/conversion", conversion_router)
+
+bulk_router = Router()
+
+
+@bulk_router.get("/batches", response=list[BatchOut])
+def bulk_batches(request, tokens: str = ""):
+    """The asked batches this library holds."""
+    asked = []
+    for raw in tokens.split(","):
+        try:
+            asked.append(uuid.UUID(raw))
+        except ValueError:
+            continue
+    return [batch_out(batch) for batch in batches_named(request.user.library, asked)]
+
+
+@bulk_router.post("/batches/{uuid:token}/announced", response={204: None})
+def bulk_batch_announced(request, token: uuid.UUID):
+    """The end's toast was dismissed."""
+    if not announce(request.user.library, token):
+        raise Http404("No such batch.")
+    return Status(204, None)
+
+
+api.add_router("/bulk", bulk_router)
 
 
 class SettingOut(Schema):

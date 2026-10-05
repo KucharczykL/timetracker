@@ -1,14 +1,12 @@
 """Device, emulated or note on many sessions, undone."""
 
-import json
 import re
 import uuid
 from datetime import date, timedelta
 
 import pytest
-from bulk_posts import act_url, posted, selection
+from bulk_posts import act_url, newest_batch, posted, said, selection
 from devices import create_device, remove_device
-from django.contrib.messages import get_messages
 from django.http import QueryDict
 from django.urls import reverse
 from session_rows import duration_only_row, tracked_run
@@ -37,7 +35,7 @@ from games.commands.playersession import (
 from games.events.dispatch import CommandRejected, RowUnreadable, dispatch
 from games.models import Game, LibraryEvent, PlayerSession
 from games.removal import remove
-from games.views.bulk import CHOICE_FIELD, PROGRESS_FIELD, STATEMENT_FIELD, TOKEN_FIELD
+from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
 from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.playersession import describe_session, remove_session
 
@@ -542,8 +540,10 @@ def test_an_undo_to_a_device_removed_since_leaves_the_row(
 
     session.refresh_from_db()
     assert session.device_id == deck.pk
-    said = [str(message) for message in get_messages(answer.wsgi_request)]
-    assert any("Restore it before choosing it" in sentence for sentence in said), said
+    sentences = said(answer)
+    assert any("Restore it before choosing it" in sentence for sentence in sentences), (
+        sentences
+    )
 
 
 def test_a_refused_settle_asks_again_on_the_same_token(
@@ -585,56 +585,41 @@ def test_a_carried_statement_that_is_garbled_asks_again(
     assert posted(again)[TOKEN_FIELD] == fields[TOKEN_FIELD]
 
 
-def _run_every_chunk(client, answer, between=None):
-    """Post each waypoint until no row is left."""
-    while posted(answer).get(TOKEN_FIELD):
-        fields = posted(answer)
-        if not json.loads(fields[PROGRESS_FIELD])["rows"]:
-            break
-        if between is not None:
-            between()
-        answer = client.post(act_url(EDIT), fields)
-    return answer
-
-
 def test_a_batch_spanning_chunks_carries_one_statement(
     client_in, owned_user, owned_library, game, deck, monkeypatch
 ):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     run = tracked_run(owned_library, game)
     sessions = [a_session(owned_user, run, A_DAY + timedelta(days=d)) for d in range(3)]
     fields = _token(client_in, *sessions)
 
-    first = client_in.post(
+    client_in.post(
         act_url(EDIT),
         {**fields, **control(device=str(deck.pk), note="co-op").dict()},
     )
-    assert CHOICE_FIELD in posted(first)
-    _run_every_chunk(client_in, first)
 
+    assert newest_batch(owned_library).chunk == 2
     for session in sessions:
         session.refresh_from_db()
         assert session.device_id == deck.pk
         assert session.note == "co-op"
 
 
-def test_a_device_removed_between_chunks_asks_again_for_the_rest(
-    client_in, owned_user, owned_library, game, deck, monkeypatch
+def test_a_device_removed_between_chunks_leaves_the_rest(
+    client_in, owned_user, owned_library, game, deck, monkeypatch, held_batches
 ):
-    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     run = tracked_run(owned_library, game)
     sessions = [a_session(owned_user, run, A_DAY + timedelta(days=d)) for d in range(3)]
     fields = _token(client_in, *sessions)
-    first = client_in.post(
-        act_url(EDIT), {**fields, **control(device=str(deck.pk)).dict()}
-    )
+    client_in.post(act_url(EDIT), {**fields, **control(device=str(deck.pk)).dict()})
+    held_batches.run_one()
     remove_device(deck)
 
-    again = client_in.post(act_url(EDIT), posted(first))
+    held_batches.run_all()
 
-    assert again.status_code == 400
-    assert DEVICE_GONE in again.content.decode()
-    assert posted(again)[TOKEN_FIELD] == fields[TOKEN_FIELD]
+    batch = newest_batch(owned_library)
+    assert (batch.done, batch.refused) == (1, 2)
     devices = []
     for session in sessions:
         session.refresh_from_db()
@@ -654,8 +639,8 @@ def test_a_chunk_posted_twice_edits_each_row_once(
     again = client_in.post(act_url(EDIT), fields)
 
     assert LibraryEvent.objects.filter(aggregate_id=session.pk).count() == appended
-    said = [str(message) for message in get_messages(again.wsgi_request)]
-    assert not any("refused" in sentence for sentence in said), said
+    sentences = said(again)
+    assert not any("refused" in sentence for sentence in sentences), sentences
 
 
 def test_an_undo_puts_back_both_facts(client_in, owned_user, owned_library, game, deck):

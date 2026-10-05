@@ -9,6 +9,7 @@ from django.utils.timezone import now
 from django_q.models import Schedule
 from django_q.tasks import async_task, schedule
 
+from games.bulk_jobs import run_chunk
 from games.conversion import (
     _request_conversion_for_locked_state,
     request_revaluation,
@@ -273,3 +274,8 @@ def convert_prices() -> None:
             library.user, "DEFAULT_DISPLAY_CURRENCY"
         ).value
         request_conversion(library, str(target))
+
+
+def run_bulk_batch(batch_id: str, chunk: int) -> None:
+    """One chunk of one bulk batch."""
+    run_chunk(UUID(batch_id), chunk)
