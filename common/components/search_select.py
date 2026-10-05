@@ -183,15 +183,21 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # Icon() drops the snippet's baked color classes, so text-body must ride here
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
+#: In the box; the box shows mouse focus.
+_BOX_BUTTON_FOCUS_CLASS = "focus:ring-0 focus-visible:ring-2"
 # ml-auto ends the row; peer-disabled hides it.
-_CLEAR_PLACEMENT_CLASS = "ml-auto -mr-1 peer-disabled:hidden"
-#: After a shown ×: a divider, no auto margin.
+_CLEAR_PLACEMENT_CLASS = f"ml-auto -mr-1 peer-disabled:hidden {_BOX_BUTTON_FOCUS_CLASS}"
+#: A shown × ends the row instead.
 #: Literal, so Tailwind sees it.
 _DIALOG_CREATE_CLASS = (
     "ml-auto -mr-1 peer-disabled:hidden "
     "[[data-search-select-clear]:not([hidden])~&]:ml-0 "
-    "before:mr-1 before:h-5 before:border-l before:border-default-medium "
-    "before:hidden [[data-search-select-clear]:not([hidden])~&]:before:block"
+    f"{_BOX_BUTTON_FOCUS_CLASS}"
+)
+#: Shown only between a shown × and the +.
+_DIVIDER_CLASS = (
+    "mx-1 hidden h-5 shrink-0 border-l border-default-medium "
+    "[[data-search-select-clear]:not([hidden])+&]:block peer-disabled:hidden"
 )
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
@@ -301,6 +307,13 @@ class DialogCreate:
 
 def _dialog_create_link(create: DialogCreate) -> Node:
     """The +; its dialog's created row lands here."""
+    return Fragment(
+        Span(aria_hidden="true", class_=_DIVIDER_CLASS),
+        _dialog_create_button(create),
+    )
+
+
+def _dialog_create_button(create: DialogCreate) -> Node:
     return ControlButton(
         form_dialog_link(),
         href=str(create.url),
