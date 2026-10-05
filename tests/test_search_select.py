@@ -43,6 +43,12 @@ def _tag_around(html: str, marker: str) -> str:
     return html[html.rindex("<", 0, marker_position) : html.index(">", marker_position)]
 
 
+def _classes(tag: str) -> list[str]:
+    """The class tokens of one opening tag."""
+    found = re.search(r'class="([^"]*)"', tag)
+    return found.group(1).split() if found else []
+
+
 class PillTest(unittest.TestCase):
     def test_returns_safetext(self):
         self.assertIsInstance(str(Pill(label="hi")), SafeText)
@@ -1176,8 +1182,12 @@ class ClearableSearchSelectTest(unittest.TestCase):
     def test_search_box_is_its_peer(self):
         clearable = str(SearchSelect(name="device", clearable=True))
         plain = str(SearchSelect(name="device", clearable=False))
-        self.assertIn("peer ", _tag_around(clearable, "data-search-select-search"))
-        self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
+        self.assertIn(
+            "peer", _classes(_tag_around(clearable, "data-search-select-search"))
+        )
+        self.assertNotIn(
+            "peer", _classes(_tag_around(plain, "data-search-select-search"))
+        )
         self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
 
     def test_every_personality_holds_the_button_in_its_field_box(self):
@@ -1534,7 +1544,7 @@ class DialogCreateTest(unittest.TestCase):
         html = str(
             SearchSelect(name="device", clearable=False, dialog_create=NEW_DEVICE)
         )
-        self.assertIn("peer ", _tag_around(html, "data-search-select-search"))
+        self.assertIn("peer", _classes(_tag_around(html, "data-search-select-search")))
         self.assertIn("peer-disabled:hidden", self._link(html))
 
     def test_a_lazy_url_renders(self):

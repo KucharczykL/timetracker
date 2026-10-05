@@ -305,6 +305,29 @@ class DialogCreate:
     label: str
 
 
+@dataclass(frozen=True)
+class ClearControl:
+    """The trailing × a box offers."""
+
+    #: Something is held or typed at render.
+    shown: bool
+    #: The ×'s ``aria-describedby`` target.
+    described_by: str | None = None
+
+
+def _clear_button(clear: ClearControl) -> Node:
+    return ControlButton(
+        variant="ghost",
+        size="compact",
+        data_search_select_clear="",
+        aria_label="Clear",
+        title="Clear",
+        aria_describedby=clear.described_by,
+        hidden=not clear.shown,
+        class_=_CLEAR_PLACEMENT_CLASS,
+    )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
+
+
 def _dialog_create_link(create: DialogCreate) -> Node:
     """The +; its dialog's created row lands here."""
     return Fragment(
@@ -464,7 +487,8 @@ def _combobox_children(
     no_results_text: str = "No results",
     create_row: Node | None = None,
     marker: list[Node] | None = None,
-    trailing: list[Node] | None = None,
+    clear: ClearControl | None = None,
+    dialog_create: DialogCreate | None = None,
     box_class: str = _BOX_CLASS,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
@@ -480,14 +504,16 @@ def _combobox_children(
     ``home`` places the list; a dialog's list is always visible.
     Pills always sit in the box.
     ``box_class`` styles the field box.
-    ``trailing`` and ``marker`` follow the input inside it.
+    ``clear``, ``dialog_create`` and ``marker`` follow the input inside it;
+    either control makes the input their ``peer``.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
         ("aria-expanded", "true" if home == "dialog" else "false"),
         ("aria-autocomplete", "list"),
     ]
-    search = Input([*search_attributes, *aria_attributes])
+    peer: Attributes = [("class", "peer")] if clear or dialog_create else []
+    search = Input([*search_attributes, *aria_attributes, *peer])
 
     # role="presentation" keeps the message node from being exposed as a
     # (non-option) child of the listbox.
@@ -524,7 +550,8 @@ def _combobox_children(
     box = Div(data_search_select_box="", class_=box_class)[
         pills,
         search,
-        *(trailing or []),
+        *([_clear_button(clear)] if clear else []),
+        *([_dialog_create_link(dialog_create)] if dialog_create else []),
         *(marker or []),
     ]
     return [box, options_panel, *(templates or [])]
@@ -654,21 +681,6 @@ def SearchSelect(
     if max_length is not None:
         search_attrs.append(("maxlength", str(max_length)))
 
-    if clearable or dialog_create:
-        search_attrs.append(("class", "peer"))
-    clear_button: Node | None = None
-    if clearable:
-        clear_button = ControlButton(
-            variant="ghost",
-            size="compact",
-            data_search_select_clear="",
-            aria_label="Clear",
-            title="Clear",
-            aria_describedby=clear_description_id,
-            hidden=not selected,
-            class_=_CLEAR_PLACEMENT_CLASS,
-        )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
-
     home: ComboboxHome = "dialog" if panel else "drop_down"
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
@@ -742,10 +754,8 @@ def SearchSelect(
         templates=templates,
         home=home,
         marker=marker,
-        trailing=[
-            *([clear_button] if clear_button else []),
-            *([_dialog_create_link(dialog_create)] if dialog_create else []),
-        ],
+        clear=ClearControl(bool(selected), clear_description_id) if clearable else None,
+        dialog_create=dialog_create,
         box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
         else field_box_class(shape),
