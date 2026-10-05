@@ -1011,7 +1011,8 @@ Submodules re-exported via `common/components/__init__.py`:
   for a name a row holds exactly, #1328; `max_length` caps the box;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
-  `clearable=False` opts out, #1287; `none_label` pins a row that holds
+  `clearable=False` opts out, #1287; `dialog_create` adds a + after it,
+  and the shell `_combobox_children` builds both (`ClearControl`), #1501; `none_label` pins a row that holds
   none — an empty hidden input, key present — apart from nothing picked,
   key absent; × then holds none, and the change event states `none`, #1288),
   `FilterSelect()` (include/exclude
@@ -1617,7 +1618,13 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   is an element (`<field-mirror>`).
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
-  [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md)
+  [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md).
+  A picker's + (`dialog_create=DialogCreate(url, label)`, any form widget;
+  `NEW_GAME` on every game picker) opens a create page; the view tags its
+  redirect `created_row(redirect(...), option)` with the picker's own option
+  helper, and `<form-dialog>` hands the `created` row to the link's
+  `<search-select>` through `form-dialog:created`. Contract is
+  [A dialog hands a created row to its picker](docs/superpowers/specs/2026-10-05-issue-1501-dialog-created-design.md)
 - **A bulk write analyzes what it filled** — a command or task that
   fills or replaces many rows ends with `analyze_tables` from
   `games/planner_statistics.py`, naming its tables, inside its transaction

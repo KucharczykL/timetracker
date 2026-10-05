@@ -43,7 +43,7 @@ interface OpenDialog {
   readonly body: HTMLElement;
   readonly chrome: FormDialogChrome;
   readonly opener: OpenerKey | null;
-  /** The link itself; a created row goes there. */
+  /** The link; a created row goes there. */
   readonly openerElement: HTMLElement;
   readonly modal: Modal;
   /** Aborts the in-flight submit on close. */
