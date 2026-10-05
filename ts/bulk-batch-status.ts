@@ -62,11 +62,11 @@ export function isBatch(value: unknown): value is BatchOut {
 
 /** Valid entries; each rejected one logged. */
 function batchesIn(values: readonly unknown[]): BatchOut[] {
-  return values.filter((value) => {
+  return values.filter((value): value is BatchOut => {
     if (isBatch(value)) return true;
     console.error("Unreadable bulk batch", value);
     return false;
-  }) as BatchOut[];
+  });
 }
 
 function dismissalKey(token: string): string {

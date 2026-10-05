@@ -228,35 +228,46 @@ def resolved_keys(
     ]
 
 
+type OfferedChoice = Node | RefusedAct | None
+
+
+def _offered_choice(
+    library: UserLibrary, action: BulkAction[Any], rows: Sequence[Any]
+) -> OfferedChoice:
+    """The act's question, if it asks one."""
+    if action.choice is None:
+        return None
+    offered = action.choice.offer(library, rows, CHOICE_FIELD)
+    if isinstance(offered, RefusedAct):
+        return offered
+    return offered.node if isinstance(offered, Control) else None
+
+
 def _confirmation(
     request: HttpRequest,
     action: BulkAction[Any],
     *,
     rows: list[Any],
     refused: tuple[Refused, ...],
-    keys: list[uuid.UUID],
 ) -> HttpResponse:
     """What the act would do, and asks."""
     library = cast(User, request.user).library
-    choice: Node | None = None
-    if action.choice is not None:
-        offered = action.choice.offer(library, rows, CHOICE_FIELD)
-        if isinstance(offered, RefusedAct):
-            return _act_refused(request, action, offered.sentence)
-        choice = offered.node if isinstance(offered, Control) else None
+    choice = _offered_choice(library, action, rows)
+    if isinstance(choice, RefusedAct):
+        return _act_refused(request, action, choice.sentence)
     #: The token is the batch's correlation id.
-    token = str(uuid.uuid7())
+    token = uuid.uuid7()
     #: Named once: the batch carries only its rows.
-    log_left_alone(action.name, refused, library.pk, uuid.UUID(token))
+    log_left_alone(action.name, refused, library.pk, token)
+    keys = tuple(row.pk for row in rows)
     tally = Tally(total=len(keys), left=len(keys)).left_alone(refused)
-    progress = Progress(tuple(keys), tally).as_json()
     return _confirm_page(
         request,
         action,
         rows=rows,
         refused=refused,
-        token=token,
-        progress=progress,
+        token=str(token),
+        progress=Progress(keys, tally).as_json(),
         choice=choice,
     )
 
@@ -309,12 +320,9 @@ def _reconfirmation(
     resolution = action.resolve(library, list(progress.keys))
     log_left_alone(action.name, resolution.refused, library.pk, uuid.UUID(token))
     tally = progress.tally.left_alone(resolution.refused)
-    choice: Node | None = None
-    if action.choice is not None:
-        offered = action.choice.offer(library, resolution.rows, CHOICE_FIELD)
-        if isinstance(offered, RefusedAct):
-            return _act_refused(request, action, offered.sentence)
-        choice = offered.node if isinstance(offered, Control) else None
+    choice = _offered_choice(library, action, resolution.rows)
+    if isinstance(choice, RefusedAct):
+        return _act_refused(request, action, choice.sentence)
     keys = tuple(row.pk for row in resolution.rows)
     return _confirm_page(
         request,
@@ -391,11 +399,7 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
 
     resolution = declared.resolve(user.library, keys)
     return _confirmation(
-        request,
-        declared,
-        rows=list(resolution.rows),
-        refused=resolution.refused,
-        keys=[row.pk for row in resolution.rows],
+        request, declared, rows=list(resolution.rows), refused=resolution.refused
     )
 
 
@@ -493,12 +497,7 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
     )
     if declared is None:
         logger.warning("[bulk]: %s names an act nothing declares", correlation_id)
-        return _refused_page(
-            request,
-            UNKNOWN_ACT,
-            title="Undo",
-            fallback=UNDO_FALLBACK,
-        )
+        return _refused_page(request, UNKNOWN_ACT, title="Undo", fallback=UNDO_FALLBACK)
 
     if target is not None and not target.is_terminal and not end_stale(target):
         return _refused_page(

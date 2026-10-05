@@ -364,6 +364,7 @@ def run_chunk(batch_id: uuid.UUID, chunk: int) -> None:
         )
         _end_unreached(batch, BulkBatch.State.FAILED, ENDED_BY_A_DEFECT)
         return
+    owner = _live(batch, chunk=chunk, attempts=batch.attempts)
     if batch.attempts >= STARTS_ALLOWED:
         logger.error(
             "[bulk]: batch %s of library %s failed at row %s: chunk %s started "
@@ -374,23 +375,11 @@ def run_chunk(batch_id: uuid.UUID, chunk: int) -> None:
             chunk,
             batch.attempts,
         )
-        _fail(
-            batch,
-            act.name,
-            Tally.of(batch),
-            batch.position,
-            owner=_live(batch, chunk=chunk, attempts=batch.attempts),
-        )
+        _fail(batch, act.name, Tally.of(batch), batch.position, owner=owner)
         return
     attempts = batch.attempts + 1
-    claimed = _store(
-        _live(batch, chunk=chunk, attempts=batch.attempts),
-        attempts=attempts,
-        state=BulkBatch.State.RUNNING,
-    )
-    if not claimed:
-        return
-    _run(batch, act, chunk, attempts)
+    if _store(owner, attempts=attempts, state=BulkBatch.State.RUNNING):
+        _run(batch, act, chunk, attempts)
 
 
 def _run(batch: BulkBatch, act: BatchAct, chunk: int, attempts: int) -> None:
@@ -587,10 +576,10 @@ def visible_batches(library: UserLibrary) -> list[BulkBatch]:
     """Running ones, and recent unseen ends."""
     since = timezone.now() - ANNOUNCE_WINDOW
     return list(
-        BulkBatch.objects.filter(library=library)
-        .filter(
+        BulkBatch.objects.filter(
             Q(state__in=BulkBatch.LIVE)
-            | Q(announced_at__isnull=True, ended_at__gte=since)
+            | Q(announced_at__isnull=True, ended_at__gte=since),
+            library=library,
         )
         .defer("rows")
         .order_by("created_at")
@@ -651,51 +640,60 @@ def error_id(token: BatchToken) -> str:
     return str(token)[-12:]
 
 
+@dataclass(frozen=True, slots=True)
+class _ToastWords:
+    """What a toast says, and offers."""
+
+    kind: ToastType
+    said: str
+    action: ToastAction | None
+
+
+def _words_while_live(batch: BulkBatch, tally: Tally) -> _ToastWords:
+    if is_stale(batch):
+        said = (
+            "not running; the background worker may be down "
+            f"(error {error_id(batch.token)}). {tally.sentence()}"
+        )
+        return _ToastWords("warning", said, _stop_action(batch))
+    if batch.stop_requested_at is not None:
+        return _ToastWords("info", f"stopping. {tally.sentence()}", None)
+    if batch.state == BulkBatch.State.QUEUED:
+        said = f"waiting to start. {tally.sentence()}"
+        return _ToastWords("info", said, _stop_action(batch))
+    return _ToastWords("info", tally.sentence(), _stop_action(batch))
+
+
+def _words_once_ended(batch: BulkBatch, tally: Tally) -> _ToastWords:
+    ended = tally.sentence(ended=True)
+    action = _undo_action(batch)
+    if batch.state == BulkBatch.State.FAILED:
+        said = (
+            f"a problem on our side stopped it (error {error_id(batch.token)}). {ended}"
+        )
+        return _ToastWords("error", said, action)
+    if batch.state == BulkBatch.State.STOPPED:
+        return _ToastWords("info", f"stopped. {ended}", action)
+    return _ToastWords("success" if batch.done else "info", ended, action)
+
+
 def batch_toast(batch: BulkBatch) -> BatchToast:
     """One toast for one batch's state."""
     tally = Tally.of(batch)
-    title = _title(batch)
+    words = (
+        _words_once_ended(batch, tally)
+        if batch.is_terminal
+        else _words_while_live(batch, tally)
+    )
     reasons = "".join(f" {reason}" for reason in tally.reasons)
-    action: ToastAction | None
-    kind: ToastType = "info"
-    if not batch.is_terminal:
-        stopping = batch.stop_requested_at is not None
-        if is_stale(batch):
-            kind = "warning"
-            said = (
-                "not running; the background worker may be down "
-                f"(error {error_id(batch.token)}). {tally.sentence()}"
-            )
-            stopping = False
-        elif stopping:
-            said = f"stopping. {tally.sentence()}"
-        elif batch.state == BulkBatch.State.QUEUED:
-            said = f"waiting to start. {tally.sentence()}"
-        else:
-            said = tally.sentence()
-        action = None if stopping else _stop_action(batch)
-    else:
-        ended = tally.sentence(ended=True)
-        action = _undo_action(batch)
-        if batch.state == BulkBatch.State.FAILED:
-            kind = "error"
-            said = (
-                "a problem on our side stopped it "
-                f"(error {error_id(batch.token)}). {ended}"
-            )
-        elif batch.state == BulkBatch.State.STOPPED:
-            said = f"stopped. {ended}"
-        else:
-            kind = "success" if batch.done else "info"
-            said = ended
     toast = BatchToast(
         id=f"{TOAST_ID_PREFIX}{batch.token}",
-        message=f"{title}: {said}{reasons}",
-        type=kind,
-        sticky=not batch.is_terminal or action is not None,
+        message=f"{_title(batch)}: {words.said}{reasons}",
+        type=words.kind,
+        sticky=not batch.is_terminal or words.action is not None,
     )
-    if action is not None:
-        toast["action"] = action
+    if words.action is not None:
+        toast["action"] = words.action
     return toast
 
 

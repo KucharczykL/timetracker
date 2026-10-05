@@ -37,8 +37,7 @@ class ChunkQueue:
             return
         self._draining = True
         try:
-            while self.queued:
-                self.run_one()
+            self.run_all()
         finally:
             self._draining = False
 
