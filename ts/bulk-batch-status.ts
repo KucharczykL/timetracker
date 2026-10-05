@@ -1,5 +1,6 @@
 /** Background bulk batches, as toasts. */
 import { getCsrfToken } from "./csrf.js";
+import { PAGE_STALE } from "./elements/form-dialog/events.js";
 import type { ToastAction, ToastType } from "./elements/toast-stack.js";
 
 const BATCH_STATES = ["queued", "running", "finished", "stopped", "failed"] as const;
@@ -30,9 +31,6 @@ const TOAST_PREFIX = "bulk-batch:";
 const POLL_FAILED_TOAST = `${TOAST_PREFIX}poll`;
 const POLL_FAILED =
   "Could not check the progress of a bulk change. Reload the page to see it.";
-
-/** The page under a batch changed. */
-export const PAGE_STALE = "page:stale";
 
 function isAction(value: unknown): value is ToastAction {
   if (!value || typeof value !== "object") return false;

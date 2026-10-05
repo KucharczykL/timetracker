@@ -4,8 +4,8 @@ import {
   type BatchOut,
   BulkBatchCoordinator,
   isBatch,
-  PAGE_STALE,
 } from "./bulk-batch-status.js";
+import { PAGE_STALE } from "./elements/form-dialog/events.js";
 import fixtures from "./bulk-batch-status.fixtures.json";
 
 const TOKEN = "01900000-0000-7000-8000-000000000001";

@@ -1464,3 +1464,19 @@ def test_an_undo_ends_a_batch_no_worker_owns(
 
     assert batch_of(owned_library, token).state == BulkBatch.State.STOPPED
     assert PlayerSession.objects.get(pk=session.pk).removed_at is None
+
+
+def test_an_undo_answers_a_dialog_request_as_done(client_in, owned_library, game):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+
+    response = client_in.post(
+        undo_url(token) + "?origin=/tracker/session/list",
+        {},
+        headers={"X-Form-Dialog": "1"},
+    )
+
+    assert response.json()["kind"] == "done"
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None

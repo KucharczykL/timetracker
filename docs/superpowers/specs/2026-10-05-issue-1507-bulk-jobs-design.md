@@ -5,7 +5,7 @@ declaration, the confirmation, the keys and the Undo.
 
 ## The batch row
 
-`BulkBatch` (`games/models.py`) holds one batch. It writes no event. `token` is the correlation id, unique in a library. `rows`
+`BulkBatch` (`games/models.py`) holds one batch. `token` is the correlation id, unique in a library. `rows`
 holds the keys, and the runner writes it once. `position` is the index of the
 next key. `state` is `queued`, `running`, `finished`, `stopped` or
 `failed`. CHECK constraints bind `ended_at` to an ended state and
@@ -23,7 +23,7 @@ count is refused. The press redirects to its origin.
 An Undo reads its rows on the server. It is refused while its batch runs. A
 partial unique constraint lets one Undo of a batch run at a time. An Undo
 with no rows posts a message. An Undo of an Undo is refused with its own
-sentence. An older batch reads its act from its events or the ledger.
+sentence. An older batch's act comes from its events or ledger.
 
 ## Running
 
@@ -37,8 +37,8 @@ A defect stores `failed`. The cluster's timeout is a `BaseException`; the
 runner stores `failed`, then raises it again. A chunk that starts a third time
 stores `failed`. The log names every row left alone.
 
-A live batch with no write for `STALE_AFTER` has no worker. Its toast says
-the worker may be down. Stop and Undo end it at once.
+A live batch silent for `STALE_AFTER` has no worker; its toast says so, and
+Stop or Undo ends it.
 
 ## Following
 
@@ -49,16 +49,18 @@ seconds while one runs. `batch_toast` writes each toast: Stop while live,
 Undo where a row moved. A dismissed end posts
 `/api/bulk/batches/{token}/announced`, and so does an end whose toast closes
 on its own timer. A dismissed live toast stays dismissed for this tab. A batch
-the poll no longer answers is forgotten. Failed polls back off; after five,
-or on 401 or 403, a toast says so.
+the poll drops is forgotten. Failed polls back off, and then a toast says so.
 
 When a running batch ends, and its origin path is this page, the coordinator
-dispatches `page:stale` on `document`. This module adds no listener.
+dispatches `page:stale` on `document`; `<form-dialog>` reloads the page once no
+modal is open. While a modal is open, `<toast-stack>` posts a toast's action
+with `X-Form-Dialog: 1`. A `done` answer shows its messages and dispatches
+`page:stale`; any other answer posts the form natively.
 
 ## Tests
 
 `tests/bulk_batches.py` runs queued chunks on commit; `held_batches` keeps
 them. A batch that ends
 `failed` fails the test unless it asks for `failing_batches`.
-`ts/bulk-batch-status.fixtures.json` holds every `batch_out` shape; pytest
-keeps it current and vitest validates it.
+`ts/bulk-batch-status.fixtures.json` holds every `batch_out` shape for
+vitest.

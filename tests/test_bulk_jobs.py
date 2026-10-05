@@ -686,3 +686,17 @@ def test_stop_on_an_ended_batch_changes_nothing(client_in, owned_library):
     assert response.status_code == 302
     batch.refresh_from_db()
     assert batch.stop_requested_at is None
+
+
+def test_stop_answers_a_dialog_request_as_done(client_in, owned_library):
+    batch = a_batch(owned_library, state=BulkBatch.State.RUNNING)
+
+    response = client_in.post(
+        reverse("games:stop_bulk_batch", args=[batch.token])
+        + "?origin=/tracker/session/list",
+        headers={"X-Form-Dialog": "1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["kind"] == "done"
+    assert response.json()["url"].endswith("/tracker/session/list")

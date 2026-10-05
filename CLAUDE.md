@@ -815,7 +815,8 @@ fences out a run in flight; a live batch silent for `STALE_AFTER` has no
 worker, and Stop or Undo ends it at once. One Undo of a batch runs at a time
 (a partial unique constraint). The log names every row left alone. `Page()` embeds the library's
 batches; `ts/bulk-batch-status.ts` toasts them, polls `/api/bulk/batches`, and
-dispatches `page:stale` when one from this page ends. Tests drain chunks on
+dispatches `page:stale` when one from this page ends; behind a modal,
+`<toast-stack>` posts a toast action as a dialog request. Tests drain chunks on
 commit (`tests/bulk_batches.py`; `held_batches` holds them, and a batch
 ending `failed` fails the test unless it asks for `failing_batches`). The Undo reads
 the act's name off the batch row, or for an older batch out of its
