@@ -626,7 +626,7 @@ function initCopyControl(host: HTMLElement): (() => void) | null {
   return paint;
 }
 
-/** Answers the copy control's painter, if any. */
+/** Wires the field; answers its copy painter. */
 function initField(host: HTMLElement): (() => void) | null {
   revealSegments(host);
   bindEngine(host);
@@ -655,7 +655,7 @@ class TemporalFieldElement extends HTMLElement implements UnsetTarget {
     }
     if (!this.paintCopy) return;
     this.paintCopy();
-    // Document-wide: a later source counts.
+    // Document-wide: any source's change repaints.
     document.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, this.paintCopy);
   }
 

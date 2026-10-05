@@ -234,7 +234,7 @@ def test_a_refused_act_toasts_inside_the_dialog(
     expect(region).to_contain_text("acquired after that day")
     expect(dialog).to_be_visible()
     # The browser logs the 409 itself.
-    assert all("409 (Conflict)" in error for error in errors)
+    assert errors and all("409 (Conflict)" in error for error in errors)
 
 
 def test_add_game_continues_to_its_copy_and_a_close_refreshes(
@@ -255,7 +255,8 @@ def test_add_game_continues_to_its_copy_and_a_close_refreshes(
     )
     page.get_by_role("link", name="New game").click()
     dialog = page.locator("dialog[data-modal][open]")
-    dialog.locator('input[name="name"]').fill("Outer Wilds")
+    dialog.locator('input[name="name"]').press_sequentially("Outer Wilds")
+    expect(dialog.locator('input[name="sort_name"]')).to_have_value("Outer Wilds")
     dialog.get_by_role("button", name="Submit & Add to library").click()
 
     expect(dialog.locator("[data-form-dialog-title]")).to_contain_text("Outer Wilds")
@@ -264,5 +265,4 @@ def test_add_game_continues_to_its_copy_and_a_close_refreshes(
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.get_by_role("link", name="Outer Wilds").first).to_be_visible()
     assert _not_reloaded(page)
-    # Add game's page glue still looks for its form.
-    assert errors == ['The parent selector "#add-form" is not valid.']
+    assert errors == []

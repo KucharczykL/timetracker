@@ -1,4 +1,5 @@
-/** Makes a fetched fragment safe to insert. */
+/** Fits a fetched fragment into the host page. */
+import type { ModuleUrl } from "./answer.js";
 
 /** Attributes holding one id. */
 const ID_ATTRIBUTES = ["list", "form", "popovertarget", "aria-activedescendant"];
@@ -59,13 +60,13 @@ export function resolveUrls(root: ParentNode, base: URL): void {
   }
 }
 
-export type ModuleLoader = (url: string) => Promise<unknown>;
+export type ModuleLoader = (url: ModuleUrl) => Promise<unknown>;
 
 const loadModule: ModuleLoader = (url) => import(/* @vite-ignore */ url);
 
 /** Rejects when any module fails. */
 export async function importModules(
-  urls: readonly string[],
+  urls: readonly ModuleUrl[],
   load: ModuleLoader = loadModule,
 ): Promise<void> {
   await Promise.all(urls.map((url) => load(url)));

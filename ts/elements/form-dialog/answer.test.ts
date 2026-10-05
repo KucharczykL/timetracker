@@ -64,6 +64,15 @@ describe("readAnswer", () => {
     expect(Array.from(scripts, (script) => script.id)).toEqual(["props"]);
   });
 
+  it("reports dropped scripts and classic scripts it cannot load", async () => {
+    const reported = vi.spyOn(clientErrors, "reportClientError").mockImplementation(() => "id");
+    const page = PAGE.replace("</body>", '<script src="/static/js/legacy.js"></script></body>');
+    await readAnswer(htmlResponse(page, "http://x.test/e"), new URL("http://x.test/e"));
+    const details = reported.mock.calls.map(([, detail]) => detail);
+    expect(details).toContain("dropped 1 script(s) from page content");
+    expect(details).toContain("classic script not loaded: http://x.test/static/js/legacy.js");
+  });
+
   it("answers no page without the main container", async () => {
     const answer = await readAnswer(
       htmlResponse("<h1>Not Found</h1>", "http://x.test/gone", false, 404),
@@ -85,6 +94,10 @@ describe("readAnswer", () => {
     const broken = PAGE.replace('[{"message":"Saved"}]', "[");
     const answer = await readAnswer(htmlResponse(broken, "http://x.test/e"), new URL("http://x.test/e"));
     expect(answer.page!.messages).toEqual([]);
-    expect(reported).toHaveBeenCalledOnce();
+    expect(reported).toHaveBeenCalledWith(
+      "form-dialog[answer]",
+      expect.stringContaining("unreadable messages"),
+      { toast: false },
+    );
   });
 });

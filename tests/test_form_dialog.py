@@ -1,7 +1,6 @@
 """The form dialog's server half: links, host, layout stamps."""
 
 import re
-from pathlib import Path
 
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
@@ -19,8 +18,7 @@ from common.components.form_dialog import (
     FORM_DIALOG_CHROME_VALUES,
     FORM_DIALOG_PARTS,
 )
-
-GENERATED_MODULE = Path("ts/generated/form-dialog.ts")
+from games.management.commands.gen_element_types import form_dialog_module
 
 
 def _opening_tag(html: str, marker: str) -> str:
@@ -31,18 +29,19 @@ def _opening_tag(html: str, marker: str) -> str:
 
 class FormDialogLinkTest(SimpleTestCase):
     def test_header_chrome_is_the_empty_value(self):
-        self.assertEqual(form_dialog_link(), (FORM_DIALOG_ATTRIBUTE, ""))
+        self.assertIn((FORM_DIALOG_ATTRIBUTE, ""), form_dialog_link())
 
     def test_bare_chrome_opts_out_of_the_header(self):
-        self.assertEqual(form_dialog_link("bare"), (FORM_DIALOG_ATTRIBUTE, "bare"))
+        self.assertIn((FORM_DIALOG_ATTRIBUTE, "bare"), form_dialog_link("bare"))
 
     def test_a_menu_link_carries_the_attribute(self):
         html = str(
-            DropdownLinkItem("/device/1/edit", "Edit", attributes=[form_dialog_link()])
+            DropdownLinkItem("/device/1/edit", "Edit", attributes=form_dialog_link())
         )
         tag = _opening_tag(html, 'href="/device/1/edit"')
         self.assertTrue(tag.startswith("<a"))
         self.assertIn('data-form-dialog=""', tag)
+        self.assertIn("aria-busy:cursor-progress", tag)
 
 
 class FormDialogHostTest(SimpleTestCase):
@@ -66,7 +65,7 @@ class FormDialogHostTest(SimpleTestCase):
         self.assertIn('data-modal-dismiss=""', html)
 
     def test_the_generated_module_states_every_value(self):
-        module = GENERATED_MODULE.read_text(encoding="utf-8")
+        module = form_dialog_module()
         self.assertIn(f'"{FORM_DIALOG_ATTRIBUTE}"', module)
         for chrome, value in FORM_DIALOG_CHROME_VALUES.items():
             self.assertIn(f'"{chrome}": "{value}"', module)

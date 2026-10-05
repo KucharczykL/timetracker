@@ -15,7 +15,8 @@ const ENDPOINT = "/api/client-error/";
 const DEGRADED_CLASSES = "ring-2 ring-danger";
 
 // One report + one toast per distinct failure per page load.
-const reported = new Set<string>();
+/** Each reported failure's id. */
+const reported = new Map<string, string>();
 
 const MAX_REPORTS_PER_PAGE = 25;
 let reportCount = 0;
@@ -60,10 +61,12 @@ export function reportClientError(
   options: ReportOptions = {},
 ): string {
   const { toast = true } = options;
-  const id = errorId();
   const key = `${context}|${detail}`;
-  if (reported.has(key)) return id;
-  reported.add(key);
+  // A repeat names the id already logged.
+  const earlier = reported.get(key);
+  if (earlier !== undefined) return earlier;
+  const id = errorId();
+  reported.set(key, id);
 
   reportCount += 1;
   if (reportCount > MAX_REPORTS_PER_PAGE) {

@@ -491,3 +491,30 @@ describe("date-time-field under ⊘, zone moves", () => {
     expect(hidden(field).value.slice(0, 16)).toBe(tokyo.slice(0, 16));
   });
 });
+
+describe("date-time-field moved", () => {
+  it("follows its zone row after a move", () => {
+    const { start } = mountWithZoneRow("Asia/Tokyo");
+    fillWholeField(start);
+    const tokyo = hidden(start).value;
+
+    document.body.append(start.closest("drop-down")!);
+    changeZone("timestamp_start_timezone", "America/New_York");
+
+    expect(hidden(start).value).not.toBe(tokyo);
+    expect(hidden(start).value.slice(0, 16)).toBe(tokyo.slice(0, 16));
+  });
+
+  it("reads the zone row of its own form", () => {
+    const pair = (zone: string) =>
+      `<form>${markup("timestamp_start", "", "", "timestamp_start_timezone")}` +
+      `${zoneRowMarkup("timestamp_start_timezone", "Europe/Prague", zone)}</form>`;
+    document.body.innerHTML = pair("Asia/Tokyo") + pair("America/New_York");
+    const fields = document.querySelectorAll<HTMLElement>("date-time-field");
+    fillWholeField(fields[0]);
+    fillWholeField(fields[1]);
+
+    expect(hidden(fields[0]).value).not.toBe(hidden(fields[1]).value);
+  });
+});
+

@@ -57,6 +57,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.components.field_mirror import FieldMirror
 from common.components.game_addon import GameAddon
 from common.components.primitives import (
     SECTION_SURFACE_CLASS,
@@ -454,6 +455,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             fields=Fragment(
                 FormFields(form, groups=GAME_FORM_GROUPS),
                 GameAddon("kind", "parent"),
+                FieldMirror("name", "sort_name"),
                 editions_area(graph),
                 references_area(references),
             ),
@@ -466,10 +468,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
         ),
         title="Add New Game",
         #: Release rows render outside FormFields.
-        scripts=Fragment(
-            ModuleScript("dist/elements/temporal-field.js"),
-            ModuleScript("dist/add_game.js"),
-        ),
+        scripts=ModuleScript("dist/elements/temporal-field.js"),
     )
 
 

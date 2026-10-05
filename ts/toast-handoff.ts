@@ -9,10 +9,13 @@ function report(error: unknown): void {
   });
 }
 
+/** Appends to any not yet taken. */
 export function handOffMessages(payloads: readonly unknown[]): void {
   if (payloads.length === 0) return;
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payloads));
+    const waiting: unknown = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "[]");
+    const earlier = Array.isArray(waiting) ? waiting : [];
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...earlier, ...payloads]));
   } catch (error) {
     report(error);
   }

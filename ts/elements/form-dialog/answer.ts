@@ -3,6 +3,12 @@ import { reportClientError } from "../../client-errors.js";
 
 /** Origin, path and sorted query. */
 export type PageUrl = string;
+/** A toast payload; `<toast-stack>` checks it. */
+export type MessagePayload = unknown;
+/** An absolute module script URL. */
+export type ModuleUrl = string;
+/** `data-*` name to value. */
+export type HtmlDataAttributes = Readonly<Record<string, string>>;
 
 export function normalizedUrl(url: string | URL): PageUrl {
   const parsed = new URL(url, location.href);
@@ -23,56 +29,58 @@ export function sameUrl(left: string | URL, right: string | URL): boolean {
 }
 
 export interface AnswerPage {
-  /** The children of `#main-container`. */
-  content: DocumentFragment;
+  /** `#main-container`'s children; consumed when inserted. */
+  readonly content: DocumentFragment;
   /** `data-page-title`: the raw page title. */
-  title: string;
-  readOnly: boolean;
-  /** The `#django-messages` payloads. */
-  messages: unknown[];
-  /** Absolute module script URLs. */
-  modules: string[];
-  /** The children of `#navbar`, when present. */
-  navbar: DocumentFragment | null;
-  /** The `data-*` attributes of `<html>`. */
-  htmlData: Record<string, string>;
-  documentTitle: string;
+  readonly title: string;
+  /** The route is in `READ_ONLY`. */
+  readonly readOnly: boolean;
+  readonly messages: readonly MessagePayload[];
+  readonly modules: readonly ModuleUrl[];
+  /** `#navbar`'s children, when present. */
+  readonly navbar: DocumentFragment | null;
+  readonly htmlData: HtmlDataAttributes;
+  /** The `<title>` text. */
+  readonly documentTitle: string;
 }
 
 export interface Answer {
-  url: URL;
-  redirected: boolean;
-  status: number;
-  /** Null without `#main-container`. */
-  page: AnswerPage | null;
+  readonly url: URL;
+  readonly redirected: boolean;
+  readonly status: number;
+  /** Null for non-HTML or no `#main-container`. */
+  readonly page: AnswerPage | null;
 }
 
-/** Scripts that would run; data scripts stay. */
-const RUNNABLE_SCRIPT =
-  'script:not([type]), script[type=""], script[type="module"], script[type="text/javascript"]';
+/** Every script but data scripts. */
+const RUNNABLE_SCRIPT = 'script:not([type*="json"])';
+
+function report(detail: string): void {
+  reportClientError("form-dialog[answer]", detail, { toast: false });
+}
 
 function childrenOf(element: Element): DocumentFragment {
   const fragment = document.createDocumentFragment();
   fragment.append(...Array.from(element.childNodes, (node) => document.importNode(node, true)));
-  fragment.querySelectorAll(RUNNABLE_SCRIPT).forEach((script) => script.remove());
+  const dropped = fragment.querySelectorAll(RUNNABLE_SCRIPT);
+  if (dropped.length > 0) report(`dropped ${dropped.length} script(s) from page content`);
+  dropped.forEach((script) => script.remove());
   return fragment;
 }
 
-function readMessages(parsed: Document): unknown[] {
+function readMessages(parsed: Document): MessagePayload[] {
   const script = parsed.getElementById("django-messages");
   if (!script) return [];
   try {
     const payloads: unknown = JSON.parse(script.textContent || "[]");
     return Array.isArray(payloads) ? payloads : [payloads];
   } catch (error) {
-    reportClientError("form-dialog[messages]", String((error as Error)?.message ?? error), {
-      toast: false,
-    });
+    report(`unreadable messages: ${String((error as Error)?.message ?? error)}`);
     return [];
   }
 }
 
-function htmlData(parsed: Document): Record<string, string> {
+function htmlData(parsed: Document): HtmlDataAttributes {
   const data: Record<string, string> = {};
   for (const attribute of parsed.documentElement.attributes) {
     if (attribute.name.startsWith("data-")) data[attribute.name] = attribute.value;
@@ -80,9 +88,22 @@ function htmlData(parsed: Document): Record<string, string> {
   return data;
 }
 
+/** Classic scripts never load; name the missing ones. */
+function reportClassicScripts(parsed: Document, url: URL): void {
+  const loaded = new Set(
+    Array.from(document.querySelectorAll<HTMLScriptElement>("script[src]"), (script) => script.src),
+  );
+  for (const script of parsed.querySelectorAll<HTMLScriptElement>("script[src]")) {
+    if (script.type === "module") continue;
+    const source = new URL(script.getAttribute("src") ?? "", url).href;
+    if (!loaded.has(source)) report(`classic script not loaded: ${source}`);
+  }
+}
+
 export function readPage(parsed: Document, url: URL): AnswerPage | null {
   const main = parsed.getElementById("main-container");
   if (!main) return null;
+  reportClassicScripts(parsed, url);
   const navbar = parsed.getElementById("navbar");
   return {
     content: childrenOf(main),

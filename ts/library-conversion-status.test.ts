@@ -53,6 +53,15 @@ afterEach(() => {
 });
 
 describe("LibraryConversionCoordinator", () => {
+  it("stops the old coordinator's polling on a swap", async () => {
+    configure(running);
+    document.dispatchEvent(new Event(SWAPPED));
+    vi.mocked(fetch).mockResolvedValue(response(running));
+    document.dispatchEvent(new Event(SWAPPED));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("reads the state again after a swap", () => {
     configure(running);
     document.dispatchEvent(new Event(SWAPPED));

@@ -67,6 +67,11 @@ describe("client-errors", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("answers a repeat with the id it logged", () => {
+    const first = reportClientError("ctx-same-id", "detail");
+    expect(reportClientError("ctx-same-id", "detail")).toBe(first);
+  });
+
   it("reports distinct details under one context separately", () => {
     reportClientError("ctx-two", "first");
     reportClientError("ctx-two", "second");

@@ -37,7 +37,7 @@ from common.components.core import (
     Node,
     as_children,
 )
-from common.components.modal import ModalDialog, ModalPanelHeader
+from common.components.modal import ModalDialog, ModalPanelHeader, labelled_by
 from common.components.primitives import (
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
@@ -719,6 +719,14 @@ class GameAddonProps(TypedDict):
 register_element("game-addon", "GameAddon", GameAddonProps)
 
 
+class FieldMirrorProps(TypedDict):
+    source_field: FormFieldName
+    target_field: FormFieldName
+
+
+register_element("field-mirror", "FieldMirror", FieldMirrorProps)
+
+
 class CopyControlProps(TypedDict):
     value: str
 
@@ -1303,7 +1311,7 @@ def BottomSheet(
     """
     title_id = f"{id}-title"
     target = ModalDialog(
-        [("data-bottom-sheet", ""), ("aria-labelledby", title_id)],
+        [("data-bottom-sheet", ""), labelled_by(title_id)],
         align="end",
         class_=_SHEET_DIALOG_CLASS,
     )[

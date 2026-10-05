@@ -6,14 +6,17 @@ import { importModules, type ModuleLoader } from "./rewrite.js";
 
 export { SWAPPED };
 
+/** An element id. */
+export type ElementId = string;
+
 /** What finds the opener again after a swap. */
 export interface OpenerKey {
-  id: string;
-  href: string;
+  readonly id: ElementId | null;
+  readonly href: string | null;
 }
 
 export function openerKey(opener: Element): OpenerKey {
-  return { id: opener.id, href: opener.getAttribute("href") ?? "" };
+  return { id: opener.id || null, href: opener.getAttribute("href") };
 }
 
 function mainContainer(): HTMLElement {
@@ -31,14 +34,14 @@ export async function swapHostPage(page: AnswerPage, load?: ModuleLoader): Promi
   const navbar = document.getElementById("navbar");
   if (navbar && page.navbar) navbar.replaceChildren(page.navbar);
   document.title = page.documentTitle;
-  // Overwrite only: scripts stamp their own.
+  // Keep absent ones: scripts set them.
   for (const [name, value] of Object.entries(page.htmlData)) {
     document.documentElement.setAttribute(name, value);
   }
   document.dispatchEvent(new Event(SWAPPED));
 }
 
-function linkWithHref(href: string): HTMLElement | null {
+function linkWithHref(href: string | null): HTMLElement | null {
   if (!href) return null;
   for (const scope of [mainContainer(), document]) {
     for (const link of scope.querySelectorAll<HTMLElement>("a[href]")) {
@@ -49,8 +52,9 @@ function linkWithHref(href: string): HTMLElement | null {
 }
 
 /** The opener's twin, its toggle, else the page. */
-export function refocusAfterSwap(opener: OpenerKey): void {
-  const twin = (opener.id && document.getElementById(opener.id)) || linkWithHref(opener.href);
+export function refocusAfterSwap(opener: OpenerKey | null): void {
+  const twin =
+    (opener?.id && document.getElementById(opener.id)) || linkWithHref(opener?.href ?? null);
   const target = focusReturnTarget(twin) ?? mainContainer();
   target.focus({ preventScroll: true });
 }

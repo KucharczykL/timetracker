@@ -24,6 +24,21 @@ describe("prefixIds", () => {
     expect(root.querySelectorAll("a")[1].getAttribute("href")).toBe("/x");
   });
 
+  it("prefixes single-id references", () => {
+    const root = fragmentOf(`
+      <datalist id="names"></datalist><input list="names">
+      <form id="f"></form><button form="f"></button>
+      <div id="tip" popover></div><button popovertarget="tip"></button>
+      <div role="listbox" aria-activedescendant="opt"><div id="opt"></div></div>`);
+    prefixIds(root, "p-");
+    expect(root.querySelector("input")!.getAttribute("list")).toBe("p-names");
+    expect(root.querySelector("button[form]")!.getAttribute("form")).toBe("p-f");
+    expect(root.querySelector("[popovertarget]")!.getAttribute("popovertarget")).toBe("p-tip");
+    expect(root.querySelector("[role=listbox]")!.getAttribute("aria-activedescendant")).toBe(
+      "p-opt",
+    );
+  });
+
   it("reaches into templates", () => {
     const root = fragmentOf(
       `<template><template><span id="row" aria-controls="row"></span></template></template>`,

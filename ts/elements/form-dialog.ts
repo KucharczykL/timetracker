@@ -9,24 +9,33 @@ import {
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { handOffMessages } from "../toast-handoff.js";
 import { type Answer, type AnswerPage, readAnswer, sameUrl } from "./form-dialog/answer.js";
-import { importModules, type ModuleLoader, prefixIds, resolveUrls } from "./form-dialog/rewrite.js";
 import { browser } from "./form-dialog/navigation.js";
-import { type RouteContext, routeOpen, routeSubmit } from "./form-dialog/routes.js";
+import { importModules, type ModuleLoader, prefixIds, resolveUrls } from "./form-dialog/rewrite.js";
+import {
+  assertNever,
+  type Messages,
+  routeOpen,
+  routeSubmit,
+  type SubmitContext,
+} from "./form-dialog/routes.js";
 import { type OpenerKey, openerKey, refocusAfterSwap, swapHostPage } from "./form-dialog/swap.js";
-import { attachModal, type Modal, openModals, topModal } from "./modal-layer.js";
+import { attachModal, isModalOpen, type Modal, MODAL_CHANGE, openModals, topModal } from "./modal-layer.js";
 
 interface OpenDialog {
   readonly dialog: HTMLDialogElement;
   readonly body: HTMLElement;
   readonly chrome: FormDialogChrome;
-  readonly opener: OpenerKey;
-  /** Aborts the in-flight fetch on close. */
+  readonly opener: OpenerKey | null;
+  readonly modal: Modal;
+  /** Aborts the in-flight submit on close. */
   readonly controller: AbortController;
-  modal: Modal | null;
   submitting: boolean;
-  /** A successful answer to swap in on close. */
+  /** A saved answer to swap in on close. */
   pendingSwap: AnswerPage | null;
 }
+
+/** Past this, the link is followed. */
+const OPEN_TIMEOUT_MS = 15_000;
 
 const TABBABLE = [
   "a[href]",
@@ -43,13 +52,17 @@ function csrfCookie(): string {
   return document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? "";
 }
 
-function showToasts(messages: readonly unknown[]): void {
+function showToasts(messages: Messages): void {
   if (messages.length === 0) return;
   window.dispatchEvent(new CustomEvent("show-toast", { detail: [...messages] }));
 }
 
 function report(detail: string): string {
   return reportClientError("form-dialog", detail, { toast: false });
+}
+
+function errorToast(message: string): void {
+  showToasts([{ message, type: "error" }]);
 }
 
 function isPlainPrimaryClick(event: MouseEvent): boolean {
@@ -61,6 +74,12 @@ function isPlainPrimaryClick(event: MouseEvent): boolean {
     !event.shiftKey &&
     !event.altKey
   );
+}
+
+/** Null for a marker no chrome states. */
+function chromeOf(marker: string | null): FormDialogChrome | null {
+  const chromes = Object.keys(FORM_DIALOG_CHROME) as FormDialogChrome[];
+  return chromes.find((chrome) => FORM_DIALOG_CHROME[chrome] === marker) ?? null;
 }
 
 function initialFocus(dialog: HTMLDialogElement, body: HTMLElement): HTMLElement | null {
@@ -77,11 +96,14 @@ function initialFocus(dialog: HTMLDialogElement, body: HTMLElement): HTMLElement
 
 export class FormDialogElement extends HTMLElement {
   /** Swapped in by tests. */
-  loadModule: ModuleLoader | undefined = undefined;
+  loadModule?: ModuleLoader;
   private readonly stack: OpenDialog[] = [];
-  /** A chain wrote; the host is stale. */
-  private dirty = false;
+  /** Something wrote; the host is stale. */
+  private stale = false;
   private opening = false;
+  private readonly undoing = new Set<HTMLFormElement>();
+  /** Closed last while another modal covered the page. */
+  private pendingRefresh: OpenDialog | null = null;
   private presentations = 0;
   private csrfAtLoad = "";
 
@@ -94,6 +116,7 @@ export class FormDialogElement extends HTMLElement {
   disconnectedCallback(): void {
     document.removeEventListener("click", this.onClick);
     document.removeEventListener("submit", this.onSubmit);
+    window.removeEventListener(MODAL_CHANGE, this.onModalChange);
   }
 
   private readonly onClick = (event: MouseEvent): void => {
@@ -107,9 +130,9 @@ export class FormDialogElement extends HTMLElement {
     }
     const entry = this.entryHolding(link);
     if (entry && sameUrl(link.href, location.href)) {
-      // A Cancel back to the host.
+      // A link back to the host closes.
       event.preventDefault();
-      entry.modal?.close();
+      if (!entry.submitting) entry.modal.close();
     }
   };
 
@@ -137,11 +160,11 @@ export class FormDialogElement extends HTMLElement {
     return this.stack.find((entry) => entry.body.contains(node));
   }
 
-  private context(entry: OpenDialog | null): RouteContext {
+  private submitContext(entry: OpenDialog): SubmitContext {
     const open = openModals();
     return {
       hostUrl: location.href,
-      alone: entry !== null && open.length === 1 && open[0] === entry.dialog,
+      alone: open.length === 1 && open[0] === entry.dialog,
     };
   }
 
@@ -159,32 +182,46 @@ export class FormDialogElement extends HTMLElement {
     link.setAttribute("aria-busy", "true");
     const topAtClick = topModal();
     const url = new URL(link.href);
+    const timeout = new AbortController();
+    const timer = window.setTimeout(() => timeout.abort(), OPEN_TIMEOUT_MS);
     try {
-      let answer: Answer;
-      try {
-        answer = await this.fetchAnswer(url);
-      } catch (error) {
-        report(`open failed: ${String(error)}`);
+      const chrome = chromeOf(link.getAttribute(FORM_DIALOG_ATTRIBUTE));
+      if (!chrome) {
+        report(`unknown chrome "${link.getAttribute(FORM_DIALOG_ATTRIBUTE)}"`);
         browser.assign(url.href);
         return;
       }
-      if (topModal() !== topAtClick) return;
-      const route = routeOpen(answer, this.context(null));
-      if (route.kind === "toast") {
-        showToasts(answer.page?.messages ?? []);
-      } else if (route.kind === "navigate") {
-        handOffMessages(answer.page?.messages ?? []);
-        browser.assign(route.url.href);
-      } else if (route.kind === "follow") {
-        browser.assign(url.href);
-      } else {
-        const chrome =
-          link.getAttribute(FORM_DIALOG_ATTRIBUTE) === FORM_DIALOG_CHROME.bare
-            ? "bare"
-            : "header";
-        if (!(await this.openDialog(answer, link, chrome))) browser.assign(url.href);
+      const answer = await this.fetchAnswer(url, { signal: timeout.signal });
+      const route = routeOpen(answer, location.href);
+      if (topModal() !== topAtClick) {
+        // Another modal took over; keep its news.
+        if (route.kind !== "follow") showToasts(route.kind === "present" ? route.page.messages : route.messages);
+        return;
       }
+      switch (route.kind) {
+        case "toast":
+          showToasts(route.messages);
+          return;
+        case "navigate":
+          handOffMessages(route.messages);
+          browser.assign(route.url.href);
+          return;
+        case "follow":
+          browser.assign(url.href);
+          return;
+        case "present":
+          if (!(await this.openDialog(route.page, answer.url, link, chrome))) {
+            browser.assign(url.href);
+          }
+          return;
+        default:
+          assertNever(route);
+      }
+    } catch (error) {
+      report(`open failed: ${String(error)}`);
+      browser.assign(url.href);
     } finally {
+      window.clearTimeout(timer);
       this.opening = false;
       link.removeAttribute("aria-busy");
     }
@@ -192,20 +229,19 @@ export class FormDialogElement extends HTMLElement {
 
   /** False when the dialog could not open. */
   private async openDialog(
-    answer: Answer,
+    page: AnswerPage,
+    url: URL,
     opener: HTMLElement | null,
     chrome: FormDialogChrome,
   ): Promise<boolean> {
-    const page = answer.page;
     const template = this.querySelector<HTMLTemplateElement>(
       `template[${FORM_DIALOG_PARTS.template}]`,
     );
-    if (!page || !template) {
-      report(template ? "no page to present" : "the host has no template");
+    if (!template) {
+      report("the host has no template");
       return false;
     }
-    const content = await this.prepare(page, answer.url);
-    if (!content) return false;
+    if (!(await this.prepare(page, url))) return false;
     const chromeFragment = template.content.cloneNode(true) as DocumentFragment;
     prefixIds(chromeFragment, this.nextPrefix());
     const dialog = chromeFragment.querySelector("dialog");
@@ -214,22 +250,10 @@ export class FormDialogElement extends HTMLElement {
       report("the template has no dialog or body");
       return false;
     }
-    const entry: OpenDialog = {
-      dialog,
-      body,
-      chrome,
-      opener: opener ? openerKey(opener) : { id: "", href: "" },
-      controller: new AbortController(),
-      modal: null,
-      submitting: false,
-      pendingSwap: null,
-    };
     if (chrome === "bare") {
       dialog.querySelector(`[${FORM_DIALOG_PARTS.header}]`)?.remove();
       dialog.removeAttribute("aria-labelledby");
     }
-    this.fill(entry, page, content);
-    this.append(dialog);
     const modal = attachModal(dialog, {
       initialFocus: () => initialFocus(dialog, body),
       dismiss: () => {
@@ -237,12 +261,26 @@ export class FormDialogElement extends HTMLElement {
       },
       onClosed: () => this.closed(entry),
     });
-    entry.modal = modal;
+    const entry: OpenDialog = {
+      dialog,
+      body,
+      chrome,
+      opener: opener ? openerKey(opener) : null,
+      modal,
+      controller: new AbortController(),
+      submitting: false,
+      pendingSwap: null,
+    };
+    // Registered first: content may submit on connect.
     this.stack.push(entry);
-    if (!modal.open(opener ?? undefined)) {
-      this.stack.pop();
+    try {
+      this.fill(entry, page);
+      this.append(dialog);
+      if (!modal.open(opener ?? undefined)) throw new Error("the layer refused to open");
+    } catch (error) {
+      this.stack.splice(this.stack.indexOf(entry), 1);
       dialog.remove();
-      report("the layer refused to open the dialog");
+      report(`the dialog could not open: ${String(error)}`);
       return false;
     }
     showToasts(page.messages);
@@ -254,43 +292,43 @@ export class FormDialogElement extends HTMLElement {
     return `form-dialog-${this.presentations}-`;
   }
 
-  /** Null, reported, when a module fails. */
-  private async prepare(page: AnswerPage, url: URL): Promise<DocumentFragment | null> {
+  /** False, reported, when a module fails. */
+  private async prepare(page: AnswerPage, url: URL): Promise<boolean> {
     try {
       await importModules(page.modules, this.loadModule);
     } catch (error) {
       report(`a module failed: ${String(error)}`);
-      return null;
+      return false;
     }
     prefixIds(page.content, this.nextPrefix());
     resolveUrls(page.content, url);
-    return page.content;
+    return true;
   }
 
-  private fill(entry: OpenDialog, page: AnswerPage, content: DocumentFragment): void {
+  private fill(entry: OpenDialog, page: AnswerPage): void {
     if (entry.chrome === "header") {
       // The header states the title.
-      content.querySelector("h1")?.remove();
+      page.content.querySelector("h1")?.remove();
       const title = entry.dialog.querySelector(`[${FORM_DIALOG_PARTS.title}]`);
       if (title) title.textContent = page.title;
     } else {
       entry.dialog.setAttribute("aria-label", page.title);
     }
-    entry.body.replaceChildren(content);
+    entry.body.replaceChildren(page.content);
   }
 
-  private async present(entry: OpenDialog, answer: Answer): Promise<void> {
-    const page = answer.page;
-    if (!page) return;
-    const content = await this.prepare(page, answer.url);
-    if (!content) {
-      handOffMessages(page.messages);
-      browser.assign(answer.url.href);
+  private async present(entry: OpenDialog, page: AnswerPage, url: URL): Promise<void> {
+    if (!(await this.prepare(page, url))) {
+      // The person's input stays on screen.
+      showToasts(page.messages);
+      const id = report("the answered form could not be shown");
+      errorToast(`The answer could not be shown. Reload the page to see it (error ${id}).`);
       return;
     }
-    if (!this.stack.includes(entry)) return;
-    this.fill(entry, page, content);
-    entry.modal?.focusInitial();
+    if (this.stack.includes(entry)) {
+      this.fill(entry, page);
+      entry.modal.focusInitial();
+    }
     showToasts(page.messages);
   }
 
@@ -302,6 +340,7 @@ export class FormDialogElement extends HTMLElement {
     if (entry.submitting) return;
     entry.submitting = true;
     form.setAttribute("aria-busy", "true");
+    entry.body.setAttribute("aria-busy", "true");
     const target =
       submitter?.getAttribute("formaction") ?? form.getAttribute("action") ?? location.href;
     try {
@@ -313,87 +352,127 @@ export class FormDialogElement extends HTMLElement {
           signal: entry.controller.signal,
         });
       } catch (error) {
-        if (!entry.controller.signal.aborted) this.failed(`submit failed: ${String(error)}`);
+        // The close already counted it as a write.
+        if (entry.controller.signal.aborted) return;
+        this.unconfirmed(`submit failed: ${String(error)}`);
         return;
       }
-      if (!this.stack.includes(entry)) return;
-      if (answer.redirected) this.dirty = true;
+      if (answer.redirected) this.stale = true;
       await this.routeSubmitAnswer(entry, answer);
     } finally {
       entry.submitting = false;
       form.removeAttribute("aria-busy");
+      entry.body.removeAttribute("aria-busy");
     }
   }
 
   private async routeSubmitAnswer(entry: OpenDialog, answer: Answer): Promise<void> {
-    const route = routeSubmit(answer, this.context(entry));
-    const messages = answer.page?.messages ?? [];
+    const route = routeSubmit(answer, this.submitContext(entry));
     switch (route.kind) {
       case "present":
-        await this.present(entry, answer);
+        await this.present(entry, route.page, answer.url);
         return;
       case "error":
-        this.failed(`the answer had no page (status ${answer.status})`, answer.status);
+        this.refused(route.status);
         return;
       case "swap":
-        entry.pendingSwap = answer.page;
-        entry.modal?.close();
+        entry.pendingSwap = route.page;
+        entry.modal.close();
         return;
       case "navigate":
-        handOffMessages(messages);
+        handOffMessages(route.messages);
         browser.assign(route.url.href);
         return;
       case "closeTop":
-        entry.modal?.close();
-        showToasts(messages);
+        entry.modal.close();
+        showToasts(route.messages);
         return;
+      default:
+        assertNever(route);
     }
   }
 
-  private failed(detail: string, status?: number): void {
+  /** A write may have landed unseen. */
+  private unconfirmed(detail: string): void {
+    this.stale = true;
     const id = report(detail);
-    const reason = status === undefined ? "the request failed" : `the server answered ${status}`;
-    showToasts([{ message: `Nothing was saved: ${reason} (error ${id}).`, type: "error" }]);
+    errorToast(`The save could not be confirmed. Close this to see the current page (error ${id}).`);
+  }
+
+  private refused(status: number): void {
+    const id = report(`the answer had no page (status ${status})`);
+    const remedy = status === 403 ? " Reload the page and try again." : "";
+    errorToast(`The save failed: the server answered ${status}.${remedy} (error ${id})`);
   }
 
   private async submitUndo(form: HTMLFormElement): Promise<void> {
-    const target = form.getAttribute("action") ?? location.href;
-    let answer: Answer;
+    if (this.undoing.has(form)) return;
+    this.undoing.add(form);
+    form.setAttribute("aria-busy", "true");
     try {
-      answer = await this.fetchAnswer(new URL(target, location.href), {
-        method: "POST",
-        body: new FormData(form),
-      });
-    } catch (error) {
-      this.failed(`undo failed: ${String(error)}`);
-      return;
-    }
-    if (answer.redirected) {
-      this.dirty = true;
-      showToasts(answer.page?.messages ?? []);
-    } else if (answer.page) {
-      // A batch waypoint continues in a dialog.
-      if (!(await this.openDialog(answer, null, "header"))) {
-        this.failed("the undo page could not open");
+      const target = form.getAttribute("action") ?? location.href;
+      let answer: Answer;
+      try {
+        answer = await this.fetchAnswer(new URL(target, location.href), {
+          method: "POST",
+          body: new FormData(form),
+        });
+      } catch (error) {
+        this.unconfirmed(`undo failed: ${String(error)}`);
+        return;
       }
-    } else {
-      this.failed(`undo answered ${answer.status} without a page`, answer.status);
+      if (answer.redirected) {
+        this.stale = true;
+        showToasts(answer.page?.messages ?? []);
+      } else if (answer.page) {
+        // A batch waypoint continues in a dialog.
+        this.stale = true;
+        if (!(await this.openDialog(answer.page, answer.url, null, "header"))) {
+          handOffMessages(answer.page.messages);
+          browser.assign(answer.url.href);
+        }
+      } else {
+        this.refused(answer.status);
+      }
+    } finally {
+      this.undoing.delete(form);
+      form.removeAttribute("aria-busy");
     }
   }
 
   private closed(entry: OpenDialog): void {
+    if (entry.submitting) this.stale = true;
     entry.controller.abort();
     entry.dialog.remove();
     const index = this.stack.indexOf(entry);
     if (index !== -1) this.stack.splice(index, 1);
-    if (this.stack.length > 0) return;
-    if (entry.pendingSwap || this.dirty) void this.refresh(entry);
+    if (this.stack.length > 0 || !(entry.pendingSwap || this.stale)) return;
+    this.refreshWhenAlone(entry);
   }
+
+  /** Waits until no modal covers the page. */
+  private refreshWhenAlone(entry: OpenDialog): void {
+    if (!isModalOpen()) {
+      void this.refresh(entry);
+      return;
+    }
+    this.pendingRefresh = entry;
+    window.addEventListener(MODAL_CHANGE, this.onModalChange);
+  }
+
+  private readonly onModalChange = (): void => {
+    if (isModalOpen() || this.stack.length > 0) return;
+    window.removeEventListener(MODAL_CHANGE, this.onModalChange);
+    const entry = this.pendingRefresh;
+    this.pendingRefresh = null;
+    if (entry) void this.refresh(entry);
+  };
 
   /** Brings the host page up to date. */
   private async refresh(entry: OpenDialog): Promise<void> {
     if (csrfCookie() !== this.csrfAtLoad) {
       // Every host form holds the old token.
+      handOffMessages(entry.pendingSwap?.messages ?? []);
       browser.reload();
       return;
     }
@@ -401,12 +480,18 @@ export class FormDialogElement extends HTMLElement {
     if (!page) {
       try {
         const answer = await this.fetchAnswer(new URL(location.href));
-        page = answer.page && sameUrl(answer.url, location.href) ? answer.page : null;
+        if (answer.page && !sameUrl(answer.url, location.href)) {
+          handOffMessages(answer.page.messages);
+          browser.assign(answer.url.href);
+          return;
+        }
+        page = answer.page;
       } catch (error) {
         report(`refresh failed: ${String(error)}`);
       }
     }
     if (!page) {
+      report("the refresh had no page");
       browser.reload();
       return;
     }
@@ -418,7 +503,7 @@ export class FormDialogElement extends HTMLElement {
       browser.reload();
       return;
     }
-    this.dirty = false;
+    this.stale = false;
     refocusAfterSwap(entry.opener);
     showToasts(page.messages);
   }

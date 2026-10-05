@@ -56,6 +56,26 @@ from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES
 
 
+def form_dialog_module() -> str:
+    """The link marker and template parts."""
+    return render_filter_metadata_module(
+        [],
+        constants=[
+            TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
+            TsConstant(
+                "FORM_DIALOG_CHROME",
+                dict[FormDialogChrome, str],
+                dict(FORM_DIALOG_CHROME_VALUES),
+            ),
+            TsConstant(
+                "FORM_DIALOG_PARTS",
+                dict[FormDialogPart, str],
+                dict(FORM_DIALOG_PARTS),
+            ),
+        ],
+    )
+
+
 class Command(BaseCommand):
     help = "Generate ts/generated/*.ts contracts from registered Python sources."
 
@@ -152,22 +172,7 @@ class Command(BaseCommand):
                 ],
             ),
             # `<form-dialog>` finds links and template parts.
-            output_dir / "form-dialog.ts": render_filter_metadata_module(
-                [],
-                constants=[
-                    TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
-                    TsConstant(
-                        "FORM_DIALOG_CHROME",
-                        dict[FormDialogChrome, str],
-                        dict(FORM_DIALOG_CHROME_VALUES),
-                    ),
-                    TsConstant(
-                        "FORM_DIALOG_PARTS",
-                        dict[FormDialogPart, str],
-                        dict(FORM_DIALOG_PARTS),
-                    ),
-                ],
-            ),
+            output_dir / "form-dialog.ts": form_dialog_module(),
             # `<game-addon>` shows the parent for these.
             output_dir / "game-kinds.ts": render_filter_metadata_module(
                 [],

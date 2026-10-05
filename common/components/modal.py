@@ -3,7 +3,7 @@
 from collections.abc import Collection, Mapping
 from typing import Literal, TypeAliasType, get_args
 
-from common.components.core import Attributes, Child, Element
+from common.components.core import Attributes, Child, Element, HTMLAttribute
 from common.components.elements import Dialog, Div, PlainH2, Span
 from common.components.primitives import ControlButton
 
@@ -12,6 +12,7 @@ type ModalAttributeRole = Literal[
     "modal", "dismiss", "initial_focus", "covered", "over"
 ]
 type ModalAttribute = str  # e.g. "data-modal-covered"
+type ElementId = str  # e.g. "form-dialog-title"
 
 #: The attributes ts/elements/modal-layer.ts reads and stamps.
 MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
@@ -65,10 +66,15 @@ def ModalDialog(
     )
 
 
+def labelled_by(title_id: ElementId) -> HTMLAttribute:
+    """Names a dialog by its header's title."""
+    return ("aria-labelledby", title_id)
+
+
 def ModalPanelHeader(
     title: Child,
     *,
-    title_id: str,
+    title_id: ElementId,
     close_label: str = "Close dialog",
     attributes: Attributes = (),
     title_attributes: Attributes = (),

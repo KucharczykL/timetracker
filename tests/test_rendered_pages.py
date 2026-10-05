@@ -262,7 +262,8 @@ class RenderedPagesTest(TestCase):
 
     def test_add_game_form(self):
         html = self.get("games:add_game").content.decode()
-        self.assertIn("dist/add_game.js", html)
+        self.assertIn("<field-mirror", html)
+        self.assertIn("dist/elements/field-mirror.js", html)
         self.assertIn("submit_and_add_to_library", html)
         self.assertIn("Submit &amp; Add to library", html)  # & correctly escaped
         self.assertNotIn("Create Purchase", html)

@@ -129,6 +129,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (url: URL, init?: RequestInit) => {
       calls.push([url, init]);
+      if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
       const next = replies.shift();
       if (!next) throw new TypeError("no reply queued");
       return respond(next);
@@ -343,8 +344,7 @@ describe("submit", () => {
   });
 
   it("swaps the host after a redirect to it", async () => {
-    const link = await openEdit();
-    link.closest("div")!.insertAdjacentHTML("beforeend", "");
+    await openEdit();
     replies.push(
       reply(
         page(`<a id="edit-1" href="/device/1/edit">Edit Deck 2</a>`, {
@@ -413,25 +413,148 @@ describe("submit", () => {
     expect(reloads).toBe(1);
   });
 
-  it("drops a late answer after close", async () => {
+  it("drops a late answer after close and refreshes the host", async () => {
+    await openEdit();
+    vi.mocked(fetch).mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    submit(body().querySelector("form")!);
+    replies.push(reply(page("<p>Fresh</p>", { readOnly: true }), HOST));
+    openDialog().close();
+    await settle();
+    expect(document.querySelector("form-dialog dialog")).toBeNull();
+    expect(toasts).toEqual([]);
+    // A close mid-submit may have written.
+    expect(document.getElementById("main-container")!.textContent).toBe("Fresh");
+  });
+
+  it("closes on a Cancel link back to the host without a refresh", async () => {
+    await openEdit();
+    const cancel = body().querySelector<HTMLAnchorElement>("a")!;
+    expect(click(cancel).defaultPrevented).toBe(true);
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps a submitting dialog open on Cancel", async () => {
+    await openEdit();
+    replies.push(reply(EDIT_FORM, "http://localhost:3000/device/1/edit"));
+    submit(body().querySelector("form")!);
+    click(body().querySelector<HTMLAnchorElement>("a")!);
+    expect(topModal()).not.toBeNull();
+    await settle();
+  });
+
+  it("submits once while a submit is pending, marked busy", async () => {
     await openEdit();
     let release: (response: Response) => void = () => {};
     vi.mocked(fetch).mockImplementationOnce(
       () => new Promise<Response>((resolve) => (release = resolve)),
     );
-    submit(body().querySelector("form")!);
-    resetModalLayerForTests();
-    document.querySelector("form-dialog dialog")!.dispatchEvent(new Event("close"));
+    const form = body().querySelector("form")!;
+    submit(form);
+    submit(form);
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(2);
+    expect(form.getAttribute("aria-busy")).toBe("true");
+    expect(body().getAttribute("aria-busy")).toBe("true");
     release(respond(reply(EDIT_FORM, "http://localhost:3000/device/1/edit")));
     await settle();
+    expect(body().hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("allows dismissal again once the submit settles", async () => {
+    await openEdit();
+    replies.push(reply(EDIT_FORM, "http://localhost:3000/device/1/edit", false, 409));
+    submit(body().querySelector("form")!);
+    await settle();
+    openDialog().dispatchEvent(new Event("cancel", { cancelable: true }));
     expect(topModal()).toBeNull();
   });
 
-  it("closes on a Cancel link back to the host", async () => {
+  it("says a failed request may have saved, and refreshes on close", async () => {
     await openEdit();
-    const cancel = body().querySelector<HTMLAnchorElement>("a")!;
-    expect(click(cancel).defaultPrevented).toBe(true);
-    expect(topModal()).toBeNull();
+    submit(body().querySelector("form")!);
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be confirmed");
+    expect(topModal()).not.toBeNull();
+    replies.push(reply(page("<p>Fresh</p>", { readOnly: true }), HOST));
+    openDialog().dispatchEvent(new Event("cancel", { cancelable: true }));
+    await settle();
+    expect(String(calls.at(-1)![0])).toBe(HOST);
+  });
+
+  it("posts to the submitter's formaction", async () => {
+    replies.push(
+      reply(
+        page(`<form method="post"><button formaction="/device/1/other">Other</button></form>`),
+        "http://localhost:3000/device/1/edit",
+      ),
+    );
+    click(mountLink());
+    await settle();
+    replies.push(reply(EDIT_FORM, "http://localhost:3000/device/1/other", false, 409));
+    const form = body().querySelector("form")!;
+    submit(form, form.querySelector("button")!);
+    await settle();
+    expect(String(calls[1][0])).toBe("http://localhost:3000/device/1/other");
+  });
+
+  it("leaves a GET form and a form outside the dialog native", async () => {
+    replies.push(
+      reply(page(`<form method="get"><button>Search</button></form>`), "http://localhost:3000/x"),
+    );
+    click(mountLink());
+    await settle();
+    const getEvent = new SubmitEvent("submit", { bubbles: true, cancelable: true });
+    body().querySelector("form")!.dispatchEvent(getEvent);
+    expect(getEvent.defaultPrevented).toBe(false);
+    const outside = document.createElement("form");
+    outside.method = "post";
+    document.body.append(outside);
+    const postEvent = new SubmitEvent("submit", { bubbles: true, cancelable: true });
+    outside.dispatchEvent(postEvent);
+    expect(postEvent.defaultPrevented).toBe(false);
+  });
+
+  it("navigates on a save that redirects elsewhere", async () => {
+    await openEdit();
+    replies.push(
+      reply(
+        page("", { readOnly: true, messages: '[{"message":"Saved"}]' }),
+        "http://localhost:3000/games/1",
+        true,
+      ),
+    );
+    submit(body().querySelector("form")!);
+    await settle();
+    expect(assigned).toEqual(["http://localhost:3000/games/1"]);
+    expect(sessionStorage.getItem("toast-handoff")).toBe('[{"message":"Saved"}]');
+  });
+
+  it("keeps the input when a refusal's module fails", async () => {
+    await openEdit();
+    body().querySelector("input")!.value = "Typed";
+    document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () =>
+      Promise.reject(new Error("404"));
+    replies.push(
+      reply(
+        EDIT_FORM.replace("</body>", '<script type="module" src="/x.js"></script></body>'),
+        "http://localhost:3000/device/1/edit",
+        false,
+        409,
+      ),
+    );
+    submit(body().querySelector("form")!);
+    await settle();
+    expect(assigned).toEqual([]);
+    expect(body().querySelector("input")!.value).toBe("Typed");
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be shown");
   });
 });
 
@@ -494,5 +617,290 @@ describe("undo", () => {
     await settle();
     expect(openModals()).toHaveLength(2);
     expect(body().textContent).toContain("Undoing 120 rows");
+  });
+});
+
+describe("refresh", () => {
+  async function staleClose(): Promise<void> {
+    await openEdit();
+    replies.push(
+      reply(page(`<form method="post"></form>`), "http://localhost:3000/entry/add", true),
+    );
+    submit(body().querySelector("form")!);
+    await settle();
+  }
+
+  function cancelTop(): void {
+    openDialog().dispatchEvent(new Event("cancel", { cancelable: true }));
+  }
+
+  it("goes where the host now redirects, with its messages", async () => {
+    await staleClose();
+    replies.push(
+      reply(page("", { readOnly: true, messages: '[{"message":"Gone"}]' }), "http://localhost:3000/games", true),
+    );
+    cancelTop();
+    await settle();
+    expect(assigned).toEqual(["http://localhost:3000/games"]);
+    expect(sessionStorage.getItem("toast-handoff")).toBe('[{"message":"Gone"}]');
+  });
+
+  it("reloads when the refetch fails or has no page", async () => {
+    await staleClose();
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(1);
+
+    replies.push(reply("<h1>Error</h1>", HOST, false, 500));
+    await staleCloseAgain();
+    expect(reloads).toBe(2);
+    expect(document.getElementById("main-container")!.textContent).not.toContain("Error");
+  });
+
+  async function staleCloseAgain(): Promise<void> {
+    const stillQueued = replies.splice(0);
+    await staleClose();
+    replies.push(...stillQueued);
+    cancelTop();
+    await settle();
+  }
+
+  it("hands off and reloads when the swap fails", async () => {
+    await staleClose();
+    document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () =>
+      Promise.reject(new Error("404"));
+    replies.push(
+      reply(
+        page("<p>Fresh</p>", { readOnly: true, messages: '[{"message":"Saved"}]' }).replace(
+          "</body>",
+          '<script type="module" src="/x.js"></script></body>',
+        ),
+        HOST,
+      ),
+    );
+    cancelTop();
+    await settle();
+    expect(reloads).toBe(1);
+    expect(sessionStorage.getItem("toast-handoff")).toBe('[{"message":"Saved"}]');
+  });
+
+  it("hands off the saved messages on a CSRF reload", async () => {
+    document.cookie = "csrftoken=before";
+    document.querySelector("form-dialog")!.remove();
+    mountHost();
+    await openEdit();
+    document.cookie = "csrftoken=after";
+    replies.push(
+      reply(page("", { readOnly: true, messages: '[{"message":"Saved"}]' }), HOST, true),
+    );
+    submit(body().querySelector("form")!);
+    await settle();
+    expect(reloads).toBe(1);
+    expect(sessionStorage.getItem("toast-handoff")).toBe('[{"message":"Saved"}]');
+  });
+
+  it("refreshes no more once a swap made the host current", async () => {
+    await staleClose();
+    replies.push(reply(page("<p>Fresh</p>", { readOnly: true }), HOST));
+    cancelTop();
+    await settle();
+    const fetched = calls.length;
+    await openEdit();
+    cancelTop();
+    await settle();
+    expect(calls).toHaveLength(fetched + 1);
+  });
+
+  it("waits until no other modal covers the page", async () => {
+    const other = document.createElement("dialog");
+    other.setAttribute("data-modal", "");
+    document.body.append(other);
+    const otherModal = attachModal(other);
+    otherModal.open();
+    replies.push(reply(EDIT_FORM, "http://localhost:3000/device/1/edit"));
+    click(mountLink());
+    await settle();
+    replies.push(
+      reply(page("", { readOnly: true, messages: '[{"message":"Saved"}]' }), HOST, true),
+    );
+    submit(body().querySelector("form")!);
+    await settle();
+    expect(openModals()).toEqual([other]);
+    expect(calls).toHaveLength(2);
+    replies.push(reply(page("<p>Fresh</p>", { readOnly: true }), HOST));
+    otherModal.close();
+    await settle();
+    expect(document.getElementById("main-container")!.textContent).toBe("Fresh");
+  });
+});
+
+describe("open paths", () => {
+  it("follows a link whose chrome no table states", async () => {
+    click(mountLink("/device/1/edit", "sideways"));
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(assigned).toEqual(["http://localhost:3000/device/1/edit"]);
+  });
+
+  it("follows the link when the page never answers", async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    click(mountLink());
+    await vi.advanceTimersByTimeAsync(15_000);
+    vi.useRealTimers();
+    await settle();
+    expect(assigned).toEqual(["http://localhost:3000/device/1/edit"]);
+  });
+
+  it("keeps the messages of an answer another modal overtook", async () => {
+    replies.push(
+      reply(
+        page("<form></form>", { messages: '[{"message":"Note"}]' }),
+        "http://localhost:3000/device/1/edit",
+      ),
+    );
+    click(mountLink());
+    const other = document.createElement("dialog");
+    other.setAttribute("data-modal", "");
+    document.body.append(other);
+    attachModal(other).open();
+    await settle();
+    expect(toasts).toEqual([[{ message: "Note" }]]);
+  });
+
+  it("focuses the × of a page without a form", async () => {
+    replies.push(reply(page("<p>Nothing to fill</p>"), "http://localhost:3000/x"));
+    click(mountLink());
+    await settle();
+    expect(document.activeElement?.hasAttribute("data-modal-dismiss")).toBe(true);
+  });
+
+  it("skips a hidden control for focus", async () => {
+    replies.push(
+      reply(
+        page(`<form method="post"><div hidden><input name="a"></div><input name="b"></form>`),
+        "http://localhost:3000/x",
+      ),
+    );
+    click(mountLink());
+    await settle();
+    expect(document.activeElement?.getAttribute("name")).toBe("b");
+  });
+});
+
+describe("nested refresh", () => {
+  it("refreshes the host once the lower dialog closes after a nested write", async () => {
+    replies.push(
+      reply(
+        page(`<a href="/platform/add" data-form-dialog="">New platform</a>`),
+        "http://localhost:3000/device/1/edit",
+      ),
+    );
+    click(mountLink());
+    await settle();
+    const lower = openDialog();
+    replies.push(reply(EDIT_FORM, "http://localhost:3000/platform/add"));
+    click(body(lower).querySelector("a")!);
+    await settle();
+    replies.push(reply(page("", { readOnly: true }), "http://localhost:3000/device/1/edit", true));
+    submit(body().querySelector("form")!);
+    await settle();
+    replies.push(reply(page("<p>Fresh</p>", { readOnly: true }), HOST));
+    lower.dispatchEvent(new Event("cancel", { cancelable: true }));
+    await settle();
+    expect(String(calls.at(-1)![0])).toBe(HOST);
+    expect(document.getElementById("main-container")!.textContent).toBe("Fresh");
+  });
+});
+
+describe("undo edges", () => {
+  function mountUndo(dialog: HTMLDialogElement): HTMLFormElement {
+    dialog.insertAdjacentHTML(
+      "beforeend",
+      `<form data-toast-action method="post" action="/device/1/restore"><button>Undo</button></form>`,
+    );
+    return dialog.querySelector<HTMLFormElement>("form[data-toast-action]")!;
+  }
+
+  it("says an unanswered Undo may have worked", async () => {
+    await openEdit();
+    submit(mountUndo(openDialog()));
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("could not be confirmed");
+  });
+
+  it("toasts an Undo answered without a page", async () => {
+    await openEdit();
+    replies.push(reply("<h1>Forbidden</h1>", "http://localhost:3000/device/1/restore", false, 403));
+    submit(mountUndo(openDialog()));
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("403");
+  });
+
+  it("posts one Undo per press", async () => {
+    await openEdit();
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>(() => {}));
+    const form = mountUndo(openDialog());
+    submit(form);
+    submit(form);
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(2);
+    expect(form.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("follows a waypoint it cannot open", async () => {
+    await openEdit();
+    document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () =>
+      Promise.reject(new Error("404"));
+    replies.push(
+      reply(
+        page("<p>Undoing</p>").replace("</body>", '<script type="module" src="/x.js"></script></body>'),
+        "http://localhost:3000/bulk",
+      ),
+    );
+    submit(mountUndo(openDialog()));
+    await settle();
+    expect(assigned).toEqual(["http://localhost:3000/bulk"]);
+  });
+
+  it("continues a waypoint that submits on connect", async () => {
+    if (!customElements.get("submits-on-connect")) {
+      customElements.define(
+        "submits-on-connect",
+        class extends HTMLElement {
+          connectedCallback(): void {
+            this.closest("form")?.requestSubmit();
+          }
+        },
+      );
+    }
+    await openEdit();
+    replies.push(
+      reply(
+        page(`<form method="post"><submits-on-connect></submits-on-connect></form>`),
+        "http://localhost:3000/bulk",
+      ),
+    );
+    replies.push(reply(page("<p>Next chunk</p>"), "http://localhost:3000/bulk"));
+    submit(mountUndo(openDialog()));
+    await settle();
+    expect(calls.map(([, init]) => init?.method ?? "GET")).toEqual(["GET", "POST", "POST"]);
+    expect(body().textContent).toContain("Next chunk");
+  });
+
+  it("leaves an Undo native with no dialog open", () => {
+    const form = document.createElement("form");
+    form.setAttribute("data-toast-action", "");
+    form.method = "post";
+    document.body.append(form);
+    const event = new SubmitEvent("submit", { bubbles: true, cancelable: true });
+    form.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 });
