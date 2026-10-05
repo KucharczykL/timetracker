@@ -163,6 +163,12 @@ function eitherAbort(first: AbortSignal, second: AbortSignal): AbortSignal {
   return controller.signal;
 }
 
+/** Leaves for `url`; its load toasts `messages`. */
+function leaveFor(url: URL, messages: Messages): void {
+  handOffMessages(messages);
+  browser.assign(url.href);
+}
+
 function isReadOnlyHost(): boolean {
   return document.getElementById("main-container")?.hasAttribute("data-read-only") ?? false;
 }
@@ -308,8 +314,7 @@ export class FormDialogElement extends HTMLElement {
         route = routeOpen(await this.fetchAnswer(route.url, { signal: deadline }));
       }
       if (route.kind === "present" && !(await this.prepare(route.page, route.url, deadline))) {
-        handOffMessages(route.page.messages);
-        browser.assign(url.href);
+        leaveFor(url, route.page.messages);
         return;
       }
       if (topModal() !== topAtClick) {
@@ -333,8 +338,7 @@ export class FormDialogElement extends HTMLElement {
           return;
         case "present":
           if (!this.openDialog(route.page, route.url, link, chrome)) {
-            handOffMessages(route.page.messages);
-            browser.assign(url.href);
+            leaveFor(url, route.page.messages);
           }
           return;
         default:

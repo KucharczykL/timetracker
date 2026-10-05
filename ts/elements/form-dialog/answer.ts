@@ -126,7 +126,8 @@ async function fieldsOf(response: Response): Promise<Fields | null> {
 export async function readAnswer(response: Response, requested: URL): Promise<Answer> {
   const url = new URL(response.url || requested.href);
   const fields = await fieldsOf(response);
-  if (fields && isPage(fields)) {
+  if (!fields) return { kind: "none", status: response.status };
+  if (isPage(fields)) {
     const page: Page = {
       content: contentOf(fields.html),
       title: fields.title,
@@ -135,10 +136,10 @@ export async function readAnswer(response: Response, requested: URL): Promise<An
     };
     return { kind: PAGE, url, page };
   }
-  if (fields && isDone(fields)) {
+  if (isDone(fields)) {
     return { kind: DONE, url: new URL(fields.url, url), messages: fields.messages };
   }
-  if (fields && isContinue(fields)) return { kind: CONTINUE, url: new URL(fields.url, url) };
-  if (fields) report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);
+  if (isContinue(fields)) return { kind: CONTINUE, url: new URL(fields.url, url) };
+  report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);
   return { kind: "none", status: response.status };
 }
