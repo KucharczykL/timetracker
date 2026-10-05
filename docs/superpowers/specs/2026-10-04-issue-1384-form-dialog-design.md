@@ -1,156 +1,85 @@
 # The form dialog
 
-A link with `data-form-dialog` opens its form page in a modal. The dialog
-asks the server for the page in dialog mode. The server answers with the
-content alone, or with a result. A view knows nothing about the dialog;
-`render_page()` and one middleware do. Scripting off is not supported.
+A link with `data-form-dialog` opens its form page in a modal
+(`form_dialog_link()`; `"bare"` drops the header). Views know nothing of
+the dialog.
 
-Two URLs are equal when origin, path and sorted query match; the hash is
-ignored (`normalizedUrl`). Every comparison below uses that rule.
+Two URLs are equal when origin, path and sorted query match. The hash is
+ignored.
 
-## Request
+## Request and answers
 
-Every fetch of the dialog carries `X-Form-Dialog: 1` and
-`Accept: application/json`. `is_form_dialog(request)` in
-`common/form_dialog.py` names the test.
-
-## Answers
-
-`common/components/form_dialog.py` states the answer kinds as `TypedDict`s
-with a `kind` literal; `gen_element_types` writes them to
-`ts/generated/form-dialog.ts`. The codegen learns optional keys
-(`__optional_keys__`), because a toast payload's `action` is optional.
+Every dialog fetch sends `X-Form-Dialog: 1` and `Accept: application/json`
+(`is_form_dialog`, `common/form_dialog.py`). The answer kinds are
+`TypedDict`s in `common/components/form_dialog.py`; codegen writes them to
+`ts/generated/form-dialog.ts`.
 
 | `kind` | Fields | Sent by |
 |---|---|---|
 | `page` | `title`, `html`, `modules`, `messages` | `render_page()` |
-| `done` | `url`, `messages` | the middleware |
-| `continue` | `url` | the middleware |
+| `done` | `url`, `messages` | `FormDialogResultMiddleware` |
+| `continue` | `url` | `FormDialogResultMiddleware` |
 
-`html` is the content's own markup, no wrapper. `url` is absolute. A
-dialog answer carries `Cache-Control: no-store`; `render_page()` adds
-`Vary: X-Form-Dialog` in both modes. The client decides by `kind`, never
-by status. A `created` kind, which names a new row for a picker, is #1501.
-
-- **`page`.** `render_page()` answers a dialog request with the content
-  alone, under the view's status (200, 400, 403, 409, 500). It builds no
-  navbar and reads nothing for it. `modules` holds the module scripts of
-  `collect_media(content)` and of `scripts=`, now a sequence of
-  `ModuleScript`. A component with `js_external` is refused in dialog
-  mode. `messages` holds the consumed queue. Under DEBUG the fragment's
-  ids are checked unique.
-- **`done` and `continue`.** `FormDialogResultMiddleware` turns a 301, 302,
-  303, 307 or 308 with a `Location` into a result. It resolves the
-  location's path, relative to the request, against the root urlconf. A
-  route in `READ_ONLY` gives `done` with the consumed queue and the
-  location. Any other same-origin target gives `continue` and leaves the
-  queue alone. An off-origin target passes through. A test walks the root
-  urlconf through the same classification.
-- **`ToastMessagesMiddleware`** skips a dialog request; `render_page()` and
-  the result middleware own its messages.
-- **`done` means finished, not saved.** A refusal that redirects arrives
-  as `done` with an error message.
-- An answer that is not JSON (a Django 404, a CSRF 403, a proxy error) has
-  no kind.
+- `page` holds the content alone, under the view's status. A
+  `js_external` script is refused.
+- The middleware reads a redirect's `Location`. A `READ_ONLY` route gives
+  `done` with the message queue. Another route on this origin gives
+  `continue` and keeps the queue. Another origin passes through.
+- `done` means finished, not saved.
+- An answer that is not JSON has no kind.
+- Dialog answers carry `Cache-Control: no-store`.
+  `ToastMessagesMiddleware` skips dialog requests.
 
 ## Open
-
-A plain primary click on a marked link opens. While one open runs, another
-marked link follows natively. The fetch has a 15 second deadline.
 
 | Answer | Result |
 |---|---|
 | `page` | Present it in a new dialog |
-| `done` | Toast only |
-| `continue` | Fetch its `url` the same way |
-| No kind, failure, timeout | Follow the link |
+| `done` | Show its messages |
+| `continue` | Fetch its `url` |
+| No kind, failure, 15 s | Follow the link |
 
-A chain of five `continue` answers stops and follows the original link.
+After five `continue` answers, the link is followed.
 
-## Present
+Presenting imports `modules`, prefixes ids and their references, and
+resolves URLs against the answer's URL. Focus goes to the first invalid
+control, else the first control of the form, else the ×.
 
-The host parses `html` into a `<template>`, imports `modules`, and only
-then rewrites and inserts it. It prefixes every id and the references in the
-attributes `form_dialog.py` lists, plus fragment links, and resolves
-`href`, `action` and `formaction` against `response.url`. A form without
-`action` gets that URL. Header chrome titles the dialog with `title` and
-drops a content `h1`; bare chrome names it with `aria-label`. Focus goes to
-the first invalid control, else the first tabbable element of the first
-form, else the ×.
-
-## Links inside a dialog
-
-A link to the host page or to a lower dialog's page closes the dialogs
-above it. A fragment link stays native. Any other link navigates the
-window, which closes every dialog.
+A link inside a dialog back to the host or to a lower dialog closes the
+dialogs above it. A fragment link stays native. Any other link navigates.
 
 ## Submit
 
-The host sends a POST form inside a dialog body through `fetch`, with its
-submitter. A GET form stays native. While a form submits, no dismissal and
-no link closes its dialog.
+A POST form in a dialog is sent through `fetch`.
 
 | Answer | Result |
 |---|---|
 | `page` | Present it in the same dialog |
-| `continue` | Fetch its `url` into the same dialog |
+| `continue` | Fetch it into the same dialog; five at most |
 | `done`, alone | Close; reload |
-| `done`, nested | Close the top dialog; toast below |
+| `done`, nested | Close the top dialog; show messages below |
 | No kind | Error toast; the dialog stays |
-| Failure | Unconfirmed toast; the host is stale |
+| Failure | "Not confirmed" toast; the host is stale |
 
-A chain of five `continue` answers stops with an error toast. Any result
-to a POST marks the host stale. When the bottom dialog closes by
-any path and the host is stale, the host reloads.
+A result or a failure makes the host stale.
 
 ## Reload
 
-One reloader, in `<form-dialog>`, serves the dialog triggers: a closing stale
-stack and `page:stale` on `document` (#1507). It waits until no modal is
-open, then runs once. Before it runs, it writes the waiting messages and
-the opener's id, else its `href`, to `sessionStorage`
-(`ts/toast-handoff.ts`). The next load in the tab reads them within one
-minute, whatever URL it lands on: the target may redirect, as a renamed
-game's page does.
+The element reloads the host once no modal is open, after a stale stack
+closes or on `page:stale` on `document`. A `done` URL that is not the host navigates there. A host
+without `data-read-only` never reloads; its messages show in place.
 
-- **Target.** A `done` whose `url` is the host page reloads it. A `done`
-  elsewhere (the origin was refused, as after removing the page's own
-  row) navigates to its `url`. A marked link carries `?origin=`, so a
-  save that keeps the page returns to it.
-- **Form host.** A host whose `#main-container` lacks `data-read-only`
-  never reloads. Its messages show in place; the opener and its form stay
-  reachable.
-- **After the load.** Focus goes to the stored element, else its
-  `<drop-down>` toggle, else `#main-container`.
-- **What a reload loses.** Unsent filter edits and the builder tree, as a
-  manual reload does. A selection comes back from `sessionStorage`.
+Before it leaves, the element stores the messages and the opener key in
+`sessionStorage` (`ts/handoff.ts`). The next load reads them within one
+minute, at any URL. Focus goes to the opener by id, then by `href`, then
+its drop-down toggle, then `#main-container`.
 
 ## CSRF
 
-A sign-in inside a dialog rotates the token. When the `csrftoken` cookie
-differs from the one read at load, the host rewrites every
-`csrfmiddlewaretoken` input in the page and its dialogs to the cookie's
-secret, which Django accepts. A POST that met the sign-in redirect is lost;
-its form is fetched again after sign-in.
-
-## Toast actions
-
-A toast's action form posts natively, which closes every dialog. #1507
-intercepts it.
+When a sign-in changes the cookie, every `csrfmiddlewaretoken` input
+takes its value.
 
 ## Inserted content
 
-Content must wire on connect and unwire on disconnect. A lookup by field
-name searches its own form first. Page glue is an element
-(`<field-mirror>`). The id-reference contract test covers each route a
-conversion marks. A `<refreshing-section>` is refused in dialog content;
-it would fetch the host. A nested `done` tells a lower form's pickers
-nothing; that is #1501.
-
-## Removed by this design
-
-The page swap (`swap.ts`, `events.ts`, `form-dialog:swapped` and its
-listener in `ts/library-conversion-status.ts`), `id="navbar"`,
-`data-page-title`, the busy classes on `#main-container`, `#main-container`
-extraction from a full page, the routes' read-only heuristics, and the
-unused `mastered` module script with its `render_page()` parameter.
+Content wires on connect and unwires on disconnect. A field lookup
+searches its own form first. Page glue is an element (`<field-mirror>`).

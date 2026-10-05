@@ -21,7 +21,7 @@ def dialog_result(
 ) -> DoneAnswer | ContinueAnswer | None:
     """`done` on a read-only page; else `continue`.
 
-    None for another origin: the browser follows it.
+    None off-origin: the browser follows it.
     """
     url = request.build_absolute_uri(location)
     target = urlsplit(url)

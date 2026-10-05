@@ -14,7 +14,7 @@ function linkWithHref(href: string | null): HTMLElement | null {
   return null;
 }
 
-/** Its id, its href, its toggle, else the page. */
+/** By id, href, toggle, else the page. */
 export function focusOpener(opener: OpenerKey): void {
   const found = (opener.id && document.getElementById(opener.id)) || linkWithHref(opener.href);
   const target = focusReturnTarget(found) ?? document.getElementById("main-container");

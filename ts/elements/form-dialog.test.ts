@@ -17,7 +17,7 @@ interface Reply {
   body: unknown;
   url: string;
   status?: number;
-  /** Not JSON: a proxy or Django error page. */
+  /** Not JSON: an error page. */
   html?: boolean;
 }
 

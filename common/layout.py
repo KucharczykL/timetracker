@@ -492,7 +492,7 @@ def render_page(
     is_settings_page: bool = False,
     status: int = 200,
 ) -> HttpResponse:
-    """`render()`-style shortcut: the full page, or dialog content."""
+    """The full page, or dialog content."""
     if is_form_dialog(request):
         response = _dialog_answer(request, content, title=title, status=status)
     else:

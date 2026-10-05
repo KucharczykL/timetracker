@@ -1,4 +1,4 @@
-/** What the next load in this tab reads. */
+/** What the tab's next load reads. */
 import { reportClientError } from "./client-errors.js";
 
 /** An element id. */
@@ -14,7 +14,7 @@ type StorageKey = `handoff:${string}`;
 
 const MESSAGES_KEY: StorageKey = "handoff:messages";
 const OPENER_KEY: StorageKey = "handoff:opener";
-/** Older than this, a hand-off missed its load. */
+/** Older, a hand-off missed its load. */
 const HANDOFF_LIFETIME_MS = 60_000;
 
 interface Stamped {
