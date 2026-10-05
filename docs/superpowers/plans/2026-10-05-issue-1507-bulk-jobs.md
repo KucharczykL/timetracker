@@ -32,7 +32,7 @@ Inline, TDD per behaviour. Iterate with `make check-fast` / focused
   undoes=None) -> BulkBatch`: atomic create + `enqueue(batch.pk, 0)`;
   `IntegrityError` caught outside the block → existing row.
 - `enqueue(batch_id, chunk)`: `async_task("games.tasks.run_bulk_batch",
-  str(batch_id), chunk)`. The test seam.
+  str(batch_id), chunk)`. Tests replace it.
 - `run_chunk(batch_id, chunk)`: guards (state, chunk number), stop, attempts
   increment (cap 3 → failed), the row loop with per-row conditional update,
   chunk end transaction, defect handling incl. `BaseException` re-raise.
@@ -44,7 +44,7 @@ Tests `tests/test_bulk_jobs.py`: every chunk runs (budget 0); Stop between
 chunks; stale chunk number no-op; overtaken attempt stops; third start
 fails; redelivery resumes at position; defect stores failed and logs;
 timeout (raise `TimeoutException` from a run) stores failed and re-raises;
-`batch_toast` per state, reasons folded, Undo absent on Undo/zero-done/
+`batch_toast` per state, reasons in the tally text, Undo absent on Undo/zero-done/
 unknown act.
 
 ## 3. Views
@@ -74,7 +74,7 @@ unknown act.
   poll 2 s while any non-terminal, dispatch `page:stale` on observed
   transition when `new URL(origin).pathname === location.pathname`.
 - `ts/page-stale.ts`: wait-for-no-modal-no-panel, coalesce, reload
-  (`browser.reload` seam for tests).
+  (`browser.reload`, which tests replace).
 - `ts/elements/surface-stack.ts`: `SURFACE_CHANGE` dispatched on window when
   the stack changes.
 - Delete `ts/elements/continuing-batch.ts`, its test, its `register_element`
