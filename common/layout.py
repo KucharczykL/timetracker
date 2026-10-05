@@ -319,7 +319,7 @@ def TimetrackerDocument(
         origin=navbar_origin,
     )
 
-    # Toast stack first, then body and navbar.
+    # Toast stack first, then body, navbar, host.
     # First: its listener stands before any element upgrades.
     toast_container = ToastStack()
     form_dialog_host = FormDialogHost()
@@ -461,7 +461,11 @@ def TimetrackerDocument(
                             data_page_title=title,
                             data_read_only=read_only,
                             tabindex="-1",
-                            class_=f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS}",
+                            class_=(
+                                f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS} "
+                                # Busy while a form dialog refreshes it.
+                                "aria-busy:cursor-progress aria-busy:opacity-60"
+                            ),
                         )[content],
                         version_footer_note,
                     ],

@@ -93,7 +93,10 @@ describe("rendering", () => {
   });
 
   it("shows handed-off messages once, after the page's own", () => {
-    sessionStorage.setItem("toast-handoff", JSON.stringify([{ message: "Moved" }]));
+    sessionStorage.setItem(
+      "toast-handoff",
+      JSON.stringify({ target: location.href, at: Date.now(), messages: [{ message: "Moved" }] }),
+    );
     document.body.innerHTML = `
       <script id="django-messages" type="application/json">[{"message":"Hello"}]</script>
       <toast-stack></toast-stack>`;

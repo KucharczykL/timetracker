@@ -266,3 +266,86 @@ def test_add_game_continues_to_its_copy_and_a_close_refreshes(
     expect(page.get_by_role("link", name="Outer Wilds").first).to_be_visible()
     assert _not_reloaded(page)
     assert errors == []
+
+
+def _mark_new_link(page: Page, href: str, text: str) -> None:
+    page.evaluate(
+        """([href, text]) => {
+            const link = document.createElement('a');
+            link.href = href;
+            link.textContent = text;
+            link.setAttribute('data-form-dialog', '');
+            document.getElementById('main-container').prepend(link);
+        }""",
+        [href, text],
+    )
+
+
+def _game_on(library, name: str, platform: Platform) -> Game:
+    game: Game = create_tracked_game(library, name)
+    state_catalog_graph(
+        game=game,
+        library=library,
+        editions=[
+            EditionState(
+                key="edition",
+                is_default=True,
+                releases=(
+                    ReleaseState(key="release", platform=platform, is_default=True),
+                ),
+            )
+        ],
+    )
+    return game
+
+
+def test_a_picker_works_inside_and_the_message_follows_the_page(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    hades = _game_on(
+        e2e_library, "Hades", Platform.objects.create(name="PS5", group="Sony")
+    )
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    _mark_new_link(page, reverse("games:add_to_library"), "Add a copy")
+    page.get_by_role("link", name="Add a copy").click()
+    dialog = page.locator("dialog[data-modal][open]")
+
+    games = dialog.locator("search-select[name='game']")
+    search = games.locator("[data-search-select-search]")
+    search.click()
+    search.fill("Had")
+    option = games.locator("[data-search-select-option]").first
+    expect(option).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(option).to_be_hidden()
+    expect(dialog).to_be_visible()
+    search.fill("Hades")
+    option.click()
+    expect(dialog).to_be_visible()
+    held = dialog.locator(
+        "search-select[name='release'] [data-search-select-pills] input[type='hidden']"
+    )
+    expect(held).to_have_value(str(Release.objects.get(edition__game=hades).pk))
+
+    dialog.get_by_label("No purchase").check()
+    with page.expect_navigation():
+        dialog.get_by_role("button", name="Add to library", exact=True).click()
+    expect(page.get_by_text("Added to your library.")).to_be_visible()
+    assert errors == []
+
+
+def test_a_masked_field_works_inside(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    _mark_new_link(page, reverse("games:add_session"), "Log a session")
+    page.get_by_role("link", name="Log a session").click()
+    dialog = page.locator("dialog[data-modal][open]")
+    duration = dialog.locator('input[name="duration"]')
+    duration.click()
+    duration.press_sequentially("123456")
+    expect(duration).to_have_value("12:34:56")
+    expect(dialog.locator("date-time-field").first).to_be_visible()
+    assert errors == []

@@ -7,8 +7,9 @@ export type PageUrl = string;
 export type MessagePayload = unknown;
 /** An absolute module script URL. */
 export type ModuleUrl = string;
-/** `data-*` name to value. */
-export type HtmlDataAttributes = Readonly<Record<string, string>>;
+export type Messages = readonly MessagePayload[];
+export type DataAttributeName = `data-${string}`;
+export type HtmlDataAttributes = Readonly<Record<DataAttributeName, string>>;
 
 export function normalizedUrl(url: string | URL): PageUrl {
   const parsed = new URL(url, location.href);
@@ -35,7 +36,7 @@ export interface AnswerPage {
   readonly title: string;
   /** The route is in `READ_ONLY`. */
   readonly readOnly: boolean;
-  readonly messages: readonly MessagePayload[];
+  readonly messages: Messages;
   readonly modules: readonly ModuleUrl[];
   /** `#navbar`'s children, when present. */
   readonly navbar: DocumentFragment | null;
@@ -44,6 +45,7 @@ export interface AnswerPage {
   readonly documentTitle: string;
 }
 
+/** A page is presented whatever its status. */
 export interface Answer {
   readonly url: URL;
   readonly redirected: boolean;
@@ -80,10 +82,14 @@ function readMessages(parsed: Document): MessagePayload[] {
   }
 }
 
+function isDataAttributeName(name: string): name is DataAttributeName {
+  return name.startsWith("data-");
+}
+
 function htmlData(parsed: Document): HtmlDataAttributes {
-  const data: Record<string, string> = {};
-  for (const attribute of parsed.documentElement.attributes) {
-    if (attribute.name.startsWith("data-")) data[attribute.name] = attribute.value;
+  const data: Record<DataAttributeName, string> = {};
+  for (const { name, value } of parsed.documentElement.attributes) {
+    if (isDataAttributeName(name)) data[name] = value;
   }
   return data;
 }

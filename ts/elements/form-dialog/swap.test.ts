@@ -19,7 +19,7 @@ function page(content: string, overrides: Partial<AnswerPage> = {}): AnswerPage 
     messages: [],
     modules: [],
     navbar: fragmentOf("<a href='/'>Played 2h</a>"),
-    htmlData: { "data-library-conversion-state": "{}" },
+    htmlData: { "data-library-conversion-state": "{}", "data-theme-preference": "dark" },
     documentTitle: "Timetracker - Devices",
     ...overrides,
   };
@@ -49,6 +49,8 @@ describe("swapHostPage", () => {
     expect(document.getElementById("navbar")!.textContent).toBe("Played 2h");
     expect(document.title).toBe("Timetracker - Devices");
     expect(document.documentElement.getAttribute("data-library-conversion-state")).toBe("{}");
+    // The browser's theme stays.
+    expect(document.documentElement.hasAttribute("data-theme-preference")).toBe(false);
     expect(document.querySelector("toast-stack")).toBe(toastStack);
     expect(swapped).toHaveBeenCalledOnce();
   });

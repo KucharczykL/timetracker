@@ -2,19 +2,18 @@
 import { focusReturnTarget } from "../modal-layer.js";
 import type { AnswerPage } from "./answer.js";
 import { SWAPPED } from "./events.js";
-import { importModules, type ModuleLoader } from "./rewrite.js";
+import { type ElementId, importModules, type ModuleLoader } from "./rewrite.js";
 
-/** An element id. */
-export type ElementId = string;
+/** Only page state; theme attributes stay the browser's. */
+const PAGE_STATE_DATA = "data-library-conversion-";
 
-/** What finds the opener again after a swap. */
 export interface OpenerKey {
   readonly id: ElementId | null;
   readonly href: string | null;
 }
 
 export function openerKey(opener: Element): OpenerKey {
-  return { id: opener.id || null, href: opener.getAttribute("href") };
+  return { id: opener.id || null, href: opener.getAttribute("href") || null };
 }
 
 function mainContainer(): HTMLElement {
@@ -32,15 +31,14 @@ export async function swapHostPage(page: AnswerPage, load?: ModuleLoader): Promi
   const navbar = document.getElementById("navbar");
   if (navbar && page.navbar) navbar.replaceChildren(page.navbar);
   document.title = page.documentTitle;
-  // Keep absent ones: scripts set them.
   for (const [name, value] of Object.entries(page.htmlData)) {
-    document.documentElement.setAttribute(name, value);
+    if (name.startsWith(PAGE_STATE_DATA)) document.documentElement.setAttribute(name, value);
   }
   document.dispatchEvent(new Event(SWAPPED));
 }
 
 function linkWithHref(href: string | null): HTMLElement | null {
-  if (!href) return null;
+  if (href === null) return null;
   for (const scope of [mainContainer(), document]) {
     for (const link of scope.querySelectorAll<HTMLElement>("a[href]")) {
       if (link.getAttribute("href") === href) return link;

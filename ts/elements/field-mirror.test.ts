@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as clientErrors from "../client-errors.js";
 import "./field-mirror.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 function type(input: HTMLInputElement, value: string): void {
   input.value = value;
@@ -43,5 +46,18 @@ describe("field-mirror", () => {
     form.querySelector("field-mirror")!.remove();
     type(field(form, "name"), "Halo");
     expect(field(form, "sort_name").value).toBe("");
+  });
+
+  it("reports a missing form or target", () => {
+    const report = vi.spyOn(clientErrors, "reportClientError").mockImplementation(() => "id");
+    document.body.innerHTML = `
+      <field-mirror source-field="name" target-field="sort_name" hidden></field-mirror>
+      <form><input name="name">
+        <field-mirror source-field="name" target-field="missing" hidden></field-mirror>
+      </form>`;
+    expect(report.mock.calls.map(([, detail]) => detail)).toEqual([
+      "no enclosing form",
+      'no [name="missing"] in its form',
+    ]);
   });
 });

@@ -1,7 +1,7 @@
 """The dialog every modal on the modal layer wears."""
 
 from collections.abc import Collection, Mapping
-from typing import Literal, TypeAliasType, get_args
+from typing import Literal, NamedTuple, TypeAliasType, get_args
 
 from common.components.core import Attributes, Child, Element, HTMLAttribute
 from common.components.elements import Dialog, Div, PlainH2, Span
@@ -66,11 +66,6 @@ def ModalDialog(
     )
 
 
-def labelled_by(title_id: ElementId) -> HTMLAttribute:
-    """Names a dialog by its header's title."""
-    return ("aria-labelledby", title_id)
-
-
 def ModalPanelHeader(
     title: Child,
     *,
@@ -79,7 +74,10 @@ def ModalPanelHeader(
     attributes: Attributes = (),
     title_attributes: Attributes = (),
 ) -> Element:
-    """A modal panel's title row with its ×."""
+    """A modal panel's title row with its ×.
+
+    `title_id` wins over any id in `title_attributes`.
+    """
     close_button = ControlButton(
         [
             (MODAL_ATTRIBUTES["dismiss"], ""),
@@ -104,3 +102,31 @@ def ModalPanelHeader(
         )[title],
         close_button,
     ]
+
+
+class TitledHeader(NamedTuple):
+    """A header and the attribute naming its dialog."""
+
+    labelled_by: HTMLAttribute
+    header: Element
+
+
+def titled_header(
+    title: Child,
+    *,
+    title_id: ElementId,
+    close_label: str = "Close dialog",
+    attributes: Attributes = (),
+    title_attributes: Attributes = (),
+) -> TitledHeader:
+    """Pairs a header with its dialog's name."""
+    return TitledHeader(
+        ("aria-labelledby", title_id),
+        ModalPanelHeader(
+            title,
+            title_id=title_id,
+            close_label=close_label,
+            attributes=attributes,
+            title_attributes=title_attributes,
+        ),
+    )

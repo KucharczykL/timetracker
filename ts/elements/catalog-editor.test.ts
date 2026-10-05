@@ -334,9 +334,12 @@ describe("names", () => {
   });
 
   it("stops listening for pageshow once removed", () => {
-    const removed = vi.spyOn(window, "removeEventListener");
-    document.querySelector("catalog-editor")!.remove();
-    expect(removed).toHaveBeenCalledWith("pageshow", expect.any(Function));
+    const editor = document.querySelector("catalog-editor")!;
+    editor.remove();
+    editor.querySelector<HTMLSelectElement>(`${release} select`)!.value = "d";
+    window.dispatchEvent(new Event("pageshow"));
+    const mark = editor.querySelector(`${release} span[data-catalog-name]`)!;
+    expect(mark.textContent).toBe("Show the Amiga release in the library");
   });
 
   it("corrects a stale name on arrival", () => {

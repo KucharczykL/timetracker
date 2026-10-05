@@ -9,15 +9,15 @@ from common.components.elements import Div, Template
 from common.components.modal import (
     ElementId,
     ModalDialog,
-    ModalPanelHeader,
-    labelled_by,
     require_every_key,
+    titled_header,
 )
 from common.components.primitives import FORM_MAX_WIDTH_CLASS, custom_element_builder
 
 type FormDialogChrome = Literal["header", "bare"]
 type FormDialogPart = Literal["template", "header", "title", "body"]
-type FormDialogAttribute = str  # e.g. "data-form-dialog-body"
+type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
+type AttributeName = str  # e.g. "aria-controls"
 
 FORM_DIALOG_ATTRIBUTE: Final[FormDialogAttribute] = "data-form-dialog"
 
@@ -35,7 +35,33 @@ FORM_DIALOG_PARTS: Mapping[FormDialogPart, FormDialogAttribute] = {
     "body": "data-form-dialog-body",
 }
 
+#: Attributes naming one id; the dialog prefixes them.
+FORM_DIALOG_ID_ATTRIBUTES: tuple[AttributeName, ...] = (
+    "list",
+    "form",
+    "popovertarget",
+    "aria-activedescendant",
+)
+#: Attributes naming a list of ids.
+FORM_DIALOG_ID_LIST_ATTRIBUTES: tuple[AttributeName, ...] = (
+    "for",
+    "headers",
+    "aria-labelledby",
+    "aria-describedby",
+    "aria-controls",
+    "aria-owns",
+    "aria-flowto",
+    "aria-errormessage",
+    "aria-details",
+)
+
 require_every_key(FormDialogChrome, FORM_DIALOG_CHROME_VALUES)
+#: The client decodes a marker back to its chrome.
+FORM_DIALOG_CHROME_BY_MARKER: Mapping[str, FormDialogChrome] = {
+    marker: chrome for chrome, marker in FORM_DIALOG_CHROME_VALUES.items()
+}
+if len(FORM_DIALOG_CHROME_BY_MARKER) != len(FORM_DIALOG_CHROME_VALUES):
+    raise TypeError("FORM_DIALOG_CHROME_VALUES markers must differ")
 require_every_key(FormDialogPart, FORM_DIALOG_PARTS)
 
 #: Prefixed per dialog, like every template id.
@@ -63,21 +89,20 @@ def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
 
 def FormDialogHost() -> Node:
     """The page's one host and its chrome template."""
+    titled = titled_header(
+        "",
+        title_id=_TITLE_ID,
+        attributes=[(FORM_DIALOG_PARTS["header"], "")],
+        title_attributes=[(FORM_DIALOG_PARTS["title"], "")],
+    )
     return _FormDialog()[
         Template([(FORM_DIALOG_PARTS["template"], "")])[
-            ModalDialog([labelled_by(_TITLE_ID)])[
+            ModalDialog([titled.labelled_by])[
                 Div(class_=_PANEL_CLASS)[
-                    ModalPanelHeader(
-                        "",
-                        title_id=_TITLE_ID,
-                        attributes=[(FORM_DIALOG_PARTS["header"], "")],
-                        title_attributes=[(FORM_DIALOG_PARTS["title"], "")],
-                    ),
+                    titled.header,
                     Div(
                         [(FORM_DIALOG_PARTS["body"], "")],
-                        class_=(
-                            f"min-h-0 overflow-y-auto overscroll-contain p-4 {_BUSY_CLASS}"
-                        ),
+                        class_=f"min-h-0 overflow-y-auto overscroll-contain p-4 {_BUSY_CLASS}",
                     ),
                 ]
             ]

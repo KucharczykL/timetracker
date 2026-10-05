@@ -1593,11 +1593,12 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   (`BottomSheet`, `behavior="sheet"`) is a per-modal opt-in. Scope a
   backdrop transition to the closing state. Contract is
   [The modal layer](docs/superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md)
-- **A form page opens in a modal by marking its link** (#1384):
+- **A form page opens in a modal by marking its link**, opt-in per link (#1384):
   `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no
   header; `<form-dialog>` fetches, presents, submits through `fetch` and
-  swaps `#main-container`/`#navbar` once the last modal closes after a
-  write. The page knows nothing; page glue is an element (`<field-mirror>`).
+  swaps a read-only host's `#main-container`/`#navbar` once the last modal
+  closes after a write. The page knows nothing; page glue is an element
+  (`<field-mirror>`).
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
   [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md)

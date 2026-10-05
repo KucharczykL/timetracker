@@ -1,13 +1,16 @@
 /** Where an answer goes. */
-import { type Answer, type AnswerPage, type MessagePayload, sameUrl } from "./answer.js";
-
-export type Messages = readonly MessagePayload[];
+import {
+  type Answer,
+  type AnswerPage,
+  type Messages,
+  normalizedUrl,
+  type PageUrl,
+} from "./answer.js";
 
 export interface SubmitContext {
-  /** The host page's URL, as `location` holds it. */
-  hostUrl: string;
+  readonly hostUrl: PageUrl;
   /** No other modal is open. */
-  alone: boolean;
+  readonly alone: boolean;
 }
 
 export type OpenRoute =
@@ -19,15 +22,15 @@ export type OpenRoute =
 
 export type SubmitRoute =
   | { kind: "present"; page: AnswerPage }
-  /** Not saved; the server answered no page. */
+  /** Treated as not saved: no page came back. */
   | { kind: "error"; status: number }
   | { kind: "swap"; page: AnswerPage }
   | { kind: "navigate"; url: URL; messages: Messages }
   | { kind: "closeTop"; messages: Messages };
 
-export function routeOpen(answer: Answer, hostUrl: string): OpenRoute {
+export function routeOpen(answer: Answer, hostUrl: PageUrl): OpenRoute {
   const page = answer.page;
-  if (answer.redirected && sameUrl(answer.url, hostUrl)) {
+  if (answer.redirected && normalizedUrl(answer.url) === hostUrl) {
     return { kind: "toast", messages: page?.messages ?? [] };
   }
   if (!page) return { kind: "follow" };
@@ -45,8 +48,20 @@ export function routeSubmit(answer: Answer, context: SubmitContext): SubmitRoute
   }
   if (!answer.redirected || !page.readOnly) return { kind: "present", page };
   if (!context.alone) return { kind: "closeTop", messages: page.messages };
-  if (sameUrl(answer.url, context.hostUrl)) return { kind: "swap", page };
+  if (normalizedUrl(answer.url) === context.hostUrl) return { kind: "swap", page };
   return { kind: "navigate", url: answer.url, messages: page.messages };
+}
+
+/** The messages an open route carries. */
+export function routeMessages(route: OpenRoute): Messages {
+  switch (route.kind) {
+    case "present":
+      return route.page.messages;
+    case "follow":
+      return [];
+    default:
+      return route.messages;
+  }
 }
 
 export function assertNever(value: never): never {

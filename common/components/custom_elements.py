@@ -37,7 +37,7 @@ from common.components.core import (
     Node,
     as_children,
 )
-from common.components.modal import ModalDialog, ModalPanelHeader, labelled_by
+from common.components.modal import ElementId, ModalDialog, titled_header
 from common.components.primitives import (
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
@@ -1309,9 +1309,10 @@ def BottomSheet(
     panel owns surface geometry, header, close action, internal scrolling, and
     safe-area padding. Callers supply semantic body content only.
     """
-    title_id = f"{id}-title"
+    title_id: ElementId = f"{id}-title"
+    titled = titled_header(title, title_id=title_id, close_label=close_label)
     target = ModalDialog(
-        [("data-bottom-sheet", ""), labelled_by(title_id)],
+        [("data-bottom-sheet", ""), titled.labelled_by],
         align="end",
         class_=_SHEET_DIALOG_CLASS,
     )[
@@ -1323,7 +1324,7 @@ def BottomSheet(
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
         )[
-            ModalPanelHeader(title, title_id=title_id, close_label=close_label),
+            titled.header,
             Div(
                 data_sheet_body="",
                 class_=(

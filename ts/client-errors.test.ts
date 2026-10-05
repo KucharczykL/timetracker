@@ -67,6 +67,14 @@ describe("client-errors", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("clips each field to the endpoint's limits", () => {
+    reportClientError("ctx-long", "d".repeat(900));
+    const body = JSON.parse(String(fetchMock.mock.calls.at(-1)![1].body));
+    expect(body.detail).toHaveLength(500);
+    expect(body.context.length).toBeLessThanOrEqual(200);
+    expect(body.url.length).toBeLessThanOrEqual(200);
+  });
+
   it("answers a repeat with the id it logged", () => {
     const first = reportClientError("ctx-same-id", "detail");
     expect(reportClientError("ctx-same-id", "detail")).toBe(first);

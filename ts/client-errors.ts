@@ -14,9 +14,17 @@ const ENDPOINT = "/api/client-error/";
 // The literal class string Tailwind's ts/ scan compiles (never concatenate).
 const DEGRADED_CLASSES = "ring-2 ring-danger";
 
-// One report + one toast per distinct failure per page load.
-/** Each reported failure's id. */
+/** One report per failure per page load; its id. */
 const reported = new Map<string, string>();
+
+/** `ClientErrorIn`'s limits; longer is refused. */
+const CONTEXT_LIMIT = 200;
+const DETAIL_LIMIT = 500;
+const URL_LIMIT = 200;
+
+function clipped(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
+}
 
 const MAX_REPORTS_PER_PAGE = 25;
 let reportCount = 0;
@@ -74,6 +82,8 @@ export function reportClientError(
     if (reportCount === MAX_REPORTS_PER_PAGE + 1) {
       console.error("client error reporting suppressed (cap reached)");
     }
+    // The console still names an id a toast shows.
+    console.error(`client error [${id}] (not sent) ${context}: ${detail}`);
     return id;
   }
 
@@ -90,7 +100,12 @@ export function reportClientError(
       void fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
-        body: JSON.stringify({ error_id: id, context, detail, url: location.href }),
+        body: JSON.stringify({
+          error_id: id,
+          context: clipped(context, CONTEXT_LIMIT),
+          detail: clipped(detail, DETAIL_LIMIT),
+          url: clipped(location.href, URL_LIMIT),
+        }),
       }).catch(() => {
         // Reporting must never break the page: swallow network/HTTP failure.
       });

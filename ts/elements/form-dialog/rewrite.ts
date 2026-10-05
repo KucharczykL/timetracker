@@ -1,20 +1,14 @@
 /** Fits a fetched fragment into the host page. */
+import {
+  FORM_DIALOG_ID_ATTRIBUTES,
+  FORM_DIALOG_ID_LIST_ATTRIBUTES,
+} from "../../generated/form-dialog.js";
 import type { ModuleUrl } from "./answer.js";
+/** An element id. */
+export type ElementId = string;
+/** Prepended to every id, e.g. "form-dialog-3-". */
+export type IdPrefix = string;
 
-/** Attributes holding one id. */
-const ID_ATTRIBUTES = ["list", "form", "popovertarget", "aria-activedescendant"];
-/** Attributes holding a list of ids. */
-const ID_LIST_ATTRIBUTES = [
-  "for",
-  "headers",
-  "aria-labelledby",
-  "aria-describedby",
-  "aria-controls",
-  "aria-owns",
-  "aria-flowto",
-  "aria-errormessage",
-  "aria-details",
-];
 const URL_ATTRIBUTES = ["href", "action", "formaction"];
 
 /** Every element, template contents included. */
@@ -26,18 +20,18 @@ function* elementsOf(root: ParentNode): Generator<Element> {
   }
 }
 
-/** Prefixes ids and every reference to them. */
-export function prefixIds(root: ParentNode, prefix: string): void {
+/** Prefixes ids and the listed references. */
+export function prefixIds(root: ParentNode, prefix: IdPrefix): void {
   const elements = Array.from(elementsOf(root));
   const ids = new Set(elements.map((element) => element.id).filter(Boolean));
-  const prefixed = (id: string): string => (ids.has(id) ? `${prefix}${id}` : id);
+  const prefixed = (id: ElementId): ElementId => (ids.has(id) ? `${prefix}${id}` : id);
   for (const element of elements) {
     if (element.id) element.id = prefixed(element.id);
-    for (const name of ID_ATTRIBUTES) {
+    for (const name of FORM_DIALOG_ID_ATTRIBUTES) {
       const value = element.getAttribute(name);
       if (value) element.setAttribute(name, prefixed(value));
     }
-    for (const name of ID_LIST_ATTRIBUTES) {
+    for (const name of FORM_DIALOG_ID_LIST_ATTRIBUTES) {
       const value = element.getAttribute(name);
       if (value) element.setAttribute(name, value.split(/\s+/).map(prefixed).join(" "));
     }

@@ -19,7 +19,10 @@ from common.components.date_range_picker import (
 )
 from common.components.form_dialog import (
     FORM_DIALOG_ATTRIBUTE,
+    FORM_DIALOG_CHROME_BY_MARKER,
     FORM_DIALOG_CHROME_VALUES,
+    FORM_DIALOG_ID_ATTRIBUTES,
+    FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
     FormDialogChrome,
     FormDialogPart,
@@ -68,9 +71,22 @@ def form_dialog_module() -> str:
                 dict(FORM_DIALOG_CHROME_VALUES),
             ),
             TsConstant(
+                "FORM_DIALOG_CHROME_BY_MARKER",
+                dict[str, FormDialogChrome],
+                dict(FORM_DIALOG_CHROME_BY_MARKER),
+            ),
+            TsConstant(
                 "FORM_DIALOG_PARTS",
                 dict[FormDialogPart, str],
                 dict(FORM_DIALOG_PARTS),
+            ),
+            TsConstant(
+                "FORM_DIALOG_ID_ATTRIBUTES", list[str], list(FORM_DIALOG_ID_ATTRIBUTES)
+            ),
+            TsConstant(
+                "FORM_DIALOG_ID_LIST_ATTRIBUTES",
+                list[str],
+                list(FORM_DIALOG_ID_LIST_ATTRIBUTES),
             ),
         ],
     )

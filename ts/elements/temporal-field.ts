@@ -595,7 +595,7 @@ function bindControls(host: HTMLElement): void {
 }
 
 /**
- * The button that copies another field.
+ * The copy button; answers its painter, if any.
  *
  * The source may be absent: a value no segment can hold renders the
  * native controls alone. Treat that as a source stating nothing.

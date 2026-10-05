@@ -9,6 +9,8 @@ _FieldMirror = custom_element_builder("field-mirror")
 
 def FieldMirror(source_field: FormFieldName, target_field: FormFieldName) -> Node:
     """Wraps nothing; finds its fields itself."""
+    if source_field == target_field:
+        raise ValueError(f"FieldMirror: {source_field!r} cannot mirror itself")
     return _FieldMirror(
         source_field=source_field, target_field=target_field, hidden=True
     )

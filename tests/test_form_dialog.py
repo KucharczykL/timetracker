@@ -1,6 +1,7 @@
 """The form dialog's server half: links, host, layout stamps."""
 
 import re
+from html.parser import HTMLParser
 
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
@@ -16,6 +17,8 @@ from common.components import (
 from common.components.form_dialog import (
     FORM_DIALOG_ATTRIBUTE,
     FORM_DIALOG_CHROME_VALUES,
+    FORM_DIALOG_ID_ATTRIBUTES,
+    FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
 )
 from games.management.commands.gen_element_types import form_dialog_module
@@ -118,3 +121,62 @@ class LayoutStampTest(TestCase):
         title = re.search(r"<title>Timetracker - ([^<]*)</title>", html)
         assert title is not None
         self.assertIn(f'data-page-title="{title.group(1)}"', self._main_container(html))
+
+
+class _IdReferences(HTMLParser):
+    """Every id, and every attribute naming one."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ids: set[str] = set()
+        self.attributes: list[tuple[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            if value is None:
+                continue
+            if name == "id":
+                self.ids.add(value)
+            else:
+                self.attributes.append((name, value))
+
+    def references(self) -> set[str]:
+        return {
+            name
+            for name, value in self.attributes
+            if name not in _NOT_REFERENCES
+            and (set(value.split()) & self.ids or value.lstrip("#") in self.ids)
+        }
+
+
+#: Attributes whose value may equal an id by chance.
+_NOT_REFERENCES = {"name", "value", "class", "title", "aria-label", "placeholder"}
+
+#: Pages a form dialog presents.
+_FORM_ROUTES = (
+    "games:add_device",
+    "games:add_platform",
+    "games:add_game",
+    "games:add_session",
+    "games:add_playthrough",
+)
+
+
+class IdReferenceContractTest(TestCase):
+    """The prefix rewrite knows every id reference."""
+
+    def setUp(self) -> None:
+        user = User.objects.create_superuser(
+            username="refs", email="refs@example.com", password="refs"
+        )
+        self.client.force_login(user)
+
+    def test_every_reference_attribute_is_rewritten(self):
+        known = {*FORM_DIALOG_ID_ATTRIBUTES, *FORM_DIALOG_ID_LIST_ATTRIBUTES, "href"}
+        for route in _FORM_ROUTES:
+            with self.subTest(route=route):
+                parser = _IdReferences()
+                parser.feed(self.client.get(reverse(route)).content.decode())
+                # Labels prove the parser sees references.
+                self.assertIn("for", parser.references())
+                self.assertLessEqual(parser.references(), known)
