@@ -80,7 +80,7 @@ class FinishStatement:
 
     @classmethod
     def decode(cls, raw: ChoiceValue) -> FinishStatement:
-        """The pair a form or a waypoint stated.
+        """The pair a form or batch row stated.
 
         Refuses what it cannot read: a guess is a second instant.
         """
@@ -107,14 +107,7 @@ class FinishStatement:
 def offer_finish(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Offered:
-    """The instant stamped into the form, and the zone.
-
-    The instant is the form's, not the POST's. One confirmation can be
-    posted twice, and `ConfirmPage` has no submit-once guard: each row the
-    first post ended is dispatched again under the same key. Stamped, the
-    payload matches and those rows replay; minted per POST, every one of
-    them is reported refused.
-    """
+    """One instant for every row: the page's."""
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
@@ -143,7 +136,7 @@ def settle_finish(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     return FinishStatement(stated.ended_at, browser.key if browser else None).encode()
 
 
-#: A reconfirmation stamps a second instant for the rows left.
+#: A reconfirmation stamps a fresh instant.
 FINISH: BulkChoice[PlayerSession] = BulkChoice(offer=offer_finish, settle=settle_finish)
 
 

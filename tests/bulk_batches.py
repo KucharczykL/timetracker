@@ -1,14 +1,19 @@
 """Bulk batch chunks, run inline in tests."""
 
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 
 import pytest
 from django.db import transaction
 
 from games import bulk_jobs
+from games.models import BulkBatch
 
 type QueuedChunk = tuple[uuid.UUID, int]
+
+#: The queue the cluster would use.
+REAL_ENQUEUE = bulk_jobs.enqueue
 
 
 @dataclass
@@ -16,8 +21,10 @@ class ChunkQueue:
     """Chunks queued, drained on commit unless held."""
 
     held: bool = False
-    queued: list[QueuedChunk] = field(default_factory=list)
-    draining: bool = False
+    #: A test expecting a defect opts in.
+    failures_expected: bool = False
+    queued: deque[QueuedChunk] = field(default_factory=deque)
+    _draining: bool = field(default=False, init=False)
 
     def enqueue(self, batch_id: uuid.UUID, chunk: int) -> None:
         self.queued.append((batch_id, chunk))
@@ -26,19 +33,22 @@ class ChunkQueue:
 
     def drain(self) -> None:
         """Run every queued chunk; loops, never recurses."""
-        if self.draining:
+        if self._draining:
             return
-        self.draining = True
+        self._draining = True
         try:
             while self.queued:
-                batch_id, chunk = self.queued.pop(0)
-                bulk_jobs.run_chunk(batch_id, chunk)
+                self.run_one()
         finally:
-            self.draining = False
+            self._draining = False
 
     def run_one(self) -> None:
-        batch_id, chunk = self.queued.pop(0)
+        assert self.queued, "no chunk is queued"
+        batch_id, chunk = self.queued.popleft()
         bulk_jobs.run_chunk(batch_id, chunk)
+        state = BulkBatch.objects.filter(pk=batch_id).values_list("state", flat=True)
+        if not self.failures_expected and state.first() == BulkBatch.State.FAILED:
+            raise AssertionError(f"batch {batch_id} failed; see the games log")
 
     def run_all(self) -> None:
         while self.queued:
@@ -57,4 +67,11 @@ def chunk_queue(monkeypatch) -> ChunkQueue:
 def held_batches(chunk_queue) -> ChunkQueue:
     """Chunks wait for the test to run them."""
     chunk_queue.held = True
+    return chunk_queue
+
+
+@pytest.fixture
+def failing_batches(chunk_queue) -> ChunkQueue:
+    """A batch may end failed."""
+    chunk_queue.failures_expected = True
     return chunk_queue

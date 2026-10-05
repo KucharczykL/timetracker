@@ -49,6 +49,7 @@ from games.views.bulk import (
     PROGRESS_FIELD,
     STATEMENT_FIELD,
     TOKEN_FIELD,
+    UNDO_OF_AN_UNDO,
     UNKNOWN_ACT,
 )
 from games.views.session_reclassification import review_filter
@@ -527,7 +528,7 @@ def test_every_row_left_alone_is_logged_with_its_library(
 
 
 def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The act stops; what committed stays committed.
 
@@ -579,7 +580,7 @@ def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_libra
 
 
 def test_a_row_the_library_does_not_hold_ends_the_batch(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The chunk re-resolved these rows, so nothing inside can miss."""
     from django.http import Http404
@@ -606,7 +607,7 @@ def test_a_row_the_library_does_not_hold_ends_the_batch(
 
 
 def test_a_defect_still_offers_the_batch_its_undo(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The rows it did reach stay done, so the way back must be offered.
 
@@ -646,7 +647,7 @@ def test_a_defect_still_offers_the_batch_its_undo(
 
 
 def test_an_undo_a_defect_stopped_offers_no_undo_of_its_own(
-    client_in, owned_library, game, monkeypatch
+    client_in, owned_library, game, monkeypatch, failing_batches
 ):
     """The answer's rule, read by the defect page too."""
     from games.writes.answers import DEFECT_STATUS, CommandFailed
@@ -753,7 +754,13 @@ def test_stopping_names_the_rows_it_left(
 
 
 def test_a_defect_names_the_rows_it_left(
-    client_in, owned_library, game, monkeypatch, caplog, capture_games_logger
+    client_in,
+    owned_library,
+    game,
+    monkeypatch,
+    caplog,
+    capture_games_logger,
+    failing_batches,
 ):
     """The row that met the defect, and the rows behind it.
 
@@ -1378,3 +1385,82 @@ def test_a_confirmations_press_wears_the_acts_colour(
     response = confirm(client_in, some(session), url=url)
 
     assert solid in _confirm_button(response, label)
+
+
+def test_an_undo_of_a_stopped_batch_takes_back_only_its_done_rows(
+    client_in, owned_library, game, monkeypatch, held_batches
+):
+    monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    held_batches.run_one()
+    client_in.post(stop_url(token))
+    held_batches.run_all()
+
+    client_in.post(undo_url(token), {})
+    held_batches.run_all()
+
+    assert said_by(undoing(token)) == ["1 of 1 done."]
+    assert PlayerSession.objects.alive().count() == 3
+    assert HistoricalPlaytime.objects.alive().count() == 0
+
+
+def test_an_undo_pressed_after_an_undo_ended_finds_everything_back(
+    client_in, owned_library, game
+):
+    """A new Undo; each row already so."""
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    client_in.post(undo_url(token), {})
+
+    client_in.post(undo_url(token), {})
+
+    undos = BulkBatch.objects.filter(undoes=uuid.UUID(token)).order_by("created_at")
+    assert said_by(undos.last()) == ["0 of 1 done, 1 already done."]
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None
+
+
+def test_an_undo_of_an_undo_says_so(client_in, owned_library, game):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    client_in.post(undo_url(token), {})
+
+    response = client_in.post(undo_url(str(undoing(token).token)), {})
+
+    assert response.status_code == 400
+    assert html_module.escape(UNDO_OF_AN_UNDO) in response.content.decode()
+
+
+def test_an_undo_ends_a_batch_no_worker_owns(
+    client_in, owned_library, game, chunk_queue
+):
+    """Stale, so Undo stops it first."""
+    from games.bulk_jobs import STALE_AFTER
+
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    chunk_queue.held = True
+    act(client_in, confirmation)
+    #: One row done, then the worker vanished.
+    chunk_queue.run_one()
+    BulkBatch.objects.filter(token=uuid.UUID(token)).update(
+        state=BulkBatch.State.RUNNING,
+        ended_at=None,
+        updated_at=timezone.now() - STALE_AFTER - timedelta(minutes=1),
+    )
+    chunk_queue.held = False
+
+    client_in.post(undo_url(token), {})
+
+    assert batch_of(owned_library, token).state == BulkBatch.State.STOPPED
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is None

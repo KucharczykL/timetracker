@@ -11,18 +11,18 @@ playthrough. The batch is one act with one Undo. The code is in
 row receives, or a refusal.
 
 `games/views/bulk.py` states `CHOICE_FIELD`. The act's control carries that
-name, and each later request posts the same field from the progress form.
+name, and the press posts it.
 
-`run_bulk_action` settles that field on each request that acts. A person can
-change the field, and without a settle a wrong value reaches the command, which
-answers `PlaythroughNotHeld` -- a defect.
+`run_bulk_action` settles that field once, at the press, and stores the answer
+on the batch. A person can change the field, and without a settle a wrong
+value reaches the command, which answers `PlaythroughNotHeld` -- a defect.
 
 `undo_bulk_action` does not settle, because its POST has no control. The
-inverse leg's choice is the correlation id of the batch that it undoes.
+inverse step's choice is the correlation id of the batch that it undoes.
 
-A refused settle shows the confirmation again, on the same token and tally. A
-new token would divide one batch into two correlation ids. If the act then
-refuses the question, the batch ends and the rows that moved keep their Undo.
+A refused settle shows the confirmation again, on the same token and tally,
+before anything is stored. If the act then refuses the question, nothing
+runs.
 
 ## The move
 
@@ -30,7 +30,8 @@ refuses the question, the batch ends and the rows that moved keep their Undo.
 at more than one game it refuses the act, because a playthrough is at one game.
 
 `settle_target` accepts the key of a live ordinary run of this library. It does
-not read the game, because the rows of a later chunk can be at two games.
+not read the game, because the stored rows can be at two games by the time
+they run.
 
 `move_one` compares the row's game with the target's game. A different game is a
 refusal with a sentence: that row stays as it is and the batch continues.

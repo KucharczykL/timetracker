@@ -572,10 +572,10 @@ rebuild: 2.320s against 4.366s -- passed
 **Every read passes at 20 ms.** Five moved under a millisecond from the #704
 recording. `game_playtime_sort` moved from 8.1 ms to 15.9 ms: on this dump
 before the conversion it measured 8.9 ms, so the 93 records cost 7 ms, and
-they cost it a game rather than a record -- the record leg's correlated
+they cost it a game rather than a record -- the record clause's correlated
 subquery joins through the tracked row and builds a hash for each of the 861
-games where the session leg walks an index. #1131 owns bringing the record
-leg to the session leg's cost.
+games where the session clause walks an index. #1131 owns bringing the record
+clause to the session clause's cost.
 
 **The first run of this recording missed.** It measured `game_playtime_sort`
 at 49.1 ms, three times the budget, because it ran straight after the
@@ -677,9 +677,9 @@ rows before the batch acts on any of them, which is the thing the loop exists
 not to do.
 
 **What a chunk holds.** A chunk is given three seconds and spends it one row
-at a time, so at 9.1 ms it reaches about three hundred rows before it renders
-a waypoint. A library with more than that walks two requests, which is the
-case the correlation id has to survive.
+at a time, so at 9.1 ms it reaches about three hundred rows before it queues
+the next chunk. A larger batch runs two tasks, which is the case the
+correlation id has to survive.
 
 **The batch crosses the gating floor on a small seed.** At `seed=25` the
 600 rows take the run to roughly 2,400 events, the rebuild budget starts

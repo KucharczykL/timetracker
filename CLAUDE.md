@@ -806,13 +806,18 @@ task acts on inside `CHUNK_BUDGET` and is no transaction -- each row is its
 own dispatch, keyed from the token and the row, so a row run twice acts once.
 The tally lives on the row, written after each row with `position`, and counts
 four things apart: moved, already so, refused, and gone since the
-confirmation. A stale chunk does nothing, an overtaken one stops, a third start
-fails. A defect or the cluster's timeout stores `failed`; the rows done stay
-done and keep their Undo. Stop (`stop_bulk_batch`) ends the batch between
-chunks. The log names every row left alone. `Page()` embeds the library's
+confirmation. Every write after the creation is fenced by `chunk` and
+`attempts` and skips an ended row; CHECKs bind `ended_at` to an ended state.
+A stale chunk does nothing, an overtaken one stops, a third start fails. A
+defect or the cluster's timeout stores `failed`; the rows done stay done and
+keep their Undo. Stop (`stop_bulk_batch`) ends the batch between chunks and
+fences out a run in flight; a live batch silent for `STALE_AFTER` has no
+worker, and Stop or Undo ends it at once. One Undo of a batch runs at a time
+(a partial unique constraint). The log names every row left alone. `Page()` embeds the library's
 batches; `ts/bulk-batch-status.ts` toasts them, polls `/api/bulk/batches`, and
 dispatches `page:stale` when one from this page ends. Tests drain chunks on
-commit (`tests/bulk_batches.py`; `held_batches` holds them). The Undo reads
+commit (`tests/bulk_batches.py`; `held_batches` holds them, and a batch
+ending `failed` fails the test unless it asks for `failing_batches`). The Undo reads
 the act's name off the batch row, or for an older batch out of its
 `source_metadata`, and its rows through `undo_rows` -- for
 `EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the

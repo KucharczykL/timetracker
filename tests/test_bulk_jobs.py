@@ -2,35 +2,53 @@
 
 import html
 import json
+import logging
 import uuid
 from datetime import date, timedelta
 
 import pytest
+from bulk_batches import REAL_ENQUEUE
 from bulk_posts import newest_batch, posted, selection
+from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 from django_q.exceptions import TimeoutException
+from django_q.models import OrmQ
 from session_rows import duration_only_row, tracked_run
 
-from games import bulk_jobs, bulk_reclassification
+from games import bulk_jobs, bulk_reclassification, tasks
 from games.bulk_jobs import (
     ANNOUNCE_WINDOW,
+    ENDED_BY_A_DEFECT,
+    MET_THE_DEFECT,
+    NO_WORKER,
+    STALE_AFTER,
     STARTS_ALLOWED,
     Tally,
     batch_toast,
+    end_stale,
+    request_stop,
     run_chunk,
     start_batch,
     visible_batches,
 )
 from games.bulk_reclassification import REVIEW_THRESHOLD_HOURS
-from games.models import BulkBatch, Game, HistoricalPlaytime, UserLibrary
-from games.views.bulk import STATEMENT_FIELD
+from games.models import (
+    BulkBatch,
+    Game,
+    HistoricalPlaytime,
+    LibraryEvent,
+    PlayerSession,
+    UserLibrary,
+)
+from games.views.bulk import PROGRESS_FIELD, STATEMENT_FIELD, UNREADABLE_STATEMENT
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
 A_DAY = date(2026, 3, 5)
 LONG_ENOUGH = timedelta(hours=REVIEW_THRESHOLD_HOURS + 1)
 RECLASSIFY = reverse("games:run_bulk_action", args=["session.reclassify"])
+RECLASSIFIED = "library.playersession.reclassified"
 
 
 @pytest.fixture(autouse=True)
@@ -84,7 +102,22 @@ def a_batch(library: UserLibrary, **columns) -> BulkBatch:
         "rows": [],
         **columns,
     }
+    if stated.get("state") in BulkBatch.TERMINAL:
+        stated.setdefault("ended_at", timezone.now())
     return BulkBatch.objects.create(**stated)
+
+
+def gone_quiet(batch: BulkBatch) -> BulkBatch:
+    """As if no worker wrote for a while."""
+    BulkBatch.objects.filter(pk=batch.pk).update(
+        updated_at=timezone.now() - STALE_AFTER - timedelta(minutes=1)
+    )
+    batch.refresh_from_db()
+    return batch
+
+
+def logged(caplog) -> str:
+    return " ".join(record.message for record in caplog.records)
 
 
 # ── Starting ─────────────────────────────────────────────────────────────────
@@ -98,9 +131,9 @@ def test_a_press_stores_the_batch_and_queues_its_first_chunk(
     batch = pressed(client_in, *sessions)
 
     assert batch.state == BulkBatch.State.QUEUED
-    assert sorted(batch.rows) == sorted(str(row.pk) for row in sessions)
+    assert sorted(batch.keys) == sorted(str(row.pk) for row in sessions)
     assert batch.origin == "/tracker/session/list"
-    assert held_batches.queued == [(batch.pk, 0)]
+    assert list(held_batches.queued) == [(batch.pk, 0)]
 
 
 def test_a_token_pressed_twice_stores_one_batch(
@@ -129,6 +162,44 @@ def test_a_token_that_is_no_uuidv7_is_refused(client_in, owned_library, game):
     assert not BulkBatch.objects.exists()
 
 
+@pytest.mark.parametrize(
+    "forged",
+    [{"refused": -1}, {"lost": "3"}, {"lost": True}, {"reasons": ["a", "a"]}],
+)
+def test_a_forged_tally_is_refused_as_unreadable(
+    client_in, owned_library, game, forged
+):
+    session = sessions_in(owned_library, game, 1)[0]
+    confirmation = client_in.post(RECLASSIFY, {STATEMENT_FIELD: selection(session)})
+    fields = posted(confirmation)
+    fields[PROGRESS_FIELD] = json.dumps({"rows": [str(session.pk)], **forged})
+
+    response = client_in.post(RECLASSIFY, fields)
+
+    assert response.status_code == 400
+    assert html.escape(UNREADABLE_STATEMENT) in response.content.decode()
+    assert not BulkBatch.objects.exists()
+
+
+def test_a_forged_key_of_another_library_comes_out_lost(
+    client_in, owned_library, other_library, game
+):
+    """The press stores the posted keys; the run resolves them."""
+    ours = sessions_in(owned_library, game, 1)[0]
+    theirs = sessions_in(
+        other_library, Game.objects.create(library=other_library, name="Other"), 1
+    )[0]
+    confirmation = client_in.post(RECLASSIFY, {STATEMENT_FIELD: selection(ours)})
+    fields = posted(confirmation)
+    fields[PROGRESS_FIELD] = json.dumps({"rows": [str(ours.pk), str(theirs.pk)]})
+
+    client_in.post(RECLASSIFY, fields)
+
+    batch = newest_batch(owned_library)
+    assert (batch.done, batch.lost) == (1, 1)
+    assert PlayerSession.objects.get(pk=theirs.pk).removed_at is None
+
+
 def test_one_token_in_two_libraries_is_two_batches(owned_library, other_library):
     token = uuid.uuid7()
     for library in (owned_library, other_library):
@@ -143,6 +214,75 @@ def test_one_token_in_two_libraries_is_two_batches(owned_library, other_library)
         )
 
     assert BulkBatch.objects.filter(token=token).count() == 2
+
+
+def test_one_batch_has_one_live_undo(owned_library, held_batches):
+    undone = uuid.uuid7()
+
+    def an_undo():
+        return start_batch(
+            owned_library,
+            "session.reclassify",
+            token=uuid.uuid7(),
+            keys=[uuid.uuid7()],
+            tally=Tally(total=1, left=1),
+            choice=None,
+            origin="/",
+            undoes=undone,
+        )
+
+    first = an_undo()
+    second = an_undo()
+
+    assert second == first
+    assert BulkBatch.objects.filter(undoes=undone).count() == 1
+
+
+def test_the_cluster_queue_commits_with_the_batch(monkeypatch, owned_library):
+    monkeypatch.setattr(bulk_jobs, "enqueue", REAL_ENQUEUE)
+
+    batch = start_batch(
+        owned_library,
+        "session.reclassify",
+        token=uuid.uuid7(),
+        keys=[],
+        tally=Tally(),
+        choice=None,
+        origin="/",
+    )
+
+    queued = OrmQ.objects.get()
+    assert queued.func() == "games.tasks.run_bulk_batch"
+    assert queued.args() == (str(batch.pk), 0)
+    tasks.run_bulk_batch(str(batch.pk), 0)
+    batch.refresh_from_db()
+    assert batch.state == BulkBatch.State.FINISHED
+
+
+def test_a_batch_rolled_back_queues_nothing(monkeypatch, owned_library):
+    monkeypatch.setattr(bulk_jobs, "enqueue", REAL_ENQUEUE)
+
+    with pytest.raises(RuntimeError), transaction.atomic():
+        start_batch(
+            owned_library,
+            "session.reclassify",
+            token=uuid.uuid7(),
+            keys=[],
+            tally=Tally(),
+            choice=None,
+            origin="/",
+        )
+        raise RuntimeError("the press failed after")
+
+    assert not OrmQ.objects.exists()
+    assert not BulkBatch.objects.exists()
+
+
+def test_a_task_naming_no_batch_is_logged_and_dropped(caplog, capture_games_logger):
+    with capture_games_logger():
+        tasks.run_bulk_batch("not a key", 0)
+
+    assert "names no batch" in logged(caplog)
 
 
 # ── Running ──────────────────────────────────────────────────────────────────
@@ -173,58 +313,80 @@ def test_a_stale_chunk_number_does_nothing(
 
 def test_a_terminal_batch_does_nothing(client_in, owned_library, game, held_batches):
     batch = pressed(client_in, *sessions_in(owned_library, game, 1))
-    BulkBatch.objects.filter(pk=batch.pk).update(state=BulkBatch.State.STOPPED)
+    BulkBatch.objects.filter(pk=batch.pk).update(
+        state=BulkBatch.State.STOPPED, ended_at=timezone.now()
+    )
 
     run_chunk(batch.pk, 0)
 
     assert HistoricalPlaytime.objects.count() == 0
 
 
-def test_a_redelivered_chunk_resumes_at_its_position(
+def test_a_redelivery_counts_the_row_in_flight_once(
     client_in, owned_library, game, held_batches
 ):
-    """A crash leaves the tally written per row."""
+    """The crash fell between its dispatch and the tally."""
     sessions = sessions_in(owned_library, game, 3)
     batch = pressed(client_in, *sessions)
-    real = bulk_reclassification.reclassify_session
-    calls = {"n": 0}
-
-    def crashes_on_the_second(*args, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 2:
-            raise SystemExit("the worker died")
-        return real(*args, **kwargs)
-
-    bulk_reclassification.reclassify_session = crashes_on_the_second
-    try:
-        with pytest.raises(SystemExit):
-            run_chunk(batch.pk, 0)
-    finally:
-        bulk_reclassification.reclassify_session = real
-    #: A crash writes no failure mark.
-    BulkBatch.objects.filter(pk=batch.pk).update(state=BulkBatch.State.RUNNING)
-
     run_chunk(batch.pk, 0)
-
-    batch.refresh_from_db()
-    assert batch.state == BulkBatch.State.FINISHED
-    assert (batch.done, batch.unchanged, batch.lost) == (3, 0, 0)
-    assert HistoricalPlaytime.objects.count() == 3
-
-
-def test_a_chunk_that_starts_a_third_time_fails(
-    client_in, owned_library, game, held_batches
-):
-    batch = pressed(client_in, *sessions_in(owned_library, game, 1))
+    #: The last row committed; its tally write never did.
     BulkBatch.objects.filter(pk=batch.pk).update(
-        attempts=STARTS_ALLOWED, state=BulkBatch.State.RUNNING
+        position=2,
+        done=2,
+        attempts=1,
+        state=BulkBatch.State.RUNNING,
+        ended_at=None,
     )
 
     run_chunk(batch.pk, 0)
 
     batch.refresh_from_db()
+    assert batch.state == BulkBatch.State.FINISHED
+    assert batch.done + batch.unchanged + batch.refused + batch.lost == 3
+    for session in sessions:
+        events = LibraryEvent.objects.filter(
+            aggregate_id=session.pk, event_type=RECLASSIFIED
+        )
+        assert events.count() == 1
+
+
+def test_a_chunk_that_starts_a_third_time_fails(
+    client_in, owned_library, game, held_batches, caplog, capture_games_logger
+):
+    batch = pressed(client_in, *sessions_in(owned_library, game, 2))
+    BulkBatch.objects.filter(pk=batch.pk).update(
+        attempts=STARTS_ALLOWED, state=BulkBatch.State.RUNNING
+    )
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        run_chunk(batch.pk, 0)
+
+    batch.refresh_from_db()
     assert batch.state == BulkBatch.State.FAILED
+    assert batch.ended_at is not None
     assert HistoricalPlaytime.objects.count() == 0
+    said = logged(caplog)
+    assert f"started {STARTS_ALLOWED} times" in said
+    for key in batch.keys:
+        assert key in said
+
+
+def test_an_act_gone_while_queued_fails_without_blaming_a_row(
+    client_in, owned_library, game, held_batches, caplog, capture_games_logger
+):
+    batch = pressed(client_in, *sessions_in(owned_library, game, 2))
+    BulkBatch.objects.filter(pk=batch.pk).update(action="session.retired")
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        run_chunk(batch.pk, 0)
+
+    batch.refresh_from_db()
+    assert batch.state == BulkBatch.State.FAILED
+    said = logged(caplog)
+    assert MET_THE_DEFECT not in said
+    assert said.count(ENDED_BY_A_DEFECT) == 2
 
 
 def test_an_overtaken_run_stops_after_its_row(
@@ -232,6 +394,7 @@ def test_an_overtaken_run_stops_after_its_row(
 ):
     """Another delivery claimed the chunk."""
     batch = pressed(client_in, *sessions_in(owned_library, game, 3))
+    held_batches.queued.clear()
     real = bulk_reclassification.reclassify_session
 
     def overtaken(*args, **kwargs):
@@ -247,25 +410,99 @@ def test_an_overtaken_run_stops_after_its_row(
     assert batch.position == 0
     assert batch.state == BulkBatch.State.RUNNING
     assert HistoricalPlaytime.objects.count() == 1
+    assert not held_batches.queued
 
 
-def test_a_timeout_stores_failed_and_leaves(
+def test_a_stop_fences_out_a_run_in_flight(
     client_in, owned_library, game, held_batches, monkeypatch
 ):
+    """A second delivery stops it mid-row."""
+    batch = pressed(client_in, *sessions_in(owned_library, game, 3))
+    real = bulk_reclassification.reclassify_session
+
+    def stopped_meanwhile(*args, **kwargs):
+        outcome = real(*args, **kwargs)
+        if HistoricalPlaytime.objects.count() == 1:
+            request_stop(owned_library, batch.token)
+            run_chunk(batch.pk, 0)
+        return outcome
+
+    monkeypatch.setattr(bulk_reclassification, "reclassify_session", stopped_meanwhile)
+
+    run_chunk(batch.pk, 0)
+
+    batch.refresh_from_db()
+    assert batch.state == BulkBatch.State.STOPPED
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_a_timeout_stores_failed_and_keeps_the_rows_done(
+    client_in,
+    owned_library,
+    game,
+    held_batches,
+    monkeypatch,
+    caplog,
+    capture_games_logger,
+):
     """The cluster's timeout is no `Exception`."""
-    batch = pressed(client_in, *sessions_in(owned_library, game, 2))
+    batch = pressed(client_in, *sessions_in(owned_library, game, 3))
+    real = bulk_reclassification.reclassify_session
 
-    def times_out(*args, **kwargs):
-        raise TimeoutException("Task exceeded maximum timeout value (60 seconds)")
+    def times_out_second(*args, **kwargs):
+        if HistoricalPlaytime.objects.count() == 1:
+            raise TimeoutException("Task exceeded maximum timeout value (60 seconds)")
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(bulk_reclassification, "reclassify_session", times_out)
+    monkeypatch.setattr(bulk_reclassification, "reclassify_session", times_out_second)
 
-    with pytest.raises(TimeoutException):
+    with capture_games_logger() as captured, pytest.raises(TimeoutException):
+        captured.set_level(logging.INFO, logger="games")
         run_chunk(batch.pk, 0)
 
     batch.refresh_from_db()
     assert batch.state == BulkBatch.State.FAILED
-    assert batch.ended_at is not None
+    assert (batch.done, batch.position) == (1, 1)
+    assert HistoricalPlaytime.objects.count() == 1
+    said = logged(caplog)
+    assert MET_THE_DEFECT in said
+    assert ENDED_BY_A_DEFECT in said
+    assert batch.keys[1] in said
+    assert batch.keys[2] in said
+
+
+# ── A batch no worker owns ───────────────────────────────────────────────────
+
+
+def test_a_quiet_live_batch_says_the_worker_may_be_down(owned_library):
+    batch = gone_quiet(a_batch(owned_library, total=2))
+
+    toast = batch_toast(batch)
+
+    assert toast["type"] == "warning"
+    assert "the background worker may be down" in toast["message"]
+    assert toast["action"]["label"] == "Stop"
+
+
+def test_stop_ends_a_quiet_batch_at_once(owned_library, caplog, capture_games_logger):
+    keys = [str(uuid.uuid7()), str(uuid.uuid7())]
+    batch = gone_quiet(a_batch(owned_library, rows=keys, total=2))
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        assert request_stop(owned_library, batch.token)
+
+    batch.refresh_from_db()
+    assert batch.state == BulkBatch.State.STOPPED
+    assert NO_WORKER in logged(caplog)
+
+
+def test_a_busy_batch_is_not_ended_as_quiet(owned_library):
+    batch = a_batch(owned_library, total=2)
+
+    assert not end_stale(batch)
+    batch.refresh_from_db()
+    assert batch.state == BulkBatch.State.QUEUED
 
 
 # ── Following ────────────────────────────────────────────────────────────────
@@ -402,6 +639,7 @@ def test_a_page_carries_the_librarys_batches(client_in, owned_library):
     start = page.index(marker) + len(marker)
     carried = json.loads(html.unescape(page[start : page.index('"', start)]))
     assert [one["token"] for one in carried] == [str(batch.token)]
+    assert carried[0]["terminal"] is False
     assert 'data-bulk-batches-url="/api/bulk/batches"' in page
 
 
@@ -412,12 +650,18 @@ def test_the_api_answers_the_asked_batches_of_this_library(
     theirs = a_batch(other_library, state=BulkBatch.State.RUNNING)
 
     response = client_in.get(
-        "/api/bulk/batches", {"tokens": f"{ours.token},{theirs.token},junk"}
+        "/api/bulk/batches", {"tokens": f"{ours.token},{theirs.token}"}
     )
 
     assert response.status_code == 200
     assert [one["token"] for one in response.json()] == [str(ours.token)]
     assert response.json()[0]["toast"] == batch_toast(ours)
+
+
+def test_the_api_refuses_a_token_it_cannot_read(client_in, owned_library):
+    response = client_in.get("/api/bulk/batches", {"tokens": "junk"})
+
+    assert response.status_code == 422
 
 
 def test_a_dismissed_end_is_announced(client_in, owned_library, other_library):
@@ -432,3 +676,13 @@ def test_a_dismissed_end_is_announced(client_in, owned_library, other_library):
     theirs.refresh_from_db()
     assert ours.announced_at is not None
     assert theirs.announced_at is None
+
+
+def test_stop_on_an_ended_batch_changes_nothing(client_in, owned_library):
+    batch = a_batch(owned_library, state=BulkBatch.State.FINISHED)
+
+    response = client_in.post(reverse("games:stop_bulk_batch", args=[batch.token]))
+
+    assert response.status_code == 302
+    batch.refresh_from_db()
+    assert batch.stop_requested_at is None

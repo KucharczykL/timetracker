@@ -5,7 +5,7 @@ import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -28,6 +28,7 @@ from games.bulk_actions import BulkAction, bulk_action
 from games.bulk_jobs import (
     Tally,
     announce,
+    end_stale,
     library_batch,
     log_left_alone,
     request_stop,
@@ -55,7 +56,7 @@ logger = logging.getLogger("games")
 STATEMENT_FIELD = SELECTION_STATEMENT_FIELD
 #: The batch's identity, minted by the confirmation.
 TOKEN_FIELD = "submission"
-#: The rows left and the tally so far.
+#: The confirmation's keys and refusals.
 PROGRESS_FIELD = "progress"
 #: Where an act's question is answered.
 CHOICE_FIELD = "choice"
@@ -88,6 +89,11 @@ STILL_RUNNING = (
     "or wait for it to end, then press Undo again."
 )
 
+UNDO_OF_AN_UNDO = (
+    "An Undo cannot be taken back. To act again, select the rows and press "
+    "the act. Nothing was changed."
+)
+
 #: An Undo with no rows left.
 NOTHING_TO_UNDO = "Nothing from that batch is left to take back."
 
@@ -104,20 +110,33 @@ class SelectionStatement:
     excluded: frozenset[uuid.UUID]
 
 
+class ProgressJson(TypedDict):
+    """`PROGRESS_FIELD`'s wire shape."""
+
+    rows: list[str]
+    refused: int
+    lost: int
+    reasons: list[str]
+
+
 @dataclass(frozen=True, slots=True)
 class Progress:
-    """The confirmation's keys and its tally."""
+    """The confirmation's keys and refusals.
+
+    Nothing has run yet, so nothing is done.
+    """
 
     keys: tuple[uuid.UUID, ...]
     tally: Tally
 
     def as_json(self) -> str:
         return json.dumps(
-            {
-                "rows": [str(key) for key in self.keys],
-                **self.tally.columns(),
-                "total": self.tally.total,
-            }
+            ProgressJson(
+                rows=[str(key) for key in self.keys],
+                refused=self.tally.refused,
+                lost=self.tally.lost,
+                reasons=list(self.tally.reasons),
+            )
         )
 
     @classmethod
@@ -128,10 +147,8 @@ class Progress:
             return cls(
                 keys=keys,
                 tally=Tally(
-                    done=int(stated.get("done", 0)),
-                    unchanged=int(stated.get("unchanged", 0)),
-                    lost=int(stated.get("lost", 0)),
-                    refused=int(stated.get("refused", 0)),
+                    lost=_count(stated.get("lost", 0)),
+                    refused=_count(stated.get("refused", 0)),
                     reasons=tuple(str(one) for one in stated.get("reasons", [])),
                     total=len(keys),
                     left=len(keys),
@@ -139,6 +156,13 @@ class Progress:
             )
         except (ValueError, TypeError, AttributeError) as error:
             raise StatementUnreadable(f"progress is unreadable: {error}") from error
+
+
+def _count(raw: Any) -> int:
+    """A whole number, never a bool."""
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise TypeError(f"{raw!r} is no count")
+    return raw
 
 
 class StatementUnreadable(Exception):
@@ -341,7 +365,7 @@ def _act_refused(
 @login_required
 @require_POST
 def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpResponse:
-    """Confirm the act, or run a chunk."""
+    """Confirm the act, or start the batch."""
     declared = bulk_action(action)
     if declared is None:
         raise Http404("No such bulk action.")
@@ -456,14 +480,17 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
     """
     user = cast(User, request.user)
     target = library_batch(user.library, correlation_id)
+    if target is not None and target.undoes is not None:
+        logger.info("[bulk]: %s is an Undo; refused its Undo", correlation_id)
+        return _refused_page(
+            request, UNDO_OF_AN_UNDO, title="Undo", fallback=UNDO_FALLBACK
+        )
     #: Older batches have no row.
-    if target is None:
-        declared = _act_of(user.library, correlation_id)
-    elif target.undoes is None:
-        declared = bulk_action(target.action)
-    else:
-        #: Undoing an Undo is pressing again.
-        declared = None
+    declared = (
+        _act_of(user.library, correlation_id)
+        if target is None
+        else bulk_action(target.action)
+    )
     if declared is None:
         logger.warning("[bulk]: %s names an act nothing declares", correlation_id)
         return _refused_page(
@@ -473,16 +500,14 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
             fallback=UNDO_FALLBACK,
         )
 
-    if target is not None and not target.is_terminal:
+    if target is not None and not target.is_terminal and not end_stale(target):
         return _refused_page(
             request, STILL_RUNNING, title="Undo", fallback=declared.fallback
         )
     origin = return_url(request, fallback=declared.fallback)
-    if (
-        BulkBatch.objects.filter(library=user.library, undoes=correlation_id)
-        .exclude(state__in=BulkBatch.TERMINAL)
-        .exists()
-    ):
+    if BulkBatch.objects.filter(
+        library=user.library, undoes=correlation_id, state__in=BulkBatch.LIVE
+    ).exists():
         return redirect(origin)
     if target is not None:
         announce(user.library, correlation_id)

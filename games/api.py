@@ -2086,11 +2086,11 @@ bulk_router = Router()
 def bulk_batches(request, tokens: str = ""):
     """The asked batches this library holds."""
     asked = []
-    for raw in tokens.split(","):
+    for raw in filter(None, tokens.split(",")):
         try:
             asked.append(uuid.UUID(raw))
-        except ValueError:
-            continue
+        except ValueError as unreadable:
+            raise HttpError(422, f"{raw!r} is no batch token.") from unreadable
     return [batch_out(batch) for batch in batches_named(request.user.library, asked)]
 
 

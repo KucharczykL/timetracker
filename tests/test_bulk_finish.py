@@ -96,7 +96,7 @@ def _post(**fields: str) -> QueryDict:
 def test_a_statement_states_an_aware_instant_and_a_known_zone():
     """Both rules where every caller meets them, not in `decode` alone.
 
-    A naive instant encodes to an offsetless string the next chunk refuses,
+    A naive instant encodes to an offsetless string the run refuses,
     and a zone tzdata lost reaches the database as a defect.
     """
     from games.bulk_finish import FinishStatement
@@ -121,11 +121,7 @@ def test_a_statement_with_no_zone_survives_too():
 
 
 def test_settling_is_idempotent(owned_library):
-    """Chunk two holds no `<browser-time-zone>` and no zone field.
-
-    The waypoint renders hidden pairs alone, so every chunk after the first
-    settles the answer the chunk before it gave.
-    """
+    """A reconfirmation posts a settled answer back."""
     first = settle_finish(
         owned_library,
         _post(

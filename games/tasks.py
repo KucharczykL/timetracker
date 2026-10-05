@@ -278,4 +278,10 @@ def convert_prices() -> None:
 
 def run_bulk_batch(batch_id: str, chunk: int) -> None:
     """One chunk of one bulk batch."""
-    run_chunk(UUID(batch_id), chunk)
+    try:
+        batch_pk = UUID(batch_id)
+    except ValueError:
+        # Redelivered forever otherwise.
+        logger.error("[run_bulk_batch]: %r names no batch", batch_id)
+        return
+    run_chunk(batch_pk, chunk)

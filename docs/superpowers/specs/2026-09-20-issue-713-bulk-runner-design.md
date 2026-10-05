@@ -44,7 +44,7 @@ rows refused on their merits, and rows gone since the confirmation. It keeps
 each reason once, apart from the counts, because one sentence can stand over
 many rows. A defect ends the batch, and the rows done stay done.
 
-The answer states counts and sentences. The log states keys, under the batch's
+The toast states counts and sentences. The log states keys, under the batch's
 identity, for every row left alone: refused by the resolve, refused by the
 command, or reached by no dispatch after a Stop or a defect.
 

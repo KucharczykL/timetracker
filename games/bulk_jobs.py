@@ -7,16 +7,17 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from functools import partial
 from time import monotonic
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, TypedDict, TypeIs, get_args
 
-from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.contrib.auth.models import User
+from django.db import IntegrityError, connection, transaction
+from django.db.models import F, Q, QuerySet
 from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
 from django_q.tasks import async_task
 
-from common.notices import ToastAction, ToastType, Undo
+from common.notices import ToastAction, ToastPayload, ToastType, Undo
 from games.bulk_actions import BulkAction, bulk_action
 from games.bulk_parts import (
     BoundRow,
@@ -24,14 +25,20 @@ from games.bulk_parts import (
     ChoiceValue,
     Refused,
     Resolution,
+    RowKey,
     RowOutcome,
 )
-from games.models import BulkBatch, UserLibrary
+from games.models import (
+    BULK_BATCH_LIVE_UNDO_CONSTRAINT,
+    BULK_BATCH_TOKEN_CONSTRAINT,
+    BulkBatch,
+    UserLibrary,
+)
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 
 logger = logging.getLogger("games")
 
-#: The rows one task acts on.
+#: Time one task spends on rows.
 #: No transaction: each row commits on its own.
 CHUNK_BUDGET = timedelta(seconds=3)
 
@@ -41,9 +48,13 @@ STARTS_ALLOWED = 2
 #: How long an unseen end is shown.
 ANNOUNCE_WINDOW = timedelta(days=1)
 
+#: Silence after which no worker owns it.
+STALE_AFTER = timedelta(minutes=10)
+
 #: The log's words for a row unreached.
 STOPPED_BY_HAND = "The batch was stopped before this row was reached."
 ENDED_BY_A_DEFECT = "A problem on our side ended the batch before this row was reached."
+NO_WORKER = "No background worker reached this row before the batch was ended."
 
 #: A two-write act may half-finish.
 MET_THE_DEFECT = (
@@ -54,7 +65,19 @@ MET_THE_DEFECT = (
 #: Title for an act the table lost.
 UNKNOWN_TITLE = "A bulk change"
 
+#: Prefix of a batch's toast id.
+TOAST_ID_PREFIX = "bulk-batch:"
+
 type BatchToken = uuid.UUID
+#: An act's name, or its Undo's.
+type ActKeyPrefix = str  # "session.edit.undo"
+type ResolveOne = Callable[[UserLibrary, uuid.UUID], Resolution]
+type BatchRows = QuerySet[BulkBatch, BulkBatch]
+
+type BatchState = Literal["queued", "running", "finished", "stopped", "failed"]
+BATCH_STATES: tuple[BatchState, ...] = get_args(BatchState.__value__)
+if set(BATCH_STATES) != set(BulkBatch.State.values):
+    raise RuntimeError(f"BatchState {BATCH_STATES} differs from BulkBatch.State")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,10 +91,19 @@ class Tally:
     refused: int = 0
     #: Each distinct reason once, in order.
     reasons: tuple[str, ...] = ()
-    #: The denominator: what the confirmation resolved.
+    #: Rows the batch acts on.
     total: int = 0
     #: Rows not reached yet.
     left: int = 0
+
+    def __post_init__(self) -> None:
+        counts = (self.done, self.unchanged, self.lost, self.refused, self.total)
+        if any(count < 0 for count in counts):
+            raise ValueError(f"a tally counts below zero: {self!r}")
+        if not 0 <= self.left <= self.total:
+            raise ValueError(f"{self.left} left of {self.total}")
+        if len(set(self.reasons)) != len(self.reasons):
+            raise ValueError(f"a reason repeats: {self.reasons!r}")
 
     @classmethod
     def of(cls, batch: BulkBatch) -> Tally:
@@ -82,7 +114,7 @@ class Tally:
             refused=batch.refused,
             reasons=tuple(batch.reasons),
             total=batch.total,
-            left=max(batch.total - batch.position, 0),
+            left=batch.total - batch.position,
         )
 
     def columns(self) -> dict[str, Any]:
@@ -94,6 +126,9 @@ class Tally:
             "refused": self.refused,
             "reasons": list(self.reasons),
         }
+
+    def reached(self, position: int) -> Tally:
+        return replace(self, left=self.total - position)
 
     def left_alone(self, refused: Sequence[Refused]) -> Tally:
         """Count rows left alone, reasons once."""
@@ -138,14 +173,14 @@ def _as_it_is(count: int) -> str:
 class BatchAct:
     """What one batch does to each of its rows."""
 
-    #: Key prefix; act and undo never share.
-    name: str
-    resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
-    #: Its own fact bound.
+    #: Act and its Undo never share.
+    name: ActKeyPrefix
+    resolve: ResolveOne
+    #: Choice or undone batch, bound.
     run: BoundRow
 
 
-def undo_name(action: BulkAction[Any]) -> str:
+def undo_name(action: BulkAction[Any]) -> ActKeyPrefix:
     """One spelling, for the key prefix and the log."""
     return f"{action.name}.undo"
 
@@ -163,7 +198,7 @@ def _taken_as_is(library: UserLibrary, key: uuid.UUID) -> Resolution:
     return Resolution((key,), ())
 
 
-def _backward(action: BulkAction[Any], undoes: uuid.UUID) -> BatchAct:
+def _backward(action: BulkAction[Any], undoes: BatchToken) -> BatchAct:
     return BatchAct(
         name=undo_name(action),
         resolve=_taken_as_is,
@@ -181,8 +216,13 @@ def batch_act(batch: BulkBatch) -> BatchAct | None:
     return _forward(declared, batch.choice or None)
 
 
+def _name_of(batch: BulkBatch) -> ActKeyPrefix:
+    act = batch_act(batch)
+    return act.name if act else batch.action
+
+
 def log_left_alone(
-    name: str,
+    name: ActKeyPrefix,
     refused: Sequence[Refused],
     library_id: uuid.UUID,
     correlation_id: uuid.UUID,
@@ -200,8 +240,8 @@ def log_left_alone(
 
 
 def _log_unreached(
-    name: str,
-    keys: Sequence[str],
+    name: ActKeyPrefix,
+    keys: Sequence[RowKey],
     batch: BulkBatch,
     sentence: str,
 ) -> None:
@@ -213,12 +253,32 @@ def _log_unreached(
     )
 
 
+# ── Writes ──────────────────────────────────────────────────────────────────
+
+
+def _live(batch: BulkBatch, *, chunk: int, attempts: int) -> BatchRows:
+    """The row while this owner holds it."""
+    return BulkBatch.objects.filter(
+        pk=batch.pk, chunk=chunk, attempts=attempts, state__in=BulkBatch.LIVE
+    )
+
+
+def _store(rows: BatchRows, **columns: Any) -> int:
+    """`update()` skips `auto_now`; stamp it here."""
+    return rows.update(updated_at=timezone.now(), **columns)
+
+
 # ── Starting ────────────────────────────────────────────────────────────────
 
 
 def enqueue(batch_id: uuid.UUID, chunk: int) -> None:
     """Queue one chunk; tests replace it."""
     async_task("games.tasks.run_bulk_batch", str(batch_id), chunk)
+
+
+def _constraint_of(error: IntegrityError) -> str | None:
+    diagnosis = getattr(error.__cause__, "diag", None)
+    return getattr(diagnosis, "constraint_name", None)
 
 
 def start_batch(
@@ -230,7 +290,7 @@ def start_batch(
     tally: Tally,
     choice: ChoiceValue | None,
     origin: str,
-    undoes: uuid.UUID | None = None,
+    undoes: BatchToken | None = None,
 ) -> BulkBatch:
     """Store the batch; queue chunk 0 with it."""
     try:
@@ -247,12 +307,36 @@ def start_batch(
                 **tally.columns(),
             )
             enqueue(batch.pk, 0)
-    except IntegrityError:
-        existing = BulkBatch.objects.filter(library=library, token=token).first()
+    except IntegrityError as error:
+        existing = _already_started(library, error, token=token, undoes=undoes)
         if existing is None:
             raise
+        if (existing.action, existing.undoes) != (action, undoes):
+            logger.warning(
+                "[bulk]: %s pressed as %s, stored as %s",
+                token,
+                action,
+                existing.action,
+            )
         return existing
     return batch
+
+
+def _already_started(
+    library: UserLibrary,
+    error: IntegrityError,
+    *,
+    token: BatchToken,
+    undoes: BatchToken | None,
+) -> BulkBatch | None:
+    """A double press, or a live Undo."""
+    held = BulkBatch.objects.filter(library=library)
+    constraint = _constraint_of(error)
+    if constraint == BULK_BATCH_TOKEN_CONSTRAINT:
+        return held.filter(token=token).first()
+    if constraint == BULK_BATCH_LIVE_UNDO_CONSTRAINT:
+        return held.filter(undoes=undoes, state__in=BulkBatch.LIVE).first()
+    return None
 
 
 # ── Running ─────────────────────────────────────────────────────────────────
@@ -268,24 +352,41 @@ def run_chunk(batch_id: uuid.UUID, chunk: int) -> None:
     if batch is None or batch.chunk != chunk or batch.is_terminal:
         return
     if batch.stop_requested_at is not None:
-        _stop(batch)
+        _end_unreached(batch, BulkBatch.State.STOPPED, STOPPED_BY_HAND)
         return
     act = batch_act(batch)
-    if act is None or batch.attempts >= STARTS_ALLOWED:
+    if act is None:
         logger.error(
-            "[bulk]: batch %s of library %s failed at row %s: %s",
+            "[bulk]: batch %s of library %s names no act: %s",
+            batch.token,
+            batch.library_id,
+            batch.action,
+        )
+        _end_unreached(batch, BulkBatch.State.FAILED, ENDED_BY_A_DEFECT)
+        return
+    if batch.attempts >= STARTS_ALLOWED:
+        logger.error(
+            "[bulk]: batch %s of library %s failed at row %s: chunk %s started "
+            "%s times without ending; a worker likely died",
             batch.token,
             batch.library_id,
             batch.position,
-            "no such act" if act is None else "its chunk keeps not finishing",
+            chunk,
+            batch.attempts,
         )
-        _fail(batch, act.name if act else batch.action, Tally.of(batch), batch.position)
+        _fail(
+            batch,
+            act.name,
+            Tally.of(batch),
+            batch.position,
+            owner=_live(batch, chunk=chunk, attempts=batch.attempts),
+        )
         return
     attempts = batch.attempts + 1
-    claimed = (
-        BulkBatch.objects.filter(pk=batch.pk, chunk=chunk, attempts=batch.attempts)
-        .exclude(state__in=BulkBatch.TERMINAL)
-        .update(attempts=attempts, state=BulkBatch.State.RUNNING)
+    claimed = _store(
+        _live(batch, chunk=chunk, attempts=batch.attempts),
+        attempts=attempts,
+        state=BulkBatch.State.RUNNING,
     )
     if not claimed:
         return
@@ -293,38 +394,44 @@ def run_chunk(batch_id: uuid.UUID, chunk: int) -> None:
 
 
 def _run(batch: BulkBatch, act: BatchAct, chunk: int, attempts: int) -> None:
-    this_run = BulkBatch.objects.filter(pk=batch.pk, chunk=chunk, attempts=attempts)
-    rows: list[str] = batch.rows
+    this_run = _live(batch, chunk=chunk, attempts=attempts)
+    keys = batch.keys
     tally = Tally.of(batch)
     position = batch.position
     started = monotonic()
     try:
         user = batch.library.user
-        while position < len(rows):
-            tally = _one_row(batch, act, user, rows[position], tally)
+        while position < len(keys):
+            tally = _one_row(batch, act, user, keys[position], tally)
             position += 1
-            tally = replace(tally, left=len(rows) - position)
-            if not this_run.update(position=position, **tally.columns()):
+            tally = tally.reached(position)
+            if not _store(this_run, position=position, **tally.columns()):
                 raise _Overtaken
             if monotonic() - started >= CHUNK_BUDGET.total_seconds():
                 break
         with transaction.atomic():
-            if position >= len(rows):
-                this_run.update(state=BulkBatch.State.FINISHED, ended_at=timezone.now())
-            elif this_run.update(chunk=chunk + 1, attempts=0):
-                enqueue(batch.pk, chunk + 1)
+            if position >= len(keys):
+                ended = _store(
+                    this_run, state=BulkBatch.State.FINISHED, ended_at=timezone.now()
+                )
+            else:
+                ended = _store(this_run, chunk=chunk + 1, attempts=0)
+                if ended:
+                    enqueue(batch.pk, chunk + 1)
+            if not ended:
+                raise _Overtaken
     except _Overtaken:
         logger.info("[bulk]: batch %s chunk %s was overtaken", batch.token, chunk)
     except BaseException as error:
         logger.exception(
             "[bulk]: %s met a defect on row %s of library %s under %s",
             act.name,
-            rows[position] if position < len(rows) else None,
+            keys[position] if position < len(keys) else None,
             batch.library_id,
             batch.token,
         )
-        _fail(batch, act.name, tally, position, this_run=this_run)
-        #: The cluster's timeout leaves here.
+        _store_failure(batch, act.name, tally, position, owner=this_run)
+        # Re-raise the cluster's timeout.
         if not isinstance(error, Exception):
             raise
 
@@ -336,12 +443,12 @@ class _Defect(Exception):
 def _one_row(
     batch: BulkBatch,
     act: BatchAct,
-    user: Any,
-    key: str,
+    user: User,
+    key: RowKey,
     tally: Tally,
 ) -> Tally:
     """Resolve one key again, then act on it."""
-    #: Re-resolved: a row gone since is lost.
+    #: A forward row gone since is lost.
     resolution = act.resolve(batch.library, uuid.UUID(key))
     log_left_alone(act.name, resolution.refused, batch.library_id, batch.token)
     tally = tally.left_alone(resolution.refused)
@@ -367,39 +474,61 @@ def _one_row(
     return tally
 
 
-def _fail(
+def _store_failure(
     batch: BulkBatch,
-    name: str,
+    name: ActKeyPrefix,
     tally: Tally,
     position: int,
     *,
-    this_run: Any = None,
+    owner: BatchRows,
+) -> None:
+    """`_fail`, surviving a broken connection once."""
+    try:
+        _fail(batch, name, tally, position, owner=owner)
+    except Exception:
+        logger.exception("[bulk]: could not store batch %s as failed", batch.token)
+        connection.close()
+        try:
+            _fail(batch, name, tally, position, owner=owner)
+        except Exception:
+            logger.exception("[bulk]: batch %s stays unended", batch.token)
+
+
+def _fail(
+    batch: BulkBatch,
+    name: ActKeyPrefix,
+    tally: Tally,
+    position: int,
+    *,
+    owner: BatchRows,
 ) -> None:
     """Store the end; name every row left."""
-    rows: list[str] = batch.rows
-    _log_unreached(name, rows[position : position + 1], batch, MET_THE_DEFECT)
-    _log_unreached(name, rows[position + 1 :], batch, ENDED_BY_A_DEFECT)
-    target = this_run if this_run is not None else BulkBatch.objects.filter(pk=batch.pk)
-    target.update(
+    ended = _store(
+        owner,
         position=position,
         state=BulkBatch.State.FAILED,
         ended_at=timezone.now(),
-        **tally.columns(),
+        **tally.reached(position).columns(),
     )
+    if not ended:
+        logger.info("[bulk]: batch %s failed after another took over", batch.token)
+        return
+    keys = batch.keys
+    _log_unreached(name, keys[position : position + 1], batch, MET_THE_DEFECT)
+    _log_unreached(name, keys[position + 1 :], batch, ENDED_BY_A_DEFECT)
 
 
-def _stop(batch: BulkBatch) -> None:
-    rows: list[str] = batch.rows
-    act = batch_act(batch)
-    _log_unreached(
-        act.name if act else batch.action,
-        rows[batch.position :],
-        batch,
-        STOPPED_BY_HAND,
+def _end_unreached(batch: BulkBatch, state: BulkBatch.State, sentence: str) -> bool:
+    """End before the next row; fences out any run."""
+    ended = _store(
+        _live(batch, chunk=batch.chunk, attempts=batch.attempts),
+        state=state,
+        ended_at=timezone.now(),
+        attempts=F("attempts") + 1,
     )
-    BulkBatch.objects.filter(pk=batch.pk, chunk=batch.chunk).exclude(
-        state__in=BulkBatch.TERMINAL
-    ).update(state=BulkBatch.State.STOPPED, ended_at=timezone.now())
+    if ended:
+        _log_unreached(_name_of(batch), batch.keys[batch.position :], batch, sentence)
+    return bool(ended)
 
 
 # ── Following ───────────────────────────────────────────────────────────────
@@ -409,14 +538,36 @@ def library_batch(library: UserLibrary, token: BatchToken) -> BulkBatch | None:
     return BulkBatch.objects.filter(library=library, token=token).first()
 
 
+def is_stale(batch: BulkBatch) -> bool:
+    """Live, yet no worker wrote lately."""
+    return not batch.is_terminal and batch.updated_at < timezone.now() - STALE_AFTER
+
+
+def end_stale(batch: BulkBatch) -> bool:
+    """Stop a batch no worker owns."""
+    if not is_stale(batch):
+        return False
+    logger.error(
+        "[bulk]: batch %s of library %s had no worker for %s; ended",
+        batch.token,
+        batch.library_id,
+        STALE_AFTER,
+    )
+    return _end_unreached(batch, BulkBatch.State.STOPPED, NO_WORKER)
+
+
 def request_stop(library: UserLibrary, token: BatchToken) -> bool:
     """Ask the runner to stop; False when absent."""
-    held = BulkBatch.objects.filter(library=library, token=token)
-    if not held.exists():
+    batch = library_batch(library, token)
+    if batch is None:
         return False
-    held.exclude(state__in=BulkBatch.TERMINAL).filter(
-        stop_requested_at__isnull=True
-    ).update(stop_requested_at=timezone.now())
+    if not end_stale(batch):
+        _store(
+            BulkBatch.objects.filter(
+                pk=batch.pk, state__in=BulkBatch.LIVE, stop_requested_at__isnull=True
+            ),
+            stop_requested_at=timezone.now(),
+        )
     return True
 
 
@@ -425,7 +576,10 @@ def announce(library: UserLibrary, token: BatchToken) -> bool:
     held = BulkBatch.objects.filter(library=library, token=token)
     if not held.exists():
         return False
-    held.filter(announced_at__isnull=True).update(announced_at=timezone.now())
+    _store(
+        held.filter(announced_at__isnull=True, ended_at__isnull=False),
+        announced_at=timezone.now(),
+    )
     return True
 
 
@@ -435,7 +589,7 @@ def visible_batches(library: UserLibrary) -> list[BulkBatch]:
     return list(
         BulkBatch.objects.filter(library=library)
         .filter(
-            ~Q(state__in=BulkBatch.TERMINAL)
+            Q(state__in=BulkBatch.LIVE)
             | Q(announced_at__isnull=True, ended_at__gte=since)
         )
         .defer("rows")
@@ -454,24 +608,23 @@ def batches_named(
     )
 
 
-type BatchState = Literal["queued", "running", "finished", "stopped", "failed"]
-
-
-class BatchToast(TypedDict):
+class BatchToast(ToastPayload):
     """The store's message, composed here."""
 
     id: str
-    message: str
-    type: ToastType
     sticky: bool
-    action: NotRequired[ToastAction]
 
 
 class BatchOut(TypedDict):
     token: str
     state: BatchState
+    terminal: bool
     origin: str
     toast: BatchToast
+
+
+def is_batch_state(word: str) -> TypeIs[BatchState]:
+    return word in BATCH_STATES
 
 
 def _title(batch: BulkBatch) -> str:
@@ -487,7 +640,7 @@ def _stop_action(batch: BulkBatch) -> ToastAction:
 
 
 def _undo_action(batch: BulkBatch) -> ToastAction | None:
-    """Where something moved; never an Undo."""
+    """Where rows moved; an Undo's own has none."""
     if batch.undoes is not None or not batch.done or bulk_action(batch.action) is None:
         return None
     return Undo(reverse("games:undo_bulk_action", args=[batch.token]))
@@ -504,15 +657,22 @@ def batch_toast(batch: BulkBatch) -> BatchToast:
     title = _title(batch)
     reasons = "".join(f" {reason}" for reason in tally.reasons)
     action: ToastAction | None
+    kind: ToastType = "info"
     if not batch.is_terminal:
         stopping = batch.stop_requested_at is not None
-        if stopping:
+        if is_stale(batch):
+            kind = "warning"
+            said = (
+                "not running; the background worker may be down "
+                f"(error {error_id(batch.token)}). {tally.sentence()}"
+            )
+            stopping = False
+        elif stopping:
             said = f"stopping. {tally.sentence()}"
         elif batch.state == BulkBatch.State.QUEUED:
             said = f"waiting to start. {tally.sentence()}"
         else:
             said = tally.sentence()
-        kind: ToastType = "info"
         action = None if stopping else _stop_action(batch)
     else:
         ended = tally.sentence(ended=True)
@@ -524,13 +684,12 @@ def batch_toast(batch: BulkBatch) -> BatchToast:
                 f"(error {error_id(batch.token)}). {ended}"
             )
         elif batch.state == BulkBatch.State.STOPPED:
-            kind = "info"
             said = f"stopped. {ended}"
         else:
             kind = "success" if batch.done else "info"
             said = ended
     toast = BatchToast(
-        id=f"bulk-batch:{batch.token}",
+        id=f"{TOAST_ID_PREFIX}{batch.token}",
         message=f"{title}: {said}{reasons}",
         type=kind,
         sticky=not batch.is_terminal or action is not None,
@@ -541,9 +700,12 @@ def batch_toast(batch: BulkBatch) -> BatchToast:
 
 
 def batch_out(batch: BulkBatch) -> BatchOut:
+    if not is_batch_state(batch.state):
+        raise ValueError(f"batch {batch.token} holds state {batch.state!r}")
     return BatchOut(
         token=str(batch.token),
-        state=batch.state,  # type: ignore[typeddict-item]
+        state=batch.state,
+        terminal=batch.is_terminal,
         origin=batch.origin,
         toast=batch_toast(batch),
     )

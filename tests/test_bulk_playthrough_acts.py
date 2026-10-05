@@ -464,7 +464,7 @@ def test_a_restated_endpoint_refuses_the_undo(
 
 
 def test_a_stream_with_no_creation_ends_the_undo_before_the_void(
-    client_in, owned_library
+    client_in, owned_library, failing_batches
 ):
     """A projection row written by hand has no stream behind it."""
     game = Game.objects.create(library=owned_library, name="Written by hand")
