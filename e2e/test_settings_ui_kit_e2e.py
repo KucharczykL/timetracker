@@ -13,7 +13,7 @@ from django.middleware.csrf import get_token
 from django.test import override_settings
 from django.urls import path
 from django.views.decorators.http import require_http_methods
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Page, expect
 
 from common.components import (
     Badge,
@@ -656,27 +656,6 @@ def test_open_mobile_sheet_resizes_to_the_same_desktop_rail(live_server, page: P
         })"""
     )
     assert styles_after == styles_before
-
-
-@override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
-def test_section_links_remain_usable_without_javascript(live_server, browser: Browser):
-    context = browser.new_context(
-        java_script_enabled=False,
-        viewport={"width": 390, "height": 600},
-    )
-    try:
-        page = context.new_page()
-        page.goto(f"{live_server.url}/settings-kit-test/")
-
-        rail = page.locator("[data-section-nav-rail]")
-        links = rail.locator("[data-section-nav-item] a")
-        expect(rail).to_be_visible()
-        expect(links).to_have_count(5)
-        expect(page.locator("[data-section-nav-sheet]")).to_be_hidden()
-        links.filter(has_text="Infrastructure").click()
-        expect(page).to_have_url(f"{live_server.url}/settings-kit-test/#infrastructure")
-    finally:
-        context.close()
 
 
 @override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")

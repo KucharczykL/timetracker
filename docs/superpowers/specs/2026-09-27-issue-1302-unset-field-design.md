@@ -53,7 +53,7 @@ event. A press that finds no control keeps the box checked. After five
 seconds, the element reports and uses the native path. Failures go to
 `reportClientError`.
 
-Without scripting, `:defined` variants show the checkbox in place of the
+Before upgrade, `:defined` variants show the checkbox in place of the
 toggle.
 
 ## The form

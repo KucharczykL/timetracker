@@ -1040,8 +1040,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, native controls for date at any
   precision: shape select, then four number inputs and qualifier pair per
-  endpoint. Whole value round-trips with scripting off; `<temporal-field>` (#965)
-  only enhances it, hiding number inputs for segmented date, whole-decade box,
+  endpoint. `<temporal-field>` (#965) enhances it, hiding number inputs for segmented date, whole-decade box,
   open-start box, three-way end-shape radio group, and disclosure that closes as
   well as opens. Precision never picked from menu; derived from which parts
   person filled.
@@ -1049,7 +1048,7 @@ Submodules re-exported via `common/components/__init__.py`:
   (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in
   `games/forms.py` reads back. Its Release rows render outside `FormFields`,
   so Add Game and Edit Game (`games/views/game.py`), which host the same
-  Editions area, thread `scripts=ModuleScript("dist/elements/temporal-field.js")`. Grammar, wire and no-script contract in
+  Editions area, thread `scripts=ModuleScript("dist/elements/temporal-field.js")`. Grammar and wire contract in
   [Temporal](docs/temporal.md)
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired
@@ -1568,7 +1567,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   Icon+text layout (`inline-flex items-center gap-2`) baked in. A raw `Button`
   outside `ControlButton` and the allow list in `tests/test_button_guard.py`
   fails that test. Never wrap button in `A(href=…)` —
-  pass `href=` to `ControlButton`; `method="post"` renders no-JS `<form>` submit.
+  pass `href=` to `ControlButton`; `method="post"` renders a `<form>` submit.
 - **Every dropdown panel is `DropdownPanel`** (`custom_elements.py`): a still
   overlay surface around one `[data-menu-scroll]` scroller, so the dark-mode
   blur never scrolls away and attachMenu's `max-height` shrinks the scroller.

@@ -1280,7 +1280,7 @@ def ButtonGroup(
 
     Each member dict accepts: slot (required), href, color, title, aria_label,
     and — for a state-changing member — method ("post"), action (URL),
-    csrf_token. A ``method="post"`` member renders as a no-JS
+    csrf_token. A ``method="post"`` member renders as a
     ``<form>`` submit button instead of a link; a member with
     ``button_attributes`` renders as a bare ``<button type="button">`` carrying
     those attributes (a JS-driven action with no navigation). A member with
@@ -3072,12 +3072,9 @@ _SelectionActionsElement = custom_element_builder("selection-actions")
 # safelist before declaring a table that wide; the widest today has nine.
 MAX_DATA_TABLE_COLUMNS = 12
 
-# No-JS fallback for the data-table column drop: while <responsive-table> is
-# not defined (JS off or failed to load), middle columns hide below md exactly
-# as they always have. The selector stops matching the instant the element
-# upgrades, and the element applies its first measured decision synchronously
-# inside that same upgrade — the CSS rule and the element's decision are never
-# active together, with no frame between them.
+# Before <responsive-table> upgrades, middle columns hide below md.
+# The rule stops matching in the same upgrade that applies the element's
+# first decision, so the two never overlap.
 _FALLBACK_HIDE_HEADER_CLASS = (
     "max-md:[responsive-table:not(:defined)_&_th:not(:first-child)"
     ":not(:last-child)]:hidden"
@@ -3209,7 +3206,7 @@ def PageSizeSelect(request, current: int) -> Node:
     )
 
 
-# No scripting, no checkboxes, no line.
+# Before upgrade: no checkboxes, no line.
 _UNDEFINED_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
 
 # Sticky while shown, under the menus.

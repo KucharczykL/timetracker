@@ -249,7 +249,7 @@ def test_scroll_region_is_reachable_and_named(
     """The region's accessibility contract with the app fully running. With
     <responsive-table> active the table rarely overflows — columns drop
     instead — so the actually-scrolls proof lives in
-    test_responsive_table_e2e.py's no-JS test, where the overflow is real."""
+    test_pinned_column_e2e.py, before upgrade."""
     page = authenticated_page
     page.set_viewport_size({"width": 1024, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")

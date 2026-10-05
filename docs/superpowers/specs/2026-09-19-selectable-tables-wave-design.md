@@ -102,9 +102,8 @@ These rules cross the issues. No single spec owns them.
 - **A gated act is absent, never disabled.**
 - **A reader an act needs lives in `games/reads/`.** An act module
   imports no sibling act. The act table imports every act at its foot.
-- **Selection needs scripting.** The server renders no checkbox and no
-  tray. With scripting off a page shows a plain table with no row act.
-  That cost is accepted. #1258 answers it with a page per row.
+- **Selection is the element's.** The server renders no checkbox and no
+  tray.
 - **A list column has a key.** A label is not one. `hideable=False`
   marks the column nobody may turn off. `hidden_by_default` marks the
   column that starts off.
