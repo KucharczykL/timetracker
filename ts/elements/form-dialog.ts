@@ -641,13 +641,8 @@ export class FormDialogElement extends HTMLElement {
     const { target, messages, opener } = this.reload;
     this.reload = noReload();
     this.stale = false;
-    if (!isReadOnlyHost()) {
-      // A form host keeps the person's input.
-      showToasts(messages);
-      return;
-    }
-    if (!handOffMessages(messages)) {
-      // Unstorable: show them; the page stays stale.
+    // Form host, or storage refused: show here.
+    if (!isReadOnlyHost() || !handOffMessages(messages)) {
       showToasts(messages);
       return;
     }
