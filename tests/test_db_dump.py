@@ -407,7 +407,20 @@ def test_restore_loads_each_section_with_the_documented_flags(
     assert commands[2] == _section_command(url, dump, "pre-data")
     assert commands[4] == _section_command(url, dump, "data")
     assert commands[5] == _section_command(url, dump, "post-data")
-    assert len(commands) == 6
+    assert len(commands) == 7
+
+
+def test_restore_analyzes_the_copy_last(tooling, monkeypatch, tmp_path):
+    """The dump carries no planner statistics."""
+    commands, url = _recorded_restore(tooling, monkeypatch, tmp_path)
+
+    assert commands[6] == [
+        "/tools/psql",
+        "-X",
+        "--set=ON_ERROR_STOP=1",
+        f"--dbname={url}",
+        "--command=ANALYZE",
+    ]
 
 
 def test_the_repair_runs_between_the_schema_and_the_data(

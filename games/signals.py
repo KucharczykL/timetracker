@@ -8,6 +8,8 @@ from django.db.models.signals import (
     pre_delete,
 )
 from django.dispatch import receiver
+from django_q.conf import Conf
+from django_q.signals import post_spawn
 
 from games.models import (
     Device,
@@ -22,6 +24,7 @@ from games.models import (
     UserPreferences,
 )
 from games.retention import refuse_to_delete_a_referenced_row
+from timetracker.database import limit_statements
 from timetracker.settings_resolver import clear_cache as clear_settings_cache
 
 logger = logging.getLogger("games")
@@ -68,3 +71,9 @@ def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
     Here, not in the views, so every call path is held to it.
     """
     refuse_to_delete_a_referenced_row(instance)
+
+
+@receiver(post_spawn)
+def limit_task_statements(sender, **kwargs):
+    """A task's statements end at the cluster's timeout."""
+    limit_statements(Conf.TIMEOUT or 0)

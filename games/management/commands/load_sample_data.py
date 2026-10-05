@@ -30,6 +30,7 @@ from games.external_references import backfill_wikidata_references
 from games.models import (
     Edition,
     ExchangeRate,
+    ExternalReference,
     FilterPreset,
     Game,
     LibraryEvent,
@@ -39,7 +40,8 @@ from games.models import (
     PurchaseConversionState,
     Release,
 )
-from games.projections import FieldName
+from games.planner_statistics import analyze_tables
+from games.projections import FieldName, projection_models
 from games.reads.purchases import stale_purchases
 
 #: dumpdata's spelling: `_meta.label_lower`.
@@ -61,6 +63,18 @@ LOADABLE_MODELS: dict[FixtureLabel, type[Model]] = {
     "games.edition": Edition,
     "games.release": Release,
 }
+
+
+def loaded_tables() -> tuple[type[Model], ...]:
+    """Every table the load writes."""
+    return (
+        *LOADABLE_MODELS.values(),
+        Platform,
+        ExchangeRate,
+        ExternalReference,
+        PurchaseConversionState,
+        *projection_models(),
+    )
 
 
 class FixtureRelationship(NamedTuple):
@@ -195,6 +209,8 @@ class Command(BaseCommand):
                     "Sample fixture references could not be written: "
                     f"{refusal.messages[0]}"
                 ) from refusal
+            #: Before the commit queues the task.
+            analyze_tables(loaded_tables())
 
         if backfilled.taken:
             self.stdout.write(

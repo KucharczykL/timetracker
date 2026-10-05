@@ -2,10 +2,12 @@
 
 import logging
 import os
+import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from threading import Lock
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
@@ -16,7 +18,28 @@ from timetracker.postgres_contract import (
     observe_valid_postgres_connection,
 )
 
+if TYPE_CHECKING:
+    from django.db.backends.base.base import BaseDatabaseWrapper
+
 CLOCK_SKEW_TOLERANCE_MS = 1_000
+
+type Seconds = int
+#: libpq's `options`, e.g. "-c search_path=public".
+type LibpqOptions = str
+type ServerSetting = str  # e.g. "statement_timeout"
+
+
+class DatabaseSettings(TypedDict):
+    ENGINE: str
+    NAME: str
+    USER: str
+    PASSWORD: str
+    HOST: str
+    PORT: int | str
+    OPTIONS: dict[str, str]
+    DISABLE_SERVER_SIDE_CURSORS: NotRequired[bool]
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,7 +95,7 @@ def _invalid_database_url(detail: str) -> ImproperlyConfigured:
     )
 
 
-def database_settings_from_url(url: str) -> dict[str, object]:
+def database_settings_from_url(url: str) -> DatabaseSettings:
     """Translate one PostgreSQL URL into Django's database settings mapping."""
     try:
         parsed = urlsplit(url)
@@ -91,7 +114,7 @@ def database_settings_from_url(url: str) -> dict[str, object]:
         raise _invalid_database_url("exactly one database name is required")
 
     options: Mapping[str, str] = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    settings: dict[str, object] = {
+    settings: DatabaseSettings = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": database_name,
         "USER": unquote(parsed.username or ""),
@@ -103,7 +126,7 @@ def database_settings_from_url(url: str) -> dict[str, object]:
     return settings
 
 
-def required_database_settings() -> dict[str, object]:
+def required_database_settings() -> DatabaseSettings:
     """Read the required deployment database URL with a useful boot error."""
     try:
         if os.environ.get("TIMETRACKER_MANAGED_DATABASE_URL") == "1":
@@ -123,7 +146,43 @@ def required_database_settings() -> dict[str, object]:
     settings["DISABLE_SERVER_SIDE_CURSORS"] = config(
         "DISABLE_SERVER_SIDE_CURSORS", default=False, cast=bool
     )
+    interval = seconds_setting(
+        "DATABASE_CLIENT_CONNECTION_CHECK_INTERVAL",
+        default=default_client_check_seconds(sys.platform),
+    )
+    if interval:
+        options = settings["OPTIONS"]
+        options["options"] = with_server_option(
+            options.get("options", ""),
+            "client_connection_check_interval",
+            f"{interval}s",
+        )
     return settings
+
+
+def default_client_check_seconds(platform: str) -> Seconds:
+    """Django on Windows likely means a Windows server.
+
+    A Windows server refuses a nonzero interval.
+    """
+    return 0 if platform == "win32" else 10
+
+
+def seconds_setting(name: str, *, default: Seconds) -> Seconds:
+    """A whole number of seconds, 0 or more."""
+    raw = str(config(name, default=str(default)))
+    if not raw.strip().isdecimal():
+        raise ImproperlyConfigured(
+            f"{name} must be a whole number of seconds, 0 or more; got {raw!r}."
+        )
+    return int(raw)
+
+
+def with_server_option(
+    options: LibpqOptions, name: ServerSetting, value: str
+) -> LibpqOptions:
+    """Append `-c name=value` after the URL's options."""
+    return f"{options} -c {name}={value}".strip()
 
 
 def validate_default_connection(
@@ -157,4 +216,33 @@ def validate_default_connection(
             measurement.estimated_skew_ms,
             measurement.round_trip_ms,
             CLOCK_SKEW_TOLERANCE_MS,
+        )
+
+
+class _ProcessStatements:
+    """The statement limit this process states."""
+
+    timeout_seconds: Seconds = 0
+
+
+def limit_statements(seconds: Seconds) -> None:
+    """Limit every later connection's statements; 0 lifts it."""
+    _ProcessStatements.timeout_seconds = seconds
+
+
+def limit_request_statements() -> None:
+    """Mark this process as serving requests."""
+    limit_statements(seconds_setting("REQUEST_STATEMENT_TIMEOUT", default=30))
+
+
+def apply_statement_limit(
+    *, sender: object, connection: BaseDatabaseWrapper, **_: object
+) -> None:
+    """Set this process's statement limit, if any."""
+    seconds = _ProcessStatements.timeout_seconds
+    if not seconds:
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('statement_timeout', %s, false)", [f"{seconds}s"]
         )

@@ -3,8 +3,9 @@
 import importlib
 import pkgutil
 
+import psycopg
 import pytest
-from django.db import DataError, IntegrityError
+from django.db import DataError, IntegrityError, OperationalError
 from django.http import Http404
 
 from games.events.append import StreamSequenceMismatch
@@ -26,6 +27,8 @@ from games.writes.answers import (
     REFUSED,
     REFUSED_BY_AN_UNREADABLE_ROW,
     REFUSED_BY_DATABASE,
+    TIMED_OUT,
+    TIMED_OUT_STATUS,
     CommandFailed,
     WriteAnswer,
     answer_for,
@@ -72,6 +75,7 @@ def test_every_sentence_interpolates_and_leaves_no_brace():
         REFUSED,
         REFUSED_BY_DATABASE,
         REFUSED_BY_AN_UNREADABLE_ROW,
+        TIMED_OUT,
     ]:
         rendered = sentence.format(subject="probe")
         assert "{" not in rendered and "}" not in rendered
@@ -249,6 +253,16 @@ def test_a_database_refusal_becomes_an_answer(refusal):
 
     assert failure.value.status_code == DEFECT_STATUS
     assert failure.value.message == REFUSED_BY_DATABASE.format(subject="session")
+
+
+def test_a_statement_timeout_is_answered_as_one():
+    """Not a constraint: the process's statement limit."""
+    cancel = psycopg.errors.QueryCanceled("canceling statement due to timeout")
+    with pytest.raises(CommandFailed) as failure, answered("session"):
+        raise OperationalError(str(cancel)) from cancel
+
+    assert failure.value.status_code == TIMED_OUT_STATUS
+    assert failure.value.message == TIMED_OUT.format(subject="session")
 
 
 def test_a_database_refusal_says_nothing_of_the_schema():

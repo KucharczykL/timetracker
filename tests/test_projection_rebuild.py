@@ -1305,6 +1305,18 @@ def test_the_command_rebuilds_and_says_it_swapped(owned_library):
 
 
 @pytest.mark.django_db
+def test_only_a_rebuild_analyzes_the_projection_tables(owned_library, monkeypatch):
+    analyzed: list[object] = []
+    monkeypatch.setattr(rebuild_command, "analyze_tables", analyzed.append)
+
+    run_command("--library", str(owned_library.pk), "--check")
+    assert analyzed == []
+
+    run_command("--library", str(owned_library.pk))
+    assert analyzed == [projection_models()]
+
+
+@pytest.mark.django_db
 def test_the_command_prints_a_line_per_table(owned_library, monkeypatch):
     monkeypatch.setattr(
         rebuild_command, "rebuild_projections", reports(canned_report())

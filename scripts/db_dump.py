@@ -332,6 +332,19 @@ def _reach_the_helpers(scratch_url: str) -> None:
     )
 
 
+def _state_statistics(scratch_url: str) -> None:
+    """`pg_dump` 18 omits planner statistics by default."""
+    run(
+        [
+            str(client_tool("psql")),
+            "-X",
+            "--set=ON_ERROR_STOP=1",
+            f"--dbname={scratch_url}",
+            "--command=ANALYZE",
+        ]
+    )
+
+
 def restore(dump: Path, *, database: str, database_url: str) -> str:
     """Load `dump` into a freshly created scratch database, and return its URL."""
     if not dump.is_file():
@@ -360,6 +373,7 @@ def restore(dump: Path, *, database: str, database_url: str) -> str:
     _reach_the_helpers(scratch_url)
     for section in DUMP_SECTIONS[1:]:
         _load_section(dump, scratch_url=scratch_url, section=section)
+    _state_statistics(scratch_url)
     return scratch_url
 
 
