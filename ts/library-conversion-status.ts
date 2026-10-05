@@ -1,5 +1,3 @@
-import { SWAPPED } from "./elements/form-dialog/events.js";
-
 type ConversionStatus = "pending" | "running" | "failed" | "complete";
 type ConversionPhase = "running" | "retry" | "failure";
 
@@ -178,14 +176,9 @@ export class LibraryConversionCoordinator {
   }
 }
 
-let coordinator: LibraryConversionCoordinator | null = null;
-
 function startCoordinator(): void {
-  coordinator?.destroy();
-  coordinator = new LibraryConversionCoordinator();
+  new LibraryConversionCoordinator();
 }
-// A swap brings a new state.
-document.addEventListener(SWAPPED, startCoordinator);
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", startCoordinator, { once: true });
 } else {

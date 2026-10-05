@@ -3,12 +3,14 @@
 import uuid
 
 import pytest
+from devices import create_device
 from django.contrib import messages
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.test import Client, RequestFactory
 from django.urls import URLPattern, URLResolver, get_resolver, reverse
+from tracked_games import create_tracked_game
 
 from common.form_dialog import FORM_DIALOG_HEADER
 from common.returns import action_url
@@ -16,8 +18,6 @@ from games.form_dialog_middleware import FormDialogResultMiddleware, dialog_resu
 from games.models import Device
 from games.toast_middleware import EVENTS_HEADER, ToastMessagesMiddleware
 from games.views.returns import READ_ONLY
-from tests.devices import create_device
-from tests.tracked_games import create_tracked_game
 
 DIALOG_HEADERS = {FORM_DIALOG_HEADER: "1", "Accept": "application/json"}
 SERVER = "http://testserver"

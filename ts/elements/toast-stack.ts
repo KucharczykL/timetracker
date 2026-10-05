@@ -2,7 +2,7 @@
 import { reportClientError } from "../client-errors.js";
 import { getCsrfToken } from "../csrf.js";
 import { readToastStackProps } from "../generated/props.js";
-import { takeHandedOffMessages } from "../toast-handoff.js";
+import { takeHandedOffMessages } from "../handoff.js";
 import { MODAL_CHANGE, topModal } from "./modal-layer.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;

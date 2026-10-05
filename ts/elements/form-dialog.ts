@@ -3,20 +3,21 @@ import { reportClientError } from "../client-errors.js";
 import {
   FORM_DIALOG_ATTRIBUTE,
   FORM_DIALOG_CHROME_BY_MARKER,
+  FORM_DIALOG_HEADER,
   FORM_DIALOG_PARTS,
   type FormDialogChrome,
 } from "../generated/form-dialog.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
-import { handOffMessages } from "../toast-handoff.js";
 import {
-  type Answer,
-  type AnswerPage,
-  type Messages,
-  normalizedUrl,
-  readAnswer,
-  sameUrl,
-} from "./form-dialog/answer.js";
+  handOffMessages,
+  handOffOpener,
+  type OpenerKey,
+  takeHandedOffOpener,
+} from "../handoff.js";
+import { type Answer, type Messages, type Page, readAnswer, sameUrl } from "./form-dialog/answer.js";
+import { PAGE_STALE } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
+import { focusOpener, openerKey } from "./form-dialog/opener.js";
 import {
   type IdPrefix,
   importModules,
@@ -24,14 +25,7 @@ import {
   prefixIds,
   resolveUrls,
 } from "./form-dialog/rewrite.js";
-import {
-  assertNever,
-  routeMessages,
-  routeOpen,
-  routeSubmit,
-  type SubmitContext,
-} from "./form-dialog/routes.js";
-import { type OpenerKey, openerKey, refocusAfterSwap, swapHostPage } from "./form-dialog/swap.js";
+import { assertNever, routeOpen, routeSubmit } from "./form-dialog/routes.js";
 import {
   attachModal,
   isModalOpen,
@@ -40,7 +34,6 @@ import {
   openModals,
   topModal,
 } from "./modal-layer.js";
-import type { ToastMessage } from "./toast-stack.js";
 
 interface OpenDialog {
   readonly dialog: HTMLDialogElement;
@@ -53,14 +46,14 @@ interface OpenDialog {
   /** The presented page's URL. */
   url: URL;
   submitting: boolean;
-  /** A saved answer to swap in on close. */
-  pendingSwap: AnswerPage | null;
 }
 
-/** What the host refresh needs. */
-interface Refresh {
-  readonly swap: AnswerPage | null;
-  readonly opener: OpenerKey | null;
+/** What the next reload carries. */
+interface Reload {
+  /** Null: the host page itself. */
+  target: URL | null;
+  messages: Messages;
+  opener: OpenerKey | null;
 }
 
 /** What a POST sends. */
@@ -71,6 +64,8 @@ interface FormRequest {
 
 /** Past this, a load gives up. */
 const LOAD_TIMEOUT_MS = 15_000;
+/** A longer `continue` chain is a loop. */
+const CONTINUE_LIMIT = 5;
 
 const TABBABLE = [
   "a[href]",
@@ -81,8 +76,7 @@ const TABBABLE = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-/** Lives on the dialog, outside its body. */
-const TOAST_ACTION_FORM = "form[data-toast-action]";
+const CSRF_INPUT = "input[name=csrfmiddlewaretoken]";
 
 function csrfCookie(): string {
   return document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? "";
@@ -98,8 +92,7 @@ function report(detail: string): string {
 }
 
 function errorToast(message: string): void {
-  const toast: ToastMessage = { message, type: "error" };
-  showToasts([toast]);
+  showToasts([{ message, type: "error" }]);
 }
 
 function isPlainPrimaryClick(event: MouseEvent): boolean {
@@ -156,29 +149,38 @@ function deadlineAfter(milliseconds: number): AbortSignal {
   return controller.signal;
 }
 
+function focusedOpener(): OpenerKey | null {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active !== document.body ? openerKey(active) : null;
+}
+
 export class FormDialogElement extends HTMLElement {
   /** Swapped in by tests. */
   loadModule?: ModuleLoader;
   private readonly stack: OpenDialog[] = [];
   /** Something wrote; the host is stale. */
   private stale = false;
+  private reload: Reload = { target: null, messages: [], opener: null };
+  private reloadWaiting = false;
   /** The link whose page is loading. */
   private opening: HTMLAnchorElement | null = null;
-  private readonly undoing = new Set<HTMLFormElement>();
-  /** Waiting for the covering modal to close. */
-  private pendingRefresh: Refresh | null = null;
   private presentations = 0;
-  private csrfAtLoad = "";
+  /** The token every form holds. */
+  private csrfInForms = "";
 
   connectedCallback(): void {
-    this.csrfAtLoad = csrfCookie();
+    this.csrfInForms = csrfCookie();
     document.addEventListener("click", this.onClick);
     document.addEventListener("submit", this.onSubmit);
+    document.addEventListener(PAGE_STALE, this.onPageStale);
+    const opener = takeHandedOffOpener();
+    if (opener) focusOpener(opener);
   }
 
   disconnectedCallback(): void {
     document.removeEventListener("click", this.onClick);
     document.removeEventListener("submit", this.onSubmit);
+    document.removeEventListener(PAGE_STALE, this.onPageStale);
     window.removeEventListener(MODAL_CHANGE, this.onModalChange);
   }
 
@@ -219,38 +221,45 @@ export class FormDialogElement extends HTMLElement {
     ).toLowerCase();
     if (method !== "post") return;
     const entry = this.entryHolding(form);
-    if (entry) {
-      event.preventDefault();
-      void this.submit(entry, form, submitter);
-    } else if (this.stack.length > 0 && form.matches(TOAST_ACTION_FORM)) {
-      event.preventDefault();
-      void this.submitUndo(form);
-    }
+    if (!entry) return;
+    event.preventDefault();
+    void this.submit(entry, form, submitter);
+  };
+
+  private readonly onPageStale = (): void => {
+    this.stale = true;
+    this.reload.opener ??= focusedOpener();
+    this.requestReload();
   };
 
   private entryHolding(node: Node): OpenDialog | undefined {
     return this.stack.find((entry) => entry.body.contains(node));
   }
 
-  private submitContext(entry: OpenDialog): SubmitContext {
+  private alone(entry: OpenDialog): boolean {
     const open = openModals();
-    return {
-      hostUrl: normalizedUrl(location.href),
-      alone: open.length === 1 && open[0] === entry.dialog,
-    };
+    return open.length === 1 && open[0] === entry.dialog;
+  }
+
+  /** A sign-in rotated it; every form follows. */
+  private rewriteCsrf(): void {
+    const cookie = csrfCookie();
+    if (!cookie || cookie === this.csrfInForms) return;
+    for (const input of document.querySelectorAll<HTMLInputElement>(CSRF_INPUT)) {
+      input.value = cookie;
+    }
+    this.csrfInForms = cookie;
   }
 
   private async fetchAnswer(url: URL, init: RequestInit = {}): Promise<Answer> {
     const response = await fetch(url, {
       credentials: "same-origin",
       ...init,
-      headers: { Accept: "text/html" },
+      headers: { [FORM_DIALOG_HEADER]: "1", Accept: "application/json" },
     });
-    return readAnswer(response, url);
-  }
-
-  private postRequest(request: FormRequest, signal?: AbortSignal): Promise<Answer> {
-    return this.fetchAnswer(request.url, { method: "POST", body: request.body, signal });
+    const answer = await readAnswer(response, url);
+    this.rewriteCsrf();
+    return answer;
   }
 
   private async openFrom(link: HTMLAnchorElement): Promise<void> {
@@ -267,28 +276,30 @@ export class FormDialogElement extends HTMLElement {
         browser.assign(url.href);
         return;
       }
-      const answer = await this.fetchAnswer(url, { signal: deadline });
-      const route = routeOpen(answer, normalizedUrl(location.href));
+      let route = routeOpen(await this.fetchAnswer(url, { signal: deadline }));
+      for (let step = 1; route.kind === "continue"; step += 1) {
+        if (step > CONTINUE_LIMIT) {
+          report(`open of ${url.href} looped`);
+          route = { kind: "follow" };
+          break;
+        }
+        route = routeOpen(await this.fetchAnswer(route.url, { signal: deadline }));
+      }
       if (topModal() !== topAtClick) {
-        // Another modal took over; show the answer's messages.
-        if (route.kind === "follow") report(`a modal overtook the link to ${url.href}`);
-        showToasts(routeMessages(route));
+        // Another modal took over.
+        report(`a modal overtook the link to ${url.href}`);
         return;
       }
       switch (route.kind) {
         case "toast":
           showToasts(route.messages);
           return;
-        case "navigate":
-          handOffMessages(route.messages, route.url);
-          browser.assign(route.url.href);
-          return;
         case "follow":
           browser.assign(url.href);
           return;
         case "present":
-          if (!(await this.openDialog(route.page, answer.url, link, chrome, deadline))) {
-            handOffMessages(route.page.messages, url);
+          if (!(await this.openDialog(route.page, route.url, link, chrome, deadline))) {
+            handOffMessages(route.page.messages);
             browser.assign(url.href);
           }
           return;
@@ -306,11 +317,11 @@ export class FormDialogElement extends HTMLElement {
 
   /** False when the dialog could not open. */
   private async openDialog(
-    page: AnswerPage,
+    page: Page,
     url: URL,
-    opener: HTMLElement | null,
+    opener: HTMLElement,
     chrome: FormDialogChrome,
-    deadline?: AbortSignal,
+    deadline: AbortSignal,
   ): Promise<boolean> {
     const template = this.querySelector<HTMLTemplateElement>(
       `template[${FORM_DIALOG_PARTS.template}]`,
@@ -343,19 +354,18 @@ export class FormDialogElement extends HTMLElement {
       dialog,
       body,
       chrome,
-      opener: opener ? openerKey(opener) : null,
+      opener: openerKey(opener),
       modal,
       controller: new AbortController(),
       url,
       submitting: false,
-      pendingSwap: null,
     };
     // Registered first: content may submit on connect.
     this.stack.push(entry);
     try {
       this.fill(entry, page, url);
       this.append(dialog);
-      if (!modal.open(opener ?? undefined)) throw new Error("the layer refused to open");
+      if (!modal.open(opener)) throw new Error("the layer refused to open");
     } catch (error) {
       this.stack.splice(this.stack.indexOf(entry), 1);
       dialog.remove();
@@ -372,7 +382,7 @@ export class FormDialogElement extends HTMLElement {
   }
 
   /** False, reported, when the page cannot be fitted. */
-  private async prepare(page: AnswerPage, url: URL, deadline?: AbortSignal): Promise<boolean> {
+  private async prepare(page: Page, url: URL, deadline?: AbortSignal): Promise<boolean> {
     try {
       await raceAbort(importModules(page.modules, this.loadModule), deadline);
       prefixIds(page.content, this.nextPrefix());
@@ -384,7 +394,7 @@ export class FormDialogElement extends HTMLElement {
     }
   }
 
-  private fill(entry: OpenDialog, page: AnswerPage, url: URL): void {
+  private fill(entry: OpenDialog, page: Page, url: URL): void {
     if (entry.chrome === "header") {
       // The header states the title.
       page.content.querySelector("h1")?.remove();
@@ -397,7 +407,7 @@ export class FormDialogElement extends HTMLElement {
     entry.url = url;
   }
 
-  private async present(entry: OpenDialog, page: AnswerPage, url: URL): Promise<void> {
+  private async present(entry: OpenDialog, page: Page, url: URL): Promise<void> {
     if (!(await this.prepare(page, url))) {
       // The person's input stays on screen.
       showToasts(page.messages);
@@ -428,26 +438,33 @@ export class FormDialogElement extends HTMLElement {
     submitter: HTMLElement | null,
   ): Promise<void> {
     if (entry.submitting) return;
+    this.rewriteCsrf();
     const request = this.buildRequest(form, submitter);
     if (!request) return;
     entry.submitting = true;
     form.setAttribute("aria-busy", "true");
     entry.body.setAttribute("aria-busy", "true");
+    const signal = entry.controller.signal;
     try {
       let answer: Answer;
       try {
-        answer = await this.postRequest(request, entry.controller.signal);
+        answer = await this.fetchAnswer(request.url, {
+          method: "POST",
+          body: request.body,
+          signal,
+        });
       } catch (error) {
         // The close already counted it as a write.
-        if (entry.controller.signal.aborted) return;
+        if (signal.aborted) return;
         this.unconfirmed(`submit failed: ${String(error)}`);
         return;
       }
-      if (answer.redirected) this.stale = true;
+      if (answer.kind === "done" || answer.kind === "continue") this.stale = true;
       try {
-        await this.routeSubmitAnswer(entry, answer);
+        await this.routeSubmitAnswer(entry, answer, signal);
       } catch (error) {
-        this.answerBroke(answer, `routing the answer failed: ${String(error)}`);
+        if (signal.aborted) return;
+        this.unconfirmed(`routing the answer failed: ${String(error)}`);
       }
     } finally {
       entry.submitting = false;
@@ -456,29 +473,41 @@ export class FormDialogElement extends HTMLElement {
     }
   }
 
-  private async routeSubmitAnswer(entry: OpenDialog, answer: Answer): Promise<void> {
-    const route = routeSubmit(answer, this.submitContext(entry));
-    switch (route.kind) {
-      case "present":
-        await this.present(entry, route.page, answer.url);
-        return;
-      case "error":
-        this.refused(route.status);
-        return;
-      case "swap":
-        entry.pendingSwap = route.page;
-        entry.modal.close();
-        return;
-      case "navigate":
-        handOffMessages(route.messages, route.url);
-        browser.assign(route.url.href);
-        return;
-      case "closeTop":
-        entry.modal.close();
-        showToasts(route.messages);
-        return;
-      default:
-        assertNever(route);
+  private async routeSubmitAnswer(
+    entry: OpenDialog,
+    first: Answer,
+    signal: AbortSignal,
+  ): Promise<void> {
+    let answer = first;
+    for (let step = 0; ; step += 1) {
+      const route = routeSubmit(answer, this.alone(entry));
+      switch (route.kind) {
+        case "present":
+          await this.present(entry, route.page, route.url);
+          return;
+        case "continue":
+          if (step >= CONTINUE_LIMIT) {
+            const id = report(`a submit looped at ${route.url.href}`);
+            errorToast(`The answer kept moving. Reload the page to check (error ${id}).`);
+            return;
+          }
+          answer = await this.fetchAnswer(route.url, { signal });
+          continue;
+        case "close":
+          this.reload.target = route.target;
+          this.reload.messages = [...this.reload.messages, ...route.messages];
+          entry.modal.close();
+          return;
+        case "closeTop":
+          entry.modal.close();
+          showToasts(route.messages);
+          return;
+        case "error":
+          this.refused(route.status);
+          return;
+        default:
+          assertNever(route);
+      }
     }
   }
 
@@ -489,15 +518,6 @@ export class FormDialogElement extends HTMLElement {
     errorToast(`The save could not be confirmed. Close this to see the current page (error ${id}).`);
   }
 
-  /** The server answered; showing it failed. */
-  private answerBroke(answer: Answer, detail: string): void {
-    if (answer.redirected) {
-      this.unconfirmed(detail);
-    } else {
-      this.unshown(detail);
-    }
-  }
-
   /** An answer arrived that cannot be shown. */
   private unshown(detail: string): void {
     const id = report(detail);
@@ -505,7 +525,7 @@ export class FormDialogElement extends HTMLElement {
   }
 
   private refused(status: number): void {
-    const id = report(`the answer had no page (status ${status})`);
+    const id = report(`the answer had no kind (status ${status})`);
     if (status < 400) {
       errorToast(
         `The server answered ${status} with nothing to show. Reload the page to check (error ${id}).`,
@@ -516,147 +536,50 @@ export class FormDialogElement extends HTMLElement {
     errorToast(`The save failed: the server answered ${status}.${remedy} (error ${id})`);
   }
 
-  private async submitUndo(form: HTMLFormElement): Promise<void> {
-    if (this.undoing.has(form)) return;
-    const request = this.buildRequest(form, null);
-    if (!request) return;
-    this.undoing.add(form);
-    form.setAttribute("aria-busy", "true");
-    try {
-      let answer: Answer;
-      try {
-        answer = await this.postRequest(request);
-      } catch (error) {
-        this.unconfirmed(`undo failed: ${String(error)}`);
-        this.refreshIfClosed();
-        return;
-      }
-      try {
-        await this.routeUndoAnswer(form, answer);
-      } catch (error) {
-        this.answerBroke(answer, `routing the undo answer failed: ${String(error)}`);
-      }
-    } finally {
-      this.undoing.delete(form);
-      form.removeAttribute("aria-busy");
-    }
-  }
-
-  private async routeUndoAnswer(form: HTMLFormElement, answer: Answer): Promise<void> {
-    if (!answer.redirected && !answer.page) {
-      this.refused(answer.status);
-      return;
-    }
-    // Answered: its press is spent.
-    form.remove();
-    this.stale = true;
-    if (answer.redirected) {
-      showToasts(answer.page?.messages ?? []);
-      this.refreshIfClosed();
-    } else if (answer.page) {
-      // A batch waypoint continues in a dialog.
-      if (!(await this.openDialog(answer.page, answer.url, null, "header"))) {
-        handOffMessages(answer.page.messages, answer.url);
-        browser.assign(answer.url.href);
-      }
-    }
-  }
-
-  /** A write landed after its dialog closed. */
-  private refreshIfClosed(): void {
-    if (this.stack.length === 0) this.refreshWhenAlone({ swap: null, opener: null });
-  }
-
   private closed(entry: OpenDialog): void {
     if (entry.submitting) this.stale = true;
     entry.controller.abort();
     entry.dialog.remove();
     const index = this.stack.indexOf(entry);
     if (index !== -1) this.stack.splice(index, 1);
-    if (this.stack.length === 0 && (entry.pendingSwap || this.stale)) {
-      this.refreshWhenAlone({ swap: entry.pendingSwap, opener: entry.opener });
-    }
+    if (this.stack.length > 0 || !this.stale) return;
+    this.reload.opener ??= entry.opener;
+    this.requestReload();
   }
 
-  /** Waits until no modal covers the page. */
-  private refreshWhenAlone(refresh: Refresh): void {
+  /** Runs once no modal covers the page. */
+  private requestReload(): void {
+    if (this.reloadWaiting) return;
     if (isModalOpen()) {
-      this.pendingRefresh = refresh;
+      this.reloadWaiting = true;
       window.addEventListener(MODAL_CHANGE, this.onModalChange);
       return;
     }
-    this.pendingRefresh = null;
-    window.removeEventListener(MODAL_CHANGE, this.onModalChange);
-    void this.refresh(refresh);
+    this.runReload();
   }
 
   private readonly onModalChange = (): void => {
-    if (isModalOpen() || this.stack.length > 0) return;
+    if (isModalOpen()) return;
     window.removeEventListener(MODAL_CHANGE, this.onModalChange);
-    const refresh = this.pendingRefresh;
-    this.pendingRefresh = null;
-    if (refresh) void this.refresh(refresh);
+    this.reloadWaiting = false;
+    this.runReload();
   };
 
-  /** Brings the host page up to date. */
-  private async refresh(refresh: Refresh): Promise<void> {
-    const main = document.getElementById("main-container");
-    if (!main?.hasAttribute("data-read-only")) {
-      // A form host keeps the person's input.
-      this.stale = false;
-      showToasts(refresh.swap?.messages ?? []);
-      return;
-    }
-    if (csrfCookie() !== this.csrfAtLoad) {
-      // Every host form holds the old token.
-      handOffMessages(refresh.swap?.messages ?? [], location.href);
-      browser.reload();
-      return;
-    }
-    main.setAttribute("aria-busy", "true");
-    try {
-      await this.swapIn(refresh);
-    } finally {
-      main.removeAttribute("aria-busy");
-    }
-  }
-
-  private async swapIn(refresh: Refresh): Promise<void> {
-    let page = refresh.swap;
-    if (!page) {
-      try {
-        const answer = await this.fetchAnswer(new URL(location.href), {
-          signal: deadlineAfter(LOAD_TIMEOUT_MS),
-        });
-        if (answer.page && !sameUrl(answer.url, location.href)) {
-          handOffMessages(answer.page.messages, answer.url);
-          browser.assign(answer.url.href);
-          return;
-        }
-        page = answer.page;
-      } catch (error) {
-        report(`refresh failed: ${String(error)}`);
-      }
-    }
-    if (!page) {
-      report("the refresh had no page");
-      browser.reload();
-      return;
-    }
-    try {
-      await swapHostPage(page, this.loadModule);
-    } catch (error) {
-      report(`swap failed: ${String(error)}`);
-      handOffMessages(page.messages, location.href);
-      browser.reload();
-      return;
-    }
+  private runReload(): void {
+    const { target, messages, opener } = this.reload;
+    this.reload = { target: null, messages: [], opener: null };
     this.stale = false;
-    showToasts(page.messages);
-    try {
-      refocusAfterSwap(refresh.opener);
-    } catch (error) {
-      report(`refocus failed: ${String(error)}`);
+    if (!document.getElementById("main-container")?.hasAttribute("data-read-only")) {
+      // A form host keeps the person's input.
+      showToasts(messages);
+      return;
+    }
+    handOffMessages(messages);
+    if (opener) handOffOpener(opener);
+    if (target && !sameUrl(target, location.href)) {
+      browser.assign(target.href);
+    } else {
+      browser.reload();
     }
   }
 }

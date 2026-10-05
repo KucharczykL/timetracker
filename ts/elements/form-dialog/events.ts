@@ -1,2 +1,2 @@
-/** Dispatched on `document` after a swap. */
-export const SWAPPED = "form-dialog:swapped";
+/** On `document`: the page shows stale data. */
+export const PAGE_STALE = "page:stale";

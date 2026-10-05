@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SWAPPED } from "./elements/form-dialog/events.js";
 import { LibraryConversionCoordinator } from "./library-conversion-status.js";
 
 interface State {
@@ -53,25 +52,6 @@ afterEach(() => {
 });
 
 describe("LibraryConversionCoordinator", () => {
-  it("stops the old coordinator's polling on a swap", async () => {
-    configure(running);
-    document.dispatchEvent(new Event(SWAPPED));
-    vi.mocked(fetch).mockResolvedValue(response(running));
-    document.dispatchEvent(new Event(SWAPPED));
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads the state again after a swap", () => {
-    configure(running);
-    document.dispatchEvent(new Event(SWAPPED));
-    expect(window.toast).toHaveBeenCalledWith(
-      expect.stringContaining("Prices are being converted"),
-      "info",
-      expect.objectContaining({ duration: null }),
-    );
-  });
-
   it("reconstructs running state on load and announces observed completion", async () => {
     configure(running);
     vi.mocked(fetch).mockResolvedValue(response({

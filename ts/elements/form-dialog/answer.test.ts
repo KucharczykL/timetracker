@@ -6,28 +6,20 @@ import { normalizedUrl, readAnswer, sameUrl } from "./answer.js";
 
 afterEach(() => vi.restoreAllMocks());
 
-function htmlResponse(body: string, url: string, redirected = false, status = 200): Response {
-  const response = new Response(body, {
+const FETCHED = new URL("http://x.test/device/add");
+
+function jsonResponse(body: unknown, status = 200, url = FETCHED.href): Response {
+  const response = new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "text/html; charset=utf-8" },
+    headers: { "content-type": "application/json" },
   });
   Object.defineProperty(response, "url", { value: url });
-  Object.defineProperty(response, "redirected", { value: redirected });
   return response;
 }
 
-const PAGE = `<!doctype html><html data-theme-mode="account" lang="en"><head>
-  <title>Timetracker - Edit device</title>
-  <script id="django-messages" type="application/json">[{"message":"Saved"}]</script>
-  </head><body>
-  <nav id="navbar"><a href="/">Home</a></nav>
-  <div id="main-container" data-page-title="Edit device" data-read-only>
-    <form><input name="name"></form>
-    <script>window.ran = true</script>
-    <script type="application/json" id="props">{}</script>
-  </div>
-  <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
-  </body></html>`;
+function htmlResponse(body: string, status: number): Response {
+  return new Response(body, { status, headers: { "content-type": "text/html" } });
+}
 
 describe("normalizedUrl", () => {
   it("ignores the hash and the order of the query", () => {
@@ -41,63 +33,86 @@ describe("normalizedUrl", () => {
 });
 
 describe("readAnswer", () => {
-  it("reads the page's parts", async () => {
+  it("reads a page at the fetched URL", async () => {
     const answer = await readAnswer(
-      htmlResponse(PAGE, "http://x.test/device/1/edit", true),
-      new URL("http://x.test/device/1/edit"),
+      jsonResponse(
+        {
+          kind: "page",
+          title: "Add device",
+          html: '<h1>Add device</h1><form><input name="name"></form>',
+          modules: ["/static/js/dist/elements/drop-down.js"],
+          messages: [{ message: "Refused", type: "error" }],
+        },
+        409,
+      ),
+      FETCHED,
     );
-    expect(answer.redirected).toBe(true);
-    const page = answer.page!;
-    expect(page.title).toBe("Edit device");
-    expect(page.readOnly).toBe(true);
-    expect(page.messages).toEqual([{ message: "Saved" }]);
-    expect(page.modules).toEqual(["http://x.test/static/js/dist/elements/drop-down.js"]);
-    expect(page.documentTitle).toBe("Timetracker - Edit device");
-    expect(page.htmlData).toEqual({ "data-theme-mode": "account" });
-    expect(page.navbar?.querySelector("a")?.getAttribute("href")).toBe("/");
-    expect(page.content.querySelector("form")).not.toBeNull();
+    if (answer.kind !== "page") throw new Error(answer.kind);
+    expect(answer.url.href).toBe(FETCHED.href);
+    expect(answer.page.title).toBe("Add device");
+    expect(answer.page.content.querySelector("input")?.name).toBe("name");
+    expect(answer.page.modules).toEqual(["http://x.test/static/js/dist/elements/drop-down.js"]);
+    expect(answer.page.messages).toEqual([{ message: "Refused", type: "error" }]);
   });
 
-  it("drops runnable scripts but keeps data scripts", async () => {
-    const answer = await readAnswer(htmlResponse(PAGE, "http://x.test/e"), new URL("http://x.test/e"));
-    const scripts = answer.page!.content.querySelectorAll("script");
-    expect(Array.from(scripts, (script) => script.id)).toEqual(["props"]);
-  });
-
-  it("reports dropped scripts and classic scripts it cannot load", async () => {
-    const reported = vi.spyOn(clientErrors, "reportClientError").mockImplementation(() => "id");
-    const page = PAGE.replace("</body>", '<script src="/static/js/legacy.js"></script></body>');
-    await readAnswer(htmlResponse(page, "http://x.test/e"), new URL("http://x.test/e"));
-    const details = reported.mock.calls.map(([, detail]) => detail);
-    expect(details).toContain("dropped 1 script(s) from page content");
-    expect(details).toContain("classic script not loaded: http://x.test/static/js/legacy.js");
-  });
-
-  it("answers no page without the main container", async () => {
+  it("keeps leading templates and data scripts in place", async () => {
+    const html =
+      '<script type="application/json" id="props">{}</script><template id="row"><p>row</p></template><form></form>';
     const answer = await readAnswer(
-      htmlResponse("<h1>Not Found</h1>", "http://x.test/gone", false, 404),
-      new URL("http://x.test/gone"),
+      jsonResponse({ kind: "page", title: "", html, modules: [], messages: [] }),
+      FETCHED,
     );
-    expect(answer.status).toBe(404);
-    expect(answer.page).toBeNull();
+    if (answer.kind !== "page") throw new Error(answer.kind);
+    const tags = Array.from(answer.page.content.children, (child) => child.tagName);
+    expect(tags).toEqual(["SCRIPT", "TEMPLATE", "FORM"]);
   });
 
-  it("answers no page for a body that is not HTML", async () => {
-    const response = new Response("{}", { headers: { "content-type": "application/json" } });
-    const answer = await readAnswer(response, new URL("http://x.test/api"));
-    expect(answer.url.href).toBe("http://x.test/api");
-    expect(answer.page).toBeNull();
+  it("drops and reports a runnable script", async () => {
+    const report = vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
+    const answer = await readAnswer(
+      jsonResponse({
+        kind: "page",
+        title: "",
+        html: "<form></form><script>window.ran = true</script>",
+        modules: [],
+        messages: [],
+      }),
+      FETCHED,
+    );
+    if (answer.kind !== "page") throw new Error(answer.kind);
+    expect(answer.page.content.querySelector("script")).toBeNull();
+    expect(report).toHaveBeenCalledOnce();
   });
 
-  it("reports unreadable messages", async () => {
-    const reported = vi.spyOn(clientErrors, "reportClientError").mockImplementation(() => "id");
-    const broken = PAGE.replace('[{"message":"Saved"}]', "[");
-    const answer = await readAnswer(htmlResponse(broken, "http://x.test/e"), new URL("http://x.test/e"));
-    expect(answer.page!.messages).toEqual([]);
-    expect(reported).toHaveBeenCalledWith(
-      "form-dialog[answer]",
-      expect.stringContaining("unreadable messages"),
-      { toast: false },
-    );
+  it("reads done and continue", async () => {
+    expect(
+      await readAnswer(
+        jsonResponse({ kind: "done", url: "http://x.test/devices", messages: [{ message: "Saved" }] }),
+        FETCHED,
+      ),
+    ).toEqual({
+      kind: "done",
+      url: new URL("http://x.test/devices"),
+      messages: [{ message: "Saved" }],
+    });
+    expect(
+      await readAnswer(jsonResponse({ kind: "continue", url: "http://x.test/login/" }), FETCHED),
+    ).toEqual({ kind: "continue", url: new URL("http://x.test/login/") });
+  });
+
+  it("reads anything else as no kind", async () => {
+    vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
+    for (const response of [
+      htmlResponse("<h1>Forbidden</h1>", 403),
+      htmlResponse("Bad gateway", 502),
+      jsonResponse({ kind: "created" }),
+      jsonResponse({ kind: "done", url: 3, messages: [] }),
+      jsonResponse({ detail: "Not found" }, 404),
+    ]) {
+      expect(await readAnswer(response, FETCHED)).toEqual({
+        kind: "none",
+        status: response.status,
+      });
+    }
   });
 });

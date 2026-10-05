@@ -1,15 +1,17 @@
-/** A fetched page, read at its final URL. */
+/** A dialog answer, read and checked. */
 import { reportClientError } from "../../client-errors.js";
+import type {
+  ContinueAnswer,
+  DoneAnswer,
+  PageAnswer,
+  ToastPayload,
+} from "../../generated/form-dialog.js";
 
 /** Origin, path and sorted query. */
 export type PageUrl = string;
-/** A toast payload; `<toast-stack>` checks it. */
-export type MessagePayload = unknown;
 /** An absolute module script URL. */
 export type ModuleUrl = string;
-export type Messages = readonly MessagePayload[];
-export type DataAttributeName = `data-${string}`;
-export type HtmlDataAttributes = Readonly<Record<DataAttributeName, string>>;
+export type Messages = readonly ToastPayload[];
 
 export function normalizedUrl(url: string | URL): PageUrl {
   const parsed = new URL(url, location.href);
@@ -29,30 +31,21 @@ export function sameUrl(left: string | URL, right: string | URL): boolean {
   return normalizedUrl(left) === normalizedUrl(right);
 }
 
-export interface AnswerPage {
-  /** `#main-container`'s children; consumed when inserted. */
+export interface Page {
+  /** Consumed when inserted. */
   readonly content: DocumentFragment;
-  /** `data-page-title`: the raw page title. */
   readonly title: string;
-  /** The route is in `READ_ONLY`. */
-  readonly readOnly: boolean;
-  readonly messages: Messages;
   readonly modules: readonly ModuleUrl[];
-  /** `#navbar`'s children, when present. */
-  readonly navbar: DocumentFragment | null;
-  readonly htmlData: HtmlDataAttributes;
-  /** The `<title>` text. */
-  readonly documentTitle: string;
+  readonly messages: Messages;
 }
 
-/** A page is presented whatever its status. */
-export interface Answer {
-  readonly url: URL;
-  readonly redirected: boolean;
-  readonly status: number;
-  /** Null for non-HTML or no `#main-container`. */
-  readonly page: AnswerPage | null;
-}
+export type Answer =
+  /** `url`: what the content's URLs resolve against. */
+  | { readonly kind: "page"; readonly url: URL; readonly page: Page }
+  | { readonly kind: "done"; readonly url: URL; readonly messages: Messages }
+  | { readonly kind: "continue"; readonly url: URL }
+  /** Not a dialog answer. */
+  | { readonly kind: "none"; readonly status: number };
 
 /** Every script but data scripts. */
 const RUNNABLE_SCRIPT = 'script:not([type*="json"])';
@@ -61,77 +54,77 @@ function report(detail: string): void {
   reportClientError("form-dialog[answer]", detail, { toast: false });
 }
 
-function childrenOf(element: Element): DocumentFragment {
-  const fragment = document.createDocumentFragment();
-  fragment.append(...Array.from(element.childNodes, (node) => document.importNode(node, true)));
-  const dropped = fragment.querySelectorAll(RUNNABLE_SCRIPT);
+type Fields = Record<string, unknown>;
+
+function isText(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isTextList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isText);
+}
+
+function isMessages(value: unknown): value is ToastPayload[] {
+  return Array.isArray(value);
+}
+
+function isPage(fields: Fields): fields is Fields & PageAnswer {
+  return (
+    fields.kind === "page" &&
+    isText(fields.title) &&
+    isText(fields.html) &&
+    isTextList(fields.modules) &&
+    isMessages(fields.messages)
+  );
+}
+
+function isDone(fields: Fields): fields is Fields & DoneAnswer {
+  return fields.kind === "done" && isText(fields.url) && isMessages(fields.messages);
+}
+
+function isContinue(fields: Fields): fields is Fields & ContinueAnswer {
+  return fields.kind === "continue" && isText(fields.url);
+}
+
+function contentOf(html: string): DocumentFragment {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const content = document.importNode(template.content, true);
+  const dropped = content.querySelectorAll(RUNNABLE_SCRIPT);
   if (dropped.length > 0) report(`dropped ${dropped.length} script(s) from page content`);
   dropped.forEach((script) => script.remove());
-  return fragment;
+  return content;
 }
 
-function readMessages(parsed: Document): MessagePayload[] {
-  const script = parsed.getElementById("django-messages");
-  if (!script) return [];
+async function fieldsOf(response: Response): Promise<Fields | null> {
+  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return null;
+  let body: unknown;
   try {
-    const payloads: unknown = JSON.parse(script.textContent || "[]");
-    return Array.isArray(payloads) ? payloads : [payloads];
+    body = await response.json();
   } catch (error) {
-    report(`unreadable messages: ${String((error as Error)?.message ?? error)}`);
-    return [];
+    report(`unreadable JSON (status ${response.status}): ${String(error)}`);
+    return null;
   }
-}
-
-function isDataAttributeName(name: string): name is DataAttributeName {
-  return name.startsWith("data-");
-}
-
-function htmlData(parsed: Document): HtmlDataAttributes {
-  const data: Record<DataAttributeName, string> = {};
-  for (const { name, value } of parsed.documentElement.attributes) {
-    if (isDataAttributeName(name)) data[name] = value;
-  }
-  return data;
-}
-
-/** Classic scripts never load; name the missing ones. */
-function reportClassicScripts(parsed: Document, url: URL): void {
-  const loaded = new Set(
-    Array.from(document.querySelectorAll<HTMLScriptElement>("script[src]"), (script) => script.src),
-  );
-  for (const script of parsed.querySelectorAll<HTMLScriptElement>("script[src]")) {
-    if (script.type === "module") continue;
-    const source = new URL(script.getAttribute("src") ?? "", url).href;
-    if (!loaded.has(source)) report(`classic script not loaded: ${source}`);
-  }
-}
-
-export function readPage(parsed: Document, url: URL): AnswerPage | null {
-  const main = parsed.getElementById("main-container");
-  if (!main) return null;
-  reportClassicScripts(parsed, url);
-  const navbar = parsed.getElementById("navbar");
-  return {
-    content: childrenOf(main),
-    title: main.getAttribute("data-page-title") ?? "",
-    readOnly: main.hasAttribute("data-read-only"),
-    messages: readMessages(parsed),
-    modules: Array.from(
-      parsed.querySelectorAll<HTMLScriptElement>("script[type=module][src]"),
-      (script) => new URL(script.getAttribute("src") ?? "", url).href,
-    ),
-    navbar: navbar ? childrenOf(navbar) : null,
-    htmlData: htmlData(parsed),
-    documentTitle: parsed.title,
-  };
+  return typeof body === "object" && body !== null ? (body as Fields) : null;
 }
 
 /** `requested` stands in for an empty `response.url`. */
 export async function readAnswer(response: Response, requested: URL): Promise<Answer> {
   const url = new URL(response.url || requested.href);
-  const contentType = response.headers.get("content-type") ?? "";
-  const page = contentType.includes("text/html")
-    ? readPage(new DOMParser().parseFromString(await response.text(), "text/html"), url)
-    : null;
-  return { url, redirected: response.redirected, status: response.status, page };
+  const fields = await fieldsOf(response);
+  if (fields && isPage(fields)) {
+    const page: Page = {
+      content: contentOf(fields.html),
+      title: fields.title,
+      modules: fields.modules.map((module) => new URL(module, url).href),
+      messages: fields.messages,
+    };
+    return { kind: "page", url, page };
+  }
+  if (fields && isDone(fields)) {
+    return { kind: "done", url: new URL(fields.url, url), messages: fields.messages };
+  }
+  if (fields && isContinue(fields)) return { kind: "continue", url: new URL(fields.url, url) };
+  if (fields) report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);
+  return { kind: "none", status: response.status };
 }

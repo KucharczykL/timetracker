@@ -1,66 +1,51 @@
 /** Where an answer goes. */
-import {
-  type Answer,
-  type AnswerPage,
-  type Messages,
-  normalizedUrl,
-  type PageUrl,
-} from "./answer.js";
-
-export interface SubmitContext {
-  readonly hostUrl: PageUrl;
-  /** No other modal is open. */
-  readonly alone: boolean;
-}
+import type { Answer, Messages, Page } from "./answer.js";
 
 export type OpenRoute =
+  | { kind: "present"; page: Page; url: URL }
   | { kind: "toast"; messages: Messages }
-  | { kind: "navigate"; url: URL; messages: Messages }
-  | { kind: "present"; page: AnswerPage }
+  | { kind: "continue"; url: URL }
   /** Follow the link itself. */
   | { kind: "follow" };
 
 export type SubmitRoute =
-  | { kind: "present"; page: AnswerPage }
-  /** Treated as not saved: no page came back. */
-  | { kind: "error"; status: number }
-  | { kind: "swap"; page: AnswerPage }
-  | { kind: "navigate"; url: URL; messages: Messages }
-  | { kind: "closeTop"; messages: Messages };
+  | { kind: "present"; page: Page; url: URL }
+  | { kind: "continue"; url: URL }
+  /** The last dialog closes; the host reloads. */
+  | { kind: "close"; target: URL; messages: Messages }
+  | { kind: "closeTop"; messages: Messages }
+  | { kind: "error"; status: number };
 
-export function routeOpen(answer: Answer, hostUrl: PageUrl): OpenRoute {
-  const page = answer.page;
-  if (answer.redirected && normalizedUrl(answer.url) === hostUrl) {
-    return { kind: "toast", messages: page?.messages ?? [] };
-  }
-  if (!page) return { kind: "follow" };
-  if (page.readOnly) return { kind: "navigate", url: answer.url, messages: page.messages };
-  return { kind: "present", page };
-}
-
-export function routeSubmit(answer: Answer, context: SubmitContext): SubmitRoute {
-  const page = answer.page;
-  // A redirect saved; show where it went.
-  if (!page) {
-    return answer.redirected
-      ? { kind: "navigate", url: answer.url, messages: [] }
-      : { kind: "error", status: answer.status };
-  }
-  if (!answer.redirected || !page.readOnly) return { kind: "present", page };
-  if (!context.alone) return { kind: "closeTop", messages: page.messages };
-  if (normalizedUrl(answer.url) === context.hostUrl) return { kind: "swap", page };
-  return { kind: "navigate", url: answer.url, messages: page.messages };
-}
-
-/** The messages an open route carries. */
-export function routeMessages(route: OpenRoute): Messages {
-  switch (route.kind) {
-    case "present":
-      return route.page.messages;
-    case "follow":
-      return [];
+export function routeOpen(answer: Answer): OpenRoute {
+  switch (answer.kind) {
+    case "page":
+      return { kind: "present", page: answer.page, url: answer.url };
+    case "done":
+      return { kind: "toast", messages: answer.messages };
+    case "continue":
+      return { kind: "continue", url: answer.url };
+    case "none":
+      return { kind: "follow" };
     default:
-      return route.messages;
+      return assertNever(answer);
+  }
+}
+
+/** `alone`: no other modal is open. */
+export function routeSubmit(answer: Answer, alone: boolean): SubmitRoute {
+  switch (answer.kind) {
+    case "page":
+      return { kind: "present", page: answer.page, url: answer.url };
+    case "continue":
+      return { kind: "continue", url: answer.url };
+    case "done":
+      return alone
+        ? { kind: "close", target: answer.url, messages: answer.messages }
+        : { kind: "closeTop", messages: answer.messages };
+    case "none":
+      return { kind: "error", status: answer.status };
+    default:
+      return assertNever(answer);
   }
 }
 

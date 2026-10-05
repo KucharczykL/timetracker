@@ -3,7 +3,7 @@
 import pytest
 from devices import create_device
 from django.urls import reverse
-from playwright.sync_api import Browser, Page, Route, expect
+from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
@@ -58,8 +58,8 @@ def _stamp_window(page: Page) -> None:
     page.evaluate("window.notReloaded = true")
 
 
-def _not_reloaded(page: Page) -> bool:
-    return page.evaluate("window.notReloaded === true")
+def _reloaded(page: Page) -> bool:
+    return page.evaluate("window.notReloaded !== true")
 
 
 def _open_device_edit(page: Page, live_server, device: Device) -> None:
@@ -72,7 +72,7 @@ def _open_device_edit(page: Page, live_server, device: Device) -> None:
     expect(page.locator("dialog[data-modal][open]")).to_be_visible()
 
 
-def test_an_edit_saves_and_swaps_the_list(
+def test_an_edit_saves_and_reloads_the_list(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
     page = authenticated_page
@@ -85,7 +85,7 @@ def test_an_edit_saves_and_swaps_the_list(
 
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.locator("tbody tr", has_text="Deck OLED")).to_be_visible()
-    assert _not_reloaded(page)
+    assert _reloaded(page)
     expect(_menu(page, "Deck OLED")).to_be_focused()
     assert errors == []
 
@@ -138,6 +138,7 @@ def test_a_removal_confirms_in_the_dialog(
     page = authenticated_page
     deck = create_device(e2e_library, "Deck")
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
+    _stamp_window(page)
     remove = f'a[href^="{reverse("games:remove_device", args=[deck.pk])}"]'
     _mark(page, remove, "bare")
     _menu(page, "Deck").click()
@@ -149,33 +150,49 @@ def test_a_removal_confirms_in_the_dialog(
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.locator("tbody tr", has_text="Deck")).to_have_count(0)
     expect(page.get_by_role("button", name="Undo")).to_be_visible()
+    assert _reloaded(page)
     assert errors == []
 
 
-def test_without_scripting_the_link_navigates(
-    live_server, browser: Browser, e2e_user, e2e_library
+def test_removing_the_page_own_game_lands_on_the_list(
+    authenticated_page: Page, live_server, e2e_library, errors
 ):
+    page = authenticated_page
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    page.goto(f"{live_server.url}{game.get_absolute_url()}")
+    remove = f'a[href^="{reverse("games:remove_game", args=[game.pk])}"]'
+    _mark(page, remove)
+    page.locator(remove).click()
+    page.locator("dialog[data-modal][open]").get_by_role(
+        "button", name="Remove"
+    ).click()
+
+    page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
+    expect(page.get_by_text("Outer Wilds removed from your library.")).to_be_visible()
+    assert errors == []
+
+
+def test_a_sign_in_inside_the_dialog_keeps_the_save(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
     deck = create_device(e2e_library, "Deck")
-    context = browser.new_context(java_script_enabled=False)
-    page = context.new_page()
-    _log_in(page, live_server)
-    edit_url = reverse("games:edit_device", args=[deck.pk])
-    list_url = f"{live_server.url}{reverse('games:list_devices')}"
+    _open_device_edit(page, live_server, deck)
+    page.context.clear_cookies(name="sessionid")
+    dialog = page.locator("dialog[data-modal][open]")
+    dialog.get_by_role("button", name="Submit", exact=True).click()
 
-    def mark_server_side(route: Route) -> None:
-        response = route.fetch()
-        body = response.text().replace(
-            f'href="{edit_url}', f'data-form-dialog="" href="{edit_url}'
-        )
-        route.fulfill(response=response, body=body)
+    dialog.locator('input[name="username"]').fill(LOGIN[0])
+    dialog.locator('input[name="password"]').fill(LOGIN[1])
+    dialog.get_by_role("button", name="Login").click()
+    name = dialog.locator('input[name="name"]')
+    expect(name).to_have_value("Deck")
+    name.fill("Deck OLED")
+    dialog.get_by_role("button", name="Submit", exact=True).click()
 
-    page.route(list_url, mark_server_side)
-    page.goto(list_url)
-    # The menu needs scripting; the link itself does not.
-    page.locator(f'a[data-form-dialog][href^="{edit_url}"]').dispatch_event("click")
-    page.wait_for_url(f"{live_server.url}{edit_url}**")
-    expect(page.locator('input[name="name"]')).to_have_value("Deck")
-    context.close()
+    expect(page.locator("tbody tr", has_text="Deck OLED")).to_be_visible()
+    assert Device.objects.get(pk=deck.pk).name == "Deck OLED"
+    assert errors == []
 
 
 def _copy_got_in_2099(user, library) -> LibraryEntry:
@@ -237,7 +254,7 @@ def test_a_refused_act_toasts_inside_the_dialog(
     assert errors and all("409 (Conflict)" in error for error in errors)
 
 
-def test_add_game_continues_to_its_copy_and_a_close_refreshes(
+def test_add_game_continues_to_its_copy_and_a_close_reloads(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
     page = authenticated_page
@@ -264,7 +281,7 @@ def test_add_game_continues_to_its_copy_and_a_close_refreshes(
     dialog.get_by_role("button", name="Close dialog").click()
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.get_by_role("link", name="Outer Wilds").first).to_be_visible()
-    assert _not_reloaded(page)
+    assert _reloaded(page)
     assert errors == []
 
 
