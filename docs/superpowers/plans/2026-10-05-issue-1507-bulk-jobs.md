@@ -73,10 +73,10 @@ unknown act.
   sessionStorage dismissal for running, announce on terminal dismissal,
   poll 2 s while any non-terminal, dispatch `page:stale` on observed
   transition when `new URL(origin).pathname === location.pathname`.
-- `ts/page-stale.ts`: wait-for-no-modal-no-panel, coalesce, reload
-  (`browser.reload`, which tests replace).
-- `ts/elements/surface-stack.ts`: `SURFACE_CHANGE` dispatched on window when
-  the stack changes.
+- No `page-stale.ts`: #1384's `<form-dialog>` reloads on `page:stale`.
+- After #1384: `<toast-stack>` fetches a bulk toast action with
+  `X-Form-Dialog` while a form dialog is open; `done` shows messages in the
+  top dialog and marks the stack dirty.
 - Delete `ts/elements/continuing-batch.ts`, its test, its `register_element`
   entry; `make gen-element-types`.
 - vitest beside each.

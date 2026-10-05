@@ -146,16 +146,19 @@ Stop is a toast action posting `/bulk/batch/<token>/stop/`, which sets
 When the coordinator sees a batch it held as running become terminal, and the
 batch's `origin` has this page's path, it dispatches `page:stale` on
 `document`. A batch that ended before the page rendered needs no refresh.
+#1507 adds no listener. #1384's `<form-dialog>` is the one reloader: it
+waits until no modal is open, merges `page:stale` with its own pending
+reload, then reloads. The page swaps nothing in place.
 
-`ts/page-stale.ts` listens for `page:stale`. While a modal or a panel is open
-(`isModalOpen()`, or a non-hint entry in `openSurfaces()`) it waits, and
-checks again on each `modal-layer:change` and the new `surface-stack:change`,
-both on `window`. Repeats coalesce. Then it calls `location.reload()`. The
-reloaded page renders its own rows, navbar, batches and messages, so nothing
-is handed off and the coordinators start afresh. A selection made while the
-batch ran, and a filter typed but not applied, are dropped, since the rows
-under them have changed. The page swaps nothing in place: the modal epic
-decided against it.
+## Toast actions inside a form dialog
+
+Stop and Undo are POST forms that end on `redirect(return_url(...))`. While
+no form dialog is open they post natively and navigate. #1384 adds a
+middleware that turns a 3xx into a JSON result on a request carrying
+`X-Form-Dialog`. While a form dialog is open, `<toast-stack>` fetches a
+bulk toast's action with that header; a `done` result shows its messages in
+the top dialog and marks the dialog stack dirty, which reloads when the last
+dialog closes. That part lands after #1384, on its middleware.
 
 ## Gone
 
@@ -184,7 +187,7 @@ included; a defect stores `failed`; another library's batch is absent from
 the read and the API. e2e: an act from a list ends with its Undo toast; a
 held batch shows Stop, survives a closed page and ends on the next load with
 its Undo; Stop. vitest: the coordinator fires `page:stale` once per batch, only on its
-origin's path; `page-stale` waits out a modal and a panel and reloads once.
+origin's path.
 
 ## Follow-up issues to file
 
