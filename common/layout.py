@@ -248,7 +248,9 @@ def Navbar(
                 csrf_token=csrf_token,
             ),
         ]
-    return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
+    return Nav(
+        id="navbar", class_="bg-neutral-primary-soft border-b border-default py-4"
+    )[
         Div(
             class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} {PAGE_GUTTER_CLASS} "
             "flex items-center gap-x-3 mx-auto"
@@ -274,7 +276,12 @@ def TimetrackerDocument(
     """
     from django.urls import Resolver404, resolve
 
-    from common.components import ModuleScript, StaticScript, collect_media
+    from common.components import (
+        FormDialogHost,
+        ModuleScript,
+        StaticScript,
+        collect_media,
+    )
     from common.date_time_presentation import date_time_presentation_for_request
     from games.views.general import global_current_year, model_counts
     from games.views.returns import READ_ONLY
@@ -292,7 +299,8 @@ def TimetrackerDocument(
         current_name = f"{current_route.app_name}:{current_route.url_name}"
     except Resolver404:
         current_name = None
-    navbar_origin = request.get_full_path() if current_name in READ_ONLY else None
+    read_only = current_name in READ_ONLY
+    navbar_origin = request.get_full_path() if read_only else None
     navbar = Navbar(
         today_played=counts["today_played"],
         last_7_played=counts["last_7_played"],
@@ -314,8 +322,12 @@ def TimetrackerDocument(
     # Toast stack first, then body and navbar.
     # First: its listener stands before any element upgrades.
     toast_container = ToastStack()
+    form_dialog_host = FormDialogHost()
     media = (
-        collect_media(toast_container) + collect_media(content) + collect_media(navbar)
+        collect_media(toast_container)
+        + collect_media(content)
+        + collect_media(navbar)
+        + collect_media(form_dialog_host)
     )
     collected_scripts = "".join(
         [str(ModuleScript(name)) for name in media.js]
@@ -446,6 +458,9 @@ def TimetrackerDocument(
                         navbar,
                         Div(
                             id="main-container",
+                            data_page_title=title,
+                            data_read_only=read_only,
+                            tabindex="-1",
                             class_=f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS}",
                         )[content],
                         version_footer_note,
@@ -453,6 +468,7 @@ def TimetrackerDocument(
                     script_body,
                     mastered_script_IS_THIS_REALLY_NEEDED,
                     toast_container,
+                    form_dialog_host,
                 ],
             ],
         )

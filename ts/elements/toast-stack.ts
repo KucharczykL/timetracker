@@ -2,6 +2,7 @@
 import { reportClientError } from "../client-errors.js";
 import { getCsrfToken } from "../csrf.js";
 import { readToastStackProps } from "../generated/props.js";
+import { takeHandedOffMessages } from "../toast-handoff.js";
 import { MODAL_CHANGE, topModal } from "./modal-layer.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
@@ -305,6 +306,7 @@ class ToastStackElement extends HTMLElement {
     window.addEventListener(MODAL_CHANGE, this.onModalChange);
     this.rehost();
     this.readDjangoMessages();
+    this.addAll(takeHandedOffMessages(), "handoff");
   }
 
   disconnectedCallback(): void {

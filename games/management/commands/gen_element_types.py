@@ -17,6 +17,13 @@ from common.components.date_range_picker import (
     CalendarDayVariant,
     CalendarTrackVariant,
 )
+from common.components.form_dialog import (
+    FORM_DIALOG_ATTRIBUTE,
+    FORM_DIALOG_CHROME_VALUES,
+    FORM_DIALOG_PARTS,
+    FormDialogChrome,
+    FormDialogPart,
+)
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
     SHAPE_CLASSES,
@@ -141,6 +148,23 @@ class Command(BaseCommand):
                         "MODAL_ATTRIBUTES",
                         dict[ModalAttributeRole, str],
                         dict(MODAL_ATTRIBUTES),
+                    ),
+                ],
+            ),
+            # `<form-dialog>` finds links and template parts.
+            output_dir / "form-dialog.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
+                    TsConstant(
+                        "FORM_DIALOG_CHROME",
+                        dict[FormDialogChrome, str],
+                        dict(FORM_DIALOG_CHROME_VALUES),
+                    ),
+                    TsConstant(
+                        "FORM_DIALOG_PARTS",
+                        dict[FormDialogPart, str],
+                        dict(FORM_DIALOG_PARTS),
                     ),
                 ],
             ),

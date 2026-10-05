@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   attachModal,
+  focusReturnTarget,
   isModalOpen,
   isReachable,
   MODAL_CHANGE,
+  openModals,
   topModal,
 } from "./modal-layer.js";
 import { openSurfaces, pushSurface, removeSurface, type Surface } from "./surface-stack.js";
@@ -145,6 +147,17 @@ describe("open", () => {
 });
 
 describe("nesting", () => {
+  it("lists open modals in opening order, leaving ones excluded", () => {
+    const lower = mountDialog();
+    const upper = mountDialog();
+    attachModal(lower).open();
+    const upperModal = attachModal(upper, { leave: () => {} });
+    upperModal.open();
+    expect(openModals()).toEqual([lower, upper]);
+    upperModal.close();
+    expect(openModals()).toEqual([lower]);
+  });
+
   it("nests a dialog placed inside another", () => {
     const lower = mountDialog();
     const upper = mountDialog(lower.querySelector<HTMLElement>("[data-panel]")!);
@@ -219,6 +232,15 @@ describe("scroll lock", () => {
 });
 
 describe("focus return", () => {
+  it("names the drop-down toggle of an unreachable opener", () => {
+    document.body.innerHTML = `
+      <drop-down><button data-toggle>Menu</button>
+        <div hidden><a href="/edit">Edit</a></div></drop-down>`;
+    const item = document.querySelector<HTMLElement>("a")!;
+    expect(focusReturnTarget(item)).toBe(document.querySelector("[data-toggle]"));
+    expect(focusReturnTarget(null)).toBeNull();
+  });
+
   it("returns focus to the opener", () => {
     const opener = mountOpener();
     const modal = attachModal(mountDialog());

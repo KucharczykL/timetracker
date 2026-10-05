@@ -92,6 +92,16 @@ describe("rendering", () => {
     expect(toasts().map(messageOf)).toEqual(["Hello"]);
   });
 
+  it("shows handed-off messages once, after the page's own", () => {
+    sessionStorage.setItem("toast-handoff", JSON.stringify([{ message: "Moved" }]));
+    document.body.innerHTML = `
+      <script id="django-messages" type="application/json">[{"message":"Hello"}]</script>
+      <toast-stack></toast-stack>`;
+
+    expect(toasts().map(messageOf)).toEqual(["Hello", "Moved"]);
+    expect(sessionStorage.getItem("toast-handoff")).toBeNull();
+  });
+
   it("detaches its listeners on disconnect", () => {
     document.body.innerHTML = "";
     show({ message: "lost" });

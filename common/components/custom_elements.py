@@ -26,6 +26,7 @@ from typing import (
 from django.urls import reverse
 
 from common.components.core import (
+    Attributes,
     AttrsArg,
     BaseComponent,
     Child,
@@ -36,7 +37,7 @@ from common.components.core import (
     Node,
     as_children,
 )
-from common.components.modal import MODAL_ATTRIBUTES, ModalDialog
+from common.components.modal import ModalDialog, ModalPanelHeader
 from common.components.primitives import (
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
@@ -57,7 +58,6 @@ from common.components.primitives import (
     Input,
     Legend,
     Li,
-    PlainH2,
     Popover,
     SelectionScope,
     Span,
@@ -1039,18 +1039,20 @@ def DropdownLinkItem(
     icon: str = "",
     danger: bool = False,
     description: str = "",
+    attributes: Attributes = (),
 ) -> Node:
     """A navigation menu item; ``danger`` colours the glyph."""
-    attributes: list[tuple[str, str]] = [
+    link_attributes: list[HTMLAttribute] = [
         ("href", url),
         ("role", "menuitem"),
         ("tabindex", "-1"),
         ("class", _item_class(icon)),
+        *attributes,
     ]
     if current:
-        attributes.append(("aria-current", "page"))
+        link_attributes.append(("aria-current", "page"))
     return Li(role="presentation")[
-        ControlLink(attributes)[
+        ControlLink(link_attributes)[
             *_item_children(_described(label, description), icon, danger)
         ]
     ]
@@ -1300,14 +1302,6 @@ def BottomSheet(
     safe-area padding. Callers supply semantic body content only.
     """
     title_id = f"{id}-title"
-    close_button = ControlButton(
-        [
-            (MODAL_ATTRIBUTES["dismiss"], ""),
-            ("aria-label", close_label),
-            ("class", "shrink-0 focus:ring-inset"),
-        ],
-        variant="ghost",
-    )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
     target = ModalDialog(
         [("data-bottom-sheet", ""), ("aria-labelledby", title_id)],
         align="end",
@@ -1321,17 +1315,7 @@ def BottomSheet(
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
         )[
-            Div(
-                class_=(
-                    "flex shrink-0 items-center justify-between gap-4 "
-                    "border-b border-default-medium bg-surface-overlay px-4 py-3"
-                )
-            )[
-                PlainH2(
-                    [("id", title_id), ("class", "text-type-section text-heading")],
-                )[title],
-                close_button,
-            ],
+            ModalPanelHeader(title, title_id=title_id, close_label=close_label),
             Div(
                 data_sheet_body="",
                 class_=(

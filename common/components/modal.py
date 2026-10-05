@@ -3,8 +3,9 @@
 from collections.abc import Collection, Mapping
 from typing import Literal, TypeAliasType, get_args
 
-from common.components.core import Attributes, Element
-from common.components.elements import Dialog
+from common.components.core import Attributes, Child, Element
+from common.components.elements import Dialog, Div, PlainH2, Span
+from common.components.primitives import ControlButton
 
 type ModalAlign = Literal["center", "end"]
 type ModalAttributeRole = Literal[
@@ -40,15 +41,15 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 }
 
 
-def _require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
+def require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
     """Refuses a table missing a Literal member."""
     members = set(get_args(alias.__value__))
     if set(table) != members:
         raise TypeError(f"{alias.__name__} table keys {set(table)} != {members}")
 
 
-_require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)
-_require_every_key(ModalAlign, _MODAL_ALIGN_CLASS)
+require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)
+require_every_key(ModalAlign, _MODAL_ALIGN_CLASS)
 
 
 def ModalDialog(
@@ -62,3 +63,38 @@ def ModalDialog(
         [(MODAL_ATTRIBUTES["modal"], ""), *attributes],
         class_=f"{_MODAL_DIALOG_CLASS} {_MODAL_ALIGN_CLASS[align]} {class_}".strip(),
     )
+
+
+def ModalPanelHeader(
+    title: Child,
+    *,
+    title_id: str,
+    close_label: str = "Close dialog",
+    attributes: Attributes = (),
+    title_attributes: Attributes = (),
+) -> Element:
+    """A modal panel's title row with its ×."""
+    close_button = ControlButton(
+        [
+            (MODAL_ATTRIBUTES["dismiss"], ""),
+            ("aria-label", close_label),
+            ("class", "shrink-0 focus:ring-inset"),
+        ],
+        variant="ghost",
+    )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    return Div(
+        attributes,
+        class_=(
+            "flex shrink-0 items-center justify-between gap-4 "
+            "border-b border-default-medium bg-surface-overlay px-4 py-3"
+        ),
+    )[
+        PlainH2(
+            [
+                ("id", title_id),
+                *title_attributes,
+                ("class", "text-type-section text-heading"),
+            ],
+        )[title],
+        close_button,
+    ]
