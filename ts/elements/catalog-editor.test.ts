@@ -333,6 +333,12 @@ describe("names", () => {
     expect(markText()).toBe("Show the DOS release in the library");
   });
 
+  it("stops listening for pageshow once removed", () => {
+    const removed = vi.spyOn(window, "removeEventListener");
+    document.querySelector("catalog-editor")!.remove();
+    expect(removed).toHaveBeenCalledWith("pageshow", expect.any(Function));
+  });
+
   it("corrects a stale name on arrival", () => {
     // As a browser restores a changed select.
     document.body.innerHTML = NAMED.replace(

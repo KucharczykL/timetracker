@@ -86,6 +86,8 @@ class CatalogEditorElement extends HTMLElement {
   private wired = false;
 
   connectedCallback(): void {
+    // Chromium restores form values after upgrade.
+    window.addEventListener("pageshow", this.onPageShow);
     if (this.wired) return;
     this.wired = true;
     // One delegated listener, so a cloned row needs no wiring of its own.
@@ -93,11 +95,13 @@ class CatalogEditorElement extends HTMLElement {
     // Selects and text fields both fire `input`.
     this.addEventListener("input", this.onInput);
     this.restateNames();
-    // Chromium restores form values after upgrade.
-    window.addEventListener("pageshow", this.onPageShow);
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
     this.restateMark();
+  }
+
+  disconnectedCallback(): void {
+    window.removeEventListener("pageshow", this.onPageShow);
   }
 
   private onPageShow = (): void => this.restateNames();

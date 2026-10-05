@@ -268,6 +268,19 @@ describe("date-time-field", () => {
     expect(partInput(end, "hour").value).toBe("14");
   });
 
+  it("copies into the named field of its own form", () => {
+    document.body.innerHTML =
+      `<form>${markup("timestamp_start", "timestamp_end")}${markup("timestamp_end", "")}</form>` +
+      `<form>${markup("timestamp_start", "timestamp_end")}${markup("timestamp_end", "")}</form>`;
+    const fields = document.querySelectorAll<HTMLElement>("date-time-field");
+    fillWholeField(fields[2]);
+
+    fields[2].querySelector<HTMLElement>("[data-date-time-copy]")!.click();
+
+    expect(hidden(fields[3]).value).toBe(hidden(fields[2]).value);
+    expect(hidden(fields[1]).value).toBe("");
+  });
+
   it("pastes a full datetime into both halves", () => {
     const { start } = mount();
 

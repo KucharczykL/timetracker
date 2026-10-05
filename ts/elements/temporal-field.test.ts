@@ -1083,6 +1083,36 @@ describe("temporal-field copy control", () => {
     expect(copyButton(target).disabled).toBe(false);
   });
 
+  it("copies the source in its own form", () => {
+    const pair = (year: string) =>
+      `<form>${fieldMarkup({ kind: "date", start_year: year }, "false", PARTS, "original_release_date")}` +
+      `${fieldMarkup({}, "false", PARTS, "release_date", "original_release_date")}</form>`;
+    document.body.innerHTML = pair("1990") + pair("2001");
+    const second = document.querySelectorAll<HTMLElement>("temporal-field")[3];
+
+    copyButton(second).click();
+
+    expect(named(second, "start_year").value).toBe("2001");
+  });
+
+  it("stops repainting once removed", () => {
+    const { source, target } = mountPair();
+    target.remove();
+
+    type(source, "start", "year", "1997");
+
+    expect(copyButton(target).disabled).toBe(true);
+  });
+
+  it("repaints again after a move", () => {
+    const { source, target } = mountPair();
+    document.body.append(target);
+
+    type(source, "start", "year", "1997");
+
+    expect(copyButton(target).disabled).toBe(false);
+  });
+
   it("stays disabled and quiet when the source is on no page", () => {
     const { target } = mountPair({ kind: "date", start_year: "1997" }, {}, "absent");
 

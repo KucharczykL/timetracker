@@ -11,7 +11,6 @@
  * Choosing a mode applies nothing. Each apply loads a page, so one that fired
  * while a person typed would take the focus and scroll with every pause.
  */
-import { onReady } from "../utils.js";
 // Defines the menu a picked mode closes.
 import "./drop-down.js";
 
@@ -20,11 +19,23 @@ const MODE_ITEM = "[data-match-mode]";
 class SearchFieldElement extends HTMLElement {
   connectedCallback(): void {
     this.addEventListener("click", this.onPick);
+    this.addEventListener("keydown", this.onKeydown);
   }
 
   disconnectedCallback(): void {
     this.removeEventListener("click", this.onPick);
+    this.removeEventListener("keydown", this.onKeydown);
   }
+
+  // Enter applies, as in a facet input. The bar owns the submit.
+  private onKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Enter") return;
+    const input = (event.target as HTMLElement | null)?.closest("[data-match-value]");
+    const form = input && this.contains(input) ? input.closest("form") : null;
+    if (!form) return;
+    event.preventDefault();
+    form.requestSubmit();
+  };
 
   private onPick = (event: Event): void => {
     const item = (event.target as HTMLElement | null)?.closest<HTMLElement>(MODE_ITEM);
@@ -70,14 +81,3 @@ class SearchFieldElement extends HTMLElement {
 }
 
 customElements.define("search-field", SearchFieldElement);
-
-// Enter applies, as in a facet input. The bar owns the submit.
-onReady("search-field [data-match-value]", (input) => {
-  input.addEventListener("keydown", (event) => {
-    if ((event as KeyboardEvent).key !== "Enter") return;
-    const form = input.closest("form");
-    if (!form) return;
-    event.preventDefault();
-    form.requestSubmit();
-  });
-});
