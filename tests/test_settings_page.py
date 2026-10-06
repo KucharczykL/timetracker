@@ -15,6 +15,32 @@ def _named_tag(body: str, tag: str, name: str) -> str:
     return match.group()
 
 
+def _picker(body: str, name: str) -> str:
+    match = re.search(
+        rf'<search-select\b[^>]*\bname="{name}".*?</search-select>', body, re.DOTALL
+    )
+    assert match is not None, f"no <search-select name={name}> in the rendered page"
+    return match.group()
+
+
+def _search_box(picker: str) -> str:
+    match = re.search(r"<input\b[^>]*\bdata-search-select-search\b[^>]*>", picker)
+    assert match is not None
+    return match.group()
+
+
+def _held(body: str, name: str) -> tuple[str | None, str]:
+    """The held value (None for none) and the box text."""
+    picker = _picker(body, name)
+    hidden = re.search(rf'<input\b[^>]*\bname="{name}"[^>]*>', picker)
+    assert hidden is not None, f"{name} holds nothing"
+    value = re.search(r'\bvalue="([^"]*)"', hidden.group())
+    assert value is not None
+    box = re.search(r'\bvalue="([^"]*)"', _search_box(picker))
+    held = None if "data-search-select-none" in hidden.group() else value.group(1)
+    return held, box.group(1) if box else ""
+
+
 @pytest.fixture
 def user(db):
     return get_user_model().objects.create_user(username="tester", password="pw")
@@ -50,20 +76,16 @@ def test_settings_page_renders_resolved_preferences(auth_client, user):
     assert 'data-sectioned-page-scaffold=""' in html
     assert 'patch-url-template="/api/settings/user/__key__"' in html
     assert 'name="default_purchase_currency" value="EUR"' in html
-    assert '<option value="games:list_games" selected>Games</option>' in html
-    assert '<option value="dark" selected>Dark</option>' in html
+    assert _held(html, "default_landing_page") == ("games:list_games", "Games")
+    assert _held(html, "theme") == ("dark", "Dark")
     assert 'data-setting-key="DEFAULT_PURCHASE_CURRENCY"' in html
     assert 'data-setting-key="DEFAULT_LANDING_PAGE"' in html
     assert 'data-setting-key="DEFAULT_PAGE_SIZE"' in html
     assert 'data-setting-key="THEME"' in html
     assert '<theme-setting class="block w-full">' in html
-    theme_select = html[
-        html.index('<select name="theme"') : html.index(
-            "</select>", html.index('<select name="theme"')
-        )
-    ]
-    assert " required" not in theme_select
-    assert "data-live-setting-control" not in theme_select
+    theme_picker = _picker(html, "theme")
+    assert " required" not in theme_picker
+    assert "data-live-setting-control" not in theme_picker
     assert "System follows the operating-system theme." in html
 
 
@@ -97,21 +119,20 @@ def test_settings_page_disables_only_the_navbar_theme_switcher(auth_client):
         in interaction_surface.group()
     )
     assert "disabled:opacity-50" in toggle_button.group()
-    theme_select = html[
-        html.index('<select name="theme"') : html.index(
-            "</select>", html.index('<select name="theme"')
-        )
-    ]
-    assert not re.search(r'\sdisabled(?:="disabled")?(?=\s|>)', theme_select)
+    theme_box = _search_box(_picker(html, "theme"))
+    assert not re.search(r'\sdisabled(?:="[^"]*")?(?=\s|>)', theme_box)
 
 
 def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert '<option value="" selected>Use site default (Playtime)</option>' in html
-    assert '<option value="" selected>Use site default (25)</option>' in html
-    assert '<option value="" selected>Use site default (System)</option>' in html
-    assert '<option value="" selected>Use site default (ISO 8601)</option>' in html
+    assert _held(html, "default_landing_page") == (None, "Use site default (Playtime)")
+    assert _held(html, "default_page_size") == (None, "Use site default (25)")
+    assert _held(html, "theme") == (None, "Use site default (System)")
+    assert _held(html, "datetime_format") == (None, "Use site default (ISO 8601)")
+    assert 'data-label="Use site default (Playtime)"' in _picker(
+        html, "default_landing_page"
+    )
 
 
 def test_inherited_currency_is_empty_with_the_site_value_as_placeholder(auth_client):
@@ -147,8 +168,7 @@ def test_personal_theme_is_selected(auth_client, user):
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert '<select name="theme"' in html
-    assert '<option value="light" selected>Light</option>' in html
+    assert _held(html, "theme") == ("light", "Light")
 
 
 def test_personal_page_size_is_selected(auth_client, user):
@@ -159,7 +179,7 @@ def test_personal_page_size_is_selected(auth_client, user):
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert '<option value="50" selected>50</option>' in html
+    assert _held(html, "default_page_size") == ("50", "50")
 
 
 def test_personal_presentation_preferences_are_selected_and_live_saved(
@@ -174,24 +194,18 @@ def test_personal_presentation_preferences_are_selected_and_live_saved(
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert '<select name="display_time_zone"' in html
-    assert (
-        '<option value="Pacific/Kiritimati" selected>Pacific/Kiritimati</option>'
-        in html
+    assert _held(html, "display_time_zone") == (
+        "Pacific/Kiritimati",
+        "Pacific/Kiritimati",
     )
-    assert '<select name="date_format_locale"' in html
-    assert '<option value="cs" selected>Čeština</option>' in html
-    assert '<select name="datetime_format"' in html
-    assert '<option value="mdy_12h" selected>MM/DD/YYYY, 12-hour</option>' in html
+    assert _held(html, "date_format_locale") == ("cs", "Čeština")
+    assert _held(html, "datetime_format") == ("mdy_12h", "MM/DD/YYYY, 12-hour")
     assert 'data-setting-key="DISPLAY_TIME_ZONE"' in html
     assert 'data-setting-key="DATE_FORMAT_LOCALE"' in html
     assert 'data-setting-key="DATETIME_FORMAT"' in html
-    datetime_select = html[
-        html.index('<select name="datetime_format"') : html.index(
-            "</select>", html.index('<select name="datetime_format"')
-        )
-    ]
-    assert "data-reload-after-save" in datetime_select
+    datetime_picker = _picker(html, "datetime_format")
+    assert "data-reload-after-save" in datetime_picker
+    assert 'revert-on-leave="true"' in datetime_picker
 
 
 def test_unset_selects_show_configured_site_defaults(auth_client):
@@ -205,11 +219,11 @@ def test_unset_selects_show_configured_site_defaults(auth_client):
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert '<option value="" selected>Use site default (Games)</option>' in html
-    assert '<option value="" selected>Use site default (Dark)</option>' in html
-    assert (
-        '<option value="" selected>Use site default (DD/MM/YYYY, 24-hour)</option>'
-        in html
+    assert _held(html, "default_landing_page") == (None, "Use site default (Games)")
+    assert _held(html, "theme") == (None, "Use site default (Dark)")
+    assert _held(html, "datetime_format") == (
+        None,
+        "Use site default (DD/MM/YYYY, 24-hour)",
     )
 
 
@@ -219,9 +233,9 @@ def test_unset_datetime_format_shows_environment_default(auth_client, monkeypatc
 
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert (
-        '<option value="" selected>Use site default (MM/DD/YYYY, 12-hour)</option>'
-        in html
+    assert _held(html, "datetime_format") == (
+        None,
+        "Use site default (MM/DD/YYYY, 12-hour)",
     )
 
 

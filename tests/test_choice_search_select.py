@@ -246,3 +246,43 @@ def test_form_instances_hold_their_own_choices():
     copied = copy.deepcopy(widget)
     assert copied.choices == widget.choices
     assert copied.choices is not widget.choices
+
+
+def _host_tag(html: str) -> str:
+    start = html.index("<search-select")
+    return html[start : html.index(">", start)]
+
+
+def test_widget_data_attrs_reach_the_host():
+    field = _optional(LETTERS)
+    field.widget.attrs.update(
+        {"data-setting-key": "THEME", "data-live-setting-control": ""}
+    )
+    host = _host_tag(_render(field))
+    assert 'data-setting-key="THEME"' in host
+    assert "data-live-setting-control" in host
+
+
+def test_input_state_attrs_reach_the_search_box():
+    field = _optional(LETTERS)
+    field.widget.attrs.update({"aria-describedby": "help-id", "class": "native"})
+    field.disabled = True
+    html = _render(field)
+    box = _search_box(html)
+    assert re.search(r'\sdisabled(=""|\s|$)', box)
+    assert 'aria-describedby="help-id"' in box
+    assert "native" not in html
+
+
+def test_an_invalid_field_marks_its_search_box():
+    widget = ChoiceSearchSelectWidget()
+    widget.choices = list(LETTERS)
+    html = widget.render("choice", None, {"id": "id_choice", "aria-invalid": "true"})
+    assert 'aria-invalid="true"' in _search_box(html)
+
+
+def test_revert_on_leave_reaches_the_host():
+    assert 'revert-on-leave="true"' in _host_tag(
+        _render(_optional(LETTERS, revert_on_leave=True))
+    )
+    assert "revert-on-leave" not in _host_tag(_render(_optional(LETTERS)))

@@ -7,6 +7,38 @@ import {
 import "./theme-setting.js";
 import "./theme-toggle.js";
 
+Element.prototype.scrollIntoView = () => {};
+
+const THEME_NONE = "Use site default (Dark)";
+
+function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLInputElement } {
+  document.body.innerHTML = `
+    <theme-setting><drop-down behavior="inline-combobox"><search-select name="theme"
+        multi="false" none-label="${THEME_NONE}" data-setting-key="THEME">
+      <div data-search-select-pills>
+        <input type="hidden" name="theme" value="" data-search-select-none></div>
+      <input data-search-select-search value="${THEME_NONE}">
+      <button type="button" data-search-select-clear>×</button>
+      <div data-search-select-options hidden>
+        <div data-search-select-none-option data-label="${THEME_NONE}">${THEME_NONE}</div>
+        <div data-search-select-option data-value="system" data-label="System">System</div>
+        <div data-search-select-option data-value="light" data-label="Light">Light</div>
+        <div data-search-select-option data-value="dark" data-label="Dark">Dark</div>
+      </div>
+    </search-select></drop-down></theme-setting>`;
+  const picker = document.querySelector<HTMLElement>("search-select")!;
+  return {
+    host: document.querySelector("theme-setting")!,
+    picker,
+    search: picker.querySelector("[data-search-select-search]")!,
+  };
+}
+
+const pick = (picker: HTMLElement, selector: string) => {
+  picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+  picker.querySelector<HTMLElement>(selector)!.click();
+};
+
 function configureInheritedDark(): void {
   const root = document.documentElement;
   root.dataset.themeMode = "account";
@@ -104,7 +136,7 @@ describe("<theme-setting>", () => {
           key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
         }),
       } as Response);
-      const setting = `<theme-setting><select><option value=""></option>
+      const setting = `<theme-setting><select data-setting-key="THEME"><option value=""></option>
         <option value="system">System</option><option value="light">Light</option>
         <option value="dark">Dark</option></select></theme-setting>`;
       const toggle = `<theme-toggle><button data-pop-over-control data-pop-over-trigger>
@@ -137,7 +169,7 @@ describe("<theme-setting>", () => {
         key: "THEME", value: "system", source: "user", locked: false, namespace: "user",
       }),
     } as Response);
-    const setting = `<theme-setting><select><option value=""></option>
+    const setting = `<theme-setting><select data-setting-key="THEME"><option value=""></option>
       <option value="system">System</option><option value="dark">Dark</option>
       </select></theme-setting>`;
     const toggle = `<theme-toggle><button data-pop-over-control data-pop-over-trigger>
@@ -188,5 +220,52 @@ describe("<theme-setting>", () => {
     await getThemeCoordinator().requestPreferenceChange("system");
 
     expect(select.value).toBe("system");
+  });
+
+  it("saves a picker's pick and none through the coordinator", async () => {
+    configureInheritedDark();
+    vi.mocked(window.fetchWithEvents)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          key: "THEME", value: "dark", source: "database", locked: false, namespace: "user",
+        }),
+      } as Response);
+    const { host, picker, search } = mountPicker();
+    const bubbled = vi.fn();
+    host.parentElement?.addEventListener("search-select:change", bubbled);
+
+    pick(picker, '[data-search-select-option][data-value="light"]');
+    expect(search.disabled).toBe(true);
+    await vi.waitFor(() => expect(search.disabled).toBe(false));
+    expect(search.value).toBe("Light");
+    pick(picker, "[data-search-select-none-option]");
+    await vi.waitFor(() =>
+      expect(vi.mocked(window.fetchWithEvents)).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(search.disabled).toBe(false));
+
+    const sent = vi.mocked(window.fetchWithEvents).mock.calls.map(
+      (call) => JSON.parse(String((call[1] as RequestInit).body)).value,
+    );
+    expect(sent).toEqual(["light", null]);
+    expect(search.value).toBe(THEME_NONE);
+    expect(bubbled).not.toHaveBeenCalled();
+  });
+
+  it("ignores a keystroke in the picker", () => {
+    configureInheritedDark();
+    const { search } = mountPicker();
+    search.focus();
+    search.value = "Li";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(window.fetchWithEvents).not.toHaveBeenCalled();
   });
 });

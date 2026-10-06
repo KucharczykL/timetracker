@@ -47,7 +47,7 @@ user types.
 """
 
 import json
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, NamedTuple, NotRequired, TypedDict
@@ -584,6 +584,11 @@ def SearchSelect(
     none_label: NoneLabel | None = None,
     shape: ButtonShape = "full",
     dialog_create: DialogCreate | None = None,
+    host_data: Mapping[str, str] | None = None,
+    disabled: bool = False,
+    described_by: str | None = None,
+    invalid: bool = False,
+    revert_on_leave: bool = False,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -627,7 +632,13 @@ def SearchSelect(
     ``create``: how a create row commits; none offers no row.
     ``max_length``: the most characters the box takes.
     ``dialog_create``: a + creating the row in a dialog.
+    ``host_data``: ``data-*`` attributes on the element.
+    ``disabled``, ``described_by``, ``invalid``: the search box's state.
+    ``revert_on_leave``: leaving with nothing picked restores the held.
     """
+    host_attributes = list((host_data or {}).items())
+    if any(not key.startswith("data-") for key, _ in host_attributes):
+        raise ValueError(f"host_data takes data-* only: {host_data!r}")
     if dialog_create and panel:
         raise ValueError("dialog_create is field-hosted only")
     if none_label and (multi_select or panel):
@@ -681,6 +692,12 @@ def SearchSelect(
         search_attrs.append(("value", search_value))
     if max_length is not None:
         search_attrs.append(("maxlength", str(max_length)))
+    if disabled:
+        search_attrs.append(("disabled", ""))
+    if described_by:
+        search_attrs.append(("aria-describedby", described_by))
+    if invalid:
+        search_attrs.append(("aria-invalid", "true"))
 
     home: ComboboxHome = "dialog" if panel else "drop_down"
 
@@ -770,7 +787,7 @@ def SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
         # is the positioning anchor (its field box) and the focus/typing trigger.
         # No id/aria-controls/aria-expanded stamp — the widget owns those at init.
-        [("data-toggle", "")] if home == "drop_down" else [],
+        [*([("data-toggle", "")] if home == "drop_down" else []), *host_attributes],
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
@@ -784,6 +801,7 @@ def SearchSelect(
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
         none_label=none_label,
+        revert_on_leave="true" if revert_on_leave else None,
         class_=_CONTAINER_CLASSES[home],
     )[*children]
     return _inline_combobox_host(widget) if home == "drop_down" else widget

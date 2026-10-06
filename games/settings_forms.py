@@ -13,7 +13,7 @@ from typing import Any, Final, NamedTuple
 from django import forms
 
 from common.components import FormFieldPresentation, SettingFieldState
-from games.forms import apply_primitive_widget_classes
+from games.forms import ChoiceSearchSelectWidget, apply_primitive_widget_classes
 from timetracker.config import SettingSource
 from timetracker.settings_registry import (
     SETTINGS_REGISTRY,
@@ -181,14 +181,16 @@ class RegistrySettingsForm(forms.Form):
             )
         if definition.widget is SettingWidget.SELECT:
             choices = (("", empty_label), *(definition.choices or ()))
+            widget = ChoiceSearchSelectWidget(revert_on_leave=True)
             if definition.cast is not None:
                 return forms.TypedChoiceField(
                     required=False,
                     choices=choices,
                     coerce=definition.cast,
                     empty_value=None,
+                    widget=widget,
                 )
-            return forms.ChoiceField(required=False, choices=choices)
+            return forms.ChoiceField(required=False, choices=choices, widget=widget)
         if definition.widget is SettingWidget.TEXT:
             override = _TEXT_FIELD_OVERRIDES.get(definition.key, TextFieldOverride())
             return forms.CharField(
