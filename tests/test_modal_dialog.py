@@ -110,6 +110,9 @@ class ModalPanelTest(SimpleTestCase):
         self.assertNotIn("translate-y-", _MODAL_PANEL_CLASS)
         self.assertNotIn("scale-", _MODAL_PANEL_CLASS)
 
+    def test_a_covered_panel_stays_opaque(self):
+        self.assertNotIn("opacity", _MODAL_PANEL_CLASS)
+
     def test_the_built_css_holds_the_step(self):
         """base.css is built; run `make css` first."""
         css = BASE_CSS.read_text(encoding="utf-8")

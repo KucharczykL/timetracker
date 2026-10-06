@@ -62,8 +62,9 @@ _DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay"
 _MODAL_PANEL_CLASS = (
     "mt-[var(--modal-reserve,0px)] origin-top "
     "data-modal-depth:[transform:translateY(var(--modal-shift))_scale(calc(1-var(--modal-depth)*.05))] "
-    "data-modal-depth:opacity-[max(.35,calc(.95-var(--modal-depth)*.2))] "
-    "motion-safe:transition-[transform,translate,opacity] "
+    # Darkens, never translucent: the page stays hidden.
+    "data-modal-depth:brightness-[max(.5,calc(1-var(--modal-depth)*.15))] "
+    "motion-safe:transition-[transform,translate,filter] "
     "motion-safe:duration-200 motion-safe:ease-out"
 )
 
