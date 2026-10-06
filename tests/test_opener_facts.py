@@ -231,7 +231,8 @@ def test_a_stated_fact_renders_a_row_in_place_of_its_control(owner, game):
     row = re.search(r'<div data-field-row="kind">.*?</div>', html, re.DOTALL)
     assert row, html
     assert "<dt" in row.group(0) and ">Kind</dt>" in row.group(0)
-    assert ">DLC</dd>" in row.group(0)
+    assert "DLC</dd>" in row.group(0)
+    assert "border-dashed" in row.group(0)
     carrier = _carrier(html, "kind")
     assert 'type="hidden"' in carrier
     assert 'value="dlc"' in carrier
@@ -262,7 +263,7 @@ def test_a_grouped_form_renders_the_stated_row(owner):
     )
 
     assert "<legend" in html and ">What</legend>" in html
-    assert ">DLC</dd>" in html
+    assert "DLC</dd>" in html
     assert "disabled" not in _carrier(html, "kind")
 
 

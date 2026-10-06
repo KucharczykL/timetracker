@@ -37,7 +37,7 @@ def _row(html: str, field: str) -> str:
 def test_a_stated_kind_renders_a_row_and_no_parent(logged_in):
     html = logged_in.get(_add_game({"kind": "main"})).content.decode()
 
-    assert ">Main game</dd>" in _row(html, "kind")
+    assert "Main game</dd>" in _row(html, "kind")
     assert '<select name="kind"' not in html
     assert 'data-field-row="parent"' not in html
     assert re.search(r'<search-select[^>]*\bname="parent"', html) is None
@@ -84,7 +84,7 @@ def test_otherwise_the_title_is_plain(logged_in, query):
 def test_a_stated_addon_kind_keeps_the_parent_picker(logged_in):
     html = logged_in.get(_add_game({"kind": "dlc"})).content.decode()
 
-    assert ">DLC</dd>" in _row(html, "kind")
+    assert "DLC</dd>" in _row(html, "kind")
     assert re.search(r'<search-select[^>]*\bname="parent"', html)
 
 

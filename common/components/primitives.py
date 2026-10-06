@@ -2041,6 +2041,14 @@ def _form_field_row(
     ]
 
 
+#: Field-sized, dashed: fixed, never typed into.
+_STATED_VALUE_CLASS = (
+    "flex items-center gap-2 px-3 py-1 min-h-control rounded-base "
+    "border border-dashed border-default-medium bg-neutral-primary-soft "
+    "text-type-body text-heading"
+)
+
+
 def _fact_carrier(field) -> Node:
     """A fixed field's value, posted; never ``disabled``."""
     value = field.field.prepare_value(field.value())
@@ -2054,7 +2062,10 @@ def _stated_row(field, statement: str) -> Node:
     children: list[Node] = [
         Dl()[
             Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
-            Dd(class_="text-type-body text-heading")[statement],
+            Dd(class_=_STATED_VALUE_CLASS)[
+                Icon("lock", [("aria-hidden", "true"), ("class", "size-4 text-body")]),
+                statement,
+            ],
         ],
         _fact_carrier(field),
     ]
