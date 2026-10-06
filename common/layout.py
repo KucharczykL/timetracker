@@ -209,7 +209,7 @@ def Navbar(
             class_="hidden sm:inline text-lg sm:text-2xl lg:text-4xl text-accent font-alien"  # type-ok: wordmark brand scale
         )["TIMETRACKER"],
     ]
-    controls = ""
+    controls = None
     if viewer is not None:
         controls = Div(class_="flex items-center gap-4 sm:gap-6")[
             NavbarLogButton(

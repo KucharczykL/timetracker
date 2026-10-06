@@ -79,7 +79,7 @@ def _copy_row(
         label=label,
         subtitle=Fragment(
             Span()[_facts(entry, presentation)],
-            *([_note_chip(entry.note)] if entry.note else []),
+            _note_chip(entry.note) if entry.note else None,
         ),
         detail=(
             Div(class_="flex flex-col gap-1")[

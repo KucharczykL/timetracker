@@ -15,6 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 from session_rows import session_row
 
 from common import components
+from common.components.core import as_children
 from games.models import Game, Platform
 
 # Component builders return lazy ``Node`` objects; these tests assert on rendered
@@ -931,6 +932,61 @@ class GenericBuilderContractTest(SimpleTestCase):
     def test_getitem_children(self):
         result = str(components.Div(class_="x")["hi"])
         self.assertEqual(result, '<div class="x">hi</div>')
+
+    def test_getitem_drops_none_and_false_children(self):
+        shown = False
+        result = str(
+            components.Div()[
+                components.Span()["a"],
+                components.Span()["b"] if shown else None,
+                False,
+            ]
+        )
+        self.assertEqual(result, "<div><span>a</span></div>")
+
+    def test_a_true_child_is_refused(self):
+        for children in (True, ("a", True)):
+            with (
+                self.subTest(children=children),
+                self.assertRaisesRegex(TypeError, "True child"),
+            ):
+                components.Div()[children]
+        with self.assertRaisesRegex(TypeError, "True child"):
+            components.Fragment("a", True)
+
+    def test_a_nested_list_child_still_fails_loud(self):
+        with self.assertRaisesRegex(TypeError, "unpack it"):
+            str(components.Div()[["a"], None])
+
+    def test_dropped_children_leave_media_collection_intact(self):
+        widget = components.Span().with_media(components.Media(js=("widget.js",)))
+        for tree in (
+            components.Div()[None, widget, False],
+            components.Fragment(None, widget),
+        ):
+            with self.subTest(tree=type(tree).__name__):
+                self.assertIn("widget.js", components.collect_media(tree).js)
+
+    def test_getitem_of_none_alone_renders_empty(self):
+        self.assertEqual(str(components.Div()[None]), "<div></div>")
+        self.assertEqual(str(components.Br()[None]), "<br>")
+
+    def test_falsy_children_that_are_content_still_render(self):
+        result = str(components.Span()["", "0", components.Fragment()])
+        self.assertEqual(result, "<span>0</span>")
+
+    def test_element_drops_none_and_false_children(self):
+        result = components.Element("p", None, ["a", None, False, "b"])
+        self.assertEqual(result.children, ["a", "b"])
+        self.assertEqual(str(result), "<p>ab</p>")
+        self.assertEqual(str(components.Element("p", None, False)), "<p></p>")
+
+    def test_fragment_drops_none_and_false_children(self):
+        fragment = components.Fragment("a", None, False, "b", separator=" ")
+        self.assertEqual(str(fragment), "a b")
+
+    def test_as_children_drops_none_and_false(self):
+        self.assertEqual(as_children(["a", None, False, "b"]), ["a", "b"])
 
     def test_reserved_attributes_kwarg_raises(self):
         # The footgun guard: 'attributes'/'children' as htpy kwargs are rejected

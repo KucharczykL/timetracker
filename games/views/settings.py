@@ -86,7 +86,7 @@ def _infra_fields() -> list[Node]:
 @login_required
 def admin_settings(request: HttpRequest) -> HttpResponse:
     if not request.user.is_superuser:
-        content = Div(class_="flex flex-col")[
+        content: Node = Div(class_="flex flex-col")[
             SectionedPageHeader(
                 "Admin settings",
                 description="Superuser access is required to manage site defaults.",

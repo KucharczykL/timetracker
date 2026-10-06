@@ -151,7 +151,7 @@ def TemporalField(
             aria_live="polite",
             class_="sr-only",
         ),
-        *([_copy_button(copy_source)] if copy_source else []),
+        _copy_button(copy_source) if copy_source else None,
     ]
     return _TemporalField(
         expanded="true" if _needs_precision_controls(data) else "false",
@@ -302,11 +302,9 @@ def _endpoint_group(
                     label="Whole decade",
                     checked=bool(decade.strip()),
                 ),
-                *(
-                    [_script_toggle(toggle=open_toggle, label=open_label)]
-                    if open_toggle
-                    else []
-                ),
+                _script_toggle(toggle=open_toggle, label=open_label)
+                if open_toggle
+                else None,
             ]
         ],
     ]

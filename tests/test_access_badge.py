@@ -199,7 +199,7 @@ def test_the_number_counts_held_copies_above_one():
     assert '<span aria-hidden="true">3</span>' in _badge([_held()] * 3)
     single = _badge([_held()], [_ended()])
     assert not re.search(r'<span aria-hidden="true">\d', single)
-    assert "None" not in single
+    assert '<span aria-hidden="true">' not in single
 
 
 def test_the_badge_is_the_popovers_button_named_by_its_lines():

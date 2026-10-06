@@ -855,18 +855,13 @@ def _game_section(
     )[
         header,
         table if count else empty_message,
-        *(
-            [
-                P(
-                    class_=(
-                        "flex items-center justify-center gap-2 "
-                        "text-type-body text-body-subtle"
-                    )
-                )[Icon("info", [("aria-hidden", "true")]), note]
-            ]
-            if note
-            else []
-        ),
+        P(
+            class_=(
+                "flex items-center justify-center gap-2 text-type-body text-body-subtle"
+            )
+        )[Icon("info", [("aria-hidden", "true")]), note]
+        if note
+        else None,
     ]
 
 

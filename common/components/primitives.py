@@ -2356,15 +2356,11 @@ def AddForm(
         field_markup,
         Div(class_="flex flex-wrap items-center gap-2")[
             ControlButton(submit_attrs, type="submit")[submit_label],
-            *(
-                [ControlButton(href=cancel_url, color="gray")["Cancel"]]
-                if cancel_url
-                else []
-            ),
+            ControlButton(href=cancel_url, color="gray")["Cancel"]
+            if cancel_url
+            else None,
         ],
-        Div(class_="flex flex-wrap gap-2")[
-            *([additional_row] if additional_row else [])
-        ],
+        Div(class_="flex flex-wrap gap-2")[additional_row],
     ]
 
     return Div(id_="add-form", class_="max-width-container")[
@@ -2387,15 +2383,13 @@ def PageHeading(
     """
     children = children or []
     heading_class = "leading-none text-heading"
-    badge_html: Node | str = ""
+    badge_html: Node | None = None
 
     if badge:
         heading_class = "flex items-center " + heading_class
         badge_html = Badge(badge, size="lg", extra_class="me-2 ms-2")
 
-    return H1(class_=heading_class)[
-        *as_children(children), *([badge_html] if badge_html else [])
-    ]
+    return H1(class_=heading_class)[*as_children(children), badge_html]
 
 
 def DialogTitle(children: Children = None) -> Element:
@@ -2447,32 +2441,20 @@ def ConfirmPage(
                 f'<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">'
             ),
             DialogTitle(title),
-            *([refused] if refused is not None else []),
-            *(
-                [P(class_="text-heading text-center mt-5")[*as_children(message)]]
-                if message
-                else []
-            ),
-            *(
-                [
-                    Div(class_="text-type-body text-body text-start mt-5")[
-                        *as_children(choice)
-                    ]
-                ]
-                if choice
-                else []
-            ),
-            *(
-                [Div(class_="text-heading text-center mt-3")[*as_children(details)]]
-                if details
-                else []
-            ),
+            refused,
+            P(class_="text-heading text-center mt-5")[*as_children(message)]
+            if message
+            else None,
+            Div(class_="text-type-body text-body text-start mt-5")[*as_children(choice)]
+            if choice
+            else None,
+            Div(class_="text-heading text-center mt-3")[*as_children(details)]
+            if details
+            else None,
             Div(class_="flex flex-col gap-2 mt-6")[
-                *(
-                    [ControlButton(color=confirm_color, type="submit")[confirm_label]]
-                    if confirm_label is not None
-                    else []
-                ),
+                ControlButton(color=confirm_color, type="submit")[confirm_label]
+                if confirm_label is not None
+                else None,
                 ControlButton(href=cancel_url, color="gray")["Cancel"],
             ],
         ]

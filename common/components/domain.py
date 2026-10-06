@@ -169,7 +169,7 @@ def AccessBadge(
                 Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
                 for glyph in glyphs or [_FORMAT_UNKNOWN_GLYPH]
             ),
-            *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
+            Span(aria_hidden="true")[str(held)] if held > 1 else None,
             #: The button's name; the panel shows it.
             Span(class_="sr-only")[sentence],
         ],

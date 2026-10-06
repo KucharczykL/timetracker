@@ -967,7 +967,9 @@ Submodules re-exported via `common/components/__init__.py`:
   `collect_media()` sums them over tree, `node.with_media(...)` attaches them).
   `_render_element()` is `@lru_cache`-memoized (4096). Attribute values always
   escaped. **Children: every string child escaped — `SafeText`/`mark_safe`
-  included; only `Node` children (so `Safe`) render unescaped.** `randomid()`
+  included; only `Node` children (so `Safe`) render unescaped.** A `None` or
+  `False` child is dropped and `True` refused, so a conditional child is
+  `x if cond else None`, never `*([x] if cond else [])` (attributes keep that). `randomid()`
   generates stable hash-based IDs.
 - **`primitives.py`** — generic HTML. Plain leaf builders (`A`, `Button`, `Div`,
   `Span`, `Table`, `Form`, `H1`, …) **generated from whitelist** via

@@ -9,6 +9,7 @@ import cycle: this module only imports from ``common.components.core``.
 """
 
 from collections.abc import Mapping
+from typing import Protocol
 
 from common.components.core import AttrsArg, Element, HTMLAttribute, Media
 
@@ -56,7 +57,15 @@ def _coerce_attrs(attrs: AttrsArg | None) -> list[HTMLAttribute]:
     return list(attrs)
 
 
-def element_builder(tag_name: str, media: Media | None = None, default_class: str = ""):
+class ElementBuilder(Protocol):
+    def __call__(
+        self, attrs: AttrsArg | None = None, /, **kwargs: object
+    ) -> Element: ...
+
+
+def element_builder(
+    tag_name: str, media: Media | None = None, default_class: str = ""
+) -> ElementBuilder:
     """Build a generic element builder for ``tag_name`` (the whitelist factory).
 
     If ``media`` is provided, every node created by the builder will carry it
@@ -71,6 +80,7 @@ def element_builder(tag_name: str, media: Media | None = None, default_class: st
 
     def element(
         attrs: AttrsArg | None = None,
+        /,
         **kwargs: object,
     ) -> Element:
         # Merge order is priority order — first contributor wins per the node
