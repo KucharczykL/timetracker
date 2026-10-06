@@ -75,14 +75,11 @@ _NAV_LINK_CLASS = (
 
 
 def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[PlayerSession]:
-    """The most-recent session per distinct played game, newest first (up to
-    ``limit``). Each is a resume target for the navbar log dropdown: cloning it
-    starts a fresh session (see `resumed_device`).
+    """Latest session per played game, newest first.
 
-    Anonymous requests get an empty list — the navbar log button is
-    authenticated-only, so its recent-game names never render on the login page.
-    The scan pages by ``(sort_instant, id)``, which `playersession_sort_order`
-    holds, and early-exits after ``limit`` distinct games."""
+    Empty when anonymous: the login page names no game. Pages by
+    ``(sort_instant, id)`` and stops after ``limit`` games.
+    """
     if not request.user.is_authenticated:
         return []
     from games.reads.player_sessions import library_sessions

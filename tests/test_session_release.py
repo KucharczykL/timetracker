@@ -1104,7 +1104,7 @@ def test_resume_states_no_release(owned_user, owned_library, graph, run):
         owned_user,
         graph.game,
         correlation_id=uuid.uuid7(),
-    )
+    ).session_id
 
     assert PlayerSession.objects.get(pk=resumed).release_id is None
 

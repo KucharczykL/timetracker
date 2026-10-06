@@ -343,7 +343,7 @@ def test_cloning_lands_on_the_ordinary_run_past_the_bucket(
         owned_user,
         game,
         correlation_id=uuid.uuid7(),
-    )
+    ).session_id
 
     clone = PlayerSession.objects.get(pk=session_id)
     assert clone.playthrough_id == ordinary.pk
