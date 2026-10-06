@@ -368,7 +368,8 @@ def FilterGroup(
       (id-less so per-leaf clones don't collide; the TS assigns a unique id per clone),
     - one blank value-widget ``<template data-field="name">`` per leaf field (#192),
     - one blank comparison-row ``<template>`` when the model admits a field comparison
-      (#246).
+      (#246),
+    - one relation-field picker ``<template>``.
 
     The root filter class is resolved from ``model`` by convention
     (``filter_for_model``) — no registry. Media is auto-attached by

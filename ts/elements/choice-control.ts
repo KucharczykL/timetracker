@@ -8,7 +8,7 @@ import {
   type SearchSelectOptionGroup,
 } from "./search-select.js";
 
-//: A host `data-*` attribute naming the control, e.g. "data-fc-op".
+//: A host `data-*` attribute, e.g. "data-fc-op".
 export type ChoiceMarker = string;
 
 export interface ChoiceControl {
@@ -63,7 +63,7 @@ class SearchSelectChoice implements ChoiceControl {
       `[data-search-select-option][data-value="${escapeValue(value)}"]`,
     );
     if (!row) return false;
-    // initWidget adopts this hidden input and the box text.
+    // initWidget adopts the input and box text.
     const hidden = document.createElement("input");
     hidden.type = "hidden";
     hidden.name = this.name();

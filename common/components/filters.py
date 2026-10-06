@@ -521,7 +521,7 @@ _QUANTIFIER_WIDTH = "w-28"
 _RELATION_MATCH_WIDTH = "w-28"
 _RELATION_FIELD_WIDTH = "w-48"
 
-#: The RelationMatch choices: a relation's and a comparison's quantifier.
+#: Every quantifier's choices.
 RELATION_MATCH_CHOICES: tuple[LabeledOption, ...] = (
     ("ANY", "any"),
     ("NONE", "none"),
@@ -640,7 +640,7 @@ def _field_comparison_row(
                 data_selected=quantifier_value,
                 class_=f"hidden {_QUANTIFIER_WIDTH}",
             )[
-                # Restored client-side from ``data-selected``, like the operator.
+                # The client restores ``data-selected``.
                 ChoicePicker(
                     marker=None,
                     name="fc-quantifier",
@@ -748,10 +748,7 @@ def relation_match_template() -> Node:
 
 
 def relation_field_template(filter_cls: type[OperatorFilter], *, model: str) -> Node:
-    """One model's relation-field picker for the nested builder.
-
-    Rows come from ``field_metadata``, as the ``models`` prop does.
-    """
+    """One model's relation-field picker."""
     choices = [
         (meta["name"], meta["label"])
         for meta in field_metadata(filter_cls)
@@ -805,8 +802,7 @@ def ChoicePicker(
 ) -> Node:
     """One filter control's single-choice picker.
 
-    ``ts/elements/choice-control.ts`` reads and writes it. ``marker`` goes on
-    the ``<search-select>``; ``None`` leaves it to a caller's wrapper.
+    ``marker`` None: the caller's wrapper carries it.
     """
     options = [
         SearchSelectOption(value=value, label=label, data={})

@@ -58,7 +58,7 @@ export interface SearchSelectOption {
   hint?: string;
 }
 
-//: A labelled run of rows; blank labels render no header.
+//: Rows under one header; blank heads none.
 export interface SearchSelectOptionGroup {
   label: string;
   options: SearchSelectOption[];

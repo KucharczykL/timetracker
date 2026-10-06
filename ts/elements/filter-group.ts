@@ -133,10 +133,7 @@ const VALUE_PLACEHOLDER_CLASS =
 // cloned onto a touched-but-incomplete row. No row background — the "!" alone
 // flags it and its popover explains the excluded-from-query semantics. Markup +
 // classes are server-owned (data-incomplete-badge-template), like the chips.
-// Chip and relation-picker markup is server-owned (#273): the server ships one
-// <template data-chip-template="<state>"> per chip state, one
-// <template data-relation-match-template>, and one relation-field template per
-// model; chip() and the relation pickers clone them.
+// Chip and relation-picker markup is server-owned.
 // The visual states a chip template can carry; mirrors the server's ChipState
 // (common/components/filters.py), where the class sets live.
 type ChipState = "connective-and" | "connective-or" | "negate-off" | "negate-on";
@@ -903,9 +900,7 @@ export class FilterGroupElement extends HTMLElement {
     return span;
   }
 
-  // A relation picker cloned from its server template, holding `value`.
-  // Hydration writes the detached clone's markup; the element adopts it on
-  // connection. A missing template is a defect: reported, no picker.
+  // Clone a relation picker holding `value`.
   private relationPicker(
     template: HTMLTemplateElement | null,
     value: string,

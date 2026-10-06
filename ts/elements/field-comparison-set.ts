@@ -296,8 +296,8 @@ function seedOperand(
 export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]): void {
   if (!slot(row, OPERATOR)) return;
 
-  // Detect which control changed by DOM ancestry, not the event's `name`: the
-  // nested builder's `uniquify` suffixes each cloned picker's name.
+  // Detect the control by ancestry, not name.
+  // The builder's `uniquify` suffixes each cloned picker's name.
   row.addEventListener("search-select:change", (event) => {
     // Only a real pick re-derives the row. Typing in a committed picker emits
     // a transient drop with last=null — cascading through refreshRow would

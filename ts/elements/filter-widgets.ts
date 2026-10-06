@@ -241,8 +241,7 @@ export function toggleNumberFilterInput(root: HTMLElement, modifier: string): vo
   if (value2) value2.classList.toggle("hidden", presence || !isRangeModifier(modifier));
 }
 
-// Delegated pick handler wiring both string + number modifier toggles on a
-// persistent root (the filter bar, or a filter-group leaf container).
+// Wires the modifier toggles under `root`.
 export function setupModifierToggles(root: HTMLElement): void {
   root.addEventListener("search-select:change", (event) => {
     const target = event.target as Element;
@@ -268,8 +267,7 @@ export function setupModifierToggles(root: HTMLElement): void {
 // delegated onValueEvent once attached — so the modifier toggle helpers are
 // called directly instead of relying on the delegated change listener.
 
-// Hold `modifier` only when a row offers it, so a malformed stored modifier
-// can't clobber the default.
+// A malformed stored modifier keeps the default.
 function writeModifier(element: HTMLElement, marker: string, modifier: unknown): void {
   if (typeof modifier !== "string" || modifier === "") return;
   choiceControl(element, marker)?.write(modifier);

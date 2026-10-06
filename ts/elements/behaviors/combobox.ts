@@ -30,7 +30,7 @@ registerBehavior("combobox", {
     itemSelector: "[data-combobox-no-items]",
   }),
   wire: ({ host, menu }) => {
-    // The panel's own picker; a nested field picker opens its own list.
+    // Only the panel's own picker; nested ones stay shut.
     const widget = menu.querySelector<ComboboxWidget>(PANEL_PICKER);
     const searchInput =
       widget?.querySelector<HTMLInputElement>("[data-search-select-search]") ?? null;
