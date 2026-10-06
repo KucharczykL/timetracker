@@ -26,6 +26,7 @@ from common.returns import UrlName
 from games.batch_ledger import batch_act
 from games.bulk_actions import BulkAction, bulk_action
 from games.bulk_jobs import (
+    StopAnswer,
     Tally,
     announce,
     end_stale,
@@ -96,6 +97,8 @@ UNDO_OF_AN_UNDO = (
 
 #: An Undo with no rows left.
 NOTHING_TO_UNDO = "Nothing from that batch is left to take back."
+#: A Stop that came too late.
+ENDED_BEFORE_STOP = "That batch ended before Stop reached it."
 
 
 @dataclass(frozen=True, slots=True)
@@ -532,6 +535,9 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
 def stop_bulk_batch(request: HttpRequest, token: uuid.UUID) -> HttpResponse:
     """Stop between chunks; done rows stay."""
     library = cast(User, request.user).library
-    if not request_stop(library, token):
+    answer = request_stop(library, token)
+    if answer is StopAnswer.ABSENT:
         raise Http404("No such batch.")
+    if answer is StopAnswer.ENDED:
+        notify(request, ENDED_BEFORE_STOP, level=messages.INFO)
     return redirect(return_url(request, fallback=UNDO_FALLBACK))

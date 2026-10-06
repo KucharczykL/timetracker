@@ -29,6 +29,8 @@ follow from the rule:
   toast whose Undo the person pressed goes away.
 - Stop records the stop request before it answers. The toast says
   "stopping." at once and has no Stop.
+- Stop on an ended batch changes nothing and says so (`StopAnswer`). A
+  batch that ends while Stop reads it counts as ended.
 - A dismissed running batch stays hidden, as on a load.
 - A sticky end older than `ANNOUNCE_WINDOW` goes away. A reload does not
   show it either.
@@ -57,11 +59,6 @@ follow from the rule:
   does not count as a poll failure. A refused session (401, 403) shows the
   poll's warning, because the person must reload. An answered reconcile
   clears the failure count and that warning.
-
-## Accepted
-
-A reconcile can push the newest dialog messages past the three-toast limit.
-A load does the same.
 
 ## Not chosen
 

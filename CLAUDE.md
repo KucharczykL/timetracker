@@ -812,7 +812,7 @@ confirmation. Every write after the creation is fenced by `chunk` and
 A stale chunk does nothing, an overtaken one stops, a third start fails. A
 defect or the cluster's timeout stores `failed`; the rows done stay done and
 keep their Undo. Stop (`stop_bulk_batch`) ends the batch between chunks and
-fences out a run in flight; a live batch silent for `STALE_AFTER` has no
+fences out a run in flight, and on an ended batch says so (`StopAnswer`); a live batch silent for `STALE_AFTER` has no
 worker, and Stop or Undo ends it at once. One Undo of a batch runs at a time
 (a partial unique constraint). The log names every row left alone. `Page()` embeds the library's
 batches; `ts/bulk-batch-status.ts` toasts them, polls `/api/bulk/batches`, and

@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from enum import Enum
 from functools import partial
 from time import monotonic
 from typing import Any, Literal, TypedDict, TypeIs, get_args
@@ -545,19 +546,34 @@ def end_stale(batch: BulkBatch) -> bool:
     return _end_unreached(batch, BulkBatch.State.STOPPED, NO_WORKER)
 
 
-def request_stop(library: UserLibrary, token: BatchToken) -> bool:
-    """Ask the runner to stop; False when absent."""
+class StopAnswer(Enum):
+    """What a Stop press met."""
+
+    ABSENT = "absent"
+    ASKED = "asked"
+    ENDED = "ended"
+
+
+def request_stop(library: UserLibrary, token: BatchToken) -> StopAnswer:
+    """Ask the runner to stop."""
     batch = library_batch(library, token)
     if batch is None:
-        return False
-    if not end_stale(batch):
-        _store(
-            BulkBatch.objects.filter(
-                pk=batch.pk, state__in=BulkBatch.LIVE, stop_requested_at__isnull=True
-            ),
-            stop_requested_at=timezone.now(),
-        )
-    return True
+        return StopAnswer.ABSENT
+    if batch.is_terminal:
+        return StopAnswer.ENDED
+    if end_stale(batch):
+        return StopAnswer.ASKED
+    stored = _store(
+        BulkBatch.objects.filter(
+            pk=batch.pk, state__in=BulkBatch.LIVE, stop_requested_at__isnull=True
+        ),
+        stop_requested_at=timezone.now(),
+    )
+    if stored:
+        return StopAnswer.ASKED
+    # Asked before, or it ended meanwhile.
+    batch.refresh_from_db(fields=["state"])
+    return StopAnswer.ENDED if batch.is_terminal else StopAnswer.ASKED
 
 
 def announce(library: UserLibrary, token: BatchToken) -> bool:
