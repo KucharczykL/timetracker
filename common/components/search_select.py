@@ -50,7 +50,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, NamedTuple, NotRequired, TypedDict
+from typing import Final, Literal, NamedTuple, NotRequired, TypedDict
 
 from django.utils.functional import Promise
 
@@ -556,6 +556,14 @@ def _combobox_children(
     return [box, options_panel, *(templates or [])]
 
 
+type HostData = Mapping[str, str]  # data-* attributes for the host
+
+#: Data attributes the element writes itself.
+RESERVED_HOST_DATA: Final = frozenset(
+    {"data-toggle", "data-values", "data-included", "data-excluded", "data-modifier"}
+)
+
+
 def SearchSelect(
     *,
     name: str,
@@ -584,7 +592,7 @@ def SearchSelect(
     none_label: NoneLabel | None = None,
     shape: ButtonShape = "full",
     dialog_create: DialogCreate | None = None,
-    host_data: Mapping[str, str] | None = None,
+    host_data: HostData | None = None,
     disabled: bool = False,
     described_by: str | None = None,
     invalid: bool = False,
@@ -634,15 +642,20 @@ def SearchSelect(
     ``dialog_create``: a + creating the row in a dialog.
     ``host_data``: ``data-*`` attributes on the element.
     ``disabled``, ``described_by``, ``invalid``: the search box's state.
-    ``revert_on_leave``: leaving mid-edit restores the held.
+    ``revert_on_leave``: leaving mid-edit restores the held value.
     """
     host_attributes = list((host_data or {}).items())
     if any(not key.startswith("data-") for key, _ in host_attributes):
         raise ValueError(f"host_data takes data-* only: {host_data!r}")
+    reserved = RESERVED_HOST_DATA.intersection(key for key, _ in host_attributes)
+    if reserved:
+        raise ValueError(f"host_data names the element's own {sorted(reserved)}")
     if dialog_create and panel:
         raise ValueError("dialog_create is field-hosted only")
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
+    if revert_on_leave and (multi_select or panel):
+        raise ValueError("revert_on_leave is single-select and field-hosted only")
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
     selected = [_normalize_option(option) for option in (selected or [])]

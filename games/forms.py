@@ -425,6 +425,17 @@ DEVICE_CREATE_URL = "/api/devices/"
 PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
+#: Attrs the adapter or its callers read.
+_SEARCH_SELECT_ATTRS: Final = frozenset(
+    {"id", "disabled", "aria-describedby", "aria-invalid", "required", "maxlength"}
+)
+
+
+def _attr_flag(value: object) -> bool:
+    """A boolean attr, as Django or a caller states it."""
+    return value not in (None, False, "false")
+
+
 class _SearchSelectAdapter(forms.Widget):
     """Django half every form `SearchSelect` shares."""
 
@@ -450,10 +461,15 @@ class _SearchSelectAdapter(forms.Widget):
         self.revert_on_leave = revert_on_leave
 
     def _render(self, name, attrs, *, shape: ButtonShape, **component) -> str:
-        # Other attrs have no home; dropped.
         merged = {**self.attrs, **(attrs or {})}
+        homeless = {
+            key
+            for key in merged
+            if not key.startswith("data-") and key not in _SEARCH_SELECT_ATTRS
+        }
+        if homeless:
+            raise ValueError(f"{name}: SearchSelect has no home for {sorted(homeless)}")
         input_id = merged.get("id", "")
-        invalid = merged.get("aria-invalid")
         # Widgets return safe strings, not nodes.
         return render(
             SearchSelect(
@@ -469,9 +485,9 @@ class _SearchSelectAdapter(forms.Widget):
                     for key, value in merged.items()
                     if key.startswith("data-") and value not in (None, False)
                 },
-                disabled=bool(merged.get("disabled")),
+                disabled=_attr_flag(merged.get("disabled")),
                 described_by=merged.get("aria-describedby") or None,
-                invalid=invalid not in (None, False, "false"),
+                invalid=_attr_flag(merged.get("aria-invalid")),
                 revert_on_leave=self.revert_on_leave,
                 shape=shape,
                 **component,

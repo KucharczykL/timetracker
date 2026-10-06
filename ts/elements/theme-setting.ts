@@ -12,6 +12,7 @@ class ThemeSettingElement extends HTMLElement {
   connectedCallback(): void {
     const element = this.querySelector("[data-setting-key]");
     this.control = element ? settingControlOf(element) : null;
+    if (!this.control) console.error("theme-setting: no readable control");
     this.control?.element.addEventListener(this.control.changeEvent, this.onChange);
     this.unsubscribe = getThemeCoordinator().subscribe(this.renderState);
   }
@@ -28,6 +29,7 @@ class ThemeSettingElement extends HTMLElement {
     const value = this.control?.read();
     if (value === undefined) return;
     if (value !== null && (typeof value !== "string" || !isThemePreference(value))) {
+      console.error("theme-setting: not a theme preference", value);
       this.renderState(getThemeCoordinator().currentState());
       return;
     }

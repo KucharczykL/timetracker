@@ -268,4 +268,20 @@ describe("<theme-setting>", () => {
     search.dispatchEvent(new Event("input", { bubbles: true }));
     expect(window.fetchWithEvents).not.toHaveBeenCalled();
   });
+
+  it("holds none again after a failed picker save, silently", async () => {
+    configureInheritedDark();
+    vi.mocked(window.fetchWithEvents).mockResolvedValue({ ok: false, status: 500 } as Response);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { picker, search } = mountPicker();
+    const changes = vi.fn();
+    picker.addEventListener("search-select:change", changes);
+
+    pick(picker, '[data-search-select-option][data-value="light"]');
+    await vi.waitFor(() => expect(search.disabled).toBe(false));
+
+    expect(search.value).toBe(THEME_NONE);
+    expect(picker.querySelector("input[data-search-select-none]")).not.toBeNull();
+    expect(changes).toHaveBeenCalledTimes(1);
+  });
 });

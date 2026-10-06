@@ -230,3 +230,70 @@ describe("<search-select> aria-describedby", () => {
     expect(document.getElementById(ids[1])?.hasAttribute("data-search-select-status")).toBe(true);
   });
 });
+
+describe("<search-select> review cases", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const press = (host: HTMLElement, key: string) =>
+    searchBox(host).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+
+  it("keeps an open panel when the held value is held again", () => {
+    const host = mount({ held: "1" });
+    searchBox(host).focus();
+    press(host, "ArrowDown");
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("true");
+    expect(host.holdValue("1")).toBe(true);
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("true");
+    host.holdNone();
+    host.holdValue("1");
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("answers whether a row offered the value", () => {
+    const host = mount({ held: "1" });
+    expect(host.offers("2")).toBe(true);
+    expect(host.offers("9")).toBe(false);
+    expect(host.holdValue("9")).toBe(false);
+  });
+
+  it("forgets the dropped value once none is held from code", () => {
+    const host = mount({ held: "1" });
+    type(host, "Sw");
+    host.holdNone();
+    leaveTo(host, outside());
+    expect(held(host).none).toBe(true);
+    type(host, "De");
+    leaveTo(host, outside());
+    expect(held(host)).toEqual({ values: [], none: true, text: "Use site default (Deck)" });
+  });
+
+  it("emits nothing for Enter on the held row", () => {
+    const host = mount({ held: "2" });
+    const events = record(host);
+    searchBox(host).focus();
+    for (let step = 0; step < 4 && !row(host, "2").hasAttribute("data-search-select-highlighted"); step++) {
+      press(host, "ArrowDown");
+    }
+    press(host, "Enter");
+    expect(events).toEqual([]);
+    expect(held(host).values).toEqual(["2"]);
+  });
+
+  it("emits nothing for a multi-select re-pick of a held value", () => {
+    const host = mount({ held: "1", noneLabel: "" });
+    host.setAttribute("multi", "true");
+    const fresh = host.cloneNode(true) as SearchSelectElement;
+    host.replaceWith(fresh);
+    const events = record(fresh);
+    searchBox(fresh).focus();
+    row(fresh, "1").click();
+    expect(events).toEqual([]);
+    row(fresh, "2").click();
+    expect(events.map(event => event.values)).toEqual([["1", "2"]]);
+  });
+
+  it("refuses a hold before it initialises", () => {
+    const host = document.createElement("search-select") as SearchSelectElement;
+    expect(() => host.holdNone()).toThrow(/not initialised/);
+  });
+});

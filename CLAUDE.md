@@ -1017,8 +1017,9 @@ Submodules re-exported via `common/components/__init__.py`:
   key absent; × then holds none, and the change event states `none`, #1288;
   a form-mode pick that changes nothing emits nothing, `holdValue`/`holdNone`
   hold silently, and opt-in `revert_on_leave` restores what a first keystroke
-  dropped when focus leaves; the adapter puts `data-*` on the host and
-  `disabled`/`aria-*` on the box, #1289),
+  dropped when focus leaves; the adapter puts `data-*` on the host,
+  `disabled`, `aria-describedby` and `aria-invalid` on the box, and refuses
+  any other attr, #1289),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`

@@ -701,4 +701,51 @@ describe("<live-setting-fields> over a <search-select>", () => {
     expect(sentValues(fetchStub)).toEqual(["Asia/Tokyo", "Europe/Prague"]);
     expect(search.value).toBe("Europe/Prague");
   });
+
+  it("shows the committed value after a failed save and a leave mid-edit", async () => {
+    const first = deferredResponse();
+    window.fetchWithEvents = vi.fn().mockImplementationOnce(() => first.promise);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { picker, search } = mountPicker();
+
+    pickRow(picker, zoneRow("Asia/Tokyo"));
+    search.value = "Eu";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    first.resolve({ ok: false, status: 500 } as Response);
+    await vi.waitFor(() => expect(window.toast).toHaveBeenCalled());
+    search.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+
+    expect(search.value).toBe("Europe/Prague");
+    expect(picker.querySelector<HTMLInputElement>('input[type="hidden"]')!.value).toBe(
+      "Europe/Prague"
+    );
+  });
+
+  it("saves null for × pressed mid-edit and does not revert on leave", async () => {
+    const fetchStub = vi.fn().mockResolvedValue(zoneAnswer("UTC"));
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+
+    search.focus();
+    search.value = "As";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    picker.querySelector<HTMLButtonElement>("[data-search-select-clear]")!.click();
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+    search.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+
+    expect(sentValues(fetchStub)).toEqual([null]);
+    expect(search.value).toBe(ZONE_NONE);
+  });
+
+  it("does not PATCH a disabled picker", async () => {
+    const fetchStub = vi.fn();
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+    search.disabled = true;
+
+    picker.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
 });

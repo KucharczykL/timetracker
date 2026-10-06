@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
-import { changedSettingControl, settingControlOf } from "./setting-control.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { changedSettingControl, settingControlOf, snapshotsEqual } from "./setting-control.js";
 import type { ResolvedSetting } from "./settings-events.js";
 
 Element.prototype.scrollIntoView = () => {};
@@ -94,7 +94,7 @@ describe("settingControlOf a native control", () => {
     const select = settingControlOf(document.querySelector("select")!)!;
     select.write("a");
     expect(select.read()).toBe("a");
-    select.restore({ value: "" });
+    select.restore({ kind: "native", value: "" });
     expect(select.read()).toBeNull();
   });
 });
@@ -124,7 +124,7 @@ describe("settingControlOf a <search-select>", () => {
     control.write(null);
     control.restore(held);
     expect(control.read()).toBe("Europe/Prague");
-    expect(control.equals(control.snapshot(), held)).toBe(true);
+    expect(snapshotsEqual(control.snapshot(), held)).toBe(true);
     expect(events).toEqual([]);
   });
 
@@ -166,5 +166,50 @@ describe("changedSettingControl", () => {
     searchBox().dispatchEvent(new Event("change", { bubbles: true }));
     picker.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true }));
     expect(seen).toEqual([undefined, picker]);
+  });
+});
+
+describe("the reader refuses what it cannot serve", () => {
+  it("refuses a checkbox write that is no boolean", () => {
+    document.body.innerHTML = '<input type="checkbox">';
+    const checkbox = settingControlOf(document.querySelector("input")!)!;
+    expect(() => checkbox.write("yes")).toThrow();
+    checkbox.write(true);
+    expect(checkbox.read()).toBe(true);
+  });
+
+  it("refuses another kind's snapshot", () => {
+    const picker = settingControlOf(mountPicker("Europe/Prague"))!;
+    expect(() => picker.restore({ kind: "native", value: "x" })).toThrow();
+  });
+
+  it("refuses a multi-select picker", () => {
+    const picker = mountPicker("Europe/Prague");
+    picker.setAttribute("multi", "true");
+    expect(() => settingControlOf(picker)).toThrow();
+  });
+
+  it("holds none for a resolved value no row offers, and says so", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const control = settingControlOf(mountPicker("Europe/Prague"))!;
+    const state = control.resolvedSnapshot(
+      { value: "Mars/Olympus", state: control.snapshot() },
+      resolved("Mars/Olympus")
+    );
+    expect(state).toEqual({ kind: "held", value: "", none: true });
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("round-trips a snapshot for each kind", () => {
+    const picker = settingControlOf(mountPicker(null))!;
+    const none = picker.snapshot();
+    picker.restore(none);
+    expect(snapshotsEqual(picker.snapshot(), none)).toBe(true);
+    document.body.innerHTML = '<input type="checkbox" checked value="on">';
+    const checkbox = settingControlOf(document.querySelector("input")!)!;
+    const checked = checkbox.snapshot();
+    checkbox.restore(checked);
+    expect(snapshotsEqual(checkbox.snapshot(), checked)).toBe(true);
   });
 });

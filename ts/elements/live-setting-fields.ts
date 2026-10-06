@@ -2,7 +2,9 @@
 import { readLiveSettingFieldsProps } from "../generated/props.js";
 import {
   changedSettingControl,
+  SETTING_CHANGE_EVENTS,
   settingControlOf,
+  snapshotsEqual,
   type ControlSnapshot,
   type SaveAttempt,
   type SettingControl,
@@ -35,14 +37,15 @@ class LiveSettingFieldsElement extends HTMLElement {
     this.querySelectorAll<HTMLElement>("[data-live-setting-control]").forEach((candidate) => {
       const control = settingControlOf(candidate);
       if (control) this.committed.set(candidate, control.snapshot());
+      else console.error("live-setting-fields: no reader for", candidate);
     });
-    this.addEventListener("change", this.onChange);
-    this.addEventListener("search-select:change", this.onChange);
+    SETTING_CHANGE_EVENTS.forEach(type => this.addEventListener(type, this.onChange));
+    this.addEventListener("focusout", this.onLeave);
   }
 
   disconnectedCallback(): void {
-    this.removeEventListener("change", this.onChange);
-    this.removeEventListener("search-select:change", this.onChange);
+    SETTING_CHANGE_EVENTS.forEach(type => this.removeEventListener(type, this.onChange));
+    this.removeEventListener("focusout", this.onLeave);
     this.pending.forEach(({ controller }) => controller.abort());
     this.pending.clear();
   }
@@ -51,6 +54,21 @@ class LiveSettingFieldsElement extends HTMLElement {
     const control = changedSettingControl(event);
     if (!control || !this.contains(control.element) || !control.editable()) return;
     this.save(control);
+  };
+
+  //: Leaving shows the committed value again.
+  private onLeave = (event: FocusEvent): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const element = target.closest<HTMLElement>("[data-live-setting-control]");
+    if (!element || !this.contains(element)) return;
+    if (element.contains(event.relatedTarget as Node | null)) return;
+    // A settling save reconciles on its own.
+    if (this.pending.has(element)) return;
+    const committed = this.committed.get(element);
+    const control = settingControlOf(element);
+    if (!committed || !control) return;
+    if (!snapshotsEqual(control.snapshot(), committed)) control.restore(committed);
   };
 
   private save(control: SettingControl): void {
@@ -127,7 +145,7 @@ class LiveSettingFieldsElement extends HTMLElement {
         control.restore(committedState);
       } else if (
         pending.queued === null &&
-        control.equals(control.snapshot(), attempt.state)
+        snapshotsEqual(control.snapshot(), attempt.state)
       ) {
         // Reconcile server normalization/fallback only while this response
         // still represents the visible edit. Preserve newer unsubmitted input.
@@ -142,11 +160,11 @@ class LiveSettingFieldsElement extends HTMLElement {
       console.error("Failed to update setting", key, error);
       if (this.pending.get(element) !== pending) return;
       // A superseded failure must not overwrite or alarm for the newer value
-      // waiting behind it. If the user is typing but has not fired `change`
+      // waiting behind it. If the user is editing but has not committed
       // yet, preserve that newer DOM state while still reporting the failure.
       if (pending.queued === null) {
         const previous = this.committed.get(element);
-        if (previous && control.equals(control.snapshot(), attempt.state)) {
+        if (previous && snapshotsEqual(control.snapshot(), attempt.state)) {
           control.restore(previous);
         }
         window.toast("Couldn't save your change — please try again.", "error");

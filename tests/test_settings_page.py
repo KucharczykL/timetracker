@@ -250,3 +250,16 @@ def test_anonymous_navbar_does_not_link_to_settings(db):
     html = Client().get(reverse("login")).content.decode()
 
     assert 'href="/tracker/settings"' not in html
+
+
+def test_each_picker_carries_its_setting_and_a_live_description(auth_client):
+    html = auth_client.get(reverse("games:settings")).content.decode()
+
+    picker = _picker(html, "default_page_size")
+    host = picker[: picker.index(">") + 1]
+    assert 'data-setting-key="DEFAULT_PAGE_SIZE"' in host
+    assert 'data-live-setting-control=""' in host
+    described = re.search(r'aria-describedby="([^"]+)"', _search_box(picker))
+    assert described is not None
+    for described_id in described.group(1).split():
+        assert f'id="{described_id}"' in html

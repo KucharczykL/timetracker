@@ -5,49 +5,72 @@ import type { ResolvedSetting, SettingValue } from "./settings-events.js";
 
 export type { SettingValue };
 
-export interface ControlSnapshot {
-  value: string;
-  checked?: boolean;
-  none?: boolean;
+interface NativeSnapshot {
+  readonly kind: "native";
+  readonly value: string;
+  readonly checked?: boolean;
 }
 
+type HeldSnapshot =
+  | { readonly kind: "held"; readonly value: string; readonly none: false }
+  | { readonly kind: "held"; readonly value: ""; readonly none: true };
+
+export type ControlSnapshot = NativeSnapshot | HeldSnapshot;
+
 export interface SaveAttempt {
-  value: SettingValue;
-  state: ControlSnapshot;
+  readonly value: SettingValue;
+  readonly state: ControlSnapshot;
 }
+
+//: Every event a control commits with.
+export const SETTING_CHANGE_EVENTS = ["change", "search-select:change"] as const;
+export type SettingChangeEvent = (typeof SETTING_CHANGE_EVENTS)[number];
 
 //: Marks a control the generic element saves.
 const LIVE_MARKER = "data-live-setting-control";
 
+const HELD_NONE: HeldSnapshot = { kind: "held", value: "", none: true };
+
 export interface SettingControl {
   readonly element: HTMLElement;
   //: The event a person's commit fires.
-  readonly changeEvent: string;
+  readonly changeEvent: SettingChangeEvent;
   //: `undefined`: nothing to save yet.
   read(): SettingValue | undefined;
+  //: `restore(snapshot())` changes nothing.
   snapshot(): ControlSnapshot;
   //: Silent: fires no change event.
   restore(state: ControlSnapshot): void;
   write(value: SettingValue): void;
   resolvedSnapshot(attempt: SaveAttempt, resolved: ResolvedSetting): ControlSnapshot;
-  equals(left: ControlSnapshot, right: ControlSnapshot): boolean;
   editable(): boolean;
   setDisabled(disabled: boolean): void;
   setBusy(busy: boolean): void;
 }
 
-type NativeElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-
-const snapshotsEqual = (left: ControlSnapshot, right: ControlSnapshot): boolean =>
-  left.value === right.value && left.checked === right.checked && left.none === right.none;
+export function snapshotsEqual(left: ControlSnapshot, right: ControlSnapshot): boolean {
+  if (left.kind === "native" && right.kind === "native") {
+    return left.value === right.value && left.checked === right.checked;
+  }
+  if (left.kind === "held" && right.kind === "held") {
+    return left.value === right.value && left.none === right.none;
+  }
+  return false;
+}
 
 const markBusy = (element: HTMLElement, busy: boolean): void => {
   if (busy) element.setAttribute("aria-busy", "true");
   else element.removeAttribute("aria-busy");
 };
 
+type NativeElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
 const isCheckbox = (element: NativeElement): element is HTMLInputElement =>
   element instanceof HTMLInputElement && element.type === "checkbox";
+
+function refuseKind(expected: ControlSnapshot["kind"], state: ControlSnapshot): never {
+  throw new Error(`setting control: a ${state.kind} snapshot is no ${expected} one`);
+}
 
 class NativeSettingControl implements SettingControl {
   readonly changeEvent = "change";
@@ -65,12 +88,15 @@ class NativeSettingControl implements SettingControl {
     return control.value;
   }
 
-  snapshot(): ControlSnapshot {
+  snapshot(): NativeSnapshot {
     const control = this.element;
-    return { value: control.value, ...(isCheckbox(control) ? { checked: control.checked } : {}) };
+    return isCheckbox(control)
+      ? { kind: "native", value: control.value, checked: control.checked }
+      : { kind: "native", value: control.value };
   }
 
   restore(state: ControlSnapshot): void {
+    if (state.kind !== "native") refuseKind("native", state);
     const control = this.element;
     control.value = state.value;
     if (isCheckbox(control) && state.checked !== undefined) control.checked = state.checked;
@@ -78,8 +104,14 @@ class NativeSettingControl implements SettingControl {
 
   write(value: SettingValue): void {
     const control = this.element;
-    if (isCheckbox(control) && typeof value === "boolean") control.checked = value;
-    else control.value = value === null ? "" : String(value);
+    if (isCheckbox(control)) {
+      if (typeof value !== "boolean") {
+        throw new Error(`setting control: a checkbox takes a boolean, not ${value}`);
+      }
+      control.checked = value;
+      return;
+    }
+    control.value = value === null ? "" : String(value);
   }
 
   resolvedSnapshot(attempt: SaveAttempt, resolved: ResolvedSetting): ControlSnapshot {
@@ -87,16 +119,14 @@ class NativeSettingControl implements SettingControl {
     // Blank means "use default", whatever resolved.
     if (control instanceof HTMLSelectElement && attempt.value === null) return attempt.state;
     if (isCheckbox(control)) {
+      const checked = attempt.state.kind === "native" ? attempt.state.checked : undefined;
       return {
-        ...attempt.state,
-        checked: typeof resolved.value === "boolean" ? resolved.value : attempt.state.checked,
+        kind: "native",
+        value: control.value,
+        checked: typeof resolved.value === "boolean" ? resolved.value : checked,
       };
     }
-    return { value: resolved.value === null ? "" : String(resolved.value) };
-  }
-
-  equals(left: ControlSnapshot, right: ControlSnapshot): boolean {
-    return snapshotsEqual(left, right);
+    return { kind: "native", value: resolved.value === null ? "" : String(resolved.value) };
   }
 
   editable(): boolean {
@@ -116,11 +146,12 @@ class NativeSettingControl implements SettingControl {
 
 class SearchSelectSettingControl implements SettingControl {
   readonly changeEvent = "search-select:change";
+  private readonly search: HTMLInputElement;
 
-  constructor(readonly element: SearchSelectElement) {}
-
-  private get search(): HTMLInputElement | null {
-    return this.element.querySelector<HTMLInputElement>("[data-search-select-search]");
+  constructor(readonly element: SearchSelectElement) {
+    const search = element.querySelector<HTMLInputElement>("[data-search-select-search]");
+    if (!search) throw new Error(`search-select[${element.getAttribute("name")}]: no search box`);
+    this.search = search;
   }
 
   private heldInput(): HTMLInputElement | null {
@@ -135,48 +166,58 @@ class SearchSelectSettingControl implements SettingControl {
     return held.hasAttribute("data-search-select-none") ? null : held.value;
   }
 
-  snapshot(): ControlSnapshot {
+  snapshot(): HeldSnapshot {
     const held = this.heldInput();
-    const none = held?.hasAttribute("data-search-select-none") ?? false;
-    return { value: none ? "" : (held?.value ?? ""), none };
+    if (held?.hasAttribute("data-search-select-none")) return HELD_NONE;
+    return { kind: "held", value: held?.value ?? "", none: false };
   }
 
   restore(state: ControlSnapshot): void {
+    if (state.kind !== "held") refuseKind("held", state);
     this.write(state.none ? null : state.value);
   }
 
   write(value: SettingValue): void {
-    if (value === null || value === "") this.element.holdNone();
-    else this.element.holdValue(String(value));
+    if (value === null || value === "") {
+      this.element.holdNone();
+    } else if (!this.element.holdValue(String(value))) {
+      console.error(`search-select[${this.element.getAttribute("name")}]: no row offers`, value);
+    }
   }
 
   resolvedSnapshot(attempt: SaveAttempt, resolved: ResolvedSetting): ControlSnapshot {
-    // None stays: its label names the default.
-    if (attempt.value === null || resolved.value === null) return { value: "", none: true };
-    return { value: String(resolved.value), none: false };
-  }
-
-  equals(left: ControlSnapshot, right: ControlSnapshot): boolean {
-    return snapshotsEqual(left, right);
+    // Null holds none; its label names the default.
+    if (attempt.value === null || resolved.value === null) return HELD_NONE;
+    const value = String(resolved.value);
+    if (!this.element.offers(value)) {
+      console.error(`search-select[${this.element.getAttribute("name")}]: no row offers`, value);
+      return HELD_NONE;
+    }
+    return { kind: "held", value, none: false };
   }
 
   editable(): boolean {
-    return !(this.search?.disabled ?? true);
+    return !this.search.disabled;
   }
 
   setDisabled(disabled: boolean): void {
-    if (this.search) this.search.disabled = disabled;
+    this.search.disabled = disabled;
   }
 
   setBusy(busy: boolean): void {
-    if (this.search) markBusy(this.search, busy);
+    markBusy(this.search, busy);
   }
 }
 
 export function settingControlOf(element: Element): SettingControl | null {
   // Parents may connect before children upgrade.
   if (element.localName === "search-select") customElements.upgrade(element);
-  if (element instanceof SearchSelectElement) return new SearchSelectSettingControl(element);
+  if (element instanceof SearchSelectElement) {
+    if (element.getAttribute("multi") === "true") {
+      throw new Error(`search-select[${element.getAttribute("name")}]: a setting holds one value`);
+    }
+    return new SearchSelectSettingControl(element);
+  }
   if (
     element instanceof HTMLInputElement ||
     element instanceof HTMLSelectElement ||
