@@ -174,6 +174,39 @@ def test_escape_warns_and_return_keeps_the_input(
     assert errors == []
 
 
+def test_a_second_escape_returns_to_the_edit(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    dialog = _edit_and_escape(page, live_server, deck)
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_have_count(0)
+    expect(dialog).to_be_visible()
+    expect(dialog.locator('input[name="name"]')).to_have_value("Deck OLED")
+    assert errors == []
+
+
+def test_typing_then_escape_twice_keeps_the_edit(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    _open_device_edit(page, live_server, deck)
+    dialog = page.locator("dialog[data-modal][open]").first
+    name = dialog.locator('input[name="name"]')
+    name.click()
+    page.keyboard.press("End")
+    page.keyboard.type(" OLED")
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_have_count(0)
+    expect(dialog).to_be_visible()
+    expect(name).to_have_value("Deck OLED")
+    assert errors == []
+
+
 def test_discard_closes_without_a_write(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
