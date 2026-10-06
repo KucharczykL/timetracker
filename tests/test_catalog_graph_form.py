@@ -160,7 +160,7 @@ def test_a_release_row_renders_a_platform_picker_with_both_creates(owned_library
 
     assert "<search-select" in rendered
     assert "<select" not in rendered
-    assert "/api/platforms/" in rendered
+    assert 'create="post" create-url="/api/platforms/"' in rendered
     assert 'aria-label="New platform"' in rendered
 
 
@@ -189,6 +189,25 @@ def test_a_removed_stored_platform_shows_marked_and_resubmits(owned_library):
     assert "Amiga (removed)" in str(shown["platform"])
     assert posted.is_valid(), posted.errors
     assert posted.cleaned_data["platform"] == platform
+
+
+def test_a_row_storing_a_foreign_platform_neither_names_nor_takes_it(
+    owned_library, other_library_platform
+):
+    game = Game.objects.create(library=owned_library, name="Drifted game")
+    stored = Release(
+        edition=Edition.objects.create(game=game), platform=other_library_platform
+    )
+
+    form = ReleaseRowForm(
+        {"platform": str(other_library_platform.pk)},
+        library=owned_library,
+        presentation=PRESENTATION,
+        instance=stored,
+    )
+
+    assert other_library_platform.name not in str(form["platform"])
+    assert not form.is_valid()
 
 
 def test_a_removed_platform_no_row_stores_is_refused(owned_library):

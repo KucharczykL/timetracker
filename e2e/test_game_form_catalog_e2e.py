@@ -511,8 +511,10 @@ def radio_named(scope: Locator, platform: str) -> Locator:
     )
 
 
-def test_names_agree_with_what_back_restores(signed_in, live_server, game, dos):
-    """Back: names follow what each control shows."""
+def test_back_shows_the_stored_platform_and_names_it(
+    signed_in, live_server, game, amiga, dos
+):
+    """Back restores no pick; the stored one stands."""
     page = signed_in
     open_form(page, live_server, game)
     choose_platform(release_card(page, 0, 0), "DOS")
@@ -527,10 +529,14 @@ def test_names_agree_with_what_back_restores(signed_in, live_server, game, dos):
         page.evaluate("performance.getEntriesByType('navigation')[0].type")
         == "back_forward"
     )
-    shown = platform_picker(card).locator("[data-search-select-search]").input_value()
-    expect(radio_named(card, shown)).to_be_visible()
+    picker = platform_picker(card)
+    expect(picker.locator("[data-search-select-search]")).to_have_value("Amiga")
+    expect(picker.locator("[data-search-select-pills] input")).to_have_value(
+        str(amiga.pk)
+    )
+    expect(radio_named(card, "Amiga")).to_be_visible()
     expect(
-        card.get_by_role("button", name=f"Remove the {shown} release", exact=True)
+        card.get_by_role("button", name="Remove the Amiga release", exact=True)
     ).to_be_visible()
     expect(page.locator("[data-catalog-edition='0']")).to_have_accessible_name("Gold")
 

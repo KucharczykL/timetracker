@@ -151,10 +151,13 @@ _CONTAINER_CLASS = "block"
 _PILLS_CLASS = "contents"
 # Under 16px text, iOS zooms on focus.
 _SEARCH_CLASS = (
-    "flex-1 min-w-[8rem] border-0 p-0 bg-transparent text-type-input text-heading "
+    "flex-1 border-0 p-0 bg-transparent text-type-input text-heading "
     "focus:ring-0 focus:outline-hidden placeholder:text-body "
     "disabled:cursor-not-allowed"
 )
+#: Pills wrap; a lone value shrinks instead.
+_MULTI_SEARCH_WIDTH = "min-w-[8rem]"
+_SINGLE_SEARCH_WIDTH = "min-w-0"
 # The #450 draft cue, at rest only.
 _UNCOMMITTED_BOX_CLASS = "not-focus-within:[[data-uncommitted]_&]:border-dashed"
 # The loose text reads like a placeholder — muted (the audited placeholder
@@ -714,6 +717,7 @@ def SearchSelect(
         ("placeholder", placeholder),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
+        ("class", _MULTI_SEARCH_WIDTH if multi_select else _SINGLE_SEARCH_WIDTH),
     ]
     if id:
         search_attrs.append(("id", id))
@@ -1010,6 +1014,7 @@ def FilterSelect(
         ("placeholder", placeholder),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
+        ("class", _MULTI_SEARCH_WIDTH),
     ]
     if search_aria_label:
         search_attributes.append(("aria-label", search_aria_label))
@@ -1142,6 +1147,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         ("aria-label", PRESET_SEARCH_PLACEHOLDER),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
+        ("class", _MULTI_SEARCH_WIDTH),
     ]
     templates: list[Node] = [
         Template(data_search_select_template="row")[_preset_option_row(_BLANK_OPTION)]

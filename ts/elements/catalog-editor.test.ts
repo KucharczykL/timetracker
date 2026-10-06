@@ -66,7 +66,9 @@ const PAGE = `
       <input type="radio" data-choice-card name="in_library" value="edition-__edition__-release-__release__">
       <input type="hidden" name="edition-__edition__-release-__release__-removed">
       <button type="button" data-catalog-remove></button>
-      <search-select name="edition-__edition__-release-__release__-platform"></search-select>
+      <search-select name="edition-__edition__-release-__release__-platform">
+        <input data-search-select-search id="id_edition-__edition__-release-__release__-platform">
+      </search-select>
     </div>
   </template>
   <template data-catalog-template="edition">
@@ -122,6 +124,19 @@ it("numbers a second added row after the first", () => {
 
   expect(value("edition-0-releases-count")).toBe("3");
   expect(document.querySelector('search-select[name="edition-0-release-2-platform"]')).not.toBeNull();
+});
+
+it("gives each cloned picker its own id", () => {
+  click('[data-catalog-add="release"]');
+  click('[data-catalog-add="release"]');
+
+  const ids = Array.from(
+    document.querySelectorAll<HTMLInputElement>("[data-catalog-release] [data-search-select-search]"),
+  ).map(input => input.id);
+  expect(ids).toEqual([
+    "id_edition-0-release-1-platform",
+    "id_edition-0-release-2-platform",
+  ]);
 });
 
 it("states a removed release rather than detaching it", () => {
@@ -372,6 +387,20 @@ describe("names", () => {
       choose("d");
       expect(bin(release).getAttribute("aria-label")).toBe("Remove the Amiga release");
       expect(error).toHaveBeenCalled();
+    });
+
+    it("keeps the server's name while the picker is unwired", () => {
+      document.body.innerHTML = NAMED.replace(
+        "<span data-platform-picker></span>",
+        '<search-select name="edition-0-release-0-platform"></search-select>',
+      );
+      error.mockClear();
+      window.dispatchEvent(new Event("pageshow"));
+      expect(markText()).toBe("Show the Amiga release in the library");
+      expect(error).not.toHaveBeenCalledWith(
+        expect.stringContaining("<catalog-editor>"),
+        expect.anything(),
+      );
     });
 
     it("says so when a named row has no control", () => {

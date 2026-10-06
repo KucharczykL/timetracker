@@ -110,6 +110,7 @@ interface SearchSelectContainer extends HTMLElement {
   _searchSelectHoldValue?: (value: string) => boolean;
   _searchSelectHoldNone?: () => void;
   _searchSelectOffers?: (value: string) => boolean;
+  _searchSelectHeldLabel?: () => string | null;
   _searchSelectSetOptions?: (options: SearchSelectOption[]) => void;
   _searchSelectRewriteDialogCreate?: () => void;
 }
@@ -124,7 +125,11 @@ interface HeldState {
 type DroppedHeld = { none: true } | { none: false; value: string; label: string };
 
 //: Container parts the public hold methods call.
-type HeldPart = "_searchSelectHoldValue" | "_searchSelectHoldNone" | "_searchSelectOffers";
+type HeldPart =
+  | "_searchSelectHoldValue"
+  | "_searchSelectHoldNone"
+  | "_searchSelectOffers"
+  | "_searchSelectHeldLabel";
 
 //: A label change alone is no change.
 const sameHeld = (left: HeldState, right: HeldState): boolean =>
@@ -291,7 +296,10 @@ const initWidget = (containerElement: Element): boolean => {
   const search = container.querySelector<HTMLInputElement>("[data-search-select-search]");
   const options = container.querySelector<HTMLElement>("[data-search-select-options]");
   const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
-  if (!search || !options || !pills) return false;
+  if (!search || !options || !pills) {
+    console.error("<search-select> lacks its parts; left unwired", containerElement);
+    return false;
+  }
 
   const name = container.getAttribute("name") ?? "";
   const searchUrl = container.getAttribute("search-url");
@@ -1464,6 +1472,11 @@ const initWidget = (containerElement: Element): boolean => {
     return offered ? optionFromRow(offered) : remembered.get(value);
   };
   container._searchSelectOffers = (value: string) => knownOption(value) !== undefined;
+  container._searchSelectHeldLabel = () => {
+    const { values, none } = heldNow();
+    if (!none && values.length !== 1) return null;
+    return container._searchSelectLabel || null;
+  };
 
   //: Hold a row or remembered value.
   container._searchSelectHoldValue = (value: string): boolean => {
@@ -1888,14 +1901,14 @@ export class SearchSelectElement extends HTMLElement {
     return this.initializedPart("_searchSelectOffers")(value);
   }
 
-  /** The committed label; null when nothing held. */
+  /** Whether it has wired itself. */
+  get wired(): boolean {
+    return this.initialized;
+  }
+
+  /** Held label, none's included; null mid-edit. */
   heldLabel(): string | null {
-    // Read directly: the editor asks before init.
-    if (!this.initialized) return null;
-    const pills = this.querySelector("[data-search-select-pills]");
-    const held = pills?.querySelectorAll('input[type="hidden"]').length ?? 0;
-    const label = (this as SearchSelectContainer)._searchSelectLabel ?? "";
-    return held === 1 && label !== "" ? label : null;
+    return this.initializedPart("_searchSelectHeldLabel")();
   }
 
   private initializedPart<Part extends HeldPart>(

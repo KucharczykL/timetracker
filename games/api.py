@@ -754,7 +754,7 @@ def search_platforms(request, q: str = "", limit: int = 10):
             )
             .order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
         )
-    return [{"value": p.id, "label": p.name, "data": {}} for p in qs[:limit]]
+    return [platform_option(platform) for platform in qs[:limit]]
 
 
 @platform_router.get("/groups", response=list[StringOption])

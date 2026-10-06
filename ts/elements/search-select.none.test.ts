@@ -9,6 +9,7 @@ import type { SearchSelectChangeDetail, SearchSelectOption } from "./search-sele
 Element.prototype.scrollIntoView = () => {};
 
 interface NoneHost extends HTMLElement {
+  readonly wired: boolean;
   setSelected(value: string, label?: string): void;
   setOptions(options: SearchSelectOption[]): void;
 }
@@ -428,7 +429,9 @@ describe("<search-select> heldLabel", () => {
     expect(label(host)).toBeNull();
   });
 
-  it("answers null before it is wired", () => {
-    expect(label(build())).toBeNull();
+  it("refuses to answer before it is wired", () => {
+    const host = build();
+    expect(host.wired).toBe(false);
+    expect(() => label(host)).toThrow(/not initialised/);
   });
 });

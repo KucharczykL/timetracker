@@ -6,7 +6,7 @@ A row is named by Django's own form prefix. `BoundField.html_name` is
 line changing in `timetracker/temporal.py`.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from typing import Final, NamedTuple, cast
@@ -30,12 +30,15 @@ from games.forms import (
     NEW_PLATFORM,
     PLATFORM_CREATE_URL,
     PLATFORM_SEARCH_URL,
+    ChoiceLabel,
+    ChoiceValue,
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
     TemporalFormField,
     platform_options,
     platforms_or_stored,
 )
+from games.ids import PlatformId
 from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
 from games.reads.catalog_hierarchy import game_hierarchy
 from games.reads.releases import UNSPECIFIED_PLATFORM
@@ -132,13 +135,40 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
         return EditionKind(kind) if kind else None
 
 
+#: Covers a platform removed since loading.
+PLATFORM_GONE: Final[str] = "That platform is not offered; it may have been removed."
+#: `platform_names` key for no platform.
+NO_PLATFORM_KEY: Final[ChoiceValue] = ""
+#: Platform labels by picker key.
+type PlatformNames = Mapping[ChoiceValue, ChoiceLabel]
+
+
+def stored_platforms(releases: Iterable[Release | None]) -> tuple[PlatformId, ...]:
+    """The platforms these stored rows name."""
+    return tuple(
+        release.platform_id
+        for release in releases
+        if release is not None and release.platform_id is not None
+    )
+
+
+def platform_key(value: object) -> ChoiceValue:
+    """A bound value as `platform_names` keys it."""
+    parsed = _as_uuid(str(value))
+    return NO_PLATFORM_KEY if parsed is None else str(parsed)
+
+
 class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
     """One Release row inside an Edition block."""
 
     release_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
     removed = forms.BooleanField(required=False, widget=forms.HiddenInput)
 
-    platform = forms.ModelChoiceField(queryset=Platform.objects.none(), required=False)
+    platform = forms.ModelChoiceField(
+        queryset=Platform.objects.none(),
+        required=False,
+        error_messages={"invalid_choice": PLATFORM_GONE},
+    )
 
     def __init__(
         self,
@@ -150,8 +180,8 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
     ) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self.library = library
-        self.instance = instance
-        stored = () if instance is None else (instance.platform_id,)
+        self._instance = instance
+        stored = stored_platforms([instance])
         platform = cast(forms.ModelChoiceField, self.fields["platform"])
         #: A removed stored platform still resubmits.
         platform.queryset = platforms_or_stored(library, stored)
@@ -170,6 +200,11 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
         )
         #: `release_date` joins the form last, thus it sorts last too.
         self.order_fields(("release_id", "platform", "release_date", "removed"))
+
+    @property
+    def instance(self) -> Release | None:
+        """Fixed at construction; the picker reads it."""
+        return self._instance
 
 
 def removal_stated(form: forms.BaseForm) -> bool:
@@ -455,15 +490,15 @@ class CatalogGraphForm:
             rows=[self._release_form(None, EDITION_PLACEHOLDER, 0)],
         )
 
-    def platform_names(self) -> dict[str, str]:
-        """Platform labels by key; "" is none."""
+    def platform_names(self) -> PlatformNames:
+        """Platform labels by key; `NO_PLATFORM_KEY` is none."""
         rows = [row for block in self.blocks for row in block.rows]
         options = platform_options(
             [row["platform"].value() for row in rows],
             library=self.library,
-            stored=[row.instance.platform_id for row in rows if row.instance],
+            stored=stored_platforms(row.instance for row in rows),
         )
-        return {"": UNSPECIFIED_PLATFORM} | {
+        return {NO_PLATFORM_KEY: UNSPECIFIED_PLATFORM} | {
             str(option["value"]): option["label"].strip() for option in options
         }
 

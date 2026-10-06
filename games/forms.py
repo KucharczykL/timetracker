@@ -1,7 +1,7 @@
 import copy
 import datetime
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
@@ -86,6 +86,7 @@ from games.dev_login import prefill_credentials
 from games.end_ways import END_WAY_LABELS, EndWay, ended_hint
 from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
+from games.ids import PlatformId
 from games.models import (
     ADDON_KINDS,
     DEVICE_WAYS,
@@ -387,22 +388,22 @@ def platform_option(platform: Platform) -> SearchSelectOption:
 
 
 def platforms_or_stored(
-    library: UserLibrary, stored: Iterable[uuid.UUID | None] = ()
+    library: UserLibrary, stored: Collection[PlatformId] = ()
 ) -> QuerySet[Platform, Platform]:
-    """Visible platforms, and the stored ones."""
+    """Live platforms, plus this library's stored ones."""
     return Platform.objects.filter(Q(library__isnull=True) | Q(library=library)).filter(
-        Q(pk__in=Platform.objects.visible_to(library))
-        | Q(pk__in=[key for key in stored if key is not None])
+        Q(removed_at__isnull=True) | Q(pk__in=stored)
     )
 
 
 def platform_options(
-    values, *, library: UserLibrary, stored: Iterable[uuid.UUID | None] = ()
+    values, *, library: UserLibrary, stored: Collection[PlatformId] = ()
 ) -> list[SearchSelectOption]:
+    """Posted keys as rows, stored removed included."""
     return [
         platform_option(platform)
         for platform in platforms_or_stored(library, stored).filter(
-            #: Its key field refuses any other UUID.
+            #: Platform keys are UUIDv7 only.
             pk__in=_parsed_ids(values, parse_uuidv7)
         )
     ]
@@ -474,9 +475,9 @@ def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 #: Where a picker searches a library's devices.
 DEVICE_SEARCH_URL = "/api/devices/search"
-PLATFORM_SEARCH_URL: Final = "/api/platforms/search"
 #: Narrows that search to unended devices.
 HELD_DEVICES: Final[ParamSources] = {"held": {"value": "1"}}
+PLATFORM_SEARCH_URL: Final = "/api/platforms/search"
 HELD_RELEASE_SEARCH_URL: Final = "/api/releases/held"
 
 #: Where a picker makes the row a person typed.
@@ -2109,14 +2110,20 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         )
 
 
-def _parsed_ids(
-    values, parse: Callable[[str], uuid.UUID] = uuid.UUID
-) -> list[uuid.UUID]:
+#: Reads one posted or stored key.
+type IdParser = Callable[[str | uuid.UUID], uuid.UUID]
+
+
+def _as_uuid(value: str | uuid.UUID) -> uuid.UUID:
+    return uuid.UUID(str(value))
+
+
+def _parsed_ids(values, parse: IdParser = _as_uuid) -> list[uuid.UUID]:
     """The values that are ids; the field reports the rest."""
     parsed = []
     for value in values:
         try:
-            parsed.append(value if isinstance(value, uuid.UUID) else parse(str(value)))
+            parsed.append(parse(value if isinstance(value, uuid.UUID) else str(value)))
         except ValueError:
             continue
     return parsed

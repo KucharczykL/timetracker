@@ -1050,8 +1050,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `revert_on_leave`, × and `aria-required` decided at render), so no form
   renders a native select but a MODEL setting, which `settingControlOf`
   refuses ([spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md));
-  the release row's platform searches, creates and has a +, its
-  names following `heldLabel()` (#1222, [spec](docs/superpowers/specs/2026-10-06-issue-1222-release-platform-picker-design.md)); every SELECT setting renders one, read beside native controls
+  every SELECT setting renders one, read beside native controls
   through `ts/setting-control.ts` by `<live-setting-fields>` and
   `<theme-setting>` ([spec](docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-design.md));
   `TextSearchSelectWidget` hosts a text field over suggestions, its
@@ -1739,7 +1738,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   answers every refusal onto field or row that stated it; PlayerGame command stays
   outside, because `run_in_transaction` refuses to nest. One thing that states
   graph from a person is `CatalogGraphForm` in `games/catalog_form.py`, hosted by
-  Add Game and Edit Game alike. No standalone Edition or Release routes. Contract
+  Add Game and Edit Game alike. A Release row's platform is a picker with a
+  create row and a +; the card's mark and bin names follow
+  `SearchSelectElement.heldLabel()`
+  ([spec](docs/superpowers/specs/2026-10-06-issue-1222-release-platform-picker-design.md)). No standalone Edition or Release routes. Contract
   is [Catalog](docs/catalog.md).
 - **A PlayerGame fact is stated as a command** — call `record_facts()` /
   `track_game()` from `games/writes/playergame.py`, or their request-shaped

@@ -69,16 +69,22 @@ export function filled(pattern: string, value: string, empty?: string): string {
 
 // Each name kind's control and row.
 const FOLLOWED = {
-  platform: { control: 'search-select[name$="-platform"]', row: "[data-catalog-release]" },
-  name: { control: 'input[name$="-name"]', row: "[data-catalog-edition]" },
-} as const satisfies Record<CatalogNameKind, { control: string; row: string }>;
+  platform: {
+    control: 'search-select[name$="-platform"]',
+    row: "[data-catalog-release]",
+    element: SearchSelectElement,
+  },
+  name: { control: 'input[name$="-name"]', row: "[data-catalog-edition]", element: HTMLInputElement },
+} as const satisfies Record<
+  CatalogNameKind,
+  { control: string; row: string; element: typeof HTMLInputElement | typeof SearchSelectElement }
+>;
 
-/** The picked label or typed value; null keeps. */
-function shown(control: Element): string | null {
+/** Picked label or typed value; null: leave names. */
+function shown(control: HTMLInputElement | SearchSelectElement): string | null {
   if (control instanceof HTMLInputElement) return control.value.trim();
-  // Script order may leave it un-upgraded.
-  customElements.upgrade(control);
-  if (!(control instanceof SearchSelectElement)) return null;
+  // Before wiring, the server's names stand.
+  if (!control.wired) return null;
   return control.heldLabel()?.trim() ?? null;
 }
 
@@ -133,6 +139,12 @@ class CatalogEditorElement extends HTMLElement {
     const control = row.querySelector(FOLLOWED[kind].control);
     if (!control) {
       console.error(`<catalog-editor> row has no ${kind} control`, row);
+      return;
+    }
+    // Script order may leave it un-upgraded.
+    customElements.upgrade(control);
+    if (!(control instanceof FOLLOWED[kind].element)) {
+      console.error(`<catalog-editor> ${kind} control is the wrong element`, control);
       return;
     }
     const value = shown(control);

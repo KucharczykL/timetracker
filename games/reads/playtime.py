@@ -13,6 +13,7 @@ from games.filters import (
     PlayerSessionFilter,
     filter_query_context_for_library,
 )
+from games.ids import PlatformId
 from games.models import Game, GameQuerySet, PlayerSessionQuerySet, UserLibrary
 from games.reads.days import DayInterval, YearScope, year_days
 from games.reads.historical_playtime import (
@@ -63,7 +64,7 @@ __all__ = [
 PLATFORM = f"{GAME}__platform"
 
 #: None is the unspecified-platform bucket.
-type PlatformId = UUID | None
+type PlatformBucket = PlatformId | None
 type PlatformName = str | None
 type KeyedPlaytime[Key] = tuple[Key, timedelta]
 #: Total down, then name, id; None last.
@@ -71,7 +72,7 @@ type PlatformOrder = tuple[timedelta, bool, str, bool, UUID]
 
 
 class PlatformPlaytime(NamedTuple):
-    platform_id: PlatformId
+    platform_id: PlatformBucket
     platform_name: PlatformName
     playtime: PlaytimeBreakdown
 
@@ -349,8 +350,8 @@ def playtime_by_platform(
 ) -> list[PlatformPlaytime]:
     within = year_days(year)
     #: By id: names may differ between reads.
-    names: dict[PlatformId, PlatformName] = {}
-    tracked: list[KeyedPlaytime[PlatformId]] = []
+    names: dict[PlatformBucket, PlatformName] = {}
+    tracked: list[KeyedPlaytime[PlatformBucket]] = []
     for platform_id, name, playtime in (
         _sessions(library, within)
         .values(PLATFORM, f"{PLATFORM}__name")
@@ -360,7 +361,7 @@ def playtime_by_platform(
     ):
         names[platform_id] = name
         tracked.append((platform_id, playtime))
-    historical: list[KeyedPlaytime[PlatformId]] = []
+    historical: list[KeyedPlaytime[PlatformBucket]] = []
     for row in historical_by_platform(library, within=within):
         names.setdefault(row.platform_id, row.platform_name)
         historical.append((row.platform_id, row.playtime))

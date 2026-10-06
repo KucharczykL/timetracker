@@ -3,6 +3,7 @@ the search API endpoint, and the shared Game.search_label."""
 
 import re
 import unittest
+import uuid
 from types import SimpleNamespace
 
 import django.test
@@ -29,7 +30,9 @@ from common.components.search_select import (
     DialogCreate,
     presets_member,
 )
+from games.forms import platform_option, platform_options, platforms_or_stored
 from games.models import Game, Platform
+from games.removal import remove
 
 # These components are lazy nodes; the tests below assert on rendered HTML, so
 # each call is wrapped in ``str(...)`` (``Node.__str__`` returns a ``SafeText``,
@@ -1661,9 +1664,6 @@ class DialogCreateWidgetTest(unittest.TestCase):
 
 @pytest.mark.django_db
 def test_a_platform_option_names_the_platform(owned_library):
-    from games.forms import platform_option
-    from games.models import Platform
-
     platform = Platform.objects.create(library=owned_library, name="Amiga")
 
     assert platform_option(platform) == {
@@ -1675,10 +1675,6 @@ def test_a_platform_option_names_the_platform(owned_library):
 
 @pytest.mark.django_db
 def test_a_removed_stored_platform_resolves_marked(owned_library):
-    from games.forms import platform_options
-    from games.models import Platform
-    from games.removal import remove
-
     platform = Platform.objects.create(library=owned_library, name="Amiga")
     remove(platform)
 
@@ -1689,22 +1685,34 @@ def test_a_removed_stored_platform_resolves_marked(owned_library):
     assert option["label"] == "Amiga (removed)"
 
 
-@pytest.mark.django_db
-def test_platform_options_read_only_the_librarys_platforms(owned_library):
-    from games.forms import platform_options
-    from games.models import Platform, UserLibrary
-    from games.removal import remove
+@pytest.fixture
+def foreign_platform(django_user_model):
+    stranger = django_user_model.objects.create_user("stranger")
+    return Platform.objects.create(library=stranger.library, name="Foreign")
 
-    other = UserLibrary.objects.exclude(pk=owned_library.pk).first() or (
-        get_user_model().objects.create_user("stranger").library
-    )
-    foreign = Platform.objects.create(library=other, name="Foreign")
+
+@pytest.mark.django_db
+def test_platform_options_read_only_the_librarys_platforms(
+    owned_library, foreign_platform
+):
     removed = Platform.objects.create(library=owned_library, name="Gone")
     remove(removed)
     shared = Platform.objects.create(name="Shared")
 
     options = platform_options(
-        [foreign.pk, removed.pk, shared.pk, "not-an-id"], library=owned_library
+        [foreign_platform.pk, removed.pk, shared.pk, "not-an-id", str(uuid.uuid4())],
+        library=owned_library,
     )
 
     assert [option["label"] for option in options] == ["Shared"]
+
+
+@pytest.mark.django_db
+def test_a_stored_key_never_reaches_another_library(owned_library, foreign_platform):
+    stored = [foreign_platform.pk]
+
+    assert not platforms_or_stored(owned_library, stored).exists()
+    assert (
+        platform_options([foreign_platform.pk], library=owned_library, stored=stored)
+        == []
+    )

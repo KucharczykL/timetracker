@@ -73,7 +73,7 @@ is a second interface with no use.
 - `tests/test_choice_search_select.py`: the swap, ×, `required`, attrs,
   and the widgets the swap leaves alone.
 - `tests/test_html_validity.py`: the listed form pages render no native
-  select but the release platform.
+  select.
 - `tests/pickers.py` reads a picker's held value from markup.
 - `tests/test_temporal_form_field.py`: the hidden shape, and an
   unholdable part rendered empty inside the element.
