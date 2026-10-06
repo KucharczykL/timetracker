@@ -45,7 +45,8 @@ Under a remaining modal, a target outside it yields to its initial element.
 Escape (`cancel`), a backdrop press and a click on `[data-modal-dismiss]`
 call `dismiss`; the default is `close`. `dismiss` is best effort: the
 browser may close the dialog anyway, and Chrome can close several modals
-that code opened with one Escape. `onClosed` always runs. A hook that
+that code opened with one Escape. A `cancel` that is not cancelable
+calls no `dismiss`. `onClosed` always runs. A hook that
 throws is reported; a throwing `dismiss` closes the modal.
 
 ## Backdrops

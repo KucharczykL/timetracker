@@ -737,7 +737,7 @@ describe("failure paths", () => {
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("onClosed threw"));
   });
 
-  it("finishes on a cancel the browser will not let it veto", () => {
+  it("skips dismiss on a cancel it cannot veto", () => {
     vi.useFakeTimers();
     const dialog = mountDialog();
     const dismiss = vi.fn();
@@ -748,7 +748,7 @@ describe("failure paths", () => {
     // The browser then closes the dialog.
     dialog.close();
     vi.runAllTimers();
-    expect(dismiss).toHaveBeenCalledOnce();
+    expect(dismiss).not.toHaveBeenCalled();
     expect(modal.state()).toBe("closed");
     expect(onClosed).toHaveBeenCalledOnce();
   });

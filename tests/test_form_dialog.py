@@ -67,9 +67,10 @@ class FormDialogHostTest(SimpleTestCase):
     def test_the_dialog_lives_only_inside_the_template(self):
         html = str(FormDialogHost())
         self.assertTrue(html.startswith("<form-dialog"))
-        template_start = html.index("<template")
-        self.assertLess(template_start, html.index("<dialog"))
-        self.assertLess(html.index("</dialog>"), html.index("</template>"))
+        for template in re.findall(r"<template.*?</template>", html, re.DOTALL):
+            self.assertEqual(template.count("<dialog"), 1)
+        outside = re.sub(r"<template.*?</template>", "", html, flags=re.DOTALL)
+        self.assertNotIn("<dialog", outside)
 
     def test_the_template_names_every_part(self):
         html = str(FormDialogHost())
@@ -82,6 +83,35 @@ class FormDialogHostTest(SimpleTestCase):
         assert title_id is not None
         self.assertIn(f'id="{title_id.group(1)}"', html)
         self.assertIn('data-modal-dismiss=""', html)
+
+    def test_the_warning_is_an_alertdialog(self):
+        html = str(FormDialogHost())
+        start = html.index(f"{FORM_DIALOG_PARTS['unsaved']}=")
+        warning = html[start : html.index("</template>", start)]
+        self.assertIn('role="alertdialog"', warning)
+        for attribute in ("aria-labelledby", "aria-describedby"):
+            reference = re.search(rf'{attribute}="([^"]+)"', warning)
+            assert reference is not None
+            self.assertIn(f'id="{reference.group(1)}"', warning)
+        self.assertIn("Unsaved changes", warning)
+        self.assertIn("Your changes are not saved.", warning)
+
+    def test_the_warning_offers_three_acts_in_order(self):
+        html = str(FormDialogHost())
+        start = html.index(f"{FORM_DIALOG_PARTS['unsaved']}=")
+        warning = html[start : html.index("</template>", start)]
+        buttons = re.findall(r"<button[^>]*>.*?</button>", warning, re.DOTALL)
+        self.assertEqual(len(buttons), 3)
+        discard, keep, save = buttons
+        self.assertIn(f"{FORM_DIALOG_PARTS['discard']}=", discard)
+        self.assertIn("Discard", discard)
+        self.assertIn('data-modal-dismiss=""', keep)
+        self.assertIn('data-modal-initial-focus=""', keep)
+        self.assertIn("Return to edit", keep)
+        self.assertIn(f"{FORM_DIALOG_PARTS['save']}=", save)
+        self.assertIn("Save", save)
+        for button in buttons:
+            self.assertIn('type="button"', button)
 
     def test_the_generated_module_states_every_value(self):
         module = form_dialog_module()

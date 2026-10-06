@@ -108,6 +108,12 @@ function mountHost(): FormDialogElement {
           </div>
           <div data-form-dialog-body></div>
         </div>
+      </dialog></template><template data-form-dialog-unsaved>
+      <dialog data-modal role="alertdialog" aria-labelledby="form-dialog-unsaved-title">
+        <h2 id="form-dialog-unsaved-title">Unsaved changes</h2>
+        <button type="button" data-form-dialog-discard>Discard</button>
+        <button type="button" data-modal-dismiss data-modal-initial-focus>Return to edit</button>
+        <button type="button" data-form-dialog-save>Save</button>
       </dialog></template></form-dialog>`,
   );
   const host = document.querySelector<FormDialogElement>("form-dialog")!;
@@ -1201,5 +1207,319 @@ describe("CSRF", () => {
     submit();
     await settle();
     expect((calls[1][1]?.body as FormData).get("csrfmiddlewaretoken")).toBe("old");
+  });
+});
+
+describe("unsaved changes", () => {
+  function edit(value = "Deck OLED", dialog: HTMLDialogElement = openDialog()): void {
+    body(dialog).querySelector<HTMLInputElement>("[name=name]")!.value = value;
+  }
+
+  function warning(): HTMLDialogElement | null {
+    return document.querySelector<HTMLDialogElement>("form-dialog > dialog[role=alertdialog]");
+  }
+
+  function press(part: "discard" | "save"): void {
+    click(warning()!.querySelector(`[data-form-dialog-${part}]`)!);
+  }
+
+  function saveHidden(): boolean {
+    return warning()!.querySelector("[data-form-dialog-save]")!.hasAttribute("hidden");
+  }
+
+  it("closes an unchanged dialog at once", async () => {
+    await openPage();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(warning()).toBeNull();
+  });
+
+  it("asks before Escape closes a changed dialog", async () => {
+    const dialog = await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBe(warning());
+    expect(openModals()).toEqual([dialog, warning()]);
+    expect(document.activeElement?.textContent).toBe("Return to edit");
+  });
+
+  it("asks before the × closes a changed dialog", async () => {
+    const dialog = await openPage();
+    edit();
+    click(dialog.querySelector("[data-modal-dismiss]")!);
+    await settle();
+    expect(topModal()).toBe(warning());
+  });
+
+  it("asks before a value typed back reads as a change", async () => {
+    await openPage();
+    edit();
+    edit("Deck");
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+  });
+
+  it("returns to the edit and keeps the input", async () => {
+    const dialog = await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    click(warning()!.querySelector("[data-modal-dismiss]")!);
+    await settle();
+    expect(warning()).toBeNull();
+    expect(topModal()).toBe(dialog);
+    expect(body(dialog).querySelector<HTMLInputElement>("[name=name]")!.value).toBe("Deck OLED");
+  });
+
+  it("returns to the edit on Escape in the warning", async () => {
+    const dialog = await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    cancelTop();
+    await settle();
+    expect(warning()).toBeNull();
+    expect(topModal()).toBe(dialog);
+  });
+
+  it("discards: both close, nothing is sent", async () => {
+    await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    press("discard");
+    await settle();
+    expect(openModals()).toEqual([]);
+    expect(document.querySelector("form-dialog dialog")).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(reloads).toBe(0);
+  });
+
+  it("saves through the form's default button", async () => {
+    await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    expect(saveHidden()).toBe(false);
+    replies.push(reply(done(HOST, SAVED)));
+    press("save");
+    await settle();
+    const [, init] = calls[1];
+    const sent = init!.body as FormData;
+    expect(sent.get("name")).toBe("Deck OLED");
+    expect(sent.get("submit")).toBe("save");
+    expect(openModals()).toEqual([]);
+    expect(reloads).toBe(1);
+  });
+
+  it("hides Save when two forms changed", async () => {
+    await openPage(
+      page(`<form method="post"><input name="name"><button>Save</button></form>
+        <form method="post"><input name="note"><button>Save</button></form>`),
+    );
+    for (const input of body().querySelectorAll("input")) input.value = "x";
+    cancelTop();
+    await settle();
+    expect(saveHidden()).toBe(true);
+  });
+
+  it("hides Save for a form that does not post", async () => {
+    await openPage(page(`<form><input name="name"><button>Search</button></form>`));
+    edit();
+    cancelTop();
+    await settle();
+    expect(saveHidden()).toBe(true);
+  });
+
+  it("hides Save when the default button is disabled", async () => {
+    await openPage(page(`<form method="post"><input name="name"><button disabled>Save</button></form>`));
+    edit();
+    cancelTop();
+    await settle();
+    expect(saveHidden()).toBe(true);
+  });
+
+  it("opens one warning at a time", async () => {
+    const dialog = await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
+    await settle();
+    expect(document.querySelectorAll("form-dialog > dialog[role=alertdialog]")).toHaveLength(1);
+  });
+
+  it("takes a refused answer as the new baseline", async () => {
+    await openPage();
+    edit();
+    replies.push(reply(EDIT_FORM, EDIT, 409));
+    submit();
+    await settle();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+  });
+
+  it("takes the input as the baseline after an unconfirmed save", async () => {
+    await openPage();
+    edit();
+    submit();
+    await settle();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(reloads).toBe(1);
+  });
+
+  it("absorbs a value content fills after insertion", async () => {
+    if (!customElements.get("late-fill")) {
+      customElements.define(
+        "late-fill",
+        class extends HTMLElement {
+          connectedCallback(): void {
+            queueMicrotask(() => {
+              this.querySelector("input")!.value = "late";
+            });
+          }
+        },
+      );
+    }
+    await openPage(page(`<form method="post"><late-fill><input name="name"></late-fill></form>`));
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+  });
+
+  it("closes and reports when the warning is missing", async () => {
+    document.querySelector("template[data-form-dialog-unsaved]")!.remove();
+    await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(clientErrors.reportClientError).toHaveBeenCalledWith(
+      "form-dialog",
+      expect.stringContaining("warning"),
+      { toast: false },
+    );
+  });
+
+  it("asks nothing while submitting", async () => {
+    await openPage();
+    edit();
+    pending();
+    submit();
+    cancelTop();
+    await settle();
+    expect(warning()).toBeNull();
+    expect(topModal()).not.toBeNull();
+  });
+
+  describe("links", () => {
+    const NESTED = `<a href="/platform/add" data-form-dialog="">New platform</a>
+      <form method="post"><input name="name" value="Deck"></form>`;
+
+    async function openNested(nested: string): Promise<HTMLDialogElement> {
+      const lower = await openPage(page(NESTED));
+      replies.push(reply(page(nested), `${ORIGIN}/platform/add`));
+      click(body(lower).querySelector("a")!);
+      await settle();
+      return lower;
+    }
+
+    it("asks for each changed dialog a link back to the host closes", async () => {
+      const lower = await openNested(`<a href="/device/list">Back</a>`);
+      edit("Deck OLED", lower);
+      expect(click(body().querySelector("a")!).defaultPrevented).toBe(true);
+      await settle();
+      expect(openModals()).toEqual([lower, warning()]);
+      press("discard");
+      await settle();
+      expect(openModals()).toEqual([]);
+    });
+
+    it("keeps the lower dialog when the person returns", async () => {
+      const lower = await openNested(`<a href="/device/list">Back</a>`);
+      edit("Deck OLED", lower);
+      click(body().querySelector("a")!);
+      await settle();
+      cancelTop();
+      await settle();
+      expect(openModals()).toEqual([lower]);
+    });
+
+    it("asks before a link leaves the page", async () => {
+      const dialog = await openPage(
+        page(`<form method="post"><input name="name"></form><a href="/games/1">View game</a>`),
+      );
+      edit();
+      expect(click(body(dialog).querySelector("a")!).defaultPrevented).toBe(true);
+      await settle();
+      expect(topModal()).toBe(warning());
+      cancelTop();
+      await settle();
+      expect(assigned).toEqual([]);
+      expect(topModal()).toBe(dialog);
+      click(body(dialog).querySelector("a")!);
+      await settle();
+      expect(topModal()).toBe(warning());
+    });
+
+    it("leaves once after Discard, stale or not", async () => {
+      const form = `<form method="post"><input name="name"></form><a href="/games/1">View game</a>`;
+      const dialog = await openPage(page(form));
+      replies.push(reply(next(EDIT)));
+      replies.push(reply(page(form)));
+      submit();
+      await settle();
+      edit();
+      click(body(dialog).querySelector("a")!);
+      await settle();
+      press("discard");
+      await settle();
+      expect(assigned).toEqual([`${ORIGIN}/games/1`]);
+      expect(reloads).toBe(0);
+    });
+
+    it("leaves through an unchanged upper dialog after a lower Discard", async () => {
+      const lower = await openNested(`<a href="/games/1">View game</a>`);
+      edit("Deck OLED", lower);
+      expect(click(body().querySelector("a")!).defaultPrevented).toBe(true);
+      await settle();
+      expect(openModals()).toEqual([lower, warning()]);
+      press("discard");
+      await settle();
+      expect(openModals()).toEqual([]);
+      expect(assigned).toEqual([`${ORIGIN}/games/1`]);
+    });
+
+    it("stops at a submitting dialog", async () => {
+      const dialog = await openPage(
+        page(`<form method="post"><input name="name"></form><a href="/games/1">View game</a>`),
+      );
+      edit();
+      pending();
+      submit();
+      expect(click(body(dialog).querySelector("a")!).defaultPrevented).toBe(true);
+      await settle();
+      expect(warning()).toBeNull();
+      expect(topModal()).toBe(dialog);
+      expect(assigned).toEqual([]);
+    });
+  });
+
+  it("asks the browser to confirm an unload only while changed", async () => {
+    await openPage();
+    const unload = (): boolean => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(unload()).toBe(false);
+    edit();
+    expect(unload()).toBe(true);
   });
 });

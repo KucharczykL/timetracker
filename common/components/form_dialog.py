@@ -5,18 +5,25 @@ from typing import Final, Literal, TypedDict
 
 from common.components.core import Attributes, Node
 from common.components.custom_elements import OVERLAY_SURFACE_CLASS
-from common.components.elements import Div, Template
+from common.components.elements import Div, P, PlainH2, Template
 from common.components.modal import (
+    MODAL_ATTRIBUTES,
     ElementId,
     ModalDialog,
     require_every_key,
     titled_header,
 )
-from common.components.primitives import FORM_MAX_WIDTH_CLASS, custom_element_builder
+from common.components.primitives import (
+    FORM_MAX_WIDTH_CLASS,
+    ControlButton,
+    custom_element_builder,
+)
 from common.notices import ToastPayload
 
 type FormDialogChrome = Literal["header", "bare"]
-type FormDialogPart = Literal["template", "header", "title", "body"]
+type FormDialogPart = Literal[
+    "template", "header", "title", "body", "unsaved", "discard", "save"
+]
 type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
 type AttributeName = str  # e.g. "aria-controls"
 type AbsoluteUrl = str  # e.g. "https://example.com/devices"
@@ -88,6 +95,9 @@ FORM_DIALOG_PARTS: Mapping[FormDialogPart, FormDialogAttribute] = {
     "header": "data-form-dialog-header",
     "title": "data-form-dialog-title",
     "body": "data-form-dialog-body",
+    "unsaved": "data-form-dialog-unsaved",
+    "discard": "data-form-dialog-discard",
+    "save": "data-form-dialog-save",
 }
 
 #: Attributes naming one id; the dialog prefixes them.
@@ -121,12 +131,15 @@ require_every_key(FormDialogPart, FORM_DIALOG_PARTS)
 
 #: Prefixed per dialog, like every template id.
 _TITLE_ID: ElementId = "form-dialog-title"
+_UNSAVED_TITLE_ID: ElementId = "form-dialog-unsaved-title"
+_UNSAVED_MESSAGE_ID: ElementId = "form-dialog-unsaved-message"
 
-_PANEL_CLASS = (
-    f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} max-h-[calc(100dvh-2rem)] "
-    "flex-col overflow-hidden rounded-base border border-default-medium "
-    f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
+_SURFACE_CLASS = (
+    "max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-base border "
+    f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
+_PANEL_CLASS = f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} {_SURFACE_CLASS}"
+_WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm gap-3 p-4 {_SURFACE_CLASS}"
 
 #: The link loading, or the body submitting.
 _BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
@@ -142,8 +155,45 @@ def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
     )
 
 
+def _UnsavedWarning() -> Node:
+    """Asks before unsaved changes are lost."""
+    return Template([(FORM_DIALOG_PARTS["unsaved"], "")])[
+        ModalDialog(
+            [
+                ("role", "alertdialog"),
+                ("aria-labelledby", _UNSAVED_TITLE_ID),
+                ("aria-describedby", _UNSAVED_MESSAGE_ID),
+            ]
+        )[
+            Div(class_=_WARNING_PANEL_CLASS)[
+                PlainH2(id=_UNSAVED_TITLE_ID, class_="text-type-section text-heading")[
+                    "Unsaved changes"
+                ],
+                P(id=_UNSAVED_MESSAGE_ID, class_="text-body")[
+                    "Your changes are not saved."
+                ],
+                Div(class_="mt-2 flex flex-col gap-2 sm:flex-row")[
+                    ControlButton(
+                        [(FORM_DIALOG_PARTS["discard"], "")],
+                        color="red",
+                        class_="sm:mr-auto",
+                    )["Discard"],
+                    ControlButton(
+                        [
+                            (MODAL_ATTRIBUTES["dismiss"], ""),
+                            (MODAL_ATTRIBUTES["initial_focus"], ""),
+                        ],
+                        color="gray",
+                    )["Return to edit"],
+                    ControlButton([(FORM_DIALOG_PARTS["save"], "")])["Save"],
+                ],
+            ]
+        ]
+    ]
+
+
 def FormDialogHost() -> Node:
-    """The page's one host and its chrome template."""
+    """The page's one host and its templates."""
     titled = titled_header(
         "",
         title_id=_TITLE_ID,
@@ -161,5 +211,6 @@ def FormDialogHost() -> Node:
                     ),
                 ]
             ]
-        ]
+        ],
+        _UnsavedWarning(),
     ]

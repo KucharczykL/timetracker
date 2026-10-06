@@ -446,9 +446,9 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
 
   dialog.addEventListener("cancel", (event) => {
     if (event.target !== dialog) return;
-    // Not cancelable: the browser closes it.
     event.preventDefault();
-    dismiss();
+    // Not cancelable: the browser closes it.
+    if (event.cancelable) dismiss();
   });
   dialog.addEventListener("close", (event) => {
     // A queued close may follow a reopen.
