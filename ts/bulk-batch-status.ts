@@ -106,6 +106,16 @@ function isRefusal(response: Response): boolean {
   return response.status === 401 || response.status === 403;
 }
 
+/** The batches a status URL answers. */
+async function fetchBatches(url: string): Promise<BatchOut[]> {
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (isRefusal(response)) throw new PollRefused(`bulk batches ${response.status}`);
+  if (!response.ok) throw new Error(`bulk batches ${response.status}`);
+  const value: unknown = await response.json();
+  if (!Array.isArray(value)) throw new Error("bulk batches answer is no list");
+  return batchesIn(value);
+}
+
 /** A sticky end, or a running batch. */
 function outlivesItsTimer(batch: BatchOut): boolean {
   return !batch.terminal || batch.toast.sticky;
@@ -220,14 +230,7 @@ export class BulkBatchCoordinator {
     const asked = this.reconciliation;
     let answered: BatchOut[];
     try {
-      const response = await fetch(this.statusUrl, {
-        headers: { Accept: "application/json" },
-      });
-      if (isRefusal(response)) throw new PollRefused(`bulk batches ${response.status}`);
-      if (!response.ok) throw new Error(`bulk batches ${response.status}`);
-      const value: unknown = await response.json();
-      if (!Array.isArray(value)) throw new Error("bulk batches answer is no list");
-      answered = batchesIn(value);
+      answered = await fetchBatches(this.statusUrl);
     } catch (error) {
       if (error instanceof PollRefused) this.tellPollFailed();
       // The page's next load shows them.
@@ -301,15 +304,9 @@ export class BulkBatchCoordinator {
   private async pollOnce(tokens: BatchToken[]): Promise<PollEnd> {
     try {
       const query = new URLSearchParams({ tokens: tokens.join(",") });
-      const response = await fetch(`${this.statusUrl}?${query}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (isRefusal(response)) throw new PollRefused(`bulk batches ${response.status}`);
-      if (!response.ok) throw new Error(`bulk batches ${response.status}`);
-      const value: unknown = await response.json();
-      if (!Array.isArray(value)) throw new Error("bulk batches answer is no list");
+      const fetched = await fetchBatches(`${this.statusUrl}?${query}`);
       // A reconcile forgot it meanwhile.
-      const answered = batchesIn(value).filter((batch) => this.batches.has(batch.token));
+      const answered = fetched.filter((batch) => this.batches.has(batch.token));
       for (const batch of answered) this.apply(batch);
       const known = new Set(answered.map((batch) => batch.token));
       for (const token of tokens.filter((asked) => !known.has(asked) && this.batches.has(asked))) {
