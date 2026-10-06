@@ -6,7 +6,11 @@ from django.test import Client
 from django.urls import reverse
 
 from common.components import FormFieldPresentation, Span
-from games.forms import INPUT_CLASS, SELECT_CLASS, apply_primitive_widget_classes
+from games.forms import (
+    INPUT_CLASS,
+    ChoiceSearchSelectWidget,
+    apply_primitive_widget_classes,
+)
 from games.models import Platform, SiteSetting
 from games.settings_forms import (
     SiteSettingsForm,
@@ -37,7 +41,7 @@ def test_stamping_applies_the_shared_control_classes_by_widget_type():
 
     apply_primitive_widget_classes(fields)
 
-    assert fields["choice"].widget.attrs["class"] == SELECT_CLASS
+    assert isinstance(fields["choice"].widget, ChoiceSearchSelectWidget)
     assert fields["text"].widget.attrs["class"] == INPUT_CLASS
 
 

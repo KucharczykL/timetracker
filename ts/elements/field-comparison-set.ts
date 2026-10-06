@@ -9,11 +9,7 @@
  * value stashed in data-selected. filter-group.ts wires and reads the rows.
  */
 import type { ComparisonRow, RelationMatch } from "./filter-tree/types.js";
-import type {
-  SearchSelectChangeDetail,
-  SearchSelectElement,
-  SearchSelectOption,
-} from "./search-select.js";
+import type { SearchSelectElement, SearchSelectOption } from "./search-select.js";
 // The comparable-column shape AND the comparison-space vocabulary are codegen'd
 // from Python (common/criteria.py) by `manage.py gen_element_types` (#152/#284):
 // `SPACE_GROUPS` is the Python `SPACE_GROUPS` table, `SPACE_ORDERED_MODIFIERS`
@@ -329,7 +325,7 @@ export function wireComparisonRowListeners(row: HTMLElement, columns: Column[]):
     // operand emits a transient edit-clear with last=null — cascading through
     // refreshRow would empty the operator and wipe the other operand
     // irrecoverably while the row merely serializes as incomplete.
-    const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
+    const detail = event.detail;
     if (!detail?.last) return;
     const target = event.target as HTMLElement;
     if (target.closest("[data-fc-left]")) refreshRow(row, columns);

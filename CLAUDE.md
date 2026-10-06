@@ -1025,7 +1025,8 @@ Submodules re-exported via `common/components/__init__.py`:
   dropped when focus leaves; a single-select remembers each option it held,
   so `holdValue`/`offers` answer for a value the last search dropped, and
   `setOptions` forgets them (#1523); the adapter puts `data-*` on the host,
-  `disabled`, `aria-describedby` and `aria-invalid` on the box, and refuses
+  `disabled`, `aria-describedby`, `aria-invalid` and, from `required`,
+  `aria-required` on the box, and refuses
   any other attr, #1289),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
@@ -1042,7 +1043,11 @@ Submodules re-exported via `common/components/__init__.py`:
   `ChoiceField`'s fixed `choices` with no search URL: an optional field's `""`
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
-  #1301; every SELECT setting renders one, read with native controls
+  #1301; `apply_primitive_widget_classes` swaps every fixed-choice field
+  still on a plain `forms.Select` for one (× only with a none row,
+  `revert_on_leave`, × and `aria-required` decided at render), so no form
+  renders a native select but the release row's platform and a MODEL
+  setting, which `settingControlOf` refuses (#1222, [spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md)); every SELECT setting renders one, read beside native controls
   through `ts/setting-control.ts` by `<live-setting-fields>` and
   `<theme-setting>` ([spec](docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-design.md));
   `TextSearchSelectWidget` hosts a text field over suggestions, its
@@ -1067,11 +1072,13 @@ Submodules re-exported via `common/components/__init__.py`:
   it; a field rendered outside it goes through `bound_control(field)`
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
-- **`temporal_field.py`** — `TemporalField()`, native controls for date at any
-  precision: shape select, then four number inputs and qualifier pair per
-  endpoint. `<temporal-field>` (#965) enhances it, hiding number inputs for segmented date, whole-decade box,
+- **`temporal_field.py`** — `TemporalField()`, controls for date at any
+  precision: shape, then four number inputs and qualifier pair per
+  endpoint. `<temporal-field>` (#965) writes the shape (a hidden input),
+  hides number inputs behind segmented date, adds whole-decade box,
   open-start box, three-way end-shape radio group, and disclosure that closes as
-  well as opens. Precision never picked from menu; derived from which parts
+  well as opens; always wrapped, a part no segment holds renders empty.
+  Precision never picked from menu; derived from which parts
   person filled.
   Its posted names and their draft keys live in `timetracker/temporal.py`
   (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in
@@ -1673,7 +1680,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Forms render via `FormFields`/`AddForm`, never `form.as_div()`**:
   `FormFields(form, *, extras=...)` (in `primitives.py`) renders label + control +
   errors + row layout; native controls get classes from `PrimitiveWidgetsMixin`
-  (`games/forms.py`, which stamps `INPUT/SELECT/TEXTAREA_CLASS` incl. `disabled:`
+  (`games/forms.py`, which swaps a fixed-choice select for the picker and stamps `INPUT/SELECT/TEXTAREA_CLASS` incl. `disabled:`
   variants by widget type, skipping SearchSelect + checkbox). Every form on this
   path, including login. `extras` appends node into named field's row.
   A row shown by a choice states it in CSS: `FormFieldGroup.class_` names a

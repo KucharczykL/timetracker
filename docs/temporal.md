@@ -88,16 +88,18 @@ belongs to: `edition-0-release-1-release_date`.
 
 ## The element
 
-The posted controls are a shape select, then four number inputs and two
+The posted controls are a shape, then four number inputs and two
 checkboxes per endpoint. The server rebuilds the value from what they post.
 
-`<temporal-field>` (`ts/elements/temporal-field.ts`) hides the
-number inputs and shows a segmented date, offers a whole-decade box and an
-open-start box, gives the end a three-way shape radio group, and puts the
-second endpoint behind a disclosure. Nothing it does is needed to save a value,
-and the precision is never picked from a menu — it is derived from which parts a
+`<temporal-field>` (`ts/elements/temporal-field.ts`) writes the shape, a
+hidden input, from the parts a person fills. It hides the number inputs behind
+a segmented date, offers a whole-decade box and an open-start box, gives the
+end a three-way shape radio group, and puts the second endpoint behind a
+disclosure. A dated value needs the element, because the shape comes from it.
+The precision is never picked from a menu — it is derived from which parts a
 person filled. A part typed before its coarser part stays; the server refuses
-the hole at submit.
+the hole at submit. A posted part no segment can hold renders empty, under the
+error that refused it.
 
 The element uses `Temporal`, which arrives in Node 26. On an older runtime the
 formatters return null and the vitest assertions fail; see the environment notes

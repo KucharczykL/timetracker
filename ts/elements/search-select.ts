@@ -63,6 +63,21 @@ export type SearchSelectChangeDetail =
   | { name: string; values: string[]; last: SearchSelectOption | null; none: false }
   | { name: string; values: []; last: null; none: true };
 
+declare global {
+  interface HTMLElementEventMap {
+    "search-select:change": CustomEvent<SearchSelectChangeDetail>;
+  }
+}
+
+/** The value a picker posts; "" for none. */
+export function heldValue(picker: Element): string | null {
+  return (
+    picker.querySelector<HTMLInputElement>(
+      '[data-search-select-pills] input[type="hidden"]'
+    )?.value ?? null
+  );
+}
+
 // Every × press; follows any change event.
 export interface SearchSelectClearDetail {
   name: string;

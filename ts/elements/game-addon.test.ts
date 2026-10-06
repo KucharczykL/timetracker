@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import "./game-addon.js";
 
 interface Rendered {
-  select: HTMLSelectElement;
+  picker: HTMLElement;
   row: HTMLElement;
   input: HTMLInputElement;
   clear: ReturnType<typeof vi.fn>;
@@ -13,42 +13,52 @@ interface Rendered {
 function render(
   kind: string,
   parent = "",
-  { withSelect = true, withClear = true } = {}
+  { withPicker = true, withClear = true } = {}
 ): Rendered {
   document.body.innerHTML = `
     <form>
       <div data-field-row="kind">
         ${
-          withSelect
-            ? `<select name="kind">
-                 <option value="main">Main game</option>
-                 <option value="dlc">DLC</option>
-               </select>`
+          withPicker
+            ? `<search-select name="kind">
+                 <div data-search-select-pills>
+                   <input type="hidden" name="kind" value="${kind}">
+                 </div>
+               </search-select>`
             : ""
         }
       </div>
       <div data-field-row="parent">
-        <input type="hidden" name="parent" value="${parent}">
-        ${withClear ? "<button type='button' data-search-select-clear>×</button>" : ""}
+        <search-select name="parent">
+          <input type="hidden" name="parent" value="${parent}">
+          ${withClear ? "<button type='button' data-search-select-clear>×</button>" : ""}
+        </search-select>
       </div>
     </form>`;
-  const select = document.querySelector<HTMLSelectElement>("select")!;
+  const picker = document.querySelector<HTMLElement>('search-select[name="kind"]')!;
   const row = document.querySelector<HTMLElement>('[data-field-row="parent"]')!;
   const input = row.querySelector<HTMLInputElement>("input")!;
   const clear = vi.fn();
   row.querySelector("button")?.addEventListener("click", clear);
-  if (select) select.value = kind;
-  //: Appended last: connects after the select.
+  //: Appended last: connects after the picker.
   const element = document.createElement("game-addon");
   element.setAttribute("kind-field", "kind");
   element.setAttribute("parent-field", "parent");
   document.querySelector("form")!.append(element);
-  return { select, row, input, clear };
+  return { picker, row, input, clear };
 }
 
-function choose(select: HTMLSelectElement, kind: string): void {
-  select.value = kind;
-  select.dispatchEvent(new Event("change"));
+function change(picker: Element, values: string[], none = false): void {
+  picker.dispatchEvent(
+    new CustomEvent("search-select:change", {
+      bubbles: true,
+      detail: { name: "", values, last: null, none },
+    })
+  );
+}
+
+function choose(picker: HTMLElement, kind: string): void {
+  change(picker, [kind]);
 }
 
 beforeEach(() => {
@@ -69,46 +79,85 @@ it("shows the parent row for an add-on kind", () => {
 });
 
 it("shows and hides as the kind changes, clearing a held parent", () => {
-  const { select, row, clear } = render("dlc", "parent-key");
+  const { picker, row, clear } = render("dlc", "parent-key");
 
-  choose(select, "main");
+  choose(picker, "main");
   expect(row.hidden).toBe(true);
   expect(clear).toHaveBeenCalledTimes(1);
 
-  choose(select, "dlc");
+  choose(picker, "dlc");
   expect(row.hidden).toBe(false);
 });
 
 it("presses no clear when no parent is held", () => {
-  const { select, clear } = render("dlc");
+  const { picker, clear } = render("dlc");
 
-  choose(select, "main");
+  choose(picker, "main");
 
   expect(clear).not.toHaveBeenCalled();
 });
 
 it("keeps a parent posted beside main in view, then clears it", () => {
-  const { select, row, clear } = render("main", "parent-key");
+  const { picker, row, clear } = render("main", "parent-key");
   expect(row.hidden).toBe(false);
 
-  choose(select, "dlc");
-  choose(select, "main");
+  choose(picker, "dlc");
+  choose(picker, "main");
 
   expect(row.hidden).toBe(true);
   expect(clear).toHaveBeenCalledTimes(1);
 });
 
 it("empties the value itself when the picker has no clear", () => {
-  const { select, input } = render("dlc", "parent-key", { withClear: false });
+  const { picker, input } = render("dlc", "parent-key", { withClear: false });
 
-  choose(select, "main");
+  choose(picker, "main");
 
   expect(input.value).toBe("");
   expect(console.error).toHaveBeenCalled();
 });
 
-it("leaves the parent row visible and says so without a kind select", () => {
-  const { row } = render("main", "", { withSelect: false });
+it("keeps the parent while a keystroke drops the kind", () => {
+  const { picker, row, clear } = render("dlc", "parent-key");
+
+  change(picker, []);
+
+  expect(row.hidden).toBe(false);
+  expect(clear).not.toHaveBeenCalled();
+});
+
+it("says so when the kind holds none", () => {
+  const { picker, row } = render("dlc", "parent-key");
+
+  change(picker, [], true);
+
+  expect(row.hidden).toBe(false);
+  expect(console.error).toHaveBeenCalled();
+});
+
+it("says so when the kind picker holds nothing", () => {
+  render("main");
+  document.querySelector('search-select[name="kind"] input')!.remove();
+  document.querySelector("game-addon")!.remove();
+  const element = document.createElement("game-addon");
+  element.setAttribute("kind-field", "kind");
+  element.setAttribute("parent-field", "parent");
+  document.querySelector("form")!.append(element);
+
+  expect(console.error).toHaveBeenCalled();
+});
+
+it("ignores the parent picker's own changes", () => {
+  const { row, clear } = render("dlc", "parent-key");
+
+  change(row.querySelector("search-select")!, ["main"]);
+
+  expect(row.hidden).toBe(false);
+  expect(clear).not.toHaveBeenCalled();
+});
+
+it("leaves the parent row visible and says so without a kind picker", () => {
+  const { row } = render("main", "", { withPicker: false });
 
   expect(row.hidden).toBe(false);
   expect(console.error).toHaveBeenCalled();

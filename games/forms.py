@@ -5,7 +5,16 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Final,
+    Literal,
+    NamedTuple,
+    TypeGuard,
+    cast,
+)
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -196,13 +205,32 @@ class PrimitiveCheckboxWidget(forms.CheckboxInput):
         )
 
 
+def _holds_a_plain_select(field: forms.Field) -> TypeGuard[forms.ChoiceField]:
+    """A fixed-choice field on Django's default select."""
+    return (
+        isinstance(field, forms.ChoiceField)
+        and not isinstance(field, (forms.ModelChoiceField, forms.MultipleChoiceField))
+        and type(field.widget) is forms.Select
+    )
+
+
 def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
     """Stamp the shared native-control classes over a form's fields.
+
+    A fixed-choice field on a plain select gets the picker.
 
     Callable on its own so a form that builds fields after ``super().__init__()``
     can opt in; :class:`PrimitiveWidgetsMixin` is the declarative path.
     """
     for field in fields.values():
+        if _holds_a_plain_select(field):
+            picker = ChoiceSearchSelectWidget(
+                clearable=WITH_NONE_ROW,
+                revert_on_leave=True,
+                attrs=dict(field.widget.attrs),
+            )
+            host_choices(field, picker)
+            continue
         if isinstance(field, forms.BooleanField):
             # An explicitly hidden boolean is a choice the form made: a
             # checkbox here puts the field back on the page, and
@@ -457,7 +485,15 @@ class _SearchSelectAdapter(forms.Widget):
         self.dialog_create = dialog_create
         self.revert_on_leave = revert_on_leave
 
-    def _render(self, name, attrs, *, shape: ButtonShape, **component) -> str:
+    def _render(
+        self,
+        name,
+        attrs,
+        *,
+        shape: ButtonShape,
+        clearable: bool | None = None,
+        **component,
+    ) -> str:
         merged = {**self.attrs, **(attrs or {})}
         homeless = {
             key
@@ -474,7 +510,7 @@ class _SearchSelectAdapter(forms.Widget):
                 id=input_id,
                 placeholder=self.placeholder,
                 autofocus=self.autofocus,
-                clearable=self.clearable,
+                clearable=self.clearable if clearable is None else clearable,
                 dialog_create=self.dialog_create,
                 clear_description_id=field_label_id(input_id) if input_id else None,
                 host_data={
@@ -485,6 +521,7 @@ class _SearchSelectAdapter(forms.Widget):
                 disabled=_attr_flag(merged.get("disabled")),
                 described_by=merged.get("aria-describedby") or None,
                 invalid=_attr_flag(merged.get("aria-invalid")),
+                required=_attr_flag(merged.get("required")),
                 revert_on_leave=self.revert_on_leave,
                 shape=shape,
                 **component,
@@ -667,6 +704,11 @@ def offer_platform_groups(
     return widget
 
 
+#: A × only where a none row stands.
+WITH_NONE_ROW: Final = "with_none_row"
+type ClearRule = bool | Literal["with_none_row"]
+
+
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):
     """A `SearchSelect()` over a field's fixed choices."""
 
@@ -677,7 +719,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
         self,
         *,
         placeholder: str | None = None,
-        clearable: bool = True,
+        clearable: ClearRule = True,
         autofocus: bool = False,
         dialog_create: DialogCreate | None = None,
         revert_on_leave: bool = False,
@@ -688,11 +730,12 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             if placeholder is None
             else placeholder,
             autofocus=autofocus,
-            clearable=clearable,
+            clearable=clearable is True,
             dialog_create=dialog_create,
             revert_on_leave=revert_on_leave,
             attrs=attrs,
         )
+        self.clear_rule: ClearRule = clearable
 
     def __deepcopy__(self, memo):
         copied = super().__deepcopy__(memo)
@@ -729,14 +772,21 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             if key != ""
         ]
         held = _choice_key(value)
+        offers_none = self.offers_none(name)
         return self._render(
             name,
             attrs,
             selected=[option for option in options if option["value"] == held],
             options=options,
-            none_label=empty[0] if empty and not self.is_required else None,
+            none_label=empty[0] if offers_none else None,
+            clearable=self._clears(offers_none),
             shape=shape,
         )
+
+    def _clears(self, offers_none: bool) -> bool:
+        if self.clear_rule == WITH_NONE_ROW:
+            return offers_none
+        return self.clear_rule is True
 
 
 def _choice_key(value: object) -> ChoiceValue:
@@ -1064,7 +1114,7 @@ class TemporalWidget(forms.Widget):
     Follows `DatePickerWidget`: one field name yields several inputs, and
     `value_from_datadict` reads them all back. What it returns is the raw
     posted text, not a parsed draft, so a submission the grammar refuses
-    re-renders the characters a person typed.
+    re-renders each part a segment holds.
 
     `component_media` carries the element's module.
     """

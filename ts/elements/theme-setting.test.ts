@@ -11,8 +11,7 @@ Element.prototype.scrollIntoView = () => {};
 
 const THEME_NONE = "Use site default (Dark)";
 
-function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLInputElement } {
-  document.body.innerHTML = `
+const SETTING = `
     <theme-setting><drop-down behavior="inline-combobox"><search-select name="theme"
         multi="false" none-label="${THEME_NONE}" data-setting-key="THEME">
       <div data-search-select-pills>
@@ -26,6 +25,9 @@ function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLIn
         <div data-search-select-option data-value="dark" data-label="Dark">Dark</div>
       </div>
     </search-select></drop-down></theme-setting>`;
+
+function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLInputElement } {
+  document.body.innerHTML = SETTING;
   const picker = document.querySelector<HTMLElement>("search-select")!;
   return {
     host: document.querySelector("theme-setting")!,
@@ -33,6 +35,14 @@ function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLIn
     search: picker.querySelector("[data-search-select-search]")!,
   };
 }
+
+/** Each picker's held value, "" for none. */
+const heldThemes = () =>
+  Array.from(
+    document.querySelectorAll<HTMLInputElement>(
+      "theme-setting [data-search-select-pills] input[type=hidden]",
+    ),
+  ).map((input) => input.value);
 
 const pick = (picker: HTMLElement, selector: string) => {
   picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
@@ -49,20 +59,6 @@ function configureInheritedDark(): void {
   root.dataset.themeSource = "database";
   root.dataset.themeUpdateUrl = "/api/settings/user/THEME";
   root.dataset.themeCsrf = "token";
-}
-
-function mount(): { host: HTMLElement; select: HTMLSelectElement } {
-  document.body.innerHTML = `
-    <theme-setting class="block w-full"><select data-setting-key="THEME">
-      <option value="">Use site default (Dark)</option>
-      <option value="system">System</option>
-      <option value="light">Light</option>
-      <option value="dark">Dark</option>
-    </select></theme-setting>`;
-  return {
-    host: document.querySelector("theme-setting")!,
-    select: document.querySelector("select")!,
-  };
 }
 
 beforeEach(() => {
@@ -92,23 +88,19 @@ afterEach(() => {
 });
 
 describe("<theme-setting>", () => {
-  it("maps the inherited blank choice to null and stops generic live save", async () => {
+  it("saves through the coordinator, busy until it answers", async () => {
     configureInheritedDark();
     let resolve!: (value: Response) => void;
     vi.mocked(window.fetchWithEvents).mockReturnValue(new Promise((done) => {
       resolve = done;
     }));
-    const { host, select } = mount();
-    const bubbled = vi.fn();
-    host.parentElement?.addEventListener("change", bubbled);
+    const { picker, search } = mountPicker();
 
-    expect(select.value).toBe("");
-    select.value = "light";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(heldThemes()).toEqual([""]);
+    pick(picker, '[data-search-select-option][data-value="light"]');
 
-    expect(bubbled).not.toHaveBeenCalled();
-    expect(select.disabled).toBe(true);
-    expect(select.getAttribute("aria-busy")).toBe("true");
+    expect(search.disabled).toBe(true);
+    expect(search.getAttribute("aria-busy")).toBe("true");
     expect(document.documentElement.dataset.themePreference).toBe("light");
     expect(JSON.parse(String(
       (vi.mocked(window.fetchWithEvents).mock.calls[0][1] as RequestInit).body,
@@ -121,8 +113,8 @@ describe("<theme-setting>", () => {
         key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
       }),
     } as Response);
-    await vi.waitFor(() => expect(select.disabled).toBe(false));
-    expect(select.value).toBe("light");
+    await vi.waitFor(() => expect(search.disabled).toBe(false));
+    expect(heldThemes()).toEqual(["light"]);
   });
 
   it.each(["toggle-first", "setting-first"])(
@@ -136,9 +128,7 @@ describe("<theme-setting>", () => {
           key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
         }),
       } as Response);
-      const setting = `<theme-setting><select data-setting-key="THEME"><option value=""></option>
-        <option value="system">System</option><option value="light">Light</option>
-        <option value="dark">Dark</option></select></theme-setting>`;
+      const setting = SETTING;
       const toggle = `<theme-toggle><button data-pop-over-control data-pop-over-trigger>
         <svg data-theme-icon="system"></svg><svg data-theme-icon="light"></svg>
         <svg data-theme-icon="dark"></svg></button><span data-theme-tooltip></span>
@@ -147,14 +137,12 @@ describe("<theme-setting>", () => {
         ? toggle + setting
         : setting + toggle;
 
-      const select = document.querySelector<HTMLSelectElement>("theme-setting select")!;
-      select.value = "light";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      pick(
+        document.querySelector<HTMLElement>("theme-setting search-select")!,
+        '[data-search-select-option][data-value="light"]',
+      );
 
-      await vi.waitFor(() => {
-        expect(document.querySelector<HTMLSelectElement>("theme-setting select")?.value)
-          .toBe("light");
-      });
+      await vi.waitFor(() => expect(heldThemes()).toEqual(["light"]));
       expect(document.querySelector('[data-theme-icon="light"]')?.hasAttribute("hidden"))
         .toBe(false);
     },
@@ -169,9 +157,7 @@ describe("<theme-setting>", () => {
         key: "THEME", value: "system", source: "user", locked: false, namespace: "user",
       }),
     } as Response);
-    const setting = `<theme-setting><select data-setting-key="THEME"><option value=""></option>
-      <option value="system">System</option><option value="dark">Dark</option>
-      </select></theme-setting>`;
+    const setting = SETTING;
     const toggle = `<theme-toggle><button data-pop-over-control data-pop-over-trigger>
       <svg data-theme-icon="system"></svg><svg data-theme-icon="light"></svg>
       <svg data-theme-icon="dark"></svg></button><span data-theme-tooltip></span>
@@ -180,30 +166,9 @@ describe("<theme-setting>", () => {
 
     document.querySelector<HTMLButtonElement>("theme-toggle button")!.click();
 
-    await vi.waitFor(() => {
-      expect(Array.from(document.querySelectorAll<HTMLSelectElement>("theme-setting select"))
-        .map((select) => select.value)).toEqual(["system", "system"]);
-    });
+    await vi.waitFor(() => expect(heldThemes()).toEqual(["system", "system"]));
     expect(Array.from(document.querySelectorAll("[data-theme-icon=system]"))
       .every((icon) => !icon.hasAttribute("hidden"))).toBe(true);
-  });
-
-  it("restores the blank personal selection and inherited Dark after failure", async () => {
-    configureInheritedDark();
-    vi.mocked(window.fetchWithEvents).mockResolvedValue({
-      ok: false,
-      status: 500,
-    } as Response);
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const { select } = mount();
-
-    select.value = "light";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-
-    await vi.waitFor(() => expect(select.disabled).toBe(false));
-    expect(select.value).toBe("");
-    expect(document.documentElement.dataset.themePreference).toBe("dark");
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
   it("receives changes made by another coordinator presenter", async () => {
@@ -215,11 +180,11 @@ describe("<theme-setting>", () => {
         key: "THEME", value: "system", source: "user", locked: false, namespace: "user",
       }),
     } as Response);
-    const { select } = mount();
+    mountPicker();
 
     await getThemeCoordinator().requestPreferenceChange("system");
 
-    expect(select.value).toBe("system");
+    expect(heldThemes()).toEqual(["system"]);
   });
 
   it("saves a picker's pick and none through the coordinator", async () => {
@@ -283,5 +248,7 @@ describe("<theme-setting>", () => {
     expect(search.value).toBe(THEME_NONE);
     expect(picker.querySelector("input[data-search-select-none]")).not.toBeNull();
     expect(changes).toHaveBeenCalledTimes(1);
+    expect(document.documentElement.dataset.themePreference).toBe("dark");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 });

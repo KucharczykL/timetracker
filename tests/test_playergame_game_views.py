@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from pickers import held
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
@@ -150,8 +151,7 @@ def test_the_edit_form_offers_the_default_with_no_row(logged_in, owned_library):
     response = logged_in.get(reverse("games:edit_game", args=[game.pk]))
 
     body = response.content.decode()
-    assert '<option value="unplayed" selected>' in body
-    assert '<option value="completed" selected>' not in body
+    assert held(body, "status") == "unplayed"
     assert "checked" not in _mastered_input(body)
 
 

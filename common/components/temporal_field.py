@@ -1,22 +1,17 @@
-"""TemporalField: native controls for a date at any precision.
+"""TemporalField: a date at any precision.
 
 A person states a shape, the parts they know, and whether the date is
-approximate or uncertain. Nothing here needs a script: the controls are
-a select, then four number inputs and two checkboxes per endpoint, and
-the server rebuilds the value from what they post.
+approximate or uncertain. The controls are a shape, then four number
+inputs and two checkboxes per endpoint, and the server rebuilds the
+value from what they post.
 
-``ts/elements/temporal-field.ts`` enhances that. It hides the number
-inputs and the shape select, shows a segmented date in their place, and
-derives the shape from what a person fills. Remove the script and every
-control above is still here, still named, and still read the same way.
+``ts/elements/temporal-field.ts`` hides the number inputs, shows a
+segmented date in their place, and writes the shape, a hidden input,
+from what a person fills. Text a segment cannot hold renders empty; the
+form's error names what was refused.
 
 The precision is never picked from a menu. It is derived from which
 parts a person filled, which is why there is no precision control here.
-
-Only what a script would use is rendered hidden: the segments, the
-nameless toggles, the end-shape radios, the disclosure and any copy
-button. Every posted control is shown; the element hides what a
-person does not need yet.
 
 Nothing the element hides carries a Tailwind ``display`` utility: the
 ``hidden`` attribute is a user-agent rule any such class outranks.
@@ -35,9 +30,7 @@ from common.components.elements import (
     Fieldset,
     Label,
     Legend,
-    Option,
     P,
-    Select,
     Span,
 )
 from common.components.primitives import (
@@ -47,9 +40,9 @@ from common.components.primitives import (
     Radio,
     field_label_id,
 )
+from common.components.unset_field import PostedName
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
-    TEMPORAL_DRAFT_KIND_LABELS,
     TemporalDraftData,
     TemporalDraftKind,
     temporal_input_name,
@@ -105,14 +98,10 @@ def TemporalField(
 ) -> Node:
     """The whole control: a shape, two endpoints, two qualifiers.
 
-    ``input_id`` goes on the kind select, so the form row's
-    ``<label for>`` focuses the first control. The container is
-    additionally a named ``role="group"``, because the part inputs carry
-    their own labels and the row label would otherwise name nothing.
-
-    Text a segment cannot hold keeps the native controls alone: hiding
-    them would swallow the characters somebody typed.
+    ``input_id`` goes on the hidden shape. The container is a named
+    ``role="group"``, so the field keeps its name.
     """
+    data = _holdable(data)
     label_id = field_label_id(input_id)
     group = Div(
         role="group",
@@ -124,7 +113,7 @@ def TemporalField(
         class_=_GROUP_CLASS,
     )[
         Div(data_temporal_native="")[
-            _kind_select(name=name, kind=data["kind"], input_id=input_id)
+            _kind_input(name=name, kind=data["kind"], input_id=input_id)
         ],
         _endpoint_group(
             name=name,
@@ -164,8 +153,6 @@ def TemporalField(
         ),
         *([_copy_button(copy_source)] if copy_source else []),
     ]
-    if not _segments_can_hold(data):
-        return group
     return _TemporalField(
         expanded="true" if _needs_precision_controls(data) else "false",
         field_name=name,
@@ -200,13 +187,15 @@ def _needs_precision_controls(data: TemporalDraftData) -> bool:
     )
 
 
-def _segments_can_hold(data: TemporalDraftData) -> bool:
-    """Whether every part is digits a segment has room for."""
-    return all(
-        _fits(data[f"{endpoint}_{part}"], width)  # type: ignore[literal-required]
-        for endpoint in ("start", "end")
-        for part, width in _PART_WIDTHS.items()
-    )
+def _holdable(data: TemporalDraftData) -> TemporalDraftData:
+    """Empties each part no segment holds."""
+    held = TemporalDraftData(**data)
+    for endpoint in ("start", "end"):
+        for part, width in _PART_WIDTHS.items():
+            key = f"{endpoint}_{part}"
+            if not _fits(held[key], width):  # type: ignore[literal-required]
+                held[key] = ""  # type: ignore[literal-required]
+    return held
 
 
 def _fits(text: str, width: int) -> bool:
@@ -214,25 +203,15 @@ def _fits(text: str, width: int) -> bool:
     return not stripped or (stripped.isdigit() and len(stripped) <= width)
 
 
-def _kind_select(*, name: str, kind: str, input_id: str) -> Node:
-    # Imported here: games.forms imports this module.
-    from games.forms import SELECT_CLASS
-
-    selected = kind.strip() or TemporalDraftKind.UNKNOWN.value
-    offered = [draft_kind.value for draft_kind in TEMPORAL_DRAFT_KIND_LABELS]
-    options = [
-        Option(value=draft_kind.value, selected=draft_kind.value == selected)[text]
-        for draft_kind, text in TEMPORAL_DRAFT_KIND_LABELS.items()
-    ]
-    if selected not in offered:
-        # A refused shape echoes back, like a number.
-        options.insert(0, Option(value=selected, selected=True)[selected])
-    return Select(
+def _kind_input(*, name: PostedName, kind: str, input_id: str) -> Node:
+    """The shape the element writes."""
+    return Input(
+        type="hidden",
         name=temporal_input_name(name, "kind"),
         id_=input_id or None,
         data_temporal_input="kind",
-        class_=SELECT_CLASS,
-    )[*options]
+        value=kind.strip() or TemporalDraftKind.UNKNOWN.value,
+    )
 
 
 def _endpoint_group(

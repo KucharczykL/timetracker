@@ -694,16 +694,6 @@ class TemporalDraftKind(StrEnum):
     UNKNOWN = "unknown"
 
 
-#: Ordered as the select offers them.
-TEMPORAL_DRAFT_KIND_LABELS: Final[dict[TemporalDraftKind, str]] = {
-    TemporalDraftKind.DATE: "Date",
-    TemporalDraftKind.RANGE: "Range",
-    TemporalDraftKind.SINCE: "Since",
-    TemporalDraftKind.UNTIL: "Until",
-    TemporalDraftKind.UNKNOWN: "Unknown",
-}
-
-
 def temporal_qualifier(
     *, approximate: bool, uncertain: bool
 ) -> TemporalQualifier | None:

@@ -1,5 +1,6 @@
 """What the temporal control renders, and what it binds."""
 
+import re
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -207,29 +208,39 @@ def test_a_stored_qualifier_opens_expanded() -> None:
     assert 'expanded="true"' in markup(data)
 
 
-def test_text_a_segment_cannot_hold_keeps_the_native_controls() -> None:
-    """Segments take digits. Hiding them would swallow what was typed."""
-    html = markup(posted(kind="date", start_year="nineteen"))
+def test_text_a_segment_cannot_hold_renders_empty() -> None:
+    """Only a crafted post reaches it."""
+    html = markup(posted(kind="date", start_year="12345", start_month="6"))
 
-    assert "<temporal-field" not in html
-    assert 'name="release-year" value="nineteen"' in html
+    assert "<temporal-field" in html
+    assert 'name="release-year" value=""' in html
+    assert 'name="release-month" value="6"' in html
 
 
 def test_the_control_says_when_its_precision_changes() -> None:
     assert 'data-temporal-announcement="" role="status" aria-live="polite"' in markup()
 
 
-def test_the_kind_select_offers_every_shape() -> None:
+def _hidden_kind(html: str) -> str | None:
+    match = re.search(r'<input\b[^>]*\bname="release-kind"[^>]*>', html)
+    assert match
+    assert 'type="hidden"' in match.group(0)
+    assert 'data-temporal-input="kind"' in match.group(0)
+    value = re.search(r'value="([^"]*)"', match.group(0))
+    return value.group(1) if value else None
+
+
+def test_the_element_writes_a_hidden_shape() -> None:
     html = markup()
 
-    for kind in ("date", "range", "since", "until", "unknown"):
-        assert f'value="{kind}"' in html
+    assert "<search-select" not in html
+    assert _hidden_kind(html) == "unknown"
 
 
-def test_the_stored_kind_is_the_selected_one() -> None:
+def test_the_stored_kind_is_the_held_one() -> None:
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("198X")))
 
-    assert '<option value="date" selected' in markup(data)
+    assert _hidden_kind(markup(data)) == "date"
 
 
 def test_a_stored_part_is_the_input_value() -> None:
@@ -281,10 +292,7 @@ def test_each_endpoint_names_its_own_parts() -> None:
 
 def test_a_shape_the_form_never_offers_echoes_back() -> None:
     """Showing Date instead would invent a shape nobody picked."""
-    html = markup(posted(kind="season"))
-
-    assert '<option value="season" selected' in html
-    assert html.count('selected="selected"') == 1
+    assert _hidden_kind(markup(posted(kind="season"))) == "season"
 
 
 def test_the_first_control_takes_the_label_target() -> None:
@@ -356,14 +364,15 @@ def test_a_disagreement_is_a_field_error_with_a_sentence() -> None:
     assert form.errors["released"] == ["A month needs a year beside it."]
 
 
-def test_a_refused_submission_re_renders_what_was_typed() -> None:
-    """Not a normalized guess. The characters a person typed."""
+def test_a_refused_submission_re_renders_what_segments_hold() -> None:
+    """The error names the part it empties."""
     form = ReleaseForm(data=post(kind="date", year="nineteen", month="6"))
 
     assert not form.is_valid()
+    assert "released" in form.errors
     html = str(form["released"])
 
-    assert 'name="released-year" value="nineteen"' in html
+    assert 'name="released-year" value=""' in html
     assert 'name="released-month" value="6"' in html
 
 
@@ -401,7 +410,7 @@ def test_a_stored_value_renders_as_its_parts() -> None:
     html = str(form["released"])
 
     assert 'name="released-decade" value="1980"' in html
-    assert '<option value="date" selected' in html
+    assert re.search(r'name="released-kind"[^>]*value="date"', html)
 
 
 def test_an_omitted_control_is_reported_as_omitted() -> None:

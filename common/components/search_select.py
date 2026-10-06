@@ -611,6 +611,7 @@ def SearchSelect(
     disabled: bool = False,
     described_by: str | None = None,
     invalid: bool = False,
+    required: bool = False,
     revert_on_leave: bool = False,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
@@ -656,7 +657,8 @@ def SearchSelect(
     ``max_length``: the most characters the box takes.
     ``dialog_create``: a + creating the row in a dialog.
     ``host_data``: ``data-*`` attributes on the element.
-    ``disabled``, ``described_by``, ``invalid``: the search box's state.
+    ``disabled``, ``described_by``, ``invalid``, ``required``: the search
+    box's state.
     ``revert_on_leave``: leaving mid-edit restores the held value.
     """
     host_attributes = list((host_data or {}).items())
@@ -727,6 +729,8 @@ def SearchSelect(
         search_attrs.append(("aria-describedby", described_by))
     if invalid:
         search_attrs.append(("aria-invalid", "true"))
+    if required:
+        search_attrs.append(("aria-required", "true"))
 
     home: ComboboxHome = "dialog" if panel else "drop_down"
 

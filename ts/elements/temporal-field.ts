@@ -2,11 +2,11 @@
  * TemporalField — the browser half of a date at any precision.
  *
  * The server renders every control (common/components/temporal_field.py):
- * a shape select, four number inputs and two checkboxes per endpoint, and
+ * a hidden shape, four number inputs and two checkboxes per endpoint, and
  * — hidden — a segmented date, three nameless toggles, a disabled radio
  * group for how the value ends, the disclosure and any copy button.
- * This element hides the first set, shows the second, and derives the
- * shape from what a person fills.
+ * This element hides the number inputs, shows the second set, and writes
+ * the shape from what a person fills.
  *
  * The segments ride the shared engine (date-field-core.ts) through a
  * partial-date codec. Its value goes to an unnamed scratch input, never to
@@ -48,8 +48,8 @@ function isEndpoint(side: string): side is Endpoint {
 export function namedInput(
   host: HTMLElement,
   key: string,
-): HTMLInputElement | HTMLSelectElement | null {
-  return host.querySelector<HTMLInputElement | HTMLSelectElement>(
+): HTMLInputElement | null {
+  return host.querySelector<HTMLInputElement>(
     `[data-temporal-input="${key}"]`,
   );
 }
@@ -375,7 +375,7 @@ type DraftKey = (typeof DRAFT_KEYS)[number];
 export type TemporalDraft = Record<DraftKey, string>;
 
 /** A box states itself; others state value. */
-function draftValue(control: HTMLInputElement | HTMLSelectElement | null): string {
+function draftValue(control: HTMLInputElement | null): string {
   if (!control) return "";
   if (control instanceof HTMLInputElement && control.type === "checkbox") {
     return control.checked ? "on" : "";
@@ -596,8 +596,7 @@ function bindControls(host: HTMLElement): void {
 /**
  * The copy button; answers its painter, if any.
  *
- * The source may be absent: a value no segment can hold renders the
- * native controls alone. Treat that as a source stating nothing.
+ * An absent source states nothing.
  */
 function initCopyControl(host: HTMLElement): (() => void) | null {
   const button = host.querySelector<HTMLButtonElement>("[data-temporal-copy]");

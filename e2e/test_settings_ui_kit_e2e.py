@@ -28,6 +28,7 @@ from common.components import (
     SettingFieldState,
 )
 from common.layout import render_page
+from e2e.helpers import pick_choice
 from games.forms import PrimitiveWidgetsMixin
 from timetracker.settings_commands import SettingNamespace
 from timetracker.urls import urlpatterns as base_urlpatterns
@@ -219,11 +220,11 @@ def test_mobile_scaffold_groups_locked_and_masked_fields(live_server, page: Page
     assert trigger_box and host_box
     assert abs(trigger_box["width"] - host_box["width"]) < 2
 
-    # Grouped FormFields owns all four native widget types.
+    # Grouped FormFields owns all four widget types.
     expect(page.locator("fieldset")).to_have_count(2)
     expect(page.get_by_text("Preferences", exact=True)).to_be_visible()
     expect(page.locator('input[name="enabled"][type="checkbox"]')).to_be_attached()
-    expect(page.locator('select[name="destination"]')).to_be_attached()
+    expect(page.locator('search-select[name="destination"]')).to_be_attached()
     expect(page.locator('input[name="limit"][type="number"]')).to_be_attached()
     expect(page.locator('input[name="display_name"][type="text"]')).to_be_attached()
 
@@ -700,7 +701,7 @@ def test_each_native_widget_patches_with_its_json_type(live_server, page: Page):
     )
 
     page.locator('input[name="enabled"]').click()
-    page.locator('select[name="destination"]').select_option("stats")
+    pick_choice(page, "destination", "stats")
     number = page.locator('input[name="limit"]')
     number.fill("25")
     number.press("Tab")

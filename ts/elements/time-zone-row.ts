@@ -1,5 +1,4 @@
 import { readTimeZoneRowProps } from "../generated/props.js";
-import type { SearchSelectChangeDetail } from "./search-select.js";
 import {
   TIME_ZONE_ROW_CHANGE_EVENT,
   type TimeZoneRowChangeDetail,
@@ -56,7 +55,7 @@ class TimeZoneRowElement extends HTMLElement {
       this.announceZone(props.fieldName, effectiveZone);
     };
     this.addEventListener("search-select:change", (event) => {
-      const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
+      const detail = event.detail;
       if (!detail || detail.last === null) return;
       // The API's pinned "" option is an explicit clear back to NULL.
       applyZone(detail.last.value);

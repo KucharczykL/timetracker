@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
+from pickers import held
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -272,7 +273,7 @@ def test_the_edit_page_renders_the_two_fields(logged_in, owned_user):
     content = logged_in.get(reverse("games:edit_game", args=[addon.pk])).content
     page = content.decode()
 
-    assert re.search(r'<option value="dlc"[^>]*\bselected\b', _field_row(page, "kind"))
+    assert held(_field_row(page, "kind"), "kind") == "dlc"
     assert "Base" in _field_row(page, "parent")
     assert "<game-addon" in page
 

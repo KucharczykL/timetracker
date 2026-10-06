@@ -45,9 +45,9 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
-def pick_choice(page: Page, name: str, value: str) -> None:
+def pick_choice(scope: Page | Locator, name: str, value: str) -> None:
     """Pick a picker's row by value; empty picks none."""
-    picker = page.locator(f'search-select[name="{name}"]')
+    picker = scope.locator(f'search-select[name="{name}"]')
     picker.locator("[data-search-select-search]").click()
     row = (
         picker.locator("[data-search-select-none-option]")
@@ -57,8 +57,8 @@ def pick_choice(page: Page, name: str, value: str) -> None:
     row.click()
 
 
-def held_choice(page: Page, name: str) -> Locator:
+def held_choice(scope: Page | Locator, name: str) -> Locator:
     """The hidden input a picker holds."""
-    return page.locator(
+    return scope.locator(
         f'search-select[name="{name}"] [data-search-select-pills] input[type="hidden"]'
     )

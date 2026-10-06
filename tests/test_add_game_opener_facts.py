@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 import pytest
 from django.urls import reverse
+from pickers import held
 
 from games.models import ADDON_KINDS, Game, GameKind
 
@@ -38,7 +39,7 @@ def test_a_stated_kind_renders_a_row_and_no_parent(logged_in):
     html = logged_in.get(_add_game({"kind": "main"})).content.decode()
 
     assert "Main game</dd>" in _row(html, "kind")
-    assert '<select name="kind"' not in html
+    assert re.search(r'<search-select[^>]*\bname="kind"', html) is None
     assert 'data-field-row="parent"' not in html
     assert re.search(r'<search-select[^>]*\bname="parent"', html) is None
     assert "<game-addon" not in html
@@ -130,4 +131,4 @@ def test_edit_game_takes_no_facts(logged_in, owned_user):
         reverse("games:edit_game", args=[addon.pk]) + "?kind=main"
     ).content.decode()
 
-    assert '<select name="kind"' in html
+    assert held(html, "kind") == "dlc"

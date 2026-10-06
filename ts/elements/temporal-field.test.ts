@@ -117,21 +117,14 @@ function fieldMarkup(
   const draft: Draft = { ...EMPTY_DRAFT, ...stored };
   // One radio group per field.
   const shapeName = `${fieldName || "field"}-end-shape`;
-  const kindOption = (value: string, text: string) =>
-    `<option value="${value}"${value === draft.kind ? " selected" : ""}>${text}</option>`;
   return `
     <temporal-field expanded="${expanded}"${
       fieldName ? ` field-name="${fieldName}"` : ""
     }>
       <div data-temporal-field="">
         <div data-temporal-native="">
-          <select data-temporal-input="kind">
-            ${kindOption("date", "Date")}
-            ${kindOption("range", "Range")}
-            ${kindOption("since", "Since")}
-            ${kindOption("until", "Until")}
-            ${kindOption("unknown", "Unknown")}
-          </select>
+          <input type="hidden" data-temporal-input="kind"
+                 value="${draft.kind || "unknown"}">
         </div>
         ${endpointMarkup("start", "open_start", draft, order)}
         <fieldset data-temporal-extra="" hidden>

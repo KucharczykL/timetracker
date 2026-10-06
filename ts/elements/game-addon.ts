@@ -1,45 +1,62 @@
 import { ADDON_KINDS } from "../generated/game-kinds.js";
 import { readGameAddonProps } from "../generated/props.js";
+import { heldValue, type SearchSelectChangeDetail } from "./search-select.js";
 
 /** Shows the parent row for add-ons only. */
 class GameAddonElement extends HTMLElement {
-  private kindSelect: HTMLSelectElement | null = null;
+  private kindPicker: HTMLElement | null = null;
+  private kind = "";
   private parentRow: HTMLElement | null = null;
 
   connectedCallback(): void {
     const { kindField, parentField } = readGameAddonProps(this);
     const form = this.closest("form");
-    this.kindSelect =
-      form?.querySelector<HTMLSelectElement>(`select[name="${kindField}"]`) ??
+    this.kindPicker =
+      form?.querySelector<HTMLElement>(`search-select[name="${kindField}"]`) ??
       null;
     this.parentRow =
       form?.querySelector<HTMLElement>(`[data-field-row="${parentField}"]`) ??
       null;
     //: Missing either, both rows stay visible.
-    if (!this.kindSelect || !this.parentRow) {
+    if (!this.kindPicker || !this.parentRow) {
       console.error(
-        `game-addon: no select[name="${kindField}"] or ` +
+        `game-addon: no search-select[name="${kindField}"] or ` +
           `[data-field-row="${parentField}"] in its form`
       );
       return;
     }
-    this.kindSelect.addEventListener("change", this.onKindChange);
+    const held = heldValue(this.kindPicker);
+    //: A required kind always holds one.
+    if (held === null) console.error(`game-addon: ${kindField} holds no kind`);
+    this.kind = held ?? "";
+    this.kindPicker.addEventListener("search-select:change", this.onKindChange);
     //: A refused posted parent stays visible.
     if (!this.parentHeld()) this.show(this.isAddon());
   }
 
   disconnectedCallback(): void {
-    this.kindSelect?.removeEventListener("change", this.onKindChange);
+    this.kindPicker?.removeEventListener(
+      "search-select:change",
+      this.onKindChange
+    );
   }
 
-  private readonly onKindChange = (): void => {
+  private readonly onKindChange = (event: CustomEvent<SearchSelectChangeDetail>): void => {
+    if (event.detail.none) {
+      console.error("game-addon: the kind holds none");
+      return;
+    }
+    const [kind] = event.detail.values;
+    //: A first keystroke drops the value; no pick.
+    if (kind === undefined) return;
+    this.kind = kind;
     const addon = this.isAddon();
     this.show(addon);
     if (!addon && this.parentHeld()) this.clearParent();
   };
 
   private isAddon(): boolean {
-    return ADDON_KINDS.includes(this.kindSelect?.value ?? "");
+    return ADDON_KINDS.includes(this.kind);
   }
 
   private parentInputs(): HTMLInputElement[] {

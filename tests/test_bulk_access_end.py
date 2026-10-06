@@ -102,7 +102,8 @@ def test_the_copy_form_leads_with_not_said_and_today():
 def test_the_device_form_refuses_no_way():
     form = _form(DEVICE_WAYS, _post(**{f"{CHOICE_FIELD}-way": ""}))
 
-    assert form.fields["way"].choices[0][0] == ""
+    assert "" not in dict(form.fields["way"].choices)
+    assert "way" not in form.initial
     assert not form.is_valid()
     assert "way" in form.errors
 

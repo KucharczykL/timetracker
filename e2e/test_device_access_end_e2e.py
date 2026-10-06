@@ -5,6 +5,8 @@ from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import pick_choice
+
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:
@@ -28,7 +30,7 @@ def test_selling_a_device_shows_on_the_list_and_in_the_picker(
     create_device(e2e_library, "Desk PC")
 
     page.goto(f"{live_server.url}{reverse('games:edit_device', args=[deck.pk])}")
-    page.select_option('select[name="access"]', "sold")
+    pick_choice(page, "access", "sold")
     page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
     page.click("[data-date-part='year'][data-date-side='start']")
     page.keyboard.type("2021")
@@ -55,7 +57,7 @@ def test_selling_a_device_shows_on_the_list_and_in_the_picker(
     expect(options.nth(1).locator("[data-search-select-hint]")).to_have_text("Sold")
 
     page.goto(f"{live_server.url}{reverse('games:edit_device', args=[deck.pk])}")
-    page.select_option('select[name="access"]', "")
+    pick_choice(page, "access", "")
     page.get_by_role("button", name="Submit", exact=True).click()
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_devices')}**")

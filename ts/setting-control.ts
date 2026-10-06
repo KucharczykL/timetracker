@@ -63,7 +63,7 @@ function markBusy(element: HTMLElement, busy: boolean): void {
   else element.removeAttribute("aria-busy");
 }
 
-type NativeElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+type NativeElement = HTMLInputElement | HTMLTextAreaElement;
 
 function isCheckbox(element: NativeElement): element is HTMLInputElement {
   return element instanceof HTMLInputElement && element.type === "checkbox";
@@ -117,8 +117,6 @@ class NativeSettingControl implements SettingControl {
 
   resolvedSnapshot(attempt: SaveAttempt, resolved: ResolvedSetting): ControlSnapshot {
     const control = this.element;
-    // Blank means "use default", whatever resolved.
-    if (control instanceof HTMLSelectElement && attempt.value === null) return attempt.state;
     if (isCheckbox(control)) {
       const checked = attempt.state.kind === "native" ? attempt.state.checked : undefined;
       return {
@@ -132,8 +130,7 @@ class NativeSettingControl implements SettingControl {
 
   editable(): boolean {
     const control = this.element;
-    const readOnly = !(control instanceof HTMLSelectElement) && control.readOnly;
-    return !control.disabled && !readOnly;
+    return !control.disabled && !control.readOnly;
   }
 
   setDisabled(disabled: boolean): void {
@@ -223,12 +220,12 @@ export function settingControlOf(element: Element): SettingControl | null {
     }
     return new SearchSelectSettingControl(element);
   }
-  if (
-    element instanceof HTMLInputElement ||
-    element instanceof HTMLSelectElement ||
-    element instanceof HTMLTextAreaElement
-  ) {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     return new NativeSettingControl(element);
+  }
+  //: A setting picks through a search-select.
+  if (element instanceof HTMLSelectElement) {
+    throw new Error(`select[${element.name}]: a setting renders a search-select`);
   }
   return null;
 }

@@ -279,6 +279,12 @@ def test_end_offers_not_said_first(owned_library, entry):
     assert form.fields["way"].choices[0] == ("unstated", "Not said")
 
 
+def test_end_holds_not_said_untouched(owned_library, entry):
+    form = EntryEndForm(entry=entry, presentation=PRESENTATION, today=TODAY)
+
+    assert form["way"].value() == "unstated"
+
+
 def test_edit_end_of_a_held_copy_is_a_defect(owned_library, entry):
     with pytest.raises(ValueError):
         _end_edit(entry)
