@@ -812,12 +812,16 @@ confirmation. Every write after the creation is fenced by `chunk` and
 A stale chunk does nothing, an overtaken one stops, a third start fails. A
 defect or the cluster's timeout stores `failed`; the rows done stay done and
 keep their Undo. Stop (`stop_bulk_batch`) ends the batch between chunks and
-fences out a run in flight; a live batch silent for `STALE_AFTER` has no
+fences out a run in flight, and on an ended batch says so (`StopAnswer`); a live batch silent for `STALE_AFTER` has no
 worker, and Stop or Undo ends it at once. One Undo of a batch runs at a time
 (a partial unique constraint). The log names every row left alone. `Page()` embeds the library's
 batches; `ts/bulk-batch-status.ts` toasts them, polls `/api/bulk/batches`, and
 dispatches `page:stale` when one from this page ends; behind a modal,
-`<toast-stack>` posts a toast action as a dialog request. Tests drain chunks on
+`<toast-stack>` posts a toast action as a dialog request and, on `done` or
+`created`, dispatches `page:stale`, on which the coordinator rereads `/api/bulk/batches` without
+`tokens` (what `Page()` embeds) and takes that set, so an Undo pressed in a
+dialog shows its batch at once
+([spec](docs/superpowers/specs/2026-10-06-issue-1512-undo-toast-in-dialog-design.md)). Tests drain chunks on
 commit (`tests/bulk_batches.py`; `held_batches` holds them, and a batch
 ending `failed` fails the test unless it asks for `failing_batches`). The Undo reads
 the act's name off the batch row, or for an older batch out of its
@@ -1624,8 +1628,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `render_page()` answers `page`, `FormDialogResultMiddleware`
   (`games/form_dialog_middleware.py`) turns a redirect into `done` (a
   `READ_ONLY` target) or `continue`. After a write the element reloads a
-  read-only host once no modal is open, or on `page:stale` (nothing sends
-  it yet; background jobs will, #1507); messages and
+  read-only host once no modal is open, or on `page:stale` (a batch from
+  this page ends, or a toast action answers `done` or `created`); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
   is an element (`<field-mirror>`).
   Content it inserts must wire on connect, unwire on disconnect, and look

@@ -9,6 +9,7 @@ from datetime import date, timedelta
 import pytest
 from bulk_batches import REAL_ENQUEUE
 from bulk_posts import newest_batch, posted, selection
+from django.contrib.messages import get_messages
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
@@ -24,6 +25,7 @@ from games.bulk_jobs import (
     NO_WORKER,
     STALE_AFTER,
     STARTS_ALLOWED,
+    StopAnswer,
     Tally,
     batch_toast,
     end_stale,
@@ -41,7 +43,12 @@ from games.models import (
     PlayerSession,
     UserLibrary,
 )
-from games.views.bulk import PROGRESS_FIELD, STATEMENT_FIELD, UNREADABLE_STATEMENT
+from games.views.bulk import (
+    ENDED_BEFORE_STOP,
+    PROGRESS_FIELD,
+    STATEMENT_FIELD,
+    UNREADABLE_STATEMENT,
+)
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -490,7 +497,7 @@ def test_stop_ends_a_quiet_batch_at_once(owned_library, caplog, capture_games_lo
 
     with capture_games_logger() as captured:
         captured.set_level(logging.INFO, logger="games")
-        assert request_stop(owned_library, batch.token)
+        assert request_stop(owned_library, batch.token) == StopAnswer.ASKED
 
     batch.refresh_from_db()
     assert batch.state == BulkBatch.State.STOPPED
@@ -658,6 +665,38 @@ def test_the_api_answers_the_asked_batches_of_this_library(
     assert response.json()[0]["toast"] == batch_toast(ours)
 
 
+def test_the_api_answers_what_a_page_carries_when_no_token_is_named(
+    client_in, owned_library, other_library
+):
+    now = timezone.now()
+    running = a_batch(owned_library, state=BulkBatch.State.RUNNING)
+    unseen = a_batch(owned_library, state=BulkBatch.State.FINISHED, ended_at=now)
+    a_batch(
+        owned_library,
+        state=BulkBatch.State.FINISHED,
+        ended_at=now,
+        announced_at=now,
+    )
+    a_batch(other_library, state=BulkBatch.State.RUNNING)
+
+    response = client_in.get("/api/bulk/batches")
+
+    assert response.status_code == 200
+    assert [one["token"] for one in response.json()] == [
+        str(running.token),
+        str(unseen.token),
+    ]
+
+
+def test_the_api_answers_nothing_for_an_empty_token_list(client_in, owned_library):
+    a_batch(owned_library, state=BulkBatch.State.RUNNING)
+
+    response = client_in.get("/api/bulk/batches", {"tokens": ""})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_the_api_refuses_a_token_it_cannot_read(client_in, owned_library):
     response = client_in.get("/api/bulk/batches", {"tokens": "junk"})
 
@@ -678,7 +717,7 @@ def test_a_dismissed_end_is_announced(client_in, owned_library, other_library):
     assert theirs.announced_at is None
 
 
-def test_stop_on_an_ended_batch_changes_nothing(client_in, owned_library):
+def test_stop_on_an_ended_batch_changes_nothing_and_says_so(client_in, owned_library):
     batch = a_batch(owned_library, state=BulkBatch.State.FINISHED)
 
     response = client_in.post(reverse("games:stop_bulk_batch", args=[batch.token]))
@@ -686,6 +725,57 @@ def test_stop_on_an_ended_batch_changes_nothing(client_in, owned_library):
     assert response.status_code == 302
     batch.refresh_from_db()
     assert batch.stop_requested_at is None
+    assert [str(message) for message in get_messages(response.wsgi_request)] == [
+        ENDED_BEFORE_STOP
+    ]
+
+
+def test_stop_on_a_running_batch_says_nothing(client_in, owned_library):
+    batch = a_batch(owned_library, state=BulkBatch.State.RUNNING)
+
+    response = client_in.post(reverse("games:stop_bulk_batch", args=[batch.token]))
+
+    assert list(get_messages(response.wsgi_request)) == []
+    batch.refresh_from_db()
+    assert batch.stop_requested_at is not None
+
+
+def test_stop_answers_each_state(owned_library):
+    running = a_batch(owned_library, state=BulkBatch.State.RUNNING)
+    ended = a_batch(owned_library, state=BulkBatch.State.FINISHED)
+
+    assert request_stop(owned_library, running.token) == StopAnswer.ASKED
+    assert request_stop(owned_library, running.token) == StopAnswer.ASKED
+    assert request_stop(owned_library, ended.token) == StopAnswer.ENDED
+    assert request_stop(owned_library, uuid.uuid7()) == StopAnswer.ABSENT
+
+
+def test_a_batch_that_ends_while_stop_reads_it_is_ended(owned_library, monkeypatch):
+    batch = a_batch(owned_library, state=BulkBatch.State.RUNNING)
+    read_while_running = BulkBatch.objects.get(pk=batch.pk)
+    BulkBatch.objects.filter(pk=batch.pk).update(
+        state=BulkBatch.State.FINISHED, ended_at=timezone.now()
+    )
+    monkeypatch.setattr(
+        bulk_jobs, "library_batch", lambda library, token: read_while_running
+    )
+
+    assert request_stop(owned_library, batch.token) == StopAnswer.ENDED
+
+
+def test_stop_tells_a_dialog_the_batch_had_ended(client_in, owned_library):
+    batch = a_batch(owned_library, state=BulkBatch.State.FINISHED)
+
+    response = client_in.post(
+        reverse("games:stop_bulk_batch", args=[batch.token])
+        + "?origin=/tracker/session/list",
+        headers={"X-Form-Dialog": "1"},
+    )
+
+    assert response.json()["kind"] == "done"
+    assert [message["message"] for message in response.json()["messages"]] == [
+        ENDED_BEFORE_STOP
+    ]
 
 
 def test_stop_answers_a_dialog_request_as_done(client_in, owned_library):

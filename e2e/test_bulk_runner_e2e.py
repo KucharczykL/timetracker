@@ -136,3 +136,40 @@ def test_a_page_refreshes_its_batch_while_it_runs(
 
     expect(page.get_by_text("2 of 2 done.")).to_be_visible()
     expect(page.get_by_text("waiting to start.")).to_have_count(0)
+
+
+def test_an_undo_inside_a_dialog_shows_its_batch_at_once(
+    live_server, page: Page, e2e_user, e2e_library, held_batches
+):
+    """Its batch toasts inside the open dialog."""
+    _long_sessions(e2e_library, (5, 6))
+    _login(page, live_server)
+
+    _state_the_whole_review(page, live_server, 2)
+    page.get_by_role("button", name=ACT).click()
+    page.get_by_role("button", name=ACT).click()
+    expect(page.get_by_text("waiting to start.")).to_be_visible()
+    held_batches.run_all()
+    expect(page.get_by_text("2 of 2 done.")).to_be_visible()
+
+    page.evaluate(
+        """(href) => {
+            window.notReloaded = true;
+            const link = document.createElement('a');
+            link.href = href;
+            link.textContent = 'Add a device';
+            link.setAttribute('data-form-dialog', '');
+            document.getElementById('main-container').prepend(link);
+        }""",
+        reverse("games:add_device"),
+    )
+    page.get_by_role("link", name="Add a device").click()
+    dialog = page.locator("dialog[data-modal][open]")
+    region = dialog.get_by_role("region", name="Notifications")
+    region.get_by_role("button", name="Undo").click()
+
+    expect(region.get_by_text("waiting to start.")).to_be_visible()
+    expect(region.get_by_role("button", name="Stop")).to_be_visible()
+    expect(region.get_by_role("button", name="Undo")).to_have_count(0)
+    expect(dialog).to_be_visible()
+    assert page.evaluate("window.notReloaded === true")
