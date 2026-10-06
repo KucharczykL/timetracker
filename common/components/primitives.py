@@ -815,7 +815,7 @@ SHAPE_CLASSES: dict[ButtonShape, str] = {
     "end": "rounded-e-base",
     "square": "",
 }
-#: "fixed": a value set elsewhere, never typed into.
+#: "fixed": set elsewhere, never typed into.
 type FieldBoxLook = Literal["editable", "fixed"]
 
 _FIELD_BOX_LOOK_CLASSES: dict[FieldBoxLook, str] = {
@@ -2077,7 +2077,7 @@ def _fact_carrier(field) -> Node:
 
 
 def _stated_row(field, statement: str) -> Node:
-    """A fact the opener stated, in its field's place."""
+    """A stated fact, in its field's place."""
     children: list[Node] = [
         Dl()[
             Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
@@ -2289,7 +2289,7 @@ def FormFields(
     statements: FieldStatements = getattr(form, "statements", {})
     rows: list[Node] = []
 
-    # A silent fact has no row to hold its errors.
+    # A silent fact has no error row.
     silent_errors = [
         error
         for name, statement in statements.items()

@@ -238,7 +238,7 @@ const sourceFields = (params: ParamSources): string[] =>
     .filter((source): source is FieldParam => "field" in source)
     .map(source => source.field);
 
-/** The + link's query, set from its sources now. */
+/** Set the + link's query from sources. */
 const rewriteDialogCreate = (container: Element, params: ParamSources): void => {
   const link = container.querySelector("a[data-search-select-dialog-create]");
   const href = link?.getAttribute("href");
@@ -1654,7 +1654,7 @@ const initWidget = (containerElement: Element): boolean => {
     form?.addEventListener("search-select:change", onDependencyChange);
   }
 
-  // The + carries what its source fields hold.
+  // The + follows its source fields.
   const dialogCreateParams = parseParams(props.dialogCreateParams || null);
   const dialogCreateFields = sourceFields(dialogCreateParams);
   if (dialogCreateFields.length) {

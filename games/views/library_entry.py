@@ -114,7 +114,7 @@ def _record_copy(user: User, form: EntryAddForm) -> object:
 
 @login_required
 def add_to_library(request: HttpRequest) -> HttpResponse:
-    """Add a copy; the opener may state its game."""
+    """Add a copy; its game may be stated."""
     user = cast(User, request.user)
     library = user.library
     form = EntryAddForm(

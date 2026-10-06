@@ -1,4 +1,4 @@
-"""Add game opened from an add-on's "Add-on of" +."""
+"""Add game opened from "Add-on of"'s +."""
 
 import re
 from html import escape

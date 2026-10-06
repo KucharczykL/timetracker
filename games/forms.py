@@ -304,7 +304,7 @@ def game_option(game: Game) -> SearchSelectOption:
 
 #: The + on every game picker.
 NEW_GAME = DialogCreate(reverse_lazy("games:add_game"), "New game")
-#: The + on "Add-on of": a main game, named for the add-on.
+#: The + on "Add-on of".
 NEW_MAIN_GAME = DialogCreate(
     reverse_lazy("games:add_game"),
     "New main game",
@@ -1574,7 +1574,7 @@ class SessionForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
         self.state_opener_facts(facts)
         stated_game = self.stated_facts.get("game")
         if isinstance(stated_game, Game):
-            #: The game is stated; the device is next.
+            #: Stated game: focus the device.
             self.fields["game"].widget.autofocus = False
             self.fields["device"].widget.autofocus = True
             run = sole_ordinary_run(library, stated_game)

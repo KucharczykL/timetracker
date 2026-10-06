@@ -484,7 +484,7 @@ _ADDON_TITLE_LENGTH = 255
 
 
 def _add_game_title(form: GameForm, addon: str) -> str:
-    """Names the add-on a main game is added for."""
+    """The title, naming any stated add-on."""
     printable = "".join(
         character if character.isprintable() else " " for character in addon
     )

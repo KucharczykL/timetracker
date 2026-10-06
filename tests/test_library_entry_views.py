@@ -143,7 +143,7 @@ def test_add_on_another_librarys_game_is_absent(client, graph, django_user_model
     assert client.get(_add_url(graph.game)).status_code == 404
     response = client.post(_add_url(graph.game), _add_post(graph))
 
-    #: Gone since opened: the picker answers, input kept.
+    #: Gone since opened; input kept.
     assert response.status_code == 200
     assert not LibraryEntry.objects.exists()
 

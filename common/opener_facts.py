@@ -1,4 +1,4 @@
-"""Facts a form's opener states, fixed instead of asked."""
+"""Opener-stated facts, fixed instead of asked."""
 
 import logging
 from collections.abc import Mapping
@@ -64,7 +64,7 @@ class OpenerFactsMixin(forms.BaseForm):
     def fix_field(
         self, name: FieldName, value: object, *, statement: Statement | None = None
     ) -> None:
-        """Fix ``name`` to ``value``; no statement means no row."""
+        """Fix ``name``; no statement, no row."""
         self.initial[name] = value
         self.fields[name].disabled = True
         self.stated_facts[name] = value
@@ -100,7 +100,7 @@ class OpenerFactsMixin(forms.BaseForm):
         if row is not None:
             self.fix_field(name, row, statement=field.label_from_instance(row))
         elif self.is_bound:
-            # Gone since the page opened: the picker answers.
+            # Gone since opened; the picker answers.
             self.refused_facts[name] = self._refusal(name)
         else:
             self._log(name, raw, "names no row this form offers")

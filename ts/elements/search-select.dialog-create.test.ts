@@ -83,7 +83,7 @@ describe("<search-select> created row", () => {
   });
 });
 
-/** A form with a name field and a picker whose + reads it. */
+/** A form whose + reads its name. */
 function mountInForm(name: string): { form: HTMLFormElement; host: HTMLElement; field: HTMLInputElement } {
   const form = document.createElement("form");
   form.innerHTML = `<input name="name" value="${name}" />`;
