@@ -15,8 +15,10 @@ from common.date_time_presentation import (
 from games.catalog_form import ReleaseRowForm
 from games.forms import (
     DEVICE_SEARCH_URL,
+    HELD_DEVICES,
     DeviceForm,
     GameForm,
+    HistoricalPlaytimeForm,
     LibraryPreferencesForm,
     PlatformForm,
     PlaythroughForm,
@@ -97,11 +99,21 @@ def test_library_preferences_default_device_is_a_scoped_held_picker(world):
     assert form.initial["default_device"] == world.own_device
     assert isinstance(widget, SearchSelectWidget)
     assert widget.search_url == DEVICE_SEARCH_URL
-    assert widget.params == {"held": {"value": "1"}}
+    assert widget.params == HELD_DEVICES
     assert widget.none_label == "No device"
     assert widget.revert_on_leave
     assert widget.create is None
     assert widget.options_resolver([world.foreign_device.pk]) == []
+    assert [
+        option["value"] for option in widget.options_resolver([world.own_device.pk])
+    ] == [str(world.own_device.pk)]
+
+
+def test_session_and_record_device_pickers_offer_ended_devices():
+    for form_class in (SessionForm, HistoricalPlaytimeForm):
+        widget = form_class.base_fields["device"].widget
+        assert isinstance(widget, SearchSelectWidget)
+        assert widget.params is None
 
 
 @pytest.mark.parametrize(

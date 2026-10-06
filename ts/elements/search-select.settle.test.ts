@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Re-picks, silent holds, and leaving mid-edit.
+// Re-picks, silent holds, leaving mid-edit, held memory.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
 import { hosted } from "../test-setup/search-select-host.js";
@@ -14,6 +14,7 @@ interface MountOptions {
   revertOnLeave?: boolean;
   describedBy?: string;
   searchUrl?: string;
+  multi?: boolean;
 }
 
 const LABELS: Record<string, string> = { "1": "Deck", "2": "Switch" };
@@ -24,11 +25,12 @@ function mount({
   revertOnLeave = true,
   describedBy,
   searchUrl,
+  multi = false,
 }: MountOptions = {}): SearchSelectElement {
   document.body.replaceChildren();
   const host = document.createElement("search-select") as SearchSelectElement;
   host.setAttribute("name", "device");
-  host.setAttribute("multi", "false");
+  host.setAttribute("multi", String(multi));
   if (noneLabel) host.setAttribute("none-label", noneLabel);
   if (revertOnLeave) host.setAttribute("revert-on-leave", "true");
   if (searchUrl) host.setAttribute("search-url", searchUrl);
@@ -327,7 +329,7 @@ describe("<search-select> a click into the focused box", () => {
 describe("<search-select> remembers what it held", () => {
   beforeEach(() => {
     document.body.replaceChildren();
-    //: Never answers; × leaves the rows.
+    //: Never answers, so × leaves no rows.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -364,6 +366,20 @@ describe("<search-select> remembers what it held", () => {
     const host = searched();
     clearButton(host).click();
     expect(host.offers("")).toBe(false);
+  });
+
+  it("keeps the last label a value was held with", () => {
+    const host = searched({ held: "1" });
+    host.setSelected("1", "Steam Deck");
+    clearButton(host).click();
+    host.holdValue("1");
+    expect(searchBox(host).value).toBe("Steam Deck");
+  });
+
+  it("remembers nothing on a multi-select", () => {
+    const host = searched({ held: "1", noneLabel: "", revertOnLeave: false, multi: true });
+    clearButton(host).click();
+    expect(host.offers("1")).toBe(false);
   });
 
   it("forgets every held value when the options are replaced", () => {

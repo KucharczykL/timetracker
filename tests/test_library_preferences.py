@@ -10,6 +10,7 @@ from games.commands.device import VoidDeviceAccessEnd
 from games.end_ways import EndWay
 from games.events.dispatch import append_command
 from games.events.rebuild import RebuildMode, rebuild_projections
+from games.forms import DEVICE_SEARCH_URL, HELD_DEVICES
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
 
@@ -175,12 +176,14 @@ def test_device_search_held_omits_an_ended_device(client, user):
     end_device_access(create_device(library=library, name="Old laptop"))
     client.force_login(user)
 
+    held = {key: source["value"] for key, source in HELD_DEVICES.items()}
+
     def labels(**params):
-        answer = client.get("/api/devices/search", params).json()
+        answer = client.get(DEVICE_SEARCH_URL, params).json()
         return {row["label"] for row in answer}
 
-    assert labels(held=1) == {"Deck"}
-    assert labels(held=1, q="o") == set()
+    assert labels(**held) == {"Deck"}
+    assert labels(**held, q="o") == set()
     assert labels() == {"Deck", "Old laptop"}
 
 

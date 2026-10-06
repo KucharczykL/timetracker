@@ -55,7 +55,7 @@ from common.components.primitives import (
     Radio,
     field_label_id,
 )
-from common.components.search_select import DialogCreate
+from common.components.search_select import DialogCreate, ParamSources
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
@@ -241,7 +241,10 @@ class PrimitiveWidgetsMixin:
 
 
 class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
-    """Library-owned preferences rendered through the shared settings field kit."""
+    """Library-owned preferences rendered through the shared settings field kit.
+
+    Renders only; the PATCH route validates.
+    """
 
     default_device = forms.ModelChoiceField(
         queryset=Device.objects.none(), label="Default device", required=False
@@ -251,10 +254,10 @@ class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
         super().__init__()
         field = cast(forms.ModelChoiceField, self.fields["default_device"])
         field.queryset = Device.objects.for_library(library)
-        #: An ended device is no default.
         field.widget = SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
-            params={"held": {"value": "1"}},
+            #: An ended device is no default.
+            params=HELD_DEVICES,
             options_resolver=partial(device_options, library=library),
             none_label="No device",
             revert_on_leave=True,
@@ -402,6 +405,8 @@ def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 #: Where a picker searches a library's devices.
 DEVICE_SEARCH_URL = "/api/devices/search"
+#: Narrows that search to unended devices.
+HELD_DEVICES: Final[ParamSources] = {"held": {"value": "1"}}
 HELD_RELEASE_SEARCH_URL: Final = "/api/releases/held"
 
 #: Where a picker makes the row a person typed.

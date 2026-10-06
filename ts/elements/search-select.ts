@@ -1000,7 +1000,7 @@ const initWidget = (containerElement: Element): boolean => {
   //    pick filling in its label — blur touches neither value nor text. ──
   if (!multi) container._searchSelectLabel = search.value;
 
-  //: Every option held, keyed by value.
+  //: Single-select: each option held since setOptions.
   const remembered = new Map<string, SearchSelectOption>();
   const renderedHeld = multi ? null : pills.querySelector<HTMLInputElement>(HELD_VALUE_INPUTS);
   if (renderedHeld) {
@@ -1411,15 +1411,15 @@ const initWidget = (containerElement: Element): boolean => {
     Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).find(
       row => row.getAttribute("data-value") === value
     );
-  const offeredOption = (value: string): SearchSelectOption | undefined => {
+  const knownOption = (value: string): SearchSelectOption | undefined => {
     const offered = offeredRow(value);
     return offered ? optionFromRow(offered) : remembered.get(value);
   };
-  container._searchSelectOffers = (value: string) => offeredOption(value) !== undefined;
+  container._searchSelectOffers = (value: string) => knownOption(value) !== undefined;
 
-  //: Hold an offered value; else drop it.
+  //: Hold a row or remembered value.
   container._searchSelectHoldValue = (value: string): boolean => {
-    const option = offeredOption(value);
+    const option = knownOption(value);
     const alreadyHeld =
       !container._searchSelectDirty && sameHeld(heldNow(), { values: [value], none: false });
     if (option && alreadyHeld) return true;
@@ -1435,11 +1435,11 @@ const initWidget = (containerElement: Element): boolean => {
 
   // Public option swap: replace the pre-rendered (inline, no search-url) option
   // set without a fetch — the comparison widget re-filters a right-operand list
-  // client-side as the left column / operator changes (#282). A committed
-  // single-select value that is no longer offered is dropped (to none, where
-  // offered) so it cannot
-  // serialize a stale operand; a still-offered value is preserved. Panel
-  // visibility is left untouched (no forced open).
+  // client-side as the left column / operator changes. These rows are the whole
+  // set, so remembered options go. A committed single-select value that is no
+  // longer offered is dropped (to none, where offered) so it cannot serialize a
+  // stale operand; a still-offered value is preserved. Panel visibility is left
+  // untouched (no forced open).
   container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
     remembered.clear();
     options
@@ -1811,7 +1811,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
   }
 
-  /** Hold an offered `value`; answers whether offered. */
+  /** Hold `value` silently; else hold none or nothing. */
   holdValue(value: string): boolean {
     return this.initializedPart("_searchSelectHoldValue")(value);
   }
@@ -1841,10 +1841,11 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectClear?.();
   }
 
-  /** Replace the inline option set client-side (no fetch). A committed value no
-   *  longer offered is dropped, to none where offered; a still-offered one is kept. For inline
-   *  (no search-url) single-selects whose options are recomputed on the client
-   *  — e.g. the field-comparison right operand (#282). No change event fires. */
+  /** Replace the inline option set client-side (no fetch); forgets remembered
+   *  options. A committed value no longer offered is dropped, to none where
+   *  offered; a still-offered one is kept. For inline (no search-url)
+   *  single-selects whose options are recomputed on the client — e.g. the
+   *  field-comparison right operand. No change event fires. */
   setOptions(options: SearchSelectOption[]): void {
     (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
   }

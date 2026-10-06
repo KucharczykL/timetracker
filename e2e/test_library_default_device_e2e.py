@@ -63,6 +63,7 @@ def test_a_pick_saves_and_none_saves_null(
     picker = page.locator('search-select[name="default_device"]')
 
     _search(page).click()
+    #: Phone arrives with the answer, so absence is checked after it.
     expect(picker.get_by_role("option", name="Phone")).to_be_visible()
     expect(picker.get_by_role("option", name="Old laptop")).to_have_count(0)
     with _saved(page) as picked:
@@ -115,3 +116,4 @@ def test_a_refused_save_restores_the_stored_device(
 
     expect(_search(page)).to_have_value("Deck")
     expect(held_choice(page, "default_device")).to_have_value(str(deck.pk))
+    expect(page.get_by_text("Couldn't save your change", exact=False)).to_be_visible()
