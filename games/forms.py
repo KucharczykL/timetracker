@@ -1560,6 +1560,26 @@ def release_field(
     field.widget.options_resolver = partial(held_release_options, library=library)
 
 
+def device_field(
+    form: forms.Form, *, library: UserLibrary, held: uuid.UUID | None
+) -> None:
+    """Live devices; the row's own stays."""
+    devices = Device.objects.for_library(library)
+    if held is not None:
+        devices = devices | Device.objects.filter(library=library, pk=held)
+    field = cast(forms.ModelChoiceField, form.fields["device"])
+    field.queryset = devices.order_by("name")
+    field.widget.options_resolver = partial(_named_device_options, devices=devices)
+
+
+def _named_device_options(
+    values, *, devices: QuerySet[Device]
+) -> list[SearchSelectOption]:
+    return [
+        device_option(device) for device in devices.filter(pk__in=_parsed_ids(values))
+    ]
+
+
 def refuse_another_games_release(
     form: forms.Form, release: Release, game_id: uuid.UUID
 ) -> None:
@@ -1606,11 +1626,8 @@ class SessionForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
         runs.widget.options_resolver = partial(run_options, library=library)
         held_release = None if instance is None else instance.release_id
         release_field(self, library=library, held=held_release)
-        cast(
-            forms.ModelChoiceField, self.fields["device"]
-        ).queryset = Device.objects.for_library(library).order_by("name")
-        self.fields["device"].widget.options_resolver = partial(
-            device_options, library=library
+        device_field(
+            self, library=library, held=None if instance is None else instance.device_id
         )
         self._presentation = presentation
         for field_name, copy_target in _INSTANT_COPY_TARGETS.items():
@@ -2047,16 +2064,8 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         cast(forms.ChoiceField, self.fields["provenance"]).choices = [
             (choice.value, choice.label) for choice in provenances
         ]
-        devices = Device.objects.for_library(library)
-        if held is not None and held.device_id is not None:
-            #: The row's own device stays, removed or not.
-            devices = devices | Device.objects.filter(
-                library=library, pk=held.device_id
-            )
-        device_field = cast(forms.ModelChoiceField, self.fields["device"])
-        device_field.queryset = devices.order_by("name")
-        device_field.widget.options_resolver = partial(
-            _named_device_options, devices=devices
+        device_field(
+            self, library=library, held=None if held is None else held.device_id
         )
 
     def clean_note(self) -> str:
@@ -2127,14 +2136,6 @@ def _parsed_ids(values, parse: IdParser = _as_uuid) -> list[uuid.UUID]:
         except ValueError:
             continue
     return parsed
-
-
-def _named_device_options(
-    values, *, devices: QuerySet[Device]
-) -> list[SearchSelectOption]:
-    return [
-        device_option(device) for device in devices.filter(pk__in=_parsed_ids(values))
-    ]
 
 
 def _record_initial(
