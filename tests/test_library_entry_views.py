@@ -85,12 +85,12 @@ def _add_post(graph, **changes) -> dict[str, str]:
 
 
 def _add_url(game) -> str:
-    return reverse("games:add_library_entry", args=[game.pk])
+    return f"{reverse('games:add_to_library')}?game={game.pk}"
 
 
 def test_add_records_a_copy_and_returns(logged_in, graph):
     response = logged_in.post(
-        _add_url(graph.game) + f"?origin={graph.game.get_absolute_url()}",
+        _add_url(graph.game) + f"&origin={graph.game.get_absolute_url()}",
         _add_post(graph),
     )
 
@@ -122,8 +122,11 @@ def test_the_add_page_seeds_digital_and_the_default_release(logged_in, graph):
 def test_an_invalid_add_renders_the_page_again(logged_in, graph):
     response = logged_in.post(_add_url(graph.game), _add_post(graph, access="lent"))
 
+    html = response.content.decode()
     assert response.status_code == 200
-    assert "Add to library - Tunic" in response.content.decode()
+    row = re.search(r'data-field-row="game"><dl>.*?</dd>', html, re.DOTALL)
+    assert row and "Tunic" in row.group(0)
+    assert re.search(r'<search-select[^>]*\bname="game"', html) is None
     assert not LibraryEntry.objects.exists()
 
 
@@ -139,9 +142,16 @@ def test_add_on_another_librarys_game_is_absent(client, graph, django_user_model
     stranger = django_user_model.objects.create_user(username="stranger")
     client.force_login(stranger)
 
-    response = client.post(_add_url(graph.game), _add_post(graph))
+    response = client.post(
+        _add_url(graph.game), _add_post(graph, note="kept", game=str(graph.game.pk))
+    )
 
-    assert response.status_code == 404
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "Select a valid choice" in html
+    assert "this form cannot use. Pick one." in html
+    assert "kept</textarea>" in html
+    assert not LibraryEntry.objects.exists()
 
 
 # --- edit -----------------------------------------------------------------

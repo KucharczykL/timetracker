@@ -9,7 +9,7 @@ The parameter is ``origin`` rather than ``next`` because Django's auth views own
 view has no way to tell that apart from "where to go after this mutation".
 """
 
-from collections.abc import Container
+from collections.abc import Container, Mapping
 from typing import Any
 from urllib.parse import urlencode, urlparse, urlunparse
 
@@ -19,23 +19,34 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 type OriginUrl = str  # "/tracker/game/list?filter=%7B%22status%22%3A%5B%22p%22%5D%7D"
 type UrlName = str  # "games:edit_game"
+type LinkFacts = Mapping[str, str]  # {"game": "<uuid>"}
 
 ORIGIN_PARAM = "origin"
 
 
 def action_url(
-    viewname: UrlName, *args: Any, origin: OriginUrl | None, **kwargs: Any
+    viewname: UrlName,
+    *args: Any,
+    origin: OriginUrl | None,
+    facts: LinkFacts | None = None,
+    **kwargs: Any,
 ) -> str:
     """Link to a mutating view, carrying the page it is launched from.
 
     ``origin`` is keyword-only and has no default so a call site cannot drop it
     by accident; pass ``None`` only where there is genuinely nowhere to return.
+    ``facts`` names form fields the opener states.
     """
+    if facts and ORIGIN_PARAM in facts:
+        raise ValueError(f"A fact cannot be named {ORIGIN_PARAM!r}.")
     url = reverse(viewname, args=args, kwargs=kwargs)
-    if not origin:
+    query = dict(facts or {})
+    if origin:
+        query[ORIGIN_PARAM] = origin
+    if not query:
         return url
     # reverse() never yields a query string, so "?" is unconditional.
-    return f"{url}?{urlencode({ORIGIN_PARAM: origin})}"
+    return f"{url}?{urlencode(query)}"
 
 
 def parse_origin(

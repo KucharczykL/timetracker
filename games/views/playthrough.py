@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import date, timedelta
 from functools import partial
-from typing import Any, NamedTuple, cast
+from typing import NamedTuple, cast
 from uuid import UUID
 
 from django.contrib import messages
@@ -222,24 +222,17 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
-    initial: dict[str, Any] = {}
+def add_playthrough(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
-    #: The game the URL names, where it names one.
-    offered_game: Game | None = None
-    if game_id:
-        # coming from add_playthrough_for_game url path
-        game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-        offered_game = game
-        initial["game"] = game
-        initial |= _seeded_run(library, game)._asdict()
     form = PlaythroughForm(
         request.POST or None,
-        initial=initial,
         library=library,
         presentation=date_time_presentation_for_request(request),
-        offered_game=offered_game,
+        facts=request.GET,
     )
+    stated_game = form.stated("game", Game)
+    if stated_game is not None and not form.is_bound:
+        form.initial.update(_seeded_run(library, stated_game)._asdict())
     #: The same tail renders an invalid form.
     refused_status = 200
     if form.is_valid():

@@ -276,7 +276,8 @@ def test_add_game_continues_to_its_copy_and_a_close_reloads(
     expect(dialog.locator('input[name="sort_name"]')).to_have_value("Outer Wilds")
     dialog.get_by_role("button", name="Submit & Add to library").click()
 
-    expect(dialog.locator("[data-form-dialog-title]")).to_contain_text("Outer Wilds")
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Add to library")
+    expect(dialog.locator('[data-field-row="game"] dd')).to_contain_text("Outer Wilds")
     # Escape may first close a focused picker's panel.
     dialog.get_by_role("button", name="Close dialog").click()
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)

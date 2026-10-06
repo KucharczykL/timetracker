@@ -27,7 +27,7 @@ def test_the_price_segment_shows_only_the_rows_it_reads(
 ):
     game = default_graph(Game(library=e2e_library, name="Tunic"), e2e_library).game
     page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:add_library_entry', args=[game.pk])}")
+    page.goto(f"{live_server.url}{reverse('games:add_to_library')}?game={game.pk}")
     amount = page.locator('[data-field-row="amount"]')
     currency = page.locator('[data-field-row="currency"]')
 

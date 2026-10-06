@@ -10,6 +10,7 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
+from common.opener_facts import Fixed
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.end_ways import EndWay
 from games.entry_forms import (
@@ -78,7 +79,7 @@ def test_add_on_a_game_cleans_to_a_draft(owned_library, graph):
             "library-add-price": "none",
             **_day("library-add-acquired", datetime.date(2026, 9, 1)),
         },
-        game=graph.game,
+        facts={"library-add-game": str(graph.game.pk)},
     )
 
     assert form.is_valid(), form.errors
@@ -94,13 +95,18 @@ def test_add_on_a_game_cleans_to_a_draft(owned_library, graph):
 
 
 def test_add_seeds_the_acquired_day_with_today(owned_library, graph):
-    form = _add(owned_library, graph, game=graph.game)
+    form = _add(owned_library, graph, facts={"library-add-game": str(graph.game.pk)})
 
     assert form.fields["acquired"].initial == TemporalValue.parse("2026-09-29")
 
 
 def test_add_seeds_digital(owned_library, graph):
-    assert _add(owned_library, graph, game=graph.game)["format"].initial == "digital"
+    assert (
+        _add(owned_library, graph, facts={"library-add-game": str(graph.game.pk)})[
+            "format"
+        ].initial
+        == "digital"
+    )
 
 
 def test_add_on_a_game_seeds_its_default_release_among_several(
@@ -127,13 +133,16 @@ def test_add_on_a_game_seeds_its_default_release_among_several(
         ],
     )
 
-    form = _add(owned_library, graph, game=graph.game)
+    form = _add(owned_library, graph, facts={"library-add-game": str(graph.game.pk)})
 
     assert form.initial["release"] == graph.release.pk
 
 
-def test_add_on_a_game_offers_no_game_picker(owned_library, graph):
-    assert "game" not in _add(owned_library, graph, game=graph.game).fields
+def test_add_on_a_game_states_it(owned_library, graph):
+    form = _add(owned_library, graph, facts={"library-add-game": str(graph.game.pk)})
+
+    assert form.fields["game"].disabled
+    assert form.facts["game"] == Fixed(graph.game, graph.game.search_label)
 
 
 def test_add_without_a_game_reads_the_prefixed_game_field(owned_library, graph):
@@ -147,7 +156,7 @@ def test_add_without_a_game_reads_the_prefixed_game_field(owned_library, graph):
 def test_add_offers_no_create_row_on_a_shared_game(owned_library):
     shared = Game.objects.create(name="Celeste")
 
-    form = _add(owned_library, None, game=shared)
+    form = _add(owned_library, None, facts={"library-add-game": str(shared.pk)})
 
     assert form.fields["release"].widget.create is None
 

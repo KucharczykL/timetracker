@@ -136,7 +136,7 @@ def test_widgets_initialize_inside_inserted_content(
 def _open_add_to_library(page: Page, live_server, library) -> None:
     """A picker beside native inputs."""
     game = default_graph(Game(library=library, name="Tunic"), library).game
-    page.goto(f"{live_server.url}{reverse('games:add_library_entry', args=[game.pk])}")
+    page.goto(f"{live_server.url}{reverse('games:add_to_library')}?game={game.pk}")
 
 
 def test_searchselect_border_matches_native_input(
@@ -310,8 +310,11 @@ def test_add_game_submit_and_add_to_library_redirects(
     page.goto(f"{live_server.url}{reverse('games:add_game')}")
     page.fill("#id_name", "E2E Library Game")
     page.click('button[name="submit_and_add_to_library"]')
-    page.wait_for_url(f"{live_server.url}/tracker/game/*/library/add**")
-    expect(page).to_have_title(re.compile("Add to library - E2E Library Game"))
+    page.wait_for_url(f"{live_server.url}/tracker/library/add?game=*")
+    expect(page).to_have_title(re.compile("Add to library"))
+    expect(page.locator('[data-field-row="game"] dd')).to_contain_text(
+        "E2E Library Game"
+    )
 
 
 # ── Sortable column headers (issue #73) ──────────────────────────────────────

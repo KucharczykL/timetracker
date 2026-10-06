@@ -465,8 +465,8 @@ docs/           — Additional documentation
   `GET /api/playthrough/search`, whose `params` name the game field, so it
   searches again when the game changes and creates under the same key; always
   visible, holding the sole run an answer states while the box is untouched,
-  because the field is required — which is what the page seeds as well,
-  through `sole_ordinary_run` — and its create row names the placeholder
+  because the field is required — which `SessionForm` seeds for a
+  stated game as well, through `sole_ordinary_run` — and its create row names the placeholder
   tracking minted rather than leaving a blank run beside a named one
   (#1080). Session on game nothing tracks refused on run. Bucket takes no
   new session; `MoveSessionToPlaythrough` is only way in or out. Resume keyed on game (`games:resume_session`). Read surfaces:
@@ -1636,7 +1636,21 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   page; the view answers `CreatedRedirect(url, option=...)` with the
   picker's own option helper, and `<form-dialog>` hands the `created` row to the link's
   `<search-select>` through `form-dialog:created`. Contract is
-  [A dialog hands a created row to its picker](docs/superpowers/specs/2026-10-05-issue-1501-dialog-created-design.md)
+  [A dialog hands a created row to its picker](docs/superpowers/specs/2026-10-05-issue-1501-dialog-created-design.md).
+  `DialogCreate(params=...)` takes the pickers' param shape: a literal joins
+  the +'s href, a field source follows typing (`NEW_MAIN_GAME` on "Add-on of").
+- **A link states what its opener knows** (#1516): `action_url(...,
+  facts={"game": id})` writes `?game=`; a form with `OpenerFactsMixin`,
+  `opener_fields` and `facts=request.GET` (add views only, never edit)
+  fixes that field `disabled` and `FormFields` renders it as a locked row
+  in `field_box_class(..., look="fixed")`, writing the hidden input itself;
+  `fix_field` without a statement posts the hidden input alone. Read a fact
+  with `form.stated(name, Type)`. A value the form cannot use (malformed,
+  absent row) is refused, never 404: editable field, sentence, WARNING on
+  `games.opener_facts`. A fact locks; an editable prefill is #1526. No
+  chained `..._for_game` route: a path names only a route's subject.
+  Contract is
+  [A form states the facts its opener knows](docs/superpowers/specs/2026-10-06-issue-1516-opener-facts-design.md)
 - **A bulk write analyzes what it filled** — a command or task that
   fills or replaces many rows ends with `analyze_tables` from
   `games/planner_statistics.py`, naming its tables, inside its transaction

@@ -57,6 +57,7 @@ from common.components.primitives import (
 )
 from common.components.search_select import DialogCreate, ParamSources
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from common.opener_facts import OpenerFacts, OpenerFactsMixin
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
 from games.commands.endpoint import WayActStatement
@@ -77,6 +78,7 @@ from games.end_ways import END_WAY_LABELS, EndWay, ended_hint
 from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
 from games.models import (
+    ADDON_KINDS,
     DEVICE_WAYS,
     VISIBILITY_FIELDS,
     Device,
@@ -96,7 +98,7 @@ from games.reads.companion_status import played_is_offered
 from games.reads.endpoints import stated
 from games.reads.platform_groups import platform_groups
 from games.reads.playthrough_numbering import display_name, numbered_for
-from games.reads.playthrough_runs import library_runs, tracked_game
+from games.reads.playthrough_runs import library_runs, sole_ordinary_run, tracked_game
 from games.reads.releases import ended_copy_ways, held_releases, release_label
 from games.writes.playersession import latest_ordinary_run
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
@@ -289,6 +291,12 @@ def game_option(game: Game) -> SearchSelectOption:
 
 #: The + on every game picker.
 NEW_GAME = DialogCreate(reverse_lazy("games:add_game"), "New game")
+#: The + on "Add-on of".
+NEW_MAIN_GAME = DialogCreate(
+    reverse_lazy("games:add_game"),
+    "New main game",
+    params={"kind": {"value": GameKind.MAIN.value}, "addon": {"field": "name"}},
+)
 
 
 def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
@@ -1474,7 +1482,7 @@ def refuse_another_games_release(
         form.add_error("release", RELEASE_OF_ANOTHER_GAME)
 
 
-class SessionForm(PrimitiveWidgetsMixin, forms.Form):
+class SessionForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
     """One session, in the projection's words.
 
     No mode control: the statement is derived from which fields are
@@ -1484,12 +1492,15 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
     field that caused it.
     """
 
+    opener_fields = ("game",)
+
     def __init__(
         self,
         *args,
         library: UserLibrary,
         presentation: DateTimePresentation,
         instance: PlayerSession | None = None,
+        facts: OpenerFacts | None = None,
         **kwargs,
     ):
         initial = dict(kwargs.pop("initial", None) or {})
@@ -1551,6 +1562,15 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
                 display_zone=presentation.timezone.key,
                 capture_default=captures_by_field[field_name],
             )
+        self.state_opener_facts(facts)
+        stated_game = self.stated("game", Game)
+        if stated_game is not None:
+            #: Stated game: focus the device.
+            self.fields["game"].widget.autofocus = False
+            self.fields["device"].widget.autofocus = True
+            run = sole_ordinary_run(library, stated_game)
+            if run is not None and not self.is_bound:
+                self.initial.setdefault("playthrough", run.pk)
 
     def _resolved_field_zone(self, zone_field_name: str) -> ZoneInfo:
         """The zone this instant's digits are meant in: the paired zone
@@ -2099,13 +2119,19 @@ _GAME_FIELDS = (
 
 
 class GameForm(
-    _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
+    OpenerFactsMixin,
+    _LibraryBoundConstraintValidationMixin,
+    PrimitiveWidgetsMixin,
+    forms.ModelForm,
 ):
+    opener_fields = ("kind",)
+
     def __init__(
         self,
         *args,
         library: UserLibrary,
         presentation: DateTimePresentation,
+        facts: OpenerFacts | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -2125,6 +2151,10 @@ class GameForm(
         parent.widget.options_resolver = partial(_parent_options, library=library)
         #: A field added after __init__ otherwise sinks to the bottom.
         self.order_fields(self.field_order)
+        self.state_opener_facts(facts)
+        stated_kind = self.stated("kind", str)
+        if stated_kind is not None and GameKind(stated_kind) not in ADDON_KINDS:
+            self.fix_field("parent", None)
         #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
             self.initial.setdefault(
@@ -2168,7 +2198,7 @@ class GameForm(
             search_url="/api/games/search",
             options_resolver=_parent_options,
             params={"kind": {"value": GameKind.MAIN.value}},
-            dialog_create=NEW_GAME,
+            dialog_create=NEW_MAIN_GAME,
         ),
     )
     excluded_from_dropped = forms.BooleanField(required=False, label="Dropped figures")
@@ -2346,13 +2376,15 @@ def _device_initial(device: Device) -> dict[str, Any]:
     return initial
 
 
-class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
+class PlaythroughForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
     """One run, as a person states it.
 
     A plain Form: the submit states commands and writes no row, so
     there is nothing for ModelForm to save. The four declarations
     ModelForm derived are restated here against the same columns.
     """
+
+    opener_fields = ("game",)
 
     def __init__(
         self,
@@ -2361,6 +2393,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
         presentation: DateTimePresentation,
         locked_game: Game | None = None,
         offered_game: Game | None = None,
+        facts: OpenerFacts | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -2378,6 +2411,8 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
                 presentation=presentation,
                 label=str(self.fields[field_name].label or field_name),
             )
+        self.state_opener_facts(facts)
+        offered_game = self.stated("game", Game) or offered_game
         #: The status decides the render. No game yet is
         #: the Add form before one is picked, which offers
         #: the box and asks again at clean time.

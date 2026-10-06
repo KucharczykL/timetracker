@@ -50,7 +50,9 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import Final, Literal, NamedTuple, NotRequired, TypedDict
+from urllib.parse import urlencode
 
 from django.utils.functional import Promise
 
@@ -78,8 +80,6 @@ from common.components.form_dialog import CreatedOption, form_dialog_link
 from common.components.modal import ElementId
 from common.components.primitives import (
     CLOSED_POPOVER,
-    DISABLED_WITHIN_CLASS,
-    SHAPE_CLASSES,
     AppliedDot,
     ButtonColor,
     ButtonGroupMember,
@@ -92,6 +92,7 @@ from common.components.primitives import (
     Pill,
     Span,
     Template,
+    field_box_class,
     filter_widget_attributes,
 )
 
@@ -143,21 +144,6 @@ class OptionGroup(NamedTuple):
 
     label: str
     options: list[SearchSelectOption]
-
-
-def field_box_class(shape: ButtonShape) -> str:
-    """Field-box classes, rounding ``shape``'s corners.
-
-    Every control drawn as a field shares it.
-    """
-    return (
-        "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control "
-        f"{SHAPE_CLASSES[shape]} "
-        "text-type-body "
-        "bg-neutral-secondary-medium border border-default-medium "
-        "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
-        f"{DISABLED_WITHIN_CLASS}"
-    )
 
 
 _BOX_CLASS = field_box_class("full")
@@ -294,6 +280,8 @@ type CreateRow = PostCreate | SelectTyped | EmitCreate
 
 
 type ControlLabel = str  # e.g. "New game"
+#: A link's query, parameter to value.
+type LinkQuery = dict[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,6 +294,29 @@ class DialogCreate:
 
     url: str | Promise
     label: ControlLabel
+    #: Literals join the href; fields follow typing.
+    params: Mapping[str, LiteralParam | FieldParam] | None = None
+
+    def __post_init__(self) -> None:
+        #: Shared constants hold it; freeze a copy.
+        if self.params is not None:
+            object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
+
+    def literal_query(self) -> LinkQuery:
+        query: LinkQuery = {}
+        for key, source in (self.params or {}).items():
+            match source:
+                case {"value": str(value)}:
+                    query[key] = value
+        return query
+
+    def field_sources(self) -> ParamSources:
+        sources: ParamSources = {}
+        for key, source in (self.params or {}).items():
+            match source:
+                case {"field": str()}:
+                    sources[key] = source
+        return sources
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,11 +344,15 @@ def _clear_button(clear: ClearControl) -> Node:
 
 def _dialog_create_link(create: DialogCreate) -> Node:
     """The divider and the +."""
+    href = str(create.url)
+    if literal := create.literal_query():
+        href = f"{href}?{urlencode(literal)}"
     return Fragment(
         Span(aria_hidden="true", class_=_DIVIDER_CLASS),
         ControlButton(
             form_dialog_link(),
-            href=str(create.url),
+            href=href,
+            data_search_select_dialog_create="",
             variant="ghost",
             size="compact",
             aria_label=create.label,
@@ -805,6 +820,9 @@ def SearchSelect(
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
+        dialog_create_params=json.dumps(field_sources)
+        if dialog_create and (field_sources := dialog_create.field_sources())
+        else "",
         **_create_props(create),
         csrf=csrf,
         commit_sole_option="true" if commit_sole_option else "false",

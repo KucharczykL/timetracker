@@ -112,7 +112,9 @@ def _record_copy(user: User, form: EntryAddForm) -> object:
     )
 
 
-def _add(request: HttpRequest, game: Game | None) -> HttpResponse:
+@login_required
+def add_to_library(request: HttpRequest) -> HttpResponse:
+    """Add a copy; its game may be stated."""
     user = cast(User, request.user)
     library = user.library
     form = EntryAddForm(
@@ -120,33 +122,21 @@ def _add(request: HttpRequest, game: Game | None) -> HttpResponse:
         library=library,
         presentation=date_time_presentation_for_request(request),
         today=request_calendar_today(request, library),
-        game=game,
+        facts=request.GET,
     )
     return form_page(
         request,
         form,
-        title="Add to library" if game is None else f"Add to library - {game.name}",
+        title="Add to library",
         write=lambda: _record_copy(user, form),
         done="Added to your library.",
-        game=lambda: game or getattr(form, "cleaned_data", {}).get("game"),
+        game=lambda: (
+            form.stated("game", Game) or getattr(form, "cleaned_data", {}).get("game")
+        ),
         groups=copy_groups(form),
         presentations=price_presentations(),
         submit_label="Add to library",
     )
-
-
-@login_required
-def add_library_entry(request: HttpRequest, game_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    return _add(
-        request, owned_or_404(Game.objects.visible_to(library), library, id=game_id)
-    )
-
-
-@login_required
-def add_to_library(request: HttpRequest) -> HttpResponse:
-    """Add, with a Game picker in front."""
-    return _add(request, None)
 
 
 @login_required

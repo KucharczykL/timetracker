@@ -174,3 +174,34 @@ def test_a_foreign_parent_keeps_its_name_away(client, owned_user, django_user_mo
 
     assert FOREIGN_PARENT_LABEL in row
     assert "Secret base" not in row
+
+
+def _add_links(page: str) -> set[str]:
+    """Hrefs to the add pages a game opens."""
+    names = ("add_session", "add_playthrough")
+    paths = tuple(reverse(f"games:{name}") for name in names)
+    return {
+        href.replace("&amp;", "&")
+        for href in re.findall(r'href="([^"]+)"', page)
+        if href.startswith(paths)
+    }
+
+
+def test_an_owned_game_states_itself_to_its_add_links(client, owned_user):
+    game = Game.objects.create(library=owned_user.library, name="Owned")
+
+    links = _add_links(_page(client, owned_user, game))
+
+    session = f"{reverse('games:add_session')}?game={game.pk}"
+    playthrough = f"{reverse('games:add_playthrough')}?game={game.pk}"
+    assert any(link.startswith(session) for link in links)
+    assert any(link.startswith(playthrough) for link in links)
+
+
+def test_a_shared_game_states_nothing_to_its_add_links(client, owned_user):
+    shared = Game.objects.create(library=None, name="Shared")
+    _track(owned_user.library, shared)
+
+    links = _add_links(_page(client, owned_user, shared))
+
+    assert not any("game=" in link for link in links)

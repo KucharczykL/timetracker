@@ -82,3 +82,88 @@ describe("<search-select> created row", () => {
     expect(host.querySelector('input[type="hidden"]')).toBeNull();
   });
 });
+
+/** A form whose + reads its name. */
+function mountInForm(name: string, href = "/game/add?kind=main"): { form: HTMLFormElement; host: HTMLElement; field: HTMLInputElement } {
+  const form = document.createElement("form");
+  form.innerHTML = `<input name="name" value="${name}" />`;
+  const host = document.createElement("search-select");
+  host.setAttribute("name", "parent");
+  host.setAttribute("multi", "false");
+  host.setAttribute("dialog-create-params", JSON.stringify({ addon: { field: "name" } }));
+  host.innerHTML = `
+    <div data-search-select-pills></div>
+    <input data-search-select-search value="" />
+    <a href="${href}" data-search-select-dialog-create="" data-form-dialog="">+</a>
+    <div data-search-select-options hidden>
+      <div data-search-select-no-results class="hidden">No results</div>
+    </div>
+    <template data-search-select-template="row"><div
+      data-search-select-option role="option" aria-selected="false"
+    ><span data-search-select-label></span></div></template>`;
+  form.appendChild(hosted(host));
+  document.body.appendChild(form);
+  return { form, host, field: form.querySelector<HTMLInputElement>('[name="name"]')! };
+}
+
+const plusHref = (host: HTMLElement): string =>
+  host.querySelector("[data-search-select-dialog-create]")!.getAttribute("href")!;
+
+function type(field: HTMLInputElement, value: string): void {
+  field.value = value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("<search-select> + query", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it("states the field's value on connect", () => {
+    const { host } = mountInForm("Dawnguard");
+    expect(plusHref(host)).toBe("/game/add?kind=main&addon=Dawnguard");
+  });
+
+  it("follows typing in the source field, on the same link", () => {
+    const { host, field } = mountInForm("");
+    const link = host.querySelector("[data-search-select-dialog-create]");
+    type(field, "Hearthfire");
+    expect(plusHref(host)).toBe("/game/add?kind=main&addon=Hearthfire");
+    expect(host.querySelector("[data-search-select-dialog-create]")).toBe(link);
+  });
+
+  it("drops a blank source and keeps the literal", () => {
+    const { host, field } = mountInForm("Dawnguard");
+    type(field, "");
+    expect(plusHref(host)).toBe("/game/add?kind=main");
+  });
+
+  it("ignores input in another field", () => {
+    const { form, host } = mountInForm("Dawnguard");
+    const other = document.createElement("input");
+    other.name = "year";
+    form.append(other);
+    host.querySelector("[data-search-select-dialog-create]")!.setAttribute("href", "/x");
+    type(other, "2012");
+    expect(plusHref(host)).toBe("/x");
+  });
+
+  it("keeps an absolute href absolute", () => {
+    const { host } = mountInForm("Dawnguard", "http://example.test/game/add?kind=main");
+    expect(plusHref(host)).toBe("http://example.test/game/add?kind=main&addon=Dawnguard");
+  });
+
+  it("follows a change event too", () => {
+    const { host, field } = mountInForm("");
+    field.value = "Hearthfire";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(plusHref(host)).toBe("/game/add?kind=main&addon=Hearthfire");
+  });
+
+  it("states the value again when inserted anew", () => {
+    const { form, host, field } = mountInForm("Dawnguard");
+    const hostElement = host.closest("drop-down")!;
+    hostElement.remove();
+    type(field, "Dragonborn");
+    form.append(hostElement);
+    expect(plusHref(host)).toBe("/game/add?kind=main&addon=Dragonborn");
+  });
+});

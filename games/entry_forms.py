@@ -11,6 +11,7 @@ from django import forms
 from common.components import FormFieldGroup, PostCreate, SearchSelectOption
 from common.components.search_select import ParamSources
 from common.date_time_presentation import DateTimePresentation
+from common.opener_facts import OpenerFacts, OpenerFactsMixin
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import EntryStatement
 from games.end_ways import END_WAY_LABELS, EndWay
@@ -188,9 +189,10 @@ class Submission(forms.Form):
         )
 
 
-class EntryAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
+class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFields):
     """One copy, and how it was bought."""
 
+    opener_fields = ("game",)
     kind: ClassVar[SubmissionKind] = "copy-add"
     price_choices = (PriceChoice.PAID, PriceChoice.FREE, PriceChoice.NONE)
 
@@ -212,29 +214,26 @@ class EntryAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
         library: UserLibrary,
         presentation: DateTimePresentation,
         today: datetime.date,
-        game: Game | None = None,
+        facts: OpenerFacts | None = None,
         **kwargs,
     ):
         super().__init__(*args, user=library.user, **kwargs)
         self.library = library
-        self.game = game
-        params: ParamSources
-        if game is None:
-            self.fields["game"] = SingleGameChoiceField(
-                queryset=Game.objects.visible_to(library).in_display_order(),
-                label="Game",
-                widget=SearchSelectWidget(
-                    search_url=GAME_SEARCH_URL,
-                    options_resolver=partial(_game_options, library=library),
-                    autofocus=True,
-                    dialog_create=NEW_GAME,
-                ),
-            )
-            params = {"game_id": {"field": self.add_prefix("game")}}
-            create = True
-        else:
-            params = {"game_id": {"value": str(game.pk)}}
-            create = game.library_id == library.pk
+        self.fields["game"] = SingleGameChoiceField(
+            queryset=Game.objects.visible_to(library).in_display_order(),
+            label="Game",
+            widget=SearchSelectWidget(
+                search_url=GAME_SEARCH_URL,
+                options_resolver=partial(_game_options, library=library),
+                autofocus=True,
+                dialog_create=NEW_GAME,
+            ),
+        )
+        self.state_opener_facts(facts)
+        params: ParamSources = {"game_id": {"field": self.add_prefix("game")}}
+        game = self.stated("game", Game)
+        create = game is None or game.library_id == library.pk
+        if game is not None:
             #: The default Release reads first.
             default = game_releases(library, game).first()
             if default is not None and "release" not in self.initial:
@@ -265,7 +264,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
         if cleaned is None:
             return cleaned
         release = cast(Release | None, cleaned.get("release"))
-        game = self.game or cleaned.get("game")
+        game = cleaned.get("game")
         if (
             release is not None
             and game is not None

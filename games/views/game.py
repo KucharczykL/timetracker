@@ -75,7 +75,7 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.form_dialog import CreatedRedirect
 from common.layout import render_page
-from common.returns import OriginUrl, action_url
+from common.returns import LinkFacts, OriginUrl, action_url
 from common.temporal_presentation import (
     UNKNOWN_TEXT,
     TemporalText,
@@ -402,7 +402,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
 def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
-    form = GameForm(request.POST or None, library=library, presentation=presentation)
+    form = GameForm(
+        request.POST or None,
+        library=library,
+        presentation=presentation,
+        facts=request.GET,
+    )
     graph = CatalogGraphForm(
         request.POST or None, game=None, library=library, presentation=presentation
     )
@@ -440,9 +445,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
             if "submit_and_add_to_library" in request.POST:
                 return redirect(
                     action_url(
-                        "games:add_library_entry",
-                        game_id=game.id,
+                        "games:add_to_library",
                         origin=origin_from(request),
+                        facts={"game": str(game.id)},
                     )
                 )
             return CreatedRedirect(
@@ -457,7 +462,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
             request=request,
             fields=Fragment(
                 FormFields(form, groups=GAME_FORM_GROUPS),
-                GameAddon("kind", "parent"),
+                #: Its element needs the kind select.
+                None
+                if form.stated("kind", str) is not None
+                else GameAddon("kind", "parent"),
                 FieldMirror("name", "sort_name"),
                 editions_area(graph),
                 references_area(references),
@@ -469,8 +477,22 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 name="submit_and_add_to_library",
             )["Submit & Add to library"],
         ),
-        title="Add New Game",
+        title=_add_game_title(form, request.GET.get("addon", "")),
     )
+
+
+_ADDON_TITLE_LENGTH = Game._meta.get_field("name").max_length
+
+
+def _add_game_title(form: GameForm, addon: str) -> str:
+    """The title, naming the link's add-on."""
+    printable = "".join(
+        character if character.isprintable() else " " for character in addon
+    )
+    named = " ".join(printable.split())
+    if form.stated("kind", str) == GameKind.MAIN and named:
+        return f"Add the main game of {named[:_ADDON_TITLE_LENGTH]}"
+    return "Add New Game"
 
 
 @login_required
@@ -593,6 +615,12 @@ _STAT_SVGS = {
 }
 
 
+def _game_fact(game: Game) -> LinkFacts | None:
+    """The game, for forms that take it."""
+    #: Session and run forms take owned games.
+    return None if game.library_id is None else {"game": str(game.id)}
+
+
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     """'Played N times' split button.
 
@@ -613,7 +641,7 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
 
     count_button = ControlButton(
         variant="outline",
-        href=action_url("games:add_playthrough", origin=origin),
+        href=action_url("games:add_playthrough", origin=origin, facts=_game_fact(game)),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
@@ -626,7 +654,9 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
         aria_label="Playthrough actions",
         items=[
             DropdownLinkItem(
-                action_url("games:add_playthrough_for_game", game.id, origin=origin),
+                action_url(
+                    "games:add_playthrough", origin=origin, facts=_game_fact(game)
+                ),
                 "Add playthrough\u2026",
             ),
         ],
@@ -714,7 +744,7 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
             [
                 {
                     "href": action_url(
-                        "games:add_session_for_game", game_id=game.id, origin=origin
+                        "games:add_session", origin=origin, facts=_game_fact(game)
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
                         Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"

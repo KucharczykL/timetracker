@@ -139,7 +139,7 @@ def test_a_shared_game_without_a_release_states_the_sentence(
     html = _page(client, shared)
 
     assert SHARED_GAME_RELEASE in html
-    assert reverse("games:add_library_entry", args=[shared.pk]) not in html
+    assert f"{reverse('games:add_to_library')}?game={shared.pk}" not in html
 
 
 def test_another_librarys_copies_are_absent(
@@ -184,7 +184,7 @@ def test_an_own_game_without_a_release_offers_the_page_alone(
 
     html = _page(client, game)
 
-    assert reverse("games:add_library_entry", args=[game.pk]) in html
+    assert f"{reverse('games:add_to_library')}?game={game.pk}" in html
     assert reverse("games:add_library_entry_now", args=[game.pk]) not in html
 
 

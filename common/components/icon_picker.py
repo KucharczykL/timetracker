@@ -18,8 +18,8 @@ from common.components.primitives import (
     Input,
     Label,
     Span,
+    field_box_class,
 )
-from common.components.search_select import field_box_class
 
 #: A tile's value; empty keeps.
 type IconChoiceValue = str  # "steam"

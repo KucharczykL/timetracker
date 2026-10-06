@@ -229,7 +229,7 @@ def test_the_page_seeds_a_sole_run_and_nothing_else(client, owned_user):
     game = Game.objects.create(library=library, name="Tunic")
     born = run_id(library, game)
     client.force_login(owned_user)
-    url = reverse("games:add_session_for_game", args=[game.pk])
+    url = f"{reverse('games:add_session')}?game={game.pk}"
 
     assert born in client.get(url).content.decode()
 

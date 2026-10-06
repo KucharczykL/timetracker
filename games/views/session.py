@@ -69,7 +69,6 @@ from games.reads.player_sessions import (
     library_sessions,
     listed_sessions,
 )
-from games.reads.playthrough_runs import sole_ordinary_run
 from games.reads.releases import stated_release_label
 from games.reads.session_run_labels import every_run_label
 from games.sorting import (
@@ -376,7 +375,7 @@ def _render_session_form(
 
 
 @login_required
-def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
+def add_session(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     library = cast(User, request.user).library
     initial: dict[str, Any] = {
@@ -388,41 +387,31 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
         "started_at": timezone.now().replace(second=0, microsecond=0),
         "device": library.preferences.default_device,
     }
-    if game_id:
-        game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-        initial["game"] = game
-        run = sole_ordinary_run(library, game)
-        if run is not None:
-            initial["playthrough"] = run.pk
+    form = SessionForm(
+        request.POST if request.method == "POST" else None,
+        initial=initial,
+        library=library,
+        presentation=presentation,
+        facts=request.GET,
+    )
 
     #: The same tail renders an invalid form.
     refused_status = 200
-    if request.method == "POST":
-        form = SessionForm(
-            request.POST, initial=initial, library=library, presentation=presentation
-        )
-        if form.is_valid():
-            game = form.cleaned_data["game"]
-            try:
-                record_session(
-                    cast(User, request.user),
-                    _session_draft(form, library),
-                    correlation_id=new_correlation_id(),
-                )
-            except CommandFailed as failure:
-                messages.error(request, failure.message)
-                refused_status = failure.status_code
-            else:
-                if form.cleaned_data.get("mark_as_played"):
-                    _record_played(request, game)
-                return redirect(return_url(request, fallback="games:list_sessions"))
-    else:
-        form = SessionForm(initial=initial, library=library, presentation=presentation)
-        if game_id:
-            # Chained with a pre-filled game: focus the device field instead of
-            # the already-selected game.
-            form.fields["game"].widget.autofocus = False
-            form.fields["device"].widget.autofocus = True
+    if form.is_valid():
+        game = form.cleaned_data["game"]
+        try:
+            record_session(
+                cast(User, request.user),
+                _session_draft(form, library),
+                correlation_id=new_correlation_id(),
+            )
+        except CommandFailed as failure:
+            messages.error(request, failure.message)
+            refused_status = failure.status_code
+        else:
+            if form.cleaned_data.get("mark_as_played"):
+                _record_played(request, game)
+            return redirect(return_url(request, fallback="games:list_sessions"))
 
     # TODO: re-add custom buttons #91
     return _render_session_form(request, form, "Add New Session", status=refused_status)

@@ -158,7 +158,7 @@ class HtmlValidityTest(TestCase):
             reverse("games:remove_purchase", args=[self.purchase.id]),
             reverse("games:edit_purchase", args=[self.purchase.id]),
             reverse("games:add_purchase", args=[self.entry.id]),
-            reverse("games:add_library_entry", args=[self.long_game.id]),
+            f"{reverse('games:add_to_library')}?game={self.long_game.id}",
             reverse("games:remove_playthrough", args=[self.playthrough.id]),
             reverse("games:remove_platform", args=[self.platform.id]),
             reverse("games:remove_device", args=[self.device.id]),

@@ -20,6 +20,7 @@ from typing import (
     NotRequired,
     Protocol,
     TypedDict,
+    assert_never,
     runtime_checkable,
 )
 
@@ -102,6 +103,13 @@ from common.components.elements import (
 )
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterWidgetPath, LeafWidgetKind
+from common.opener_facts import (
+    Fixed,
+    FormFacts,
+    Refused,
+    Statement,
+    form_facts,
+)
 from common.sorting import SortString, SortTerm, collapse_sort, cycle_sort
 from timetracker.settings_registry import PAGE_SIZE_CHOICES
 
@@ -815,6 +823,41 @@ SHAPE_CLASSES: dict[ButtonShape, str] = {
     "end": "rounded-e-base",
     "square": "",
 }
+#: "fixed": set elsewhere, never typed into.
+type FieldBoxLook = Literal["editable", "fixed"]
+
+#: Size, padding and corners every look shares.
+FIELD_BOX_SHAPE_CLASS = "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control"
+
+
+def _field_box_look_class(look: FieldBoxLook) -> str:
+    match look:
+        case "editable":
+            return (
+                "bg-neutral-secondary-medium border border-default-medium "
+                "focus-within:border-brand focus-within:ring-1 "
+                f"focus-within:ring-brand {DISABLED_WITHIN_CLASS}"
+            )
+        case "fixed":
+            return (
+                "bg-neutral-primary-soft border border-dashed "
+                "border-default-medium text-heading"
+            )
+        case _:
+            assert_never(look)
+
+
+def field_box_class(shape: ButtonShape, *, look: FieldBoxLook = "editable") -> str:
+    """Field-box classes, rounding ``shape``'s corners.
+
+    Every control drawn as a field shares it.
+    """
+    return (
+        f"{FIELD_BOX_SHAPE_CLASS} {SHAPE_CLASSES[shape]} text-type-body "
+        f"{_field_box_look_class(look)}"
+    )
+
+
 #: The control radius, scaled to a glyph square.
 COMPACT_SHAPE_CLASSES: dict[ButtonShape, str] = {
     "full": "rounded",
@@ -2041,10 +2084,80 @@ def _form_field_row(
     ]
 
 
+def _fact_carrier(field) -> Node:
+    """A fixed field's value, posted; never ``disabled``."""
+    value = field.field.prepare_value(field.value())
+    return Input(
+        type="hidden", name=field.html_name, value="" if value is None else value
+    )
+
+
+def _stated_row(field, statement: Statement) -> Node:
+    """A stated fact, in its field's place."""
+    children: list[Node] = [
+        Dl()[
+            Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
+            Dd(class_=field_box_class("full", look="fixed"))[
+                Icon("lock", [("class", "mr-1 text-body")], "size-4", decorative=True),
+                statement,
+            ],
+        ],
+        _fact_carrier(field),
+    ]
+    # No unlock link beside these errors.
+    # No opener today states a value its form refuses: a
+    # stated game is one the field offers, a stated kind is
+    # valid. Add a link without the fact if one ever does.
+    if errors := FieldErrors(field.errors):
+        children.append(errors)
+    return Div(data_field_row=field.name)[*children]
+
+
+def _visible_field_row(
+    field,
+    presentation: FormFieldPresentation | None,
+    facts: FormFacts,
+) -> Node:
+    match facts.get(field.name):
+        case Fixed(statement=str(statement)):
+            return _stated_row(field, statement)
+    return _form_field_row(field, presentation)
+
+
+def _is_silent(field, facts: FormFacts) -> bool:
+    """Hidden, or fixed with no statement."""
+    match facts.get(field.name):
+        case Fixed(statement=None):
+            return True
+    return field.is_hidden
+
+
+def _silent_control(field, facts: FormFacts) -> Node:
+    if isinstance(facts.get(field.name), Fixed):
+        return _fact_carrier(field)
+    return Safe(str(field))
+
+
+def _with_refusals(
+    facts: FormFacts, presentations: Mapping[str, FormFieldPresentation]
+) -> dict[str, FormFieldPresentation]:
+    """Each refused fact's sentence after its control."""
+    merged = dict(presentations)
+    for name, fact in facts.items():
+        if not isinstance(fact, Refused):
+            continue
+        note = P(class_="mt-2 text-type-body text-body")[fact.sentence]
+        presentation = merged.get(name) or FormFieldPresentation()
+        after = Fragment(presentation.after_control, note)
+        merged[name] = replace(presentation, after_control=after)
+    return merged
+
+
 def _grouped_form_fields(
     form,
     groups: Sequence[FormFieldGroup],
     presentations: Mapping[str, FormFieldPresentation],
+    facts: FormFacts,
 ) -> list[Node]:
     """Render validated fieldsets plus any visible, ungrouped remainder."""
     field_names = set(form.fields)
@@ -2063,7 +2176,9 @@ def _grouped_form_fields(
 
     fieldsets: list[Node] = []
     for group in groups:
-        group_fields = [form[name] for name in group.fields if not form[name].is_hidden]
+        group_fields = [
+            form[name] for name in group.fields if not _is_silent(form[name], facts)
+        ]
         if not group_fields:
             continue
         description_id = f"{group.id}-description" if group.id else ""
@@ -2090,24 +2205,20 @@ def _grouped_form_fields(
                 description_attributes.append(("id", description_id))
             group_children.append(P(description_attributes)[group.description])
         group_children.extend(
-            _form_field_row(
-                field,
-                presentations.get(field.name),
-            )
+            _visible_field_row(field, presentations.get(field.name), facts)
             for field in group_fields
         )
         fieldsets.append(Fieldset(attributes)[*group_children])
 
-    # Hidden controls stay outside fieldsets and render exactly once. Visible
+    # Hidden controls and silent facts stay outside fieldsets, once. Visible
     # fields not named by a group follow the fieldsets in their normal order.
-    hidden = [Safe(str(field)) for field in form if field.is_hidden]
+    hidden = [
+        _silent_control(field, facts) for field in form if _is_silent(field, facts)
+    ]
     remainder = [
-        _form_field_row(
-            field,
-            presentations.get(field.name),
-        )
+        _visible_field_row(field, presentations.get(field.name), facts)
         for field in form
-        if not field.is_hidden and field.name not in grouped_names
+        if not _is_silent(field, facts) and field.name not in grouped_names
     ]
     return [*hidden, *fieldsets, *remainder]
 
@@ -2137,12 +2248,17 @@ def FormFields(
     the embedded field's full widget markup (plus its own errors) is appended
     after the host's control instead of getting a labelled row of its own.
     For self-labelling controls that belong visually to another field.
+
+    A form with ``OpenerFactsMixin`` renders each stated fact as a fixed
+    row, and each refused one's sentence after its control.
     """
     presentations = presentations or {}
     unknown_presentations = set(presentations) - set(form.fields)
     if unknown_presentations:
         unknown = min(unknown_presentations)
         raise ValueError(f"FormFields presentation names unknown field {unknown!r}.")
+    facts = form_facts(form)
+    presentations = _with_refusals(facts, presentations)
 
     embedded = dict(embedded or {})
     if embedded and groups is not None:
@@ -2185,25 +2301,29 @@ def FormFields(
 
     rows: list[Node] = []
 
-    non_field = FieldErrors(form.non_field_errors())
+    # A silent fact has no error row.
+    silent_errors = [
+        f"{form[name].label}: {error}"
+        for name in facts
+        if _is_silent(form[name], facts)
+        for error in form[name].errors
+    ]
+    non_field = FieldErrors([*form.non_field_errors(), *silent_errors])
     if non_field:
         rows.append(non_field)
 
     if groups is not None:
-        rows.extend(_grouped_form_fields(form, groups, presentations))
+        rows.extend(_grouped_form_fields(form, groups, presentations, facts))
         return Fragment(*rows, separator="\n")
 
     for field in form:
-        if field.is_hidden:
-            rows.append(Safe(str(field)))
+        if _is_silent(field, facts):
+            rows.append(_silent_control(field, facts))
             continue
         if field.name in embedded:
             continue
         rows.append(
-            _form_field_row(
-                field,
-                _presentation_with_embeds(field.name),
-            )
+            _visible_field_row(field, _presentation_with_embeds(field.name), facts)
         )
 
     return Fragment(*rows, separator="\n")

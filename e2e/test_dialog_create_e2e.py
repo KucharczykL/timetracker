@@ -72,7 +72,7 @@ def test_add_session_selects_the_new_game(
     assert errors == []
 
 
-def test_a_nested_add_game_lands_in_its_own_picker(
+def test_an_addon_adds_its_main_game_in_a_stacked_dialog(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
     page = authenticated_page
@@ -84,13 +84,24 @@ def test_a_nested_add_game_lands_in_its_own_picker(
     outer.locator('input[name="name"]').press_sequentially("Hollow Knight DLC")
     outer.locator('select[name="kind"]').select_option("dlc")
     outer.locator('search-select[name="parent"]').get_by_role(
-        "link", name="New game"
+        "link", name="New main game"
     ).click()
     expect(page.locator("dialog[data-modal][open]")).to_have_count(2)
-    _make_game(page.locator("dialog[data-modal][open]").last, "Hollow Knight")
+    inner = page.locator("dialog[data-modal][open]").last
+    expect(inner.locator("[data-form-dialog-title]")).to_have_text(
+        "Add the main game of Hollow Knight DLC"
+    )
+    expect(inner.locator('select[name="kind"]')).to_have_count(0)
+    expect(inner.locator('[data-field-row="kind"] dd')).to_have_text("Main game")
+    _make_game(inner, "Hollow Knight")
 
     expect(page.locator("dialog[data-modal][open]")).to_have_count(1)
     parent = Game.objects.get(library=e2e_library, name="Hollow Knight")
     expect(_held(outer, "parent")).to_have_value(str(parent.pk))
     expect(outer.locator('input[name="name"]')).to_have_value("Hollow Knight DLC")
+    outer.get_by_role("button", name="Submit", exact=True).click()
+
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+    addon = Game.objects.get(library=e2e_library, name="Hollow Knight DLC")
+    assert (addon.kind, addon.parent_id) == ("dlc", parent.pk)
     assert errors == []

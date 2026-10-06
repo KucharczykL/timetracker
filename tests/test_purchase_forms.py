@@ -187,13 +187,16 @@ def _entry_add(owned_library, graph, **data) -> EntryAddForm:
         library=owned_library,
         presentation=PRESENTATION,
         today=TODAY,
-        game=graph.game,
+        facts={"game": str(graph.game.pk)},
     )
 
 
 def test_add_to_library_offers_paid_free_and_none(owned_library, graph):
     form = EntryAddForm(
-        library=owned_library, presentation=PRESENTATION, today=TODAY, game=graph.game
+        library=owned_library,
+        presentation=PRESENTATION,
+        today=TODAY,
+        facts={"game": str(graph.game.pk)},
     )
 
     assert [value for value, _ in form.fields["price"].choices] == [

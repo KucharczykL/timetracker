@@ -136,9 +136,7 @@ def test_search_select_clear_meets_min_touch_target_and_a_tap_clears(
     game = create_tracked_game(e2e_library, "Outer Wilds")
     create_device(e2e_library, "Steam Deck")
     page = touch_page
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
     picker = page.locator("search-select[name='device']")
     picker.locator("[data-search-select-search]").tap()
     picker.locator("[data-search-select-option]", has_text="Steam Deck").tap()

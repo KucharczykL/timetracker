@@ -104,7 +104,8 @@ def test_add_game_then_library_continues(logged_in, game_post):
     answer = response.json()
     assert answer == {"kind": "continue", "url": answer["url"]}
     resolved = get_resolver().resolve(answer["url"].removeprefix(SERVER).split("?")[0])
-    assert resolved.view_name == "games:add_library_entry"
+    assert resolved.view_name == "games:add_to_library"
+    assert "game=" in answer["url"]
 
 
 @pytest.mark.django_db(transaction=True)

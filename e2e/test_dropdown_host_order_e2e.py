@@ -44,9 +44,7 @@ def test_autofocused_picker_opens_after_a_slow_host(
     create_device(e2e_library, "Steam Deck")
     page.route("**/elements/drop-down*.js", delay_host)
 
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
 
     picker = page.locator("search-select[name='device']")
     expect(picker.locator("[data-search-select-search]")).to_be_focused()
