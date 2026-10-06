@@ -1208,7 +1208,7 @@ def ComboboxDropdown(
     )[
         label,
         *mark,
-        Icon("arrowdown", size="h-3 w-3"),
+        Icon("arrowdown"),
     ].as_element()
     # A dialog; the widget brings listbox semantics.
     panel = DropdownPanel(role="dialog", aria_label=label, width=panel_width)[content]
@@ -1254,7 +1254,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
         )
 
     return {
-        "slot": Fragment(Icon("bookmark"), Icon("arrowdown", size="h-3 w-3")),
+        "slot": Fragment(Icon("bookmark"), Icon("arrowdown")),
         "aria_label": PRESETS_LABEL,
         "title": PRESETS_LABEL,
         "opens": opens,

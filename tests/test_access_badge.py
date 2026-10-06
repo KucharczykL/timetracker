@@ -63,9 +63,9 @@ def _glyphs(html: str) -> list[str]:
     return [
         glyph
         for glyph, marker in (
-            ("cloud", 'viewBox="1.5 1.5 21 21"'),
+            ("cloud", 'd="M17.5 19H9a7'),
             ("physical", 'viewBox="0 0 512 512"'),
-            ("dashed-ring", "stroke-dasharray"),
+            ("dashed-ring", 'd="M10.1 2.182'),
         )
         if marker in html
     ]

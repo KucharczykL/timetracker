@@ -175,7 +175,7 @@ def SearchField(
             shape=shape,
         )[
             Icon(mode.mark, attributes=[("data-match-mark", "")]),
-            Icon("arrowdown", attributes=[("class", "h-3 w-3")]),
+            Icon("arrowdown"),
         ].as_element()
         # The wrapper draws nothing; the button rounds.
         return Dropdown(

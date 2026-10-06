@@ -309,7 +309,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     first, and an applied facet spills last; facets keep working from
     inside it.
 
-    Past the body cap, six facets fit: all but Duration."""
+    Past the body cap, five facets fit; Duration spills."""
     from datetime import datetime, timedelta
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
@@ -332,9 +332,9 @@ def test_priority_plus_overflow_collapses_and_restores(
         "drop-down[data-quick-facet]:has(#quick-duration_hours-dropdown)"
     )
 
-    # Wide: the rightmost facet spills.
+    # Wide: the two rightmost facets spill.
     expect(overflow).to_be_visible()
-    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(1)
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(2)
     expect(
         overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)

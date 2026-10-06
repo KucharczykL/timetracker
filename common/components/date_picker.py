@@ -15,16 +15,21 @@ it shows the stored date but cannot be typed into — its segments carry no
 by ``ts/elements/date-picker.ts``.
 """
 
-from common.components.core import Node, Safe
+from common.components.core import Node
 from common.components.custom_elements import _DatePicker, _Dropdown
 from common.components.date_range_picker import (
-    CALENDAR_ICON_SVG,
     FIELD_CONTAINER_CLASS,
     date_calendar_shell,
     date_segment_group,
     footer_button,
 )
-from common.components.primitives import ControlButton, Div, Input, field_label_id
+from common.components.primitives import (
+    ControlButton,
+    Div,
+    Icon,
+    Input,
+    field_label_id,
+)
 from common.date_time_presentation import DateTimePresentation
 
 # The single side id DatePicker's segment/hidden-input hooks use — DateRangePicker's
@@ -68,7 +73,7 @@ def DatePickerField(
             data_date_picker_calendar_toggle="",
             aria_label=f"Open {label} calendar",
             class_="ms-auto",
-        )[Safe(CALENDAR_ICON_SVG)],
+        )[Icon("calendar", decorative=True)],
     ]
     # aria-labelledby when the form row rendered a <label> for this field: that
     # label names itself at nobody (its `for` target is the first segment, which

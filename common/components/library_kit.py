@@ -14,13 +14,11 @@ from common.components.primitives import (
     Div,
     Dl,
     Dt,
+    Icon,
     Link,
     P,
-    Path,
     Popover,
-    Rect,
     Span,
-    Svg,
     custom_element_builder,
 )
 
@@ -144,30 +142,7 @@ def CopyControl(
             ],
             variant="ghost",
         )[
-            Svg(
-                [
-                    ("data-copy-icon", ""),
-                    ("class", "h-4 w-4"),
-                    ("viewBox", "0 0 24 24"),
-                    ("fill", "none"),
-                    ("stroke", "currentColor"),
-                    ("stroke-width", "2"),
-                    ("aria-hidden", "true"),
-                ]
-            )[
-                Rect(
-                    [
-                        ("x", "8"),
-                        ("y", "8"),
-                        ("width", "13"),
-                        ("height", "13"),
-                        ("rx", "2"),
-                    ]
-                ),
-                Path(
-                    [("d", "M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3")]
-                ),
-            ],
+            Icon("copy", [("data-copy-icon", "")], size="h-4 w-4", decorative=True),
             Span(
                 data_copy_label="",
                 class_="sr-only",

@@ -16,6 +16,7 @@ from django.urls import reverse
 from graphs import default_graph
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import open_facet
 from games.models import Device, Game, Platform
 
 
@@ -92,7 +93,7 @@ def test_number_filter_between_reveals_second_input(
     the initial page load."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    page.click("#quick-year_released-dropdownLink")
+    open_facet(page, "year_released")
 
     value2 = page.locator('input[name="quick-year_released-value2"]')
     expect(value2).to_be_hidden()
@@ -126,7 +127,7 @@ def test_widgets_initialize_inside_inserted_content(
     widget = status_filter_widget(page)
     expect(widget.locator("[data-search-select-options]")).to_be_visible()
 
-    page.click("#quick-year_released-dropdownLink")
+    open_facet(page, "year_released")
     value2 = page.locator('input[name="quick-year_released-value2"]')
     expect(value2).to_be_hidden()
     page.locator('select[name="quick-year_released-modifier"]').select_option("BETWEEN")

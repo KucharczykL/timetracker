@@ -17,16 +17,21 @@ Django field. ``DateTimeField.to_python`` parses that as aware, so
 import re
 from typing import NamedTuple
 
-from common.components.core import Node, Safe
+from common.components.core import Node
 from common.components.custom_elements import _DateTimeField, _Dropdown
 from common.components.date_range_picker import (
-    CALENDAR_ICON_SVG,
     FIELD_CONTAINER_CLASS,
     date_calendar_shell,
     footer_button,
     segment_group,
 )
-from common.components.primitives import ControlButton, Div, Input, field_label_id
+from common.components.primitives import (
+    ControlButton,
+    Div,
+    Icon,
+    Input,
+    field_label_id,
+)
 from common.date_time_presentation import (
     DateTimePresentation,
     day_periods_for_locale,
@@ -134,7 +139,7 @@ def DateTimeField(
             data_date_picker_calendar_toggle="",
             aria_label=f"Open {label} calendar",
             class_="ms-auto",
-        )[Safe(CALENDAR_ICON_SVG)],
+        )[Icon("calendar", decorative=True)],
     ]
     if copy_target is not None:
         children.append(

@@ -5,19 +5,25 @@ from common.components.elements import Circle, G, Path, Rect, Svg, Title
 
 ICON_NODES: dict[str, Element] = {
     'arrowdown': Svg(
-        [('class', 'dark:text-white w-3'), ('viewBox', '5 8 14 8'), ('fill', 'none'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'dark:text-white w-3'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M6 9L12 15L18 9'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round')]),
+        Path([('d', 'm6 9 6 6 6-6')]),
     ],
     'arrowdownlong': Svg(
-        [('class', 'w-3 h-3'), ('viewBox', '0 0 24 24'), ('fill', 'none'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-3 h-3'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M12 5V19M12 19L6 13M12 19L18 13'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round')]),
+        Path([('d', 'M12 5v14')]),
+        Path([('d', 'm19 12-7 7-7-7')]),
+    ],
+    'arrowleft': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'm15 18-6-6 6-6')]),
     ],
     'arrowright': Svg(
-        [('class', 'dark:text-white w-3'), ('viewBox', '5 5 14 14'), ('fill', 'none'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'dark:text-white w-3'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M9 6L15 12L9 18'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round')]),
+        Path([('d', 'm9 18 6-6-6-6')]),
     ],
     'battlenet': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -40,28 +46,59 @@ ICON_NODES: dict[str, Element] = {
     'bookmark': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4')]),
+        Path([('d', 'M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z')]),
+    ],
+    'calendar': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M8 2v3')]),
+        Path([('d', 'M16 2v3')]),
+        Rect([('x', '3'), ('y', '3'), ('width', '18'), ('height', '18'), ('rx', '2')]),
+        Path([('d', 'M3 9h18')]),
+    ],
+    'calendar-days': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M8 2v3')]),
+        Path([('d', 'M16 2v3')]),
+        Rect([('x', '3'), ('y', '3'), ('width', '18'), ('height', '18'), ('rx', '2')]),
+        Path([('d', 'M3 9h18')]),
+        Path([('d', 'M8 13h.01')]),
+        Path([('d', 'M12 13h.01')]),
+        Path([('d', 'M16 13h.01')]),
+        Path([('d', 'M8 17h.01')]),
+        Path([('d', 'M12 17h.01')]),
+        Path([('d', 'M16 17h.01')]),
+    ],
+    'chart-column': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M3 3v16a2 2 0 0 0 2 2h16')]),
+        Path([('d', 'M18 17V9')]),
+        Path([('d', 'M13 17V5')]),
+        Path([('d', 'M8 17v-3')]),
     ],
     'checkbox': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 10.5 5 C 7.4802259 5 5 7.4802259 5 10.5 L 5 37.5 C 5 40.519774 7.4802259 43 10.5 43 L 37.5 43 C 40.519774 43 43 40.519774 43 37.5 L 43 10.5 C 43 7.4802259 40.519774 5 37.5 5 L 10.5 5 z M 10.5 8 L 37.5 8 C 38.898226 8 40 9.1017741 40 10.5 L 40 37.5 C 40 38.898226 38.898226 40 37.5 40 L 10.5 40 C 9.1017741 40 8 38.898226 8 37.5 L 8 10.5 C 8 9.1017741 9.1017741 8 10.5 8 z')]),
-        Path([('fill', 'currentColor'), ('d', 'M 33.470703 14.986328 A 1.50015 1.50015 0 0 0 32.439453 15.439453 L 21 26.878906 L 15.560547 21.439453 A 1.50015 1.50015 0 1 0 13.439453 23.560547 L 19.939453 30.060547 A 1.50015 1.50015 0 0 0 22.060547 30.060547 L 34.560547 17.560547 A 1.50015 1.50015 0 0 0 33.470703 14.986328 z')]),
+        Rect([('width', '18'), ('height', '18'), ('x', '3'), ('y', '3'), ('rx', '2')]),
+        Path([('d', 'm16 9-5.5 5.5L8 12')]),
     ],
     'checkmark': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 43.470703 8.9863281 A 1.50015 1.50015 0 0 0 42.439453 9.4394531 L 16.5 35.378906 L 5.5605469 24.439453 A 1.50015 1.50015 0 1 0 3.4394531 26.560547 L 15.439453 38.560547 A 1.50015 1.50015 0 0 0 17.560547 38.560547 L 44.560547 11.560547 A 1.50015 1.50015 0 0 0 43.470703 8.9863281 z')]),
+        Path([('d', 'M20 6 9 17l-5-5')]),
+    ],
+    'clock': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Circle([('cx', '12'), ('cy', '12'), ('r', '10')]),
+        Path([('d', 'M12 6v6l4 2')]),
     ],
     'cloud': Svg(
-        [('viewBox', '1.5 1.5 21 21'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Title(
-            [],
-        )[
-            'Digital',
-        ],
-        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M4.5 9.75a6 6 0 0 1 11.573-2.226 3.75 3.75 0 0 1 4.133 4.303A4.5 4.5 0 0 1 18 20.25H6.75a5.25 5.25 0 0 1-2.23-10.004 6.072 6.072 0 0 1-.02-.496Z'), ('clip-rule', 'evenodd')]),
+        Path([('d', 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z')]),
     ],
     'columns': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -70,20 +107,32 @@ ICON_NODES: dict[str, Element] = {
         Path([('d', 'M9 3v18')]),
         Path([('d', 'M15 3v18')]),
     ],
-    'dashed-ring': Svg(
-        [('viewBox', '0 0 24 24'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    'copy': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Title(
-            [],
-        )[
-            'Format unknown',
-        ],
-        Circle([('cx', '12'), ('cy', '12'), ('r', '10.25'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '3.5'), ('stroke-dasharray', '4.2 3.85')]),
+        Rect([('width', '14'), ('height', '14'), ('x', '8'), ('y', '8'), ('rx', '2'), ('ry', '2')]),
+        Path([('d', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2')]),
+    ],
+    'dashed-ring': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M10.1 2.182a10 10 0 0 1 3.8 0')]),
+        Path([('d', 'M13.9 21.818a10 10 0 0 1-3.8 0')]),
+        Path([('d', 'M17.609 3.721a10 10 0 0 1 2.69 2.7')]),
+        Path([('d', 'M2.182 13.9a10 10 0 0 1 0-3.8')]),
+        Path([('d', 'M20.279 17.609a10 10 0 0 1-2.7 2.69')]),
+        Path([('d', 'M21.818 10.1a10 10 0 0 1 0 3.8')]),
+        Path([('d', 'M3.721 6.391a10 10 0 0 1 2.7-2.69')]),
+        Path([('d', 'M6.391 20.279a10 10 0 0 1-2.69-2.7')]),
     ],
     'delete': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 24 4 C 20.491685 4 17.570396 6.6214322 17.080078 10 L 10.238281 10 A 1.50015 1.50015 0 0 0 9.9804688 9.9785156 A 1.50015 1.50015 0 0 0 9.7578125 10 L 6.5 10 A 1.50015 1.50015 0 1 0 6.5 13 L 8.6386719 13 L 11.15625 39.029297 C 11.427329 41.835926 13.811782 44 16.630859 44 L 31.367188 44 C 34.186411 44 36.570826 41.836168 36.841797 39.029297 L 39.361328 13 L 41.5 13 A 1.50015 1.50015 0 1 0 41.5 10 L 38.244141 10 A 1.50015 1.50015 0 0 0 37.763672 10 L 30.919922 10 C 30.429604 6.6214322 27.508315 4 24 4 z M 24 7 C 25.879156 7 27.420767 8.2681608 27.861328 10 L 20.138672 10 C 20.579233 8.2681608 22.120844 7 24 7 z M 11.650391 13 L 36.347656 13 L 33.855469 38.740234 C 33.730439 40.035363 32.667963 41 31.367188 41 L 16.630859 41 C 15.331937 41 14.267499 40.033606 14.142578 38.740234 L 11.650391 13 z M 20.476562 17.978516 A 1.50015 1.50015 0 0 0 19 19.5 L 19 34.5 A 1.50015 1.50015 0 1 0 22 34.5 L 22 19.5 A 1.50015 1.50015 0 0 0 20.476562 17.978516 z M 27.476562 17.978516 A 1.50015 1.50015 0 0 0 26 19.5 L 26 34.5 A 1.50015 1.50015 0 1 0 29 34.5 L 29 19.5 A 1.50015 1.50015 0 0 0 27.476562 17.978516 z')]),
+        Path([('d', 'M10 11v6')]),
+        Path([('d', 'M14 11v6')]),
+        Path([('d', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6')]),
+        Path([('d', 'M3 6h18')]),
+        Path([('d', 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2')]),
     ],
     'eaorigin': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -101,9 +150,10 @@ ICON_NODES: dict[str, Element] = {
         ],
     ],
     'edit': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 40.5 6 C 40.11625 6 39.732453 6.1464531 39.439453 6.4394531 L 21.462891 24.417969 L 20 28 L 23.582031 26.537109 L 41.560547 8.5605469 C 42.145547 7.9745469 42.145547 7.0254531 41.560547 6.4394531 C 41.267547 6.1464531 40.88375 6 40.5 6 z M 12.5 7 C 9.4802259 7 7 9.4802259 7 12.5 L 7 35.5 C 7 38.519774 9.4802259 41 12.5 41 L 35.5 41 C 38.519774 41 41 38.519774 41 35.5 L 41 18.5 A 1.50015 1.50015 0 1 0 38 18.5 L 38 35.5 C 38 36.898226 36.898226 38 35.5 38 L 12.5 38 C 11.101774 38 10 36.898226 10 35.5 L 10 12.5 C 10 11.101774 11.101774 10 12.5 10 L 29.5 10 A 1.50015 1.50015 0 1 0 29.5 7 L 12.5 7 z')]),
+        Path([('d', 'M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7')]),
+        Path([('d', 'M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z')]),
     ],
     'egs': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -119,47 +169,51 @@ ICON_NODES: dict[str, Element] = {
         ],
     ],
     'eject': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 24 5.0507812 C 22.945045 5.0507812 21.890232 5.4877258 21.160156 6.3613281 L 7.0566406 23.257812 C 5.2226244 25.45627 6.8812774 29 9.7441406 29 L 38.255859 29 C 41.119312 29 42.778426 25.453888 40.943359 23.255859 L 26.839844 6.3613281 C 26.109768 5.4877258 25.054955 5.0507812 24 5.0507812 z M 24 8.015625 C 24.194045 8.015625 24.387185 8.105759 24.537109 8.2851562 L 38.638672 25.179688 C 38.977605 25.585659 38.784407 26 38.255859 26 L 9.7441406 26 C 9.2150038 26 9.0213443 25.58723 9.3613281 25.179688 L 23.462891 8.2851562 C 23.612815 8.1057586 23.805955 8.015625 24 8.015625 z M 10.5 33 C 8.0324991 33 6 35.032499 6 37.5 L 6 38.5 C 6 40.967501 8.0324991 43 10.5 43 L 37.5 43 C 39.967501 43 42 40.967501 42 38.5 L 42 37.5 C 42 35.032499 39.967501 33 37.5 33 L 10.5 33 z M 10.5 36 L 37.5 36 C 38.346499 36 39 36.653501 39 37.5 L 39 38.5 C 39 39.346499 38.346499 40 37.5 40 L 10.5 40 C 9.6535009 40 9 39.346499 9 38.5 L 9 37.5 C 9 36.653501 9.6535009 36 10.5 36 z')]),
+        Path([('d', 'M4 13a1 1 0 0 1-.72-1.695l7.257-7.668a2 2 0 0 1 2.926 0l7.256 7.668A1 1 0 0 1 20 13z')]),
+        Rect([('x', '3'), ('y', '17'), ('width', '18'), ('height', '4'), ('rx', '1')]),
     ],
     'ellipsis': Svg(
-        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 3a21 21 0 1 0 0.001 0zM24 6a18 18 0 1 0 0.001 0zM15 24a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM33 24a2.4 2.4 0 1 0 0.001 0z')]),
+        Circle([('cx', '12'), ('cy', '12'), ('r', '10')]),
+        Path([('d', 'M17 12h.01')]),
+        Path([('d', 'M12 12h.01')]),
+        Path([('d', 'M7 12h.01')]),
     ],
     'ellipsis-horizontal': Svg(
-        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M15 24a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM33 24a2.4 2.4 0 1 0 0.001 0z')]),
+        Circle([('cx', '12'), ('cy', '12'), ('r', '1')]),
+        Circle([('cx', '19'), ('cy', '12'), ('r', '1')]),
+        Circle([('cx', '5'), ('cy', '12'), ('r', '1')]),
     ],
     'ellipsis-vertical': Svg(
-        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 15a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM24 33a2.4 2.4 0 1 0 0.001 0z')]),
+        Circle([('cx', '12'), ('cy', '12'), ('r', '1')]),
+        Circle([('cx', '12'), ('cy', '5'), ('r', '1')]),
+        Circle([('cx', '12'), ('cy', '19'), ('r', '1')]),
     ],
     'emulated': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path(
-            [('fill', 'currentColor'), ('d', 'M 8.5 5 C 6.0324991 5 4 7.0324991 4 9.5 L 4 30.5 C 4 32.967501 6.0324991 35 8.5 35 L 17 35 L 17 40 L 13.5 40 A 1.50015 1.50015 0 1 0 13.5 43 L 18.253906 43 A 1.50015 1.50015 0 0 0 18.740234 43 L 29.253906 43 A 1.50015 1.50015 0 0 0 29.740234 43 L 34.5 43 A 1.50015 1.50015 0 1 0 34.5 40 L 31 40 L 31 35 L 39.5 35 C 41.967501 35 44 32.967501 44 30.5 L 44 9.5 C 44 7.0324991 41.967501 5 39.5 5 L 8.5 5 z M 8.5 8 L 39.5 8 C 40.346499 8 41 8.6535009 41 9.5 L 41 30.5 C 41 31.346499 40.346499 32 39.5 32 L 29.746094 32 A 1.50015 1.50015 0 0 0 29.259766 32 L 18.746094 32 A 1.50015 1.50015 0 0 0 18.259766 32 L 8.5 32 C 7.6535009 32 7 31.346499 7 30.5 L 7 9.5 C 7 8.6535009 7.6535009 8 8.5 8 z M 17.5 12 C 16.136406 12 15 13.136406 15 14.5 L 15 25.5 C 15 26.863594 16.136406 28 17.5 28 L 30.5 28 C 31.863594 28 33 26.863594 33 25.5 L 33 14.5 C 33 13.136406 31.863594 12 30.5 12 L 17.5 12 z M 18 18 L 30 18 L 30 25 L 18 25 L 18 18 z M 20 35 L 28 35 L 28 40 L 20 40 L 20 35 z')],
-        )[
-            Title(
-                [],
-            )[
-                'Emulated',
-            ],
-        ],
+        Path([('d', 'M15.033 9.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56V7.648a.645.645 0 0 1 .967-.56z')]),
+        Path([('d', 'M12 17v4')]),
+        Path([('d', 'M8 21h8')]),
+        Rect([('x', '2'), ('y', '3'), ('width', '20'), ('height', '14'), ('rx', '2')]),
     ],
     'end': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 35.5 6 C 33.585045 6 32 7.5850452 32 9.5 L 32 19.365234 L 11.339844 6.6074219 C 9.0734225 5.2081236 6 6.9228749 6 9.5859375 L 6 38.414062 C 6 41.077126 9.0734225 42.791876 11.339844 41.392578 L 32 28.634766 L 32 38.5 C 32 40.414955 33.585045 42 35.5 42 L 38.5 42 C 40.414955 42 42 40.414955 42 38.5 L 42 9.5 C 42 7.5850452 40.414955 6 38.5 6 L 35.5 6 z M 35.5 9 L 38.5 9 C 38.795045 9 39 9.2049548 39 9.5 L 39 38.5 C 39 38.795045 38.795045 39 38.5 39 L 35.5 39 C 35.204955 39 35 38.795045 35 38.5 L 35 9.5 C 35 9.2049548 35.204955 9 35.5 9 z M 9.4765625 9.0566406 C 9.5668015 9.0647233 9.6637771 9.0984812 9.7636719 9.1601562 L 32 22.892578 L 32 25.107422 L 9.7636719 38.839844 C 9.364093 39.086546 9 38.883001 9 38.414062 L 9 9.5859375 C 9 9.3514688 9.091623 9.1841053 9.2324219 9.1054688 C 9.3028213 9.0661502 9.3863235 9.048558 9.4765625 9.0566406 z')]),
+        Path([('d', 'M21 4v16')]),
+        Path([('d', 'M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z')]),
     ],
     'finish': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 7.4765625 4.9785156 A 1.50015 1.50015 0 0 0 6 6.5 L 6 31.5 L 6 43.5 A 1.50015 1.50015 0 1 0 9 43.5 L 9 33 L 40.5 33 C 41.329 33 42 32.328 42 31.5 L 42 6.5 C 42 5.672 41.329 5 40.5 5 L 7.7460938 5 A 1.50015 1.50015 0 0 0 7.4765625 4.9785156 z M 16 8 L 24 8 L 24 15 L 32 15 L 32 8 L 39 8 L 39 15 L 32 15 L 32 23 L 39 23 L 39 30 L 32 30 L 32 23 L 24 23 L 24 30 L 16 30 L 16 23 L 9 23 L 9 15 L 16 15 L 16 8 z M 16 15 L 16 23 L 24 23 L 24 15 L 16 15 z')]),
+        Path([('d', 'M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528')]),
     ],
     'funnel-cog': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -176,8 +230,9 @@ ICON_NODES: dict[str, Element] = {
     'funnel-off': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M8 4h12v2.172a2 2 0 0 1 -.586 1.414l-3.914 3.914m-.5 3.5v4l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227')]),
-        Path([('d', 'M3 3l18 18')]),
+        Path([('d', 'M12.531 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l.427-.473')]),
+        Path([('d', 'm16.5 3.5 5 5')]),
+        Path([('d', 'm21.5 3.5-5 5')]),
     ],
     'gog': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -192,17 +247,27 @@ ICON_NODES: dict[str, Element] = {
             ],
         ],
     ],
+    'hash': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M4 9 L20 9')]),
+        Path([('d', 'M4 15 L20 15')]),
+        Path([('d', 'M10 3 L8 21')]),
+        Path([('d', 'M16 3 L14 21')]),
+    ],
     'history': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M3 12a9 9 0 1 0 3-6.7L3 8')]),
+        Path([('d', 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8')]),
         Path([('d', 'M3 3v5h5')]),
-        Path([('d', 'M12 7v5l3.5 2')]),
+        Path([('d', 'M12 7v5l4 2')]),
     ],
     'info': Svg(
-        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 3a21 21 0 1 0 0.001 0zM24 6a18 18 0 1 0 0.001 0zM24 12.4a2.6 2.6 0 1 0 0.001 0zM21.6 20h4.8v14h-4.8z')]),
+        Circle([('cx', '12'), ('cy', '12'), ('r', '10')]),
+        Path([('d', 'M12 16v-4')]),
+        Path([('d', 'M12 8h.01')]),
     ],
     'itchio': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 245.371 220.736'), ('preserveAspectRatio', 'xMidYMid meet'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -220,17 +285,17 @@ ICON_NODES: dict[str, Element] = {
     'list-tree': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M5 4v13a2 2 0 0 0 2 2h2')]),
-        Path([('d', 'M5 11a2 2 0 0 0 2 2h2')]),
-        Path([('d', 'M12 5h8')]),
-        Path([('d', 'M12 12h8')]),
-        Path([('d', 'M12 19h8')]),
+        Path([('d', 'M8 5h13')]),
+        Path([('d', 'M13 12h8')]),
+        Path([('d', 'M13 19h8')]),
+        Path([('d', 'M3 10a2 2 0 0 0 2 2h3')]),
+        Path([('d', 'M3 5v12a2 2 0 0 0 2 2h3')]),
     ],
     'lock': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Rect([('x', '5'), ('y', '10'), ('width', '14'), ('height', '10'), ('rx', '2')]),
-        Path([('d', 'M8 10V7a4 4 0 0 1 8 0v3')]),
+        Rect([('width', '18'), ('height', '11'), ('x', '3'), ('y', '11'), ('rx', '2'), ('ry', '2')]),
+        Path([('d', 'M7 11V7a5 5 0 0 1 10 0v4')]),
     ],
     'match-includes': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -241,8 +306,8 @@ ICON_NODES: dict[str, Element] = {
     'match-is': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M5 10 19 10')]),
-        Path([('d', 'M5 14 19 14')]),
+        Path([('d', 'M5 9 L19 9')]),
+        Path([('d', 'M5 15 L19 15')]),
     ],
     'match-not-includes': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -256,28 +321,26 @@ ICON_NODES: dict[str, Element] = {
     'match-not-is': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M5 10 7.7 10')]),
-        Path([('d', 'M12.3 10 19 10')]),
-        Path([('d', 'M5 14 11.7 14')]),
-        Path([('d', 'M16.3 14 19 14')]),
-        Path([('d', 'M4.5 4.5 19.5 19.5')]),
+        Path([('d', 'M5 9 L19 9')]),
+        Path([('d', 'M5 15 L19 15')]),
+        Path([('d', 'M19 5 L5 19')]),
     ],
     'match-not-regex': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M6.6 16.8h.01')]),
-        Path([('d', 'M16.4 4.5 16.4 12.3')]),
-        Path([('d', 'M13.02 6.45 19.78 10.35')]),
-        Path([('d', 'M19.78 6.45 13.02 10.35')]),
-        Path([('d', 'M4.5 4.5 19.5 19.5')]),
+        Path([('d', 'M17 3v10')]),
+        Path([('d', 'm12.67 5.5 8.66 5')]),
+        Path([('d', 'm12.67 10.5 8.66-5')]),
+        Path([('d', 'M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z')]),
+        Path([('d', 'M2 2l20 20')]),
     ],
     'match-regex': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M6.6 16.8h.01')]),
-        Path([('d', 'M16.4 4.5 16.4 12.3')]),
-        Path([('d', 'M13.02 6.45 19.78 10.35')]),
-        Path([('d', 'M19.78 6.45 13.02 10.35')]),
+        Path([('d', 'M17 3v10')]),
+        Path([('d', 'm12.67 5.5 8.66 5')]),
+        Path([('d', 'm12.67 10.5 8.66-5')]),
+        Path([('d', 'M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z')]),
     ],
     'microsoft': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 30 30'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -291,6 +354,11 @@ ICON_NODES: dict[str, Element] = {
                 'Microsoft Store',
             ],
         ],
+    ],
+    'moon': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401')]),
     ],
     'move': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -329,20 +397,19 @@ ICON_NODES: dict[str, Element] = {
         ],
     ],
     'no-symbol': Svg(
-        [('class', 'w-4 h-4'), ('viewBox', '0 0 24 24'), ('fill', 'none'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Circle([('cx', '12'), ('cy', '12'), ('r', '9'), ('stroke', 'currentColor'), ('stroke-width', '2')]),
-        Path([('d', 'M5.636 18.364L18.364 5.636'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round')]),
+        Circle([('cx', '12'), ('cy', '12'), ('r', '10')]),
+        Path([('d', 'M4.929 4.929 19.07 19.071')]),
     ],
     'note': Svg(
-        [('viewBox', '0 0 24 24'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Title(
-            [],
-        )[
-            'Note',
-        ],
-        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 9v2h8v-2H8Zm0 4v2h6v-2H8Z')]),
+        Path([('d', 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z')]),
+        Path([('d', 'M14 2v5a1 1 0 0 0 1 1h5')]),
+        Path([('d', 'M10 9H8')]),
+        Path([('d', 'M16 13H8')]),
+        Path([('d', 'M16 17H8')]),
     ],
     'physical': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 512 512'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -356,9 +423,9 @@ ICON_NODES: dict[str, Element] = {
         Path([('fill', 'currentColor'), ('d', 'M256,0C114.837,0,0,114.837,0,256s114.837,256,256,256s256-114.837,256-256S397.163,0,256,0z M128,256 c0,11.776-9.536,21.333-21.333,21.333c-11.797,0-21.333-9.557-21.333-21.333c0-94.101,76.565-170.667,170.667-170.667 c11.797,0,21.333,9.557,21.333,21.333S267.797,128,256,128C185.408,128,128,185.408,128,256z M192,256c0-35.285,28.715-64,64-64 s64,28.715,64,64s-28.715,64-64,64S192,291.285,192,256z M256,426.667c-11.797,0-21.333-9.557-21.333-21.333S244.203,384,256,384 c70.592,0,128-57.408,128-128c0-11.776,9.536-21.333,21.333-21.333s21.333,9.557,21.333,21.333 C426.667,350.101,350.101,426.667,256,426.667z')]),
     ],
     'play': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 11.396484 4.1113281 C 9.1042001 4.2020187 7 6.0721788 7 8.5917969 L 7 39.408203 C 7 42.767694 10.742758 44.971891 13.681641 43.34375 L 41.490234 27.935547 C 44.513674 26.260259 44.513674 21.739741 41.490234 20.064453 L 13.681641 4.65625 C 12.94692 4.2492148 12.160579 4.0810979 11.396484 4.1113281 z M 11.431641 7.0664062 C 11.690234 7.0652962 11.961284 7.1323321 12.226562 7.2792969 L 40.037109 22.6875 C 41.13567 23.296212 41.13567 24.703788 40.037109 25.3125 L 12.226562 40.720703 C 11.165446 41.308562 10 40.620712 10 39.408203 L 10 8.5917969 C 10 7.9855423 10.290709 7.5116121 10.714844 7.2617188 C 10.926911 7.136772 11.173048 7.0675163 11.431641 7.0664062 z')]),
+        Path([('d', 'M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z')]),
     ],
     'playstation': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -374,9 +441,10 @@ ICON_NODES: dict[str, Element] = {
         ],
     ],
     'plus': Svg(
-        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 23.976562 4.9785156 A 1.50015 1.50015 0 0 0 22.5 6.5 L 22.5 22.5 L 6.5 22.5 A 1.50015 1.50015 0 1 0 6.5 25.5 L 22.5 25.5 L 22.5 41.5 A 1.50015 1.50015 0 1 0 25.5 41.5 L 25.5 25.5 L 41.5 25.5 A 1.50015 1.50015 0 1 0 41.5 22.5 L 25.5 22.5 L 25.5 6.5 A 1.50015 1.50015 0 0 0 23.976562 4.9785156 z')]),
+        Path([('d', 'M5 12h14')]),
+        Path([('d', 'M12 5v14')]),
     ],
     'ps3': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -418,20 +486,27 @@ ICON_NODES: dict[str, Element] = {
         ],
     ],
     'refund': Svg(
-        [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M 26 3 C 20.494917 3 16 7.494921 16 13 C 16 18.505079 20.494917 23 26 23 C 31.505083 23 36 18.505079 36 13 C 36 7.494921 31.505083 3 26 3 z M 26 6 C 29.883764 6 33 9.1162385 33 13 C 33 16.883762 29.883764 20 26 20 C 22.116236 20 19 16.883762 19 13 C 19 9.1162385 22.116236 6 26 6 z M 24.75 9 C 24.273 9 23.862531 9.3366875 23.769531 9.8046875 L 23.269531 12.304688 C 23.210531 12.598688 23.286562 12.903766 23.476562 13.134766 C 23.666562 13.366766 23.95 13.5 24.25 13.5 L 26.25 13.5 C 26.664 13.5 27 13.836 27 14.25 C 27 14.765 26.481 15 26 15 C 25.115 15 24.583922 14.685156 24.544922 14.660156 C 24.085922 14.363156 23.472969 14.489313 23.167969 14.945312 C 22.861969 15.405313 22.986313 16.026031 23.445312 16.332031 C 23.548313 16.400031 24.491 17 26 17 C 27.71 17 29 15.818 29 14.25 C 29 12.733 27.767 11.5 26.25 11.5 L 25.470703 11.5 L 25.570312 11 L 27.5 11 C 28.052 11 28.5 10.552 28.5 10 C 28.5 9.448 28.052 9 27.5 9 L 24.75 9 z M 41.613281 22.019531 C 40.493082 22.029231 39.429184 22.473279 38.484375 23.175781 C 37.470126 23.929243 34.418425 26.208042 31.777344 28.179688 C 31.204622 26.351508 29.505924 25 27.5 25 L 23.107422 25 C 20.296203 25 18.985532 24.772226 17.859375 24.533203 C 16.733218 24.29418 15.646783 24 13.826172 24 C 9.9413941 24 7.0123317 26.492986 5.09375 28.791016 C 3.1751683 31.089045 2.1347656 33.384766 2.1347656 33.384766 A 1.5002787 1.5002787 0 1 0 4.8652344 34.628906 C 4.8652344 34.628906 5.7643161 32.669814 7.3964844 30.714844 C 9.0286527 28.759873 11.25995 27 13.826172 27 C 15.347561 27 16.006735 27.20582 17.236328 27.466797 C 18.465921 27.727774 20.123641 28 23.107422 28 L 27.5 28 C 28.346499 28 29 28.653501 29 29.5 C 29 29.969499 28.794195 30.374296 28.470703 30.646484 C 28.470416 30.646699 28.429688 30.677734 28.429688 30.677734 A 1.5001988 1.5001988 0 0 0 28.345703 30.748047 A 1.5001988 1.5001988 0 0 0 28.34375 30.75 C 28.105295 30.908613 27.816466 31 27.5 31 L 20.5 31 A 1.50015 1.50015 0 1 0 20.5 34 L 27.5 34 C 28.440637 34 29.315307 33.701451 30.041016 33.199219 C 30.042186 33.198409 30.043753 33.198076 30.044922 33.197266 A 1.5001988 1.5001988 0 0 0 30.224609 33.082031 C 30.224609 33.082031 38.775959 26.696426 40.273438 25.583984 A 1.50015 1.50015 0 0 0 40.273438 25.582031 C 40.837627 25.162534 41.309824 25.022381 41.640625 25.019531 C 41.971426 25.016631 42.218287 25.096901 42.560547 25.439453 C 43.150922 26.029324 43.147391 26.935102 42.572266 27.533203 C 37.217133 32.036197 33.848465 35.036886 31.623047 36.794922 C 29.369881 38.574924 28.424996 39 27.5 39 C 23.847885 39 19.80067 38 15.5 38 C 13 38 11.242781 39.343609 10.300781 40.599609 C 9.3587815 41.855609 9.0449219 43.136719 9.0449219 43.136719 A 1.50015 1.50015 0 1 0 11.955078 43.863281 C 11.955078 43.863281 12.141219 43.144391 12.699219 42.400391 C 13.257219 41.656391 14 41 15.5 41 C 19.30733 41 23.336115 42 27.5 42 C 29.402004 42 31.084837 41.044435 33.482422 39.150391 C 35.849764 37.280238 39.175413 34.30991 44.498047 29.833984 A 1.50015 1.50015 0 0 0 44.681641 29.681641 C 44.688541 29.674741 44.690436 29.665143 44.697266 29.658203 L 44.701172 29.662109 L 44.753906 29.607422 A 1.50015 1.50015 0 0 0 45.083984 29.074219 C 46.330485 27.321792 46.248887 24.884269 44.681641 23.318359 C 43.8529 22.488911 42.73348 22.009881 41.613281 22.019531 z')]),
+        Path([('d', 'M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17')]),
+        Path([('d', 'm7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9')]),
+        Path([('d', 'm2 16 6 6')]),
+        Circle([('cx', '16'), ('cy', '9'), ('r', '2.9')]),
+        Circle([('cx', '6'), ('cy', '5'), ('r', '3')]),
     ],
     'reset': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M3 12a9 9 0 1 0 3-6.7L3 8')]),
+        Path([('d', 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8')]),
         Path([('d', 'M3 3v5h5')]),
     ],
     'split': Svg(
-        [('viewBox', '0 0 24 24'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('d', 'M14 4l2.29 2.29-2.88 2.88 1.42 1.42 2.88-2.88L20 12V4z M10 4H4v8l2.29-2.29 4.71 4.71V20h2v-8.41l-5.29-5.3z')]),
+        Path([('d', 'M16 3h5v5')]),
+        Path([('d', 'M8 3H3v5')]),
+        Path([('d', 'M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3')]),
+        Path([('d', 'm15 9 6-6')]),
     ],
     'steam': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -445,6 +520,28 @@ ICON_NODES: dict[str, Element] = {
                 'Steam',
             ],
         ],
+    ],
+    'sun': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Circle([('cx', '12'), ('cy', '12'), ('r', '4')]),
+        Path([('d', 'M12 2v2')]),
+        Path([('d', 'M12 20v2')]),
+        Path([('d', 'm4.93 4.93 1.41 1.41')]),
+        Path([('d', 'm17.66 17.66 1.41 1.41')]),
+        Path([('d', 'M2 12h2')]),
+        Path([('d', 'M20 12h2')]),
+        Path([('d', 'm6.34 17.66-1.41 1.41')]),
+        Path([('d', 'm19.07 4.93-1.41 1.41')]),
+    ],
+    'sun-moon': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M12 2v2')]),
+        Path([('d', 'M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715')]),
+        Path([('d', 'M16 12a4 4 0 0 0-4-4')]),
+        Path([('d', 'm19 5-1.256 1.256')]),
+        Path([('d', 'M20 12h2')]),
     ],
     'ubisoft': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -476,9 +573,10 @@ ICON_NODES: dict[str, Element] = {
         ],
     ],
     'x-mark': Svg(
-        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('fill', 'currentColor'), ('transform', 'rotate(45 24 24)'), ('d', 'M 23.976562 4.9785156 A 1.50015 1.50015 0 0 0 22.5 6.5 L 22.5 22.5 L 6.5 22.5 A 1.50015 1.50015 0 1 0 6.5 25.5 L 22.5 25.5 L 22.5 41.5 A 1.50015 1.50015 0 1 0 25.5 41.5 L 25.5 25.5 L 41.5 25.5 A 1.50015 1.50015 0 1 0 41.5 22.5 L 25.5 22.5 L 25.5 6.5 A 1.50015 1.50015 0 0 0 23.976562 4.9785156 z')]),
+        Path([('d', 'M18 6 6 18')]),
+        Path([('d', 'm6 6 12 12')]),
     ],
     'xbox-gamepass': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 30 30'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],

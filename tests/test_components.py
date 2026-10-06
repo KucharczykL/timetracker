@@ -778,8 +778,8 @@ class EllipsisTriggerTest(SimpleTestCase):
     reveal. The assertions read path data rather than an icon name, because
     `Icon` answers the `unspecified` glyph for a name no snippet states."""
 
-    VERTICAL_PATH = 'd="M24 15a2.4 2.4 0 1 0 0.001 0z'
-    HORIZONTAL_PATH = 'd="M15 24a2.4 2.4 0 1 0 0.001 0z'
+    VERTICAL_PATH = 'cx="12" cy="5"'
+    HORIZONTAL_PATH = 'cx="19" cy="12"'
 
     def test_vertical_is_the_default_glyph(self):
         html = str(components.EllipsisTrigger(label="Session actions"))

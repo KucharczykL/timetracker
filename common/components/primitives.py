@@ -872,7 +872,8 @@ COMPACT_SHAPE_CLASSES: dict[ButtonShape, str] = {
 # Only horizontal padding is set here — height no longer depends on font,
 # padding, or any `@container` ancestor, so a button is the same 42px in every
 # row (the container-query step and its cross-row inconsistency are gone).
-CONTROL_SIZE_CLASS = "min-h-control px-3"
+# It also states the size of every icon inside it (see ICON_SIZE_CLASS).
+CONTROL_SIZE_CLASS = "min-h-control px-3 [--icon-size:1.25rem]"
 
 #: A glyph square; it sets no padding.
 COMPACT_SIZE_CLASS = "size-8 p-0 shrink-0"
@@ -1771,14 +1772,6 @@ def StaticScript(filename: str) -> Node:
 # the same date-calendar <drop-down> machinery as the date pickers.
 _YearPicker = custom_element_builder("year-picker")
 
-# The down-chevron rendered inside the YearPicker button. Trusted static SVG.
-_YEAR_PICKER_CHEVRON = Safe(
-    '<svg class="w-4 h-4 rtl:rotate-180" aria-hidden="true" '
-    'xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">'
-    '<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" '
-    'stroke-width="2" d="M1 5h12m0 0L9 1m4 4L9 9"/></svg>'
-)
-
 
 # Every year cell is a ControlButton with a fixed width so the four columns stay
 # aligned regardless of the label. The complete state classes are generated to
@@ -1852,7 +1845,7 @@ def YearPicker(
                 ("aria-haspopup", "dialog"),
             ],
             color="blue" if year is not None else "gray",
-        )[label, _YEAR_PICKER_CHEVRON],
+        )[label, Icon("arrowdown", decorative=True)],
         Div(
             [
                 ("data-menu", ""),
@@ -1871,7 +1864,7 @@ def YearPicker(
                         variant="ghost",
                         aria_label="Previous decade",
                         class_=_YEAR_CELL_GEOMETRY_CLASS,
-                    )["‹"],
+                    )[Icon("arrowleft", decorative=True)],
                     Span(
                         [
                             ("id", period_id),
@@ -1884,7 +1877,7 @@ def YearPicker(
                         variant="ghost",
                         aria_label="Next decade",
                         class_=_YEAR_CELL_GEOMETRY_CLASS,
-                    )["›"],
+                    )[Icon("arrowright", decorative=True)],
                 ],
                 Div(
                     class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
@@ -2892,8 +2885,9 @@ def get_icon_node(name: str) -> Element:
 # platform icons). Tune sizes here.
 ICON_BASE_CLASS = ""
 # em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
-# scales with font size, no jump at a viewport width.
-ICON_SIZE_CLASS = "size-[1.15em]"
+# scales with font size, no jump at a viewport width. A control-height button
+# states --icon-size, so every icon inside it matches ICON_BUTTON_SIZE_CLASS.
+ICON_SIZE_CLASS = "size-[var(--icon-size,1.15em)]"
 # Flat 1.25rem (20px) to match text-type-body's fixed line-height — buttons
 # no longer use container-scaled text, so the icon must also be flat (not
 # @md-responsive) to keep icon-only buttons the same height as text ones at
