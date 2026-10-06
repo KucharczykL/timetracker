@@ -27,9 +27,12 @@ def _picker(html: str, name: str) -> str:
 
 
 def _offers_new_game(html: str, name: str) -> bool:
+    if name == "parent":
+        href, label = f"{reverse('games:add_game')}?kind=main", "New main game"
+    else:
+        href, label = reverse("games:add_game"), "New game"
     return any(
-        link.group(1) == reverse("games:add_game")
-        and 'aria-label="New game"' in link.group(0)
+        link.group(1) == href and f'aria-label="{label}"' in link.group(0)
         for link in NEW_GAME_LINK.finditer(_picker(html, name))
     )
 

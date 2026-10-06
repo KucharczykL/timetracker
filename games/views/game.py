@@ -402,7 +402,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
 def add_game(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
-    form = GameForm(request.POST or None, library=library, presentation=presentation)
+    form = GameForm(
+        request.POST or None,
+        library=library,
+        presentation=presentation,
+        facts=request.GET,
+    )
     graph = CatalogGraphForm(
         request.POST or None, game=None, library=library, presentation=presentation
     )
@@ -457,7 +462,8 @@ def add_game(request: HttpRequest) -> HttpResponse:
             request=request,
             fields=Fragment(
                 FormFields(form, groups=GAME_FORM_GROUPS),
-                GameAddon("kind", "parent"),
+                #: Its element needs the kind select.
+                None if "kind" in form.stated_facts else GameAddon("kind", "parent"),
                 FieldMirror("name", "sort_name"),
                 editions_area(graph),
                 references_area(references),
@@ -469,8 +475,23 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 name="submit_and_add_to_library",
             )["Submit & Add to library"],
         ),
-        title="Add New Game",
+        title=_add_game_title(form, request.GET.get("addon", "")),
     )
+
+
+#: Game.name's length.
+_ADDON_TITLE_LENGTH = 255
+
+
+def _add_game_title(form: GameForm, addon: str) -> str:
+    """Names the add-on a main game is added for."""
+    printable = "".join(
+        character if character.isprintable() else " " for character in addon
+    )
+    named = " ".join(printable.split())
+    if form.stated_facts.get("kind") == GameKind.MAIN and named:
+        return f"Add the main game of {named[:_ADDON_TITLE_LENGTH]}"
+    return "Add New Game"
 
 
 @login_required

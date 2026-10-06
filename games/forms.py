@@ -57,6 +57,7 @@ from common.components.primitives import (
 )
 from common.components.search_select import DialogCreate
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from common.opener_facts import OpenerFacts, OpenerFactsMixin
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
 from games.commands.endpoint import WayActStatement
@@ -77,6 +78,7 @@ from games.end_ways import END_WAY_LABELS, EndWay, ended_hint
 from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
 from games.models import (
+    ADDON_KINDS,
     DEVICE_WAYS,
     VISIBILITY_FIELDS,
     Device,
@@ -302,6 +304,12 @@ def game_option(game: Game) -> SearchSelectOption:
 
 #: The + on every game picker.
 NEW_GAME = DialogCreate(reverse_lazy("games:add_game"), "New game")
+#: The + on "Add-on of": a main game, named for the add-on.
+NEW_MAIN_GAME = DialogCreate(
+    reverse_lazy("games:add_game"),
+    "New main game",
+    params={"kind": {"value": GameKind.MAIN.value}, "addon": {"field": "name"}},
+)
 
 
 def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
@@ -2108,13 +2116,19 @@ _GAME_FIELDS = (
 
 
 class GameForm(
-    _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
+    OpenerFactsMixin,
+    _LibraryBoundConstraintValidationMixin,
+    PrimitiveWidgetsMixin,
+    forms.ModelForm,
 ):
+    opener_fields = ("kind",)
+
     def __init__(
         self,
         *args,
         library: UserLibrary,
         presentation: DateTimePresentation,
+        facts: OpenerFacts | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -2134,6 +2148,10 @@ class GameForm(
         parent.widget.options_resolver = partial(_parent_options, library=library)
         #: A field added after __init__ otherwise sinks to the bottom.
         self.order_fields(self.field_order)
+        self.state_opener_facts(facts)
+        stated_kind = self.stated_facts.get("kind")
+        if stated_kind is not None and GameKind(str(stated_kind)) not in ADDON_KINDS:
+            self.fix_field("parent", None)
         #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
             self.initial.setdefault(
@@ -2177,7 +2195,7 @@ class GameForm(
             search_url="/api/games/search",
             options_resolver=_parent_options,
             params={"kind": {"value": GameKind.MAIN.value}},
-            dialog_create=NEW_GAME,
+            dialog_create=NEW_MAIN_GAME,
         ),
     )
     excluded_from_dropped = forms.BooleanField(required=False, label="Dropped figures")
