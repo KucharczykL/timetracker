@@ -151,7 +151,9 @@ def library_add_control(
     game: Game, library: UserLibrary, origin: OriginUrl, csrf_token: str
 ) -> Node | None:
     """One click, or the page; none if impossible."""
-    details = action_url("games:add_library_entry", game.pk, origin=origin)
+    details = action_url(
+        "games:add_to_library", origin=origin, facts={"game": str(game.pk)}
+    )
     if not game_releases(library, game).exists():
         if game.library_id != library.pk:
             return None

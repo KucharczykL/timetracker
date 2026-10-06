@@ -49,9 +49,7 @@ def test_a_session_records_on_a_device_created_from_the_picker(
 
     game = create_tracked_game(e2e_library, "Outer Wilds")
     page = authenticated_page
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
 
     picker = _device_picker(page)
     picker.wait_for(state="attached")
@@ -119,9 +117,7 @@ def test_the_run_picker_is_visible_on_a_game_holding_one_run(
 
     game = create_tracked_game(e2e_library, "Outer Wilds")
     page = authenticated_page
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
 
     picker = _run_picker(page)
     picker.wait_for(state="visible")
@@ -137,9 +133,7 @@ def test_a_session_records_on_a_run_created_from_the_picker(
 
     game = create_tracked_game(e2e_library, "Outer Wilds")
     page = authenticated_page
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
 
     picker = _run_picker(page)
     picker.wait_for(state="attached")
@@ -197,12 +191,13 @@ def test_the_run_picker_searches_again_when_the_game_changes(
     second = create_tracked_game(e2e_library, "Hades")
     Playthrough.objects.filter(player_game__game=second).update(name="Hades run")
     page = authenticated_page
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[first.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     game_picker = page.locator("search-select[name='game']")
     game_search = game_picker.locator("[data-search-select-search]")
+    game_search.click()
+    game_search.fill(first.name)
+    game_picker.locator("[data-search-select-option]").first.click()
     game_search.click()
     game_search.fill("Hades")
     game_picker.locator("[data-search-select-option]").first.click()

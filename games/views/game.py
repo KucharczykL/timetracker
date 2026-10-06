@@ -445,9 +445,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
             if "submit_and_add_to_library" in request.POST:
                 return redirect(
                     action_url(
-                        "games:add_library_entry",
-                        game_id=game.id,
+                        "games:add_to_library",
                         origin=origin_from(request),
+                        facts={"game": str(game.id)},
                     )
                 )
             return CreatedRedirect(
@@ -634,7 +634,9 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
 
     count_button = ControlButton(
         variant="outline",
-        href=action_url("games:add_playthrough", origin=origin),
+        href=action_url(
+            "games:add_playthrough", origin=origin, facts={"game": str(game.id)}
+        ),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
@@ -647,7 +649,9 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
         aria_label="Playthrough actions",
         items=[
             DropdownLinkItem(
-                action_url("games:add_playthrough_for_game", game.id, origin=origin),
+                action_url(
+                    "games:add_playthrough", origin=origin, facts={"game": str(game.id)}
+                ),
                 "Add playthrough\u2026",
             ),
         ],
@@ -735,7 +739,7 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
             [
                 {
                     "href": action_url(
-                        "games:add_session_for_game", game_id=game.id, origin=origin
+                        "games:add_session", origin=origin, facts={"game": str(game.id)}
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
                         Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"

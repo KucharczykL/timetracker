@@ -519,7 +519,7 @@ def test_the_prefill_seeds_from_the_greatest_stated_completion(
     client.force_login(user)
 
     body = client.get(
-        reverse("games:add_playthrough_for_game", args=[game.pk])
+        f"{reverse('games:add_playthrough')}?game={game.pk}"
     ).content.decode()
 
     assert "2026-01-11" in body
@@ -539,7 +539,7 @@ def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, g
     client.force_login(user)
 
     body = client.get(
-        reverse("games:add_playthrough_for_game", args=[game.pk])
+        f"{reverse('games:add_playthrough')}?game={game.pk}"
     ).content.decode()
 
     #: No finish day, so the earliest session.
@@ -550,7 +550,7 @@ def _prefill(client, user, game) -> dict[str, str]:
     """What the Add Playthrough page seeds for the game."""
     client.force_login(user)
     body = client.get(
-        reverse("games:add_playthrough_for_game", args=[game.pk])
+        f"{reverse('games:add_playthrough')}?game={game.pk}"
     ).content.decode()
 
     def input_value(name: str) -> str:

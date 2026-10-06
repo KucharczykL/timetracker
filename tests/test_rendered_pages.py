@@ -290,10 +290,12 @@ class RenderedPagesTest(TestCase):
             self.fail(f"no element with id {element_id!r} in output")
         return match.group(0)
 
-    def test_add_session_for_game_autofocuses_device_not_game(self):
-        html = self.get("games:add_session_for_game", self.game.id).content.decode()
+    def test_a_stated_game_autofocuses_the_device(self):
+        html = self.client.get(
+            f"{reverse('games:add_session')}?game={self.game.id}"
+        ).content.decode()
         self.assertIn("autofocus", self._element_with_id(html, "id_device"))
-        self.assertNotIn("autofocus", self._element_with_id(html, "id_game"))
+        self.assertNotIn('id="id_game"', html)
 
     def test_cold_add_forms_keep_game_autofocus(self):
         """Opened cold, the Game field keeps focus."""
@@ -817,7 +819,7 @@ def test_add_game_submit_and_add_to_library_redirects(
     game = Game.objects.get(name="New Session Game")
     assertRedirects(
         response,
-        reverse("games:add_library_entry", kwargs={"game_id": game.id}),
+        f"{reverse('games:add_to_library')}?game={game.id}",
     )
 
 

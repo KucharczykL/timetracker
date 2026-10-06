@@ -89,11 +89,6 @@ urlpatterns = [
     path("playthrough/list", playthrough.list_playthroughs, name="list_playthroughs"),
     path("playthrough/add", playthrough.add_playthrough, name="add_playthrough"),
     path(
-        "playthrough/add/for-game/<uuidv7:game_id>",
-        playthrough.add_playthrough,
-        name="add_playthrough_for_game",
-    ),
-    path(
         "playthrough/edit/<uuidv7:playthrough_id>",
         playthrough.edit_playthrough,
         name="edit_playthrough",
@@ -170,11 +165,6 @@ urlpatterns = [
     ),
     path("session/add", session.add_session, name="add_session"),
     path(
-        "session/add/for-game/<uuidv7:game_id>",
-        session.add_session,
-        name="add_session_for_game",
-    ),
-    path(
         "session/add/resume/<uuidv7:game_id>",
         session.resume_session,
         name="resume_session",
@@ -231,11 +221,6 @@ urlpatterns = [
         name="restore_historical_playtime",
     ),
     path("library/add", library_entry.add_to_library, name="add_to_library"),
-    path(
-        "game/<uuidv7:game_id>/library/add",
-        library_entry.add_library_entry,
-        name="add_library_entry",
-    ),
     path(
         "game/<uuidv7:game_id>/library/add/now",
         library_entry.add_library_entry_now,

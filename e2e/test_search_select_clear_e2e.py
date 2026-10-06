@@ -90,9 +90,7 @@ def _session_form_holding_a_device(page: Page, live_server, library):
 
     game = create_tracked_game(library, "Outer Wilds")
     create_device(library, "Steam Deck")
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
     picker = page.locator("search-select[name='device']")
     search = picker.locator("[data-search-select-search]")
     search.click()
@@ -221,9 +219,7 @@ def test_clearing_a_required_field_is_refused_on_submit(
 
     page = authenticated_page
     game = create_tracked_game(e2e_library, "Outer Wilds")
-    page.goto(
-        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
-    )
+    page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
     run_picker = page.locator("search-select[name='playthrough']")
     expect(run_picker.locator('input[type="hidden"]')).to_have_count(1)
 

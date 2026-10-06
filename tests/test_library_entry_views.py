@@ -85,12 +85,12 @@ def _add_post(graph, **changes) -> dict[str, str]:
 
 
 def _add_url(game) -> str:
-    return reverse("games:add_library_entry", args=[game.pk])
+    return f"{reverse('games:add_to_library')}?game={game.pk}"
 
 
 def test_add_records_a_copy_and_returns(logged_in, graph):
     response = logged_in.post(
-        _add_url(graph.game) + f"?origin={graph.game.get_absolute_url()}",
+        _add_url(graph.game) + f"&origin={graph.game.get_absolute_url()}",
         _add_post(graph),
     )
 
@@ -123,7 +123,8 @@ def test_an_invalid_add_renders_the_page_again(logged_in, graph):
     response = logged_in.post(_add_url(graph.game), _add_post(graph, access="lent"))
 
     assert response.status_code == 200
-    assert "Add to library - Tunic" in response.content.decode()
+    assert "<dd" in response.content.decode()
+    assert ">Tunic" in response.content.decode()
     assert not LibraryEntry.objects.exists()
 
 
@@ -139,9 +140,12 @@ def test_add_on_another_librarys_game_is_absent(client, graph, django_user_model
     stranger = django_user_model.objects.create_user(username="stranger")
     client.force_login(stranger)
 
+    assert client.get(_add_url(graph.game)).status_code == 404
     response = client.post(_add_url(graph.game), _add_post(graph))
 
-    assert response.status_code == 404
+    #: Gone since opened: the picker answers, input kept.
+    assert response.status_code == 200
+    assert not LibraryEntry.objects.exists()
 
 
 # --- edit -----------------------------------------------------------------

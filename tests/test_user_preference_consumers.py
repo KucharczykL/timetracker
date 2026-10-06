@@ -44,34 +44,32 @@ def _tag_with(html: str, **attributes: object) -> str:
     raise AssertionError(f"No tag contains {attributes!r}")
 
 
-@pytest.mark.parametrize("url_name", ["games:add_purchase", "games:add_library_entry"])
+@pytest.mark.parametrize("url_name", ["games:add_purchase", "games:add_to_library"])
 def test_purchase_forms_use_user_currency(auth_client, user, game, url_name):
     _set_purchase_currency(user)
     graph = default_graph(game, user.library)
-    target = (
-        record_entry(user.library, graph.release).pk
+    url = (
+        reverse(url_name, args=[record_entry(user.library, graph.release).pk])
         if url_name == "games:add_purchase"
-        else game.pk
+        else f"{reverse(url_name)}?game={game.pk}"
     )
 
-    html = auth_client.get(reverse(url_name, args=[target])).content.decode()
+    html = auth_client.get(url).content.decode()
 
     currency_input = _tag_with(html, name="currency")
     assert 'value="EUR"' in currency_input
     assert 'placeholder="EUR"' in currency_input
 
 
-@pytest.mark.parametrize(
-    "url_name", ["games:add_session", "games:add_session_for_game"]
-)
-def test_session_add_forms_use_user_device(auth_client, user, game, url_name):
+@pytest.mark.parametrize("states_game", [False, True])
+def test_session_add_forms_use_user_device(auth_client, user, game, states_game):
     preferred = create_device(
         library=user.library, name="Steam Deck", type=Device.HANDHELD
     )
     user.library.preferences.set_default_device(preferred)
-    args = [game.pk] if url_name.endswith("for_game") else []
+    query = f"?game={game.pk}" if states_game else ""
 
-    html = auth_client.get(reverse(url_name, args=args)).content.decode()
+    html = auth_client.get(reverse("games:add_session") + query).content.decode()
 
     _tag_with(html, name="device", value=preferred.pk)
 

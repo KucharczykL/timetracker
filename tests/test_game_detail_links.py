@@ -94,7 +94,7 @@ def test_link_filters_scope_to_game(game):
 
 def test_game_header_has_log_this_game_link(game, rendered):
     """The start-session affordance lives in the game header (#55)."""
-    href = reverse("games:add_session_for_game", kwargs={"game_id": game.id})
+    href = f"{reverse('games:add_session')}?game={game.id}"
     assert href in rendered
     assert "Log this game" in rendered
 
