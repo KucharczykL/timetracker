@@ -5,10 +5,12 @@ gate + reachable-model registry the nested builder renders from, the
 FilterGroup template emission, and the mode->list-URL table.
 """
 
+import re
 from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from pickers import held
 
 from common.components import (
     FilterBuilder,
@@ -104,8 +106,8 @@ class NumberFilterRenderTest(TestCase):
                 path=["year_released"],
             )
         )
-        # EQUALS is the selected option when an invalid modifier is given.
-        self.assertRegex(html, r'value="EQUALS"[^>]*selected')
+        # EQUALS is held when an invalid modifier is given.
+        self.assertEqual(held(html, "filter-year-modifier"), "EQUALS")
         self.assertNotRegex(html, r'value="INCLUDES"')
 
 
@@ -299,16 +301,38 @@ class FilterGroupComparisonTest(TestCase):
         for marker in _ESCAPED_TAG_MARKERS:
             self.assertNotIn(marker, html)
 
-    def test_emits_chip_and_relation_select_templates(self):
-        """Chip + relation-select styling is server-owned: one chip
-        template per visual state and one styled <select> template, all
-        model-agnostic (emitted once, not per reachable model)."""
+    def test_emits_chip_and_relation_match_templates(self):
+        """One chip template per visual state and one relation match
+        template, emitted once, not per reachable model."""
         from common.components import FilterGroup
 
         html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
         for state in ("connective-and", "connective-or", "negate-on", "negate-off"):
             self.assertEqual(html.count(f'data-chip-template="{state}"'), 1)
-        self.assertEqual(html.count("data-relation-select-template"), 1)
+        self.assertEqual(html.count("data-relation-match-template"), 1)
+
+    def test_relation_field_templates_offer_each_bundles_relations(self):
+        from common.components import FilterGroup
+        from games.filters import model_field_registry
+
+        html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
+        registry = model_field_registry("game")
+        templates = re.findall(
+            r'<template data-relation-field-template="" data-model="([^"]+)">(.*?)</template>',
+            html,
+            re.DOTALL,
+        )
+        self.assertEqual({model for model, _ in templates}, set(registry))
+        for model, markup in templates:
+            offered = re.findall(
+                r'data-search-select-option="" data-value="([^"]*)"', markup
+            )
+            relations = [
+                meta["name"]
+                for meta in registry[model]["fields"]
+                if meta["kind"] == "relation"
+            ]
+            self.assertEqual(offered, relations, model)
 
     def test_nested_builder_templates_use_semantic_control_and_danger_tokens(self):
         from common.components import FilterGroup

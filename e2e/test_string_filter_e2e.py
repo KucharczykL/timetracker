@@ -12,6 +12,7 @@ from django.urls import path
 
 from common.components import QuickFilterBar
 from common.date_time_presentation import date_time_presentation_for_request
+from e2e.helpers import held_choice, offered_choices, pick_choice
 
 
 def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
@@ -88,12 +89,11 @@ def test_string_filter_defaults_and_toggles(live_server, page):
     name_input = page.locator('input[name="quick-name"]')
     assert name_input.is_enabled()
 
-    modifier_select = page.locator('select[name="quick-name-modifier"]')
-    assert modifier_select.input_value() == "EQUALS"
+    assert held_choice(page, "quick-name-modifier").input_value() == "EQUALS"
 
     # 2. Enter values, choose "includes" (INCLUDES), and submit
     name_input.fill("PlayStation")
-    modifier_select.select_option("INCLUDES")
+    pick_choice(page, "quick-name-modifier", "INCLUDES")
 
     with page.expect_navigation():
         page.locator('quick-filter-bar button[type="submit"]').click()
@@ -113,10 +113,7 @@ def test_string_filter_offers_no_presence_modifier(live_server, page):
     page.goto(live_server.url + "/test-string-filter-empty/")
     page.locator("#quick-name-dropdownLink").click()
 
-    modifier_select = page.locator('select[name="quick-name-modifier"]')
-    offered = modifier_select.locator("option").evaluate_all(
-        "options => options.map(option => option.value)"
-    )
+    offered = offered_choices(page, "quick-name-modifier")
     assert "IS_NULL" not in offered
     assert "NOT_NULL" not in offered
     assert offered == [
@@ -131,7 +128,7 @@ def test_string_filter_offers_no_presence_modifier(live_server, page):
     # No offered mode carries no value.
     name_input = page.locator('input[name="quick-name"]')
     for modifier in offered:
-        modifier_select.select_option(modifier)
+        pick_choice(page, "quick-name-modifier", modifier)
         assert name_input.is_enabled(), modifier
 
 
@@ -147,15 +144,13 @@ def test_string_filter_prefilled_states(live_server, page):
     page.locator("#quick-name-dropdownLink").click()
     assert name_input.input_value() == "Switch"
     assert name_input.is_enabled()
-    assert (
-        page.locator('select[name="quick-name-modifier"]').input_value() == "INCLUDES"
-    )
+    assert held_choice(page, "quick-name-modifier").input_value() == "INCLUDES"
 
     # group prefills the empty string under "is".
     page.locator("#quick-group-dropdownLink").click()
     assert group_input.input_value() == ""
     assert group_input.is_enabled()
-    assert page.locator('select[name="quick-group-modifier"]').input_value() == "EQUALS"
+    assert held_choice(page, "quick-group-modifier").input_value() == "EQUALS"
 
 
 @pytest.mark.django_db
@@ -166,7 +161,7 @@ def test_string_filter_serializes_the_empty_string(live_server, page):
     page.locator("#quick-name-dropdownLink").click()
 
     page.locator('input[name="quick-name"]').fill("Xbox")
-    page.locator('select[name="quick-name-modifier"]').select_option("EQUALS")
+    pick_choice(page, "quick-name-modifier", "EQUALS")
     page.locator('input[name="quick-name"]').fill("")
 
     with page.expect_navigation():

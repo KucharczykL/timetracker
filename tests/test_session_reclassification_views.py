@@ -10,6 +10,7 @@ from django.contrib.messages import get_messages
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from historical_playtime_posts import posted_record
+from pickers import held
 from session_rows import duration_only_row, timed_row, tracked_run
 
 from common.returns import action_url
@@ -372,7 +373,7 @@ def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
     )
     rendered = logged_in.get(review_url()).content.decode()
     assert "Advanced filter active" not in rendered
-    assert 'value="GREATER_THAN_OR_EQUAL" selected' in rendered
+    assert held(rendered, "quick-duration_hours-modifier") == "GREATER_THAN_OR_EQUAL"
 
 
 def test_the_review_filter_answers_the_rows_the_review_offers(owned_library, game, run):

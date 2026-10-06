@@ -2,11 +2,7 @@
  * SearchField — the quick bar's free-text field.
  *
  * The mode lives once, in the root's `data-modifier`: this element writes it
- * and the bar's string reader reads it. No hidden <select> carries it,
- * deliberately — `setupModifierToggles` reacts to a change on
- * `select[data-string-modifier-select]`, and `toggleStringFilterInput` then
- * walks `closest(".flex-col")` for an input to disable. The segmented field is
- * not that layout, so a select added here would disable an unrelated input.
+ * and the bar's string reader reads it beside `[data-string-value]`.
  *
  * Choosing a mode applies nothing. Each apply loads a page, so one that fired
  * while a person typed would take the focus and scroll with every pause.

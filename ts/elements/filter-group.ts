@@ -79,6 +79,7 @@ import {
 import { readLeafWidget, setupModifierToggles, writeLeafWidget } from "./filter-widgets.js";
 import { parseJSONWithReport, reportClientError } from "../client-errors.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
+import { choiceOf, isChoicePick } from "./choice-control.js";
 
 // Depth is signalled by a two-surface zebra parity, not a ramp: adjacent levels
 // always differ — at depth 1 or depth 20 — using only two fixed semantic
@@ -132,9 +133,7 @@ const VALUE_PLACEHOLDER_CLASS =
 // cloned onto a touched-but-incomplete row. No row background — the "!" alone
 // flags it and its popover explains the excluded-from-query semantics. Markup +
 // classes are server-owned (data-incomplete-badge-template), like the chips.
-// Chip and relation-select styling is server-owned (#273): the server ships one
-// <template data-chip-template="<state>"> per chip state and one
-// <template data-relation-select-template>; chip()/relationSelect() clone them.
+// Chip and relation-picker markup is server-owned.
 // The visual states a chip template can carry; mirrors the server's ChipState
 // (common/components/filters.py), where the class sets live.
 type ChipState = "connective-and" | "connective-or" | "negate-off" | "negate-on";
@@ -226,15 +225,11 @@ interface ModelBundle {
   fieldPickerTemplate: HTMLTemplateElement | null;
   widgetTemplates: Map<string, HTMLTemplateElement>;
   comparisonRowTemplate: HTMLTemplateElement | null;
+  relationFieldTemplate: HTMLTemplateElement | null;
 }
 
-// The RelationMatch quantifiers, ordered for the picker. ANY is the default/first.
-const RELATION_MATCHES: RelationMatch[] = ["ANY", "NONE", "ALL"];
-const RELATION_MATCH_LABELS: Record<RelationMatch, string> = {
-  ANY: "any",
-  NONE: "none",
-  ALL: "all",
-};
+const RELATION_MATCH = "data-relation-match";
+const RELATION_FIELD = "data-relation-field";
 
 // The shape of one model's bundle in the `models` prop JSON (mirrors ModelFieldBundle).
 interface ModelFieldBundleJson {
@@ -259,10 +254,10 @@ export class FilterGroupElement extends HTMLElement {
   // classes itself.
   private actionButtonTemplate: HTMLTemplateElement | null = null;
   // The server-rendered connective/NOT chips, one template per visual state,
-  // and the quantifier/relation <select> — like the action button, the client
+  // and the relation match picker — like the action button, the client
   // clones these and never declares their classes (#273).
   private chipTemplates = new Map<ChipState, HTMLTemplateElement>();
-  private relationSelectTemplate: HTMLTemplateElement | null = null;
+  private relationMatchTemplate: HTMLTemplateElement | null = null;
   private incompleteBadgeTemplate: HTMLTemplateElement | null = null;
   // Monotonic suffix so cloned widget/picker element ids stay unique per leaf.
   private cloneSequence = 0;
@@ -289,6 +284,8 @@ export class FilterGroupElement extends HTMLElement {
       this.addEventListener("change", this.onValueEvent);
       this.addEventListener("search-select:change", this.onValueEvent);
       this.addEventListener("date-range:change", this.onValueEvent);
+      // A picker restores a dropped choice silently on leave.
+      this.addEventListener("focusout", this.onLeaveValue);
       // Reuse the shared modifier-select enable/disable behavior for the cloned
       // string/number widgets (presence hides value; BETWEEN reveals value2).
       setupModifierToggles(this);
@@ -329,6 +326,7 @@ export class FilterGroupElement extends HTMLElement {
         fieldPickerTemplate: null,
         widgetTemplates: new Map(),
         comparisonRowTemplate: null,
+        relationFieldTemplate: null,
       });
     }
   }
@@ -346,8 +344,8 @@ export class FilterGroupElement extends HTMLElement {
         this.chipTemplates.set(state, template);
       },
     );
-    this.relationSelectTemplate = this.querySelector<HTMLTemplateElement>(
-      "template[data-relation-select-template]",
+    this.relationMatchTemplate = this.querySelector<HTMLTemplateElement>(
+      "template[data-relation-match-template]",
     );
     this.incompleteBadgeTemplate = this.querySelector<HTMLTemplateElement>(
       "template[data-incomplete-badge-template]",
@@ -359,6 +357,8 @@ export class FilterGroupElement extends HTMLElement {
         bundle.fieldPickerTemplate = template;
       } else if (template.hasAttribute("data-fc-row-template")) {
         bundle.comparisonRowTemplate = template;
+      } else if (template.hasAttribute("data-relation-field-template")) {
+        bundle.relationFieldTemplate = template;
       } else {
         const field = template.getAttribute("data-field");
         if (field) bundle.widgetTemplates.set(field, template);
@@ -862,9 +862,15 @@ export class FilterGroupElement extends HTMLElement {
     const arrow = element("span", RELATION_ARROW_CLASS);
     arrow.textContent = "↳";
     header.appendChild(arrow);
-    header.appendChild(this.relationMatchSelect(node));
+    const match = this.relationPicker(this.relationMatchTemplate, node.match, "match");
+    if (match) header.appendChild(match);
     header.appendChild(this.relationLabel("of"));
-    header.appendChild(this.relationFieldSelect(node, model));
+    const field = this.relationPicker(
+      this.bundle(model)?.relationFieldTemplate ?? null,
+      node.field,
+      `field of ${model}`,
+    );
+    if (field) header.appendChild(field);
     header.appendChild(this.relationLabel("where"));
     header.appendChild(this.controls(path, false, index, siblingCount));
     card.appendChild(header);
@@ -894,47 +900,21 @@ export class FilterGroupElement extends HTMLElement {
     return span;
   }
 
-  // A relation-row <select>, cloned from the server template so its styling
-  // stays server-owned; the bare fallback keeps template-less fixtures (jsdom
-  // tests) functional. Options are appended by the caller — they are data.
-  private relationSelect(): HTMLSelectElement {
-    const cloned = this.relationSelectTemplate?.content.firstElementChild?.cloneNode(true);
-    return cloned instanceof HTMLSelectElement ? cloned : element("select");
-  }
-
-  // The ANY/NONE/ALL quantifier picker; change dispatches setMatch.
-  private relationMatchSelect(node: RelationNode): HTMLSelectElement {
-    const select = this.relationSelect();
-    select.dataset.relationMatch = "";
-    for (const match of RELATION_MATCHES) {
-      const option = element("option");
-      option.value = match;
-      option.textContent = RELATION_MATCH_LABELS[match];
-      option.selected = match === node.match;
-      select.appendChild(option);
+  // Clone a relation picker holding `value`.
+  private relationPicker(
+    template: HTMLTemplateElement | null,
+    value: string,
+    what: string,
+  ): HTMLElement | null {
+    const clone = template?.content.firstElementChild?.cloneNode(true);
+    if (!(clone instanceof HTMLElement)) {
+      reportClientError("filter-group[relation]", `no relation ${what} template`, { toast: false });
+      return null;
     }
-    return select;
-  }
-
-  // The relation-field picker: the current model's relation options; change
-  // dispatches setRelationField (which resets the child group on a model change).
-  private relationFieldSelect(node: RelationNode, model: string): HTMLSelectElement {
-    const select = this.relationSelect();
-    select.dataset.relationField = "";
-    const placeholder = element("option");
-    placeholder.value = "";
-    placeholder.textContent = "a relation…";
-    placeholder.disabled = true;
-    placeholder.selected = node.field === "";
-    select.appendChild(placeholder);
-    for (const relation of this.bundle(model)?.relations ?? []) {
-      const option = element("option");
-      option.value = relation.field;
-      option.textContent = relation.label;
-      option.selected = relation.field === node.field;
-      select.appendChild(option);
-    }
-    return select;
+    this.uniquify(clone);
+    const picker = clone.matches("search-select") ? clone : clone.querySelector("search-select");
+    if (value && picker) choiceOf(picker as HTMLElement).write(value);
+    return clone;
   }
 
   // The live criterion leaf row: [NOT] [field combobox] [value widget] [badge?]
@@ -1203,13 +1183,17 @@ export class FilterGroupElement extends HTMLElement {
       this.handleFieldPick(fieldPicker, event as CustomEvent<SearchSelectChangeDetail>);
       return;
     }
-    // The relation picker + quantifier are native <select>s (#193); a change on
-    // either rewrites the relation node and re-renders.
-    if (event.type === "change" && target instanceof HTMLSelectElement) {
-      if (target.dataset.relationField !== undefined) return this.handleRelationField(target);
-      if (target.dataset.relationMatch !== undefined) return this.handleRelationMatch(target);
-    }
+    // A relation pick rewrites the relation node and re-renders.
+    if (isChoicePick(event, RELATION_FIELD)) return this.handleRelationField(target);
+    if (isChoicePick(event, RELATION_MATCH)) return this.handleRelationMatch(target);
     if (target.closest("[data-value-cell]")) this.refreshCompleteness(target);
+  };
+
+  // Runs after the picker's own focusout restore.
+  private onLeaveValue = (event: FocusEvent): void => {
+    const target = event.target as HTMLElement;
+    if (!target.closest("[data-value-cell]")) return;
+    if (target.matches("[data-search-select-search]")) this.refreshCompleteness(target);
   };
 
   /** A cleared picker states no field. */
@@ -1247,20 +1231,22 @@ export class FilterGroupElement extends HTMLElement {
 
   // Pick a relation field: setRelationField resets the child group on a model change,
   // so a full re-render is needed (the child group's field pickers/widgets change).
-  private handleRelationField(select: HTMLSelectElement): void {
-    const path = this.pathForControl(select);
-    if (!path) return;
-    this.tree = setRelationField(this.tree, path, select.value);
+  private handleRelationField(picker: HTMLElement): void {
+    const path = this.pathForControl(picker);
+    const field = choiceOf(picker).read();
+    if (!path || !field) return;
+    this.tree = setRelationField(this.tree, path, field);
     this.render();
     this.dispatchChange();
   }
 
   // Pick a relation quantifier (ANY/NONE/ALL): only the node's match changes; a
   // re-render keeps the select + downstream count/summary consistent.
-  private handleRelationMatch(select: HTMLSelectElement): void {
-    const path = this.pathForControl(select);
-    if (!path) return;
-    this.tree = setMatch(this.tree, path, select.value as RelationMatch);
+  private handleRelationMatch(picker: HTMLElement): void {
+    const path = this.pathForControl(picker);
+    const match = choiceOf(picker).read();
+    if (!path || !match) return;
+    this.tree = setMatch(this.tree, path, match as RelationMatch);
     this.render();
     this.dispatchChange();
   }

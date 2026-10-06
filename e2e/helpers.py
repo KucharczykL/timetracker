@@ -62,3 +62,10 @@ def held_choice(scope: Page | Locator, name: str) -> Locator:
     return scope.locator(
         f'search-select[name="{name}"] [data-search-select-pills] input[type="hidden"]'
     )
+
+
+def offered_choices(scope: Page | Locator, name: str) -> list[str]:
+    """Every row value a picker offers."""
+    return scope.locator(
+        f'search-select[name="{name}"] [data-search-select-option]'
+    ).evaluate_all("rows => rows.map(row => row.getAttribute('data-value'))")

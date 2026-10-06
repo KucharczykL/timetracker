@@ -14,7 +14,7 @@ from django.urls import reverse
 from playwright.sync_api import ConsoleMessage, Locator, Page, expect
 from session_rows import session_row
 
-from e2e.helpers import open_facet
+from e2e.helpers import open_facet, pick_choice
 from e2e.tracked_games import create_tracked_game
 from games.models import Game, Platform, PlayerGameStatus
 from games.reads.calendar import calendar_day_zone
@@ -116,9 +116,7 @@ def test_quick_scalar_facet_filters_sessions(
     # Past the body cap, Duration is among the three that spill.
     open_facet(page, "duration_hours")
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
-    duration.locator("select[data-number-modifier-select]").select_option(
-        "GREATER_THAN"
-    )
+    pick_choice(duration, "quick-duration_hours-modifier", "GREATER_THAN")
     duration.locator('input[name="quick-duration_hours"]').fill("2")
     _quick_apply(page)
 
@@ -352,9 +350,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     duration_facet.locator("#quick-duration_hours-dropdownLink").click()
     duration_panel = page.locator("#quick-duration_hours-dropdown")
     expect(duration_panel).to_be_visible()
-    duration_panel.locator("select[data-number-modifier-select]").select_option(
-        "GREATER_THAN"
-    )
+    pick_choice(duration_panel, "quick-duration_hours-modifier", "GREATER_THAN")
     duration_input = duration_panel.locator('input[name="quick-duration_hours"]')
     duration_input.fill("2")
     # The open menu covers the wrapped acts group; Enter applies from inside.
@@ -680,3 +676,17 @@ def test_the_degraded_pill_saves_the_pages_filter(
     presets.locator("[data-search-select-create]").click()
     expect(box).to_have_value("")
     assert _saved_filter(e2e_library, "Completed") == stated
+
+
+def test_opening_a_number_facet_leaves_its_modifier_list_closed(
+    authenticated_page: Page, live_server
+):
+    """The facet focuses its own picker only, never a nested one."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    open_facet(page, "duration_hours")
+    panel = page.locator("#quick-duration_hours-dropdown")
+    expect(panel.locator('input[name="quick-duration_hours"]')).to_be_visible()
+    picker = panel.locator('search-select[name="quick-duration_hours-modifier"]')
+    expect(picker.locator("[data-search-select-panel]")).to_be_hidden()
+    expect(picker.locator("[data-search-select-search]")).not_to_be_focused()

@@ -1172,6 +1172,14 @@ structured filtering.
     round-trips back to editable. Anything facets can't express lives in nested
     builder, reached via the Advanced filter segment — every filterable mode has builder
     page, including devices/platforms (#336).
+- **Filter controls are pickers** (#1291): string/number modifier,
+  comparison operator and quantifier, relation match and field render
+  `ChoicePicker` (`common/components/filters.py`), never a native
+  `<select>`. TS reads and writes them only through `ChoiceControl`
+  (`ts/elements/choice-control.ts`): `choiceControl(root, marker)`,
+  `isChoicePick`; `write` works on an un-upgraded template clone too. A
+  string value input carries `data-string-value`. Contract is
+  [Filter controls in a SearchSelect](docs/superpowers/specs/2026-10-06-issue-1291-filter-choice-pickers-design.md)
 
 **Views** (`games/views/`): function-based, decorated with `@login_required`,
 organized by domain entity:

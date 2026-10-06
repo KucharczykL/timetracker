@@ -368,7 +368,8 @@ def FilterGroup(
       (id-less so per-leaf clones don't collide; the TS assigns a unique id per clone),
     - one blank value-widget ``<template data-field="name">`` per leaf field (#192),
     - one blank comparison-row ``<template>`` when the model admits a field comparison
-      (#246).
+      (#246),
+    - one relation-field picker ``<template>``.
 
     The root filter class is resolved from ``model`` by convention
     (``filter_for_model``) — no registry. Media is auto-attached by
@@ -383,7 +384,8 @@ def FilterGroup(
         comparison_row_template,
         field_widget_templates,
         has_comparable_group,
-        relation_select_template,
+        relation_field_template,
+        relation_match_template,
     )
     from common.criteria import comparable_columns
     from games.filters import model_field_registry, reachable_models
@@ -405,6 +407,7 @@ def FilterGroup(
         )
         if has_comparable_group(columns):
             templates.append(comparison_row_template(columns, model=model_key))
+        templates.append(relation_field_template(filter_cls, model=model_key))
 
     # The tree's restructure buttons (add/remove/wrap/move …) are cloned from
     # this server-rendered ControlButton, so the client never re-declares
@@ -413,10 +416,9 @@ def FilterGroup(
         Template(data_action_button_template="")[ControlButton(color="gray")[""]]
     )
     # Likewise the connective/NOT chips (one template per visual state) and the
-    # relation rows' quantifier/relation-field <select> (#273) — the last
-    # TS-declared control styling in the builder moves server-side.
+    # relation rows' match picker.
     templates.extend(chip_templates())
-    templates.append(relation_select_template())
+    templates.append(relation_match_template())
     # The incomplete-leaf cue: a "!" popover the client clones onto a touched-but-
     # incomplete row (rewriting the popover id per clone). Server-owned so its
     # markup + tokens are authored in Python, not assembled in TS.

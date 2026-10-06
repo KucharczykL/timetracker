@@ -10,6 +10,11 @@ import { readJSONProp, reportClientError } from "../client-errors.js";
 import { writeSideValue } from "./date-range-picker.js";
 import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
 import { readFilterSelect, writeFilterSelect } from "./search-select.js";
+import { choiceControl, isChoicePick } from "./choice-control.js";
+
+const STRING_MODIFIER = "data-string-modifier-select";
+const NUMBER_MODIFIER = "data-number-modifier-select";
+const STRING_VALUE = "input[data-string-value]";
 
 export interface Criterion {
   value: unknown;
@@ -57,17 +62,15 @@ export function buildRangeCriterion(
 // ── Per-kind readers: each scoped to a single widget element, returns a criterion
 // object or null to omit the field. ──
 
-// A widget states its modifier on a <select>, or on its own root.
+// A widget states its modifier on a picker, or on its own root.
 //
 // A widget stating neither is a defect, not a shape to serve: it is reported and
 // read as INCLUDES. EQUALS reads as `iexact`, so guessing it turns a whole-text
 // search into one matching almost no row, with nothing on the page to say the
-// mode was invented.
-function stringModifier(element: HTMLElement): string {
-  const select = element.querySelector<HTMLSelectElement>(
-    "select[data-string-modifier-select]",
-  );
-  if (select) return select.value;
+// mode was invented. A picker mid-edit holds nothing: `null`.
+function stringModifier(element: HTMLElement): string | null {
+  const picker = choiceControl(element, STRING_MODIFIER);
+  if (picker) return picker.read();
   const stated = element.getAttribute("data-modifier");
   if (stated) return stated;
   reportClientError("filter-widgets", "a string widget states no match mode", {
@@ -78,20 +81,26 @@ function stringModifier(element: HTMLElement): string {
 
 export function readStringWidget(element: HTMLElement): Record<string, unknown> | null {
   const modifier = stringModifier(element);
+  if (modifier === null) return null;
   if (isPresenceModifier(modifier)) {
     return { modifier };
   }
-  const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
+  const textInput = element.querySelector<HTMLInputElement>(STRING_VALUE);
   if (textInput && textInput.value.trim()) {
     return { value: textInput.value.trim(), modifier };
   }
   return null;
 }
 
+// No picker reads EQUALS; one mid-edit reads null.
+function numberModifier(element: HTMLElement): string | null {
+  const picker = choiceControl(element, NUMBER_MODIFIER);
+  return picker ? picker.read() : "EQUALS";
+}
+
 export function readNumberWidget(element: HTMLElement): Criterion | Record<string, unknown> | null {
-  const modifier =
-    element.querySelector<HTMLSelectElement>("select[data-number-modifier-select]")?.value ??
-    "EQUALS";
+  const modifier = numberModifier(element);
+  if (modifier === null) return null;
   if (isPresenceModifier(modifier)) {
     return { modifier };
   }
@@ -207,52 +216,43 @@ export function readLeafWidget(
 // ── Modifier-select behaviors: enable/disable the value input(s) as the string /
 // number modifier changes (presence → no value; number BETWEEN → reveal value2). ──
 
-export function toggleStringFilterInput(select: HTMLSelectElement): void {
-  const container = select.closest(".flex-col");
-  if (!container) return;
-  const textInput = container.querySelector<HTMLInputElement>('input[type="text"]');
-  if (!textInput) return;
-  const value = select.value;
-  if (value === "IS_NULL" || value === "NOT_NULL") {
-    textInput.disabled = true;
-    textInput.value = "";
-    textInput.classList.add("opacity-50", "cursor-not-allowed");
-  } else {
-    textInput.disabled = false;
-    textInput.classList.remove("opacity-50", "cursor-not-allowed");
-  }
+function widgetRoot(control: Element): HTMLElement | null {
+  return control.closest<HTMLElement>("[data-filter-widget]");
 }
 
-export function toggleNumberFilterInput(select: HTMLSelectElement): void {
-  const container = select.closest(".flex-col");
-  if (!container) return;
-  const inputs = container.querySelectorAll<HTMLInputElement>('input[type="number"]');
-  const value2 = container.querySelector<HTMLInputElement>("[data-number-value2]");
-  const modifier = select.value;
-  const isPresence = modifier === "IS_NULL" || modifier === "NOT_NULL";
-  const isBetween = modifier === "BETWEEN" || modifier === "NOT_BETWEEN";
-  inputs.forEach((input) => {
-    if (isPresence) {
-      input.disabled = true;
-      input.value = "";
-      input.classList.add("opacity-50", "cursor-not-allowed");
-    } else {
-      input.disabled = false;
-      input.classList.remove("opacity-50", "cursor-not-allowed");
-    }
-  });
-  if (value2) value2.classList.toggle("hidden", isPresence || !isBetween);
+function setInputDisabled(input: HTMLInputElement, disabled: boolean): void {
+  input.disabled = disabled;
+  if (disabled) input.value = "";
+  input.classList.toggle("opacity-50", disabled);
+  input.classList.toggle("cursor-not-allowed", disabled);
 }
 
-// Delegated change handler wiring both string + number modifier toggles on a
-// persistent root (the filter bar, or a filter-group leaf container).
+export function toggleStringFilterInput(root: HTMLElement, modifier: string): void {
+  const textInput = root.querySelector<HTMLInputElement>(STRING_VALUE);
+  if (textInput) setInputDisabled(textInput, isPresenceModifier(modifier));
+}
+
+export function toggleNumberFilterInput(root: HTMLElement, modifier: string): void {
+  const presence = isPresenceModifier(modifier);
+  root
+    .querySelectorAll<HTMLInputElement>('input[type="number"]')
+    .forEach((input) => setInputDisabled(input, presence));
+  const value2 = root.querySelector<HTMLInputElement>("[data-number-value2]");
+  if (value2) value2.classList.toggle("hidden", presence || !isRangeModifier(modifier));
+}
+
+// Wires the modifier toggles under `root`.
 export function setupModifierToggles(root: HTMLElement): void {
-  root.addEventListener("change", (event) => {
+  root.addEventListener("search-select:change", (event) => {
     const target = event.target as Element;
-    if (target.matches("select[data-string-modifier-select]")) {
-      toggleStringFilterInput(target as HTMLSelectElement);
-    } else if (target.matches("select[data-number-modifier-select]")) {
-      toggleNumberFilterInput(target as HTMLSelectElement);
+    const widget = widgetRoot(target);
+    if (!widget) return;
+    if (isChoicePick(event, STRING_MODIFIER)) {
+      const modifier = choiceControl(widget, STRING_MODIFIER)?.read();
+      if (modifier) toggleStringFilterInput(widget, modifier);
+    } else if (isChoicePick(event, NUMBER_MODIFIER)) {
+      const modifier = choiceControl(widget, NUMBER_MODIFIER)?.read();
+      if (modifier) toggleNumberFilterInput(widget, modifier);
     }
   });
 }
@@ -267,12 +267,10 @@ export function setupModifierToggles(root: HTMLElement): void {
 // delegated onValueEvent once attached — so the modifier toggle helpers are
 // called directly instead of relying on the delegated change listener.
 
-// Select `modifier` in a modifier <select> — only when a matching <option>
-// exists, so a malformed stored modifier can't clobber the default selection.
-function selectModifier(select: HTMLSelectElement | null, modifier: unknown): void {
-  if (!select || typeof modifier !== "string" || modifier === "") return;
-  const match = [...select.options].some((option) => option.value === modifier);
-  if (match) select.value = modifier;
+// A malformed stored modifier keeps the default.
+function writeModifier(element: HTMLElement, marker: string, modifier: unknown): void {
+  if (typeof modifier !== "string" || modifier === "") return;
+  choiceControl(element, marker)?.write(modifier);
 }
 
 function scalarToInputValue(value: unknown): string {
@@ -281,22 +279,22 @@ function scalarToInputValue(value: unknown): string {
 }
 
 export function writeStringWidget(element: HTMLElement, criterion: Record<string, unknown>): void {
-  const select = element.querySelector<HTMLSelectElement>("select[data-string-modifier-select]");
-  selectModifier(select, criterion["modifier"]);
-  if (select) toggleStringFilterInput(select);
+  writeModifier(element, STRING_MODIFIER, criterion["modifier"]);
   const modifier = stringModifier(element);
+  if (modifier === null) return;
+  toggleStringFilterInput(element, modifier);
   if (isPresenceModifier(modifier)) return; // presence carries no value; input stays disabled+empty
-  const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
+  const textInput = element.querySelector<HTMLInputElement>(STRING_VALUE);
   // Trimmed like the read side (readStringWidget), so hydrate → serialize is stable.
   const value = scalarToInputValue(criterion["value"]).trim();
   if (textInput && value !== "") textInput.value = value;
 }
 
 export function writeNumberWidget(element: HTMLElement, criterion: Record<string, unknown>): void {
-  const select = element.querySelector<HTMLSelectElement>("select[data-number-modifier-select]");
-  selectModifier(select, criterion["modifier"]);
-  if (select) toggleNumberFilterInput(select); // reveals value2 for BETWEEN, disables for presence
-  const modifier = select?.value ?? "EQUALS";
+  writeModifier(element, NUMBER_MODIFIER, criterion["modifier"]);
+  const modifier = numberModifier(element);
+  if (modifier === null) return;
+  toggleNumberFilterInput(element, modifier); // reveals value2 for BETWEEN, disables for presence
   if (isPresenceModifier(modifier)) return;
   const valueInput = element.querySelector<HTMLInputElement>(
     'input[type="number"]:not([data-number-value2])',

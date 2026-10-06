@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { DropdownElement } from "../drop-down.js";
 import "../drop-down.js"; // registers <drop-down> + the built-in behaviors
 import "../search-select.js";
+import { choicePickerHtml } from "../../test-setup/choice-picker.js";
 
 Element.prototype.scrollIntoView = () => {};
 
@@ -106,5 +107,28 @@ describe("combobox dropdown behavior (#297)", () => {
 
     const detached = document.createElement("drop-down");
     expect(() => detached.close()).not.toThrow();
+  });
+
+  it("leaves a nested field picker closed and unfocused on open", () => {
+    const host = document.createElement("drop-down");
+    host.setAttribute("behavior", "combobox");
+    host.setAttribute("placement", "bottom-start");
+    host.setAttribute("submenu", "false");
+    host.innerHTML = `
+      <button data-toggle aria-expanded="false" type="button">Year</button>
+      <div data-menu popover="manual" hidden role="dialog" aria-label="Year">
+        ${choicePickerHtml({
+          name: "year-modifier",
+          rows: [{ value: "EQUALS", label: "is" }],
+          held: "EQUALS",
+        })}
+        <input type="number" />
+      </div>
+    `;
+    document.body.appendChild(host);
+    toggleOf(host).click();
+    const nested = host.querySelector<HTMLElement>("search-select")!;
+    expect(document.activeElement).not.toBe(inputOf(host));
+    expect(nested.querySelector<HTMLElement>("[data-search-select-panel]")!.hidden).toBe(true);
   });
 });

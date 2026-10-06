@@ -15,9 +15,7 @@ from common.components.primitives import (
     Div,
     FilterWidgetPath,
     Input,
-    Option,
     Radio,
-    Select,
     Template,
     filter_widget_attributes,
 )
@@ -517,12 +515,17 @@ class FieldComparisonRow(NamedTuple):
     )
 
 
-# The quantifier <select> options for a multi-valued comparison (#282), mirroring
-# the RelationMatch labels used by the relation-node picker.
-_QUANTIFIER_OPTIONS: tuple[LabeledOption, ...] = (
+# Picker widths; the native selects sized to content.
+_OPERATOR_WIDTH = "w-40"
+_QUANTIFIER_WIDTH = "w-28"
+_RELATION_MATCH_WIDTH = "w-28"
+_RELATION_FIELD_WIDTH = "w-48"
+
+#: Every quantifier's choices.
+RELATION_MATCH_CHOICES: tuple[LabeledOption, ...] = (
     ("ANY", "any"),
-    ("ALL", "all"),
     ("NONE", "none"),
+    ("ALL", "all"),
 )
 
 
@@ -598,16 +601,13 @@ def _fc_operand(
 def _field_comparison_row(
     columns: list[ComparableColumn],
     row: FieldComparisonRow | None,
-    select_class: str,
 ) -> Node:
     """One ``left <op> right ✕`` row. ``row=None`` is the blank template row.
 
-    Left and right operands are searchable SearchSelect comboboxes; the operator
-    and quantifier stay plain ``<select>``s (short lists). The operator/quantifier
-    saved values are stashed in ``data-selected`` — ts/elements/field-comparison-set.ts
-    builds the operator options from the left column's group, repopulates the
-    right combobox, and restores selections. This is the reusable single-row
-    unit."""
+    Every control is a picker. The operator and quantifier stash their saved
+    values in ``data-selected``; ts/elements/field-comparison-set.ts builds the
+    operator rows from the left column's group, repopulates the right
+    operand, and restores both. This is the reusable single-row unit."""
     left_value = row.left if row else ""
     operator_value = _pack_operator(row.modifier, row.granularity) if row else ""
     right_value = row.right if row else ""
@@ -624,16 +624,31 @@ def _field_comparison_row(
         # alignment; the quantifier is hidden until an operand is multi-valued
         # (#282), toggled by ts/elements/field-comparison-set.ts.
         Div(class_="flex gap-2 items-center")[
-            Select(data_fc_op="", data_selected=operator_value, class_=select_class),
-            Select(
+            Div(data_fc_op="", data_selected=operator_value, class_=_OPERATOR_WIDTH)[
+                ChoicePicker(
+                    marker=None,
+                    name="fc-op",
+                    choices=[],
+                    aria_label="Operator",
+                    placeholder="—",
+                    width_class="w-full",
+                    dynamic=True,
+                )
+            ],
+            Div(
                 data_fc_quantifier="",
                 data_selected=quantifier_value,
-                aria_label="Quantifier",
-                class_=f"hidden {select_class}",
+                class_=f"hidden {_QUANTIFIER_WIDTH}",
             )[
-                # Selection is restored client-side from ``data-selected`` (like the
-                # operator select), so the options render unmarked.
-                *(Option(value=value)[label] for value, label in _QUANTIFIER_OPTIONS)
+                # The client restores ``data-selected``.
+                ChoicePicker(
+                    marker=None,
+                    name="fc-quantifier",
+                    choices=RELATION_MATCH_CHOICES,
+                    selected="ANY",
+                    aria_label="Quantifier",
+                    width_class="w-full",
+                )
             ],
         ],
         _fc_operand(
@@ -663,10 +678,8 @@ def comparison_row_template(
     connective. The row's own ``✕`` remove button is dropped client-side — the
     group's controls own removal. ``model`` tags the template ``data-model`` so
     the multi-model builder buckets it by model."""
-    from games.forms import SELECT_CLASS
-
     return Template(data_fc_row_template="", **_model_attr(model))[
-        _field_comparison_row(columns, None, SELECT_CLASS)
+        _field_comparison_row(columns, None)
     ]
 
 
@@ -703,16 +716,6 @@ _CHIP_STATE_CLASSES: dict[ChipState, str] = {
     ),
 }
 
-# No horizontal padding: @tailwindcss/forms styles bare <select> with
-# appearance:none, a right-anchored chevron, and the right padding (~2.5rem) that
-# clears it. A px-*/pr-* utility can't beat the plugin rule for the right side;
-# px-* only overrides it symmetrically, shrinking it so the label ("any") ends up
-# under the chevron. Set only vertical padding here.
-_RELATION_SELECT_CLASS = (
-    "rounded-base border border-default-medium bg-neutral-secondary-medium py-1 "
-    "text-type-input disabled:opacity-50 disabled:cursor-not-allowed"
-)
-
 
 def chip_templates() -> list[Node]:
     """The nested builder's connective/NOT chip templates, one per state (#273).
@@ -730,14 +733,36 @@ def chip_templates() -> list[Node]:
     ]
 
 
-def relation_select_template() -> Node:
-    """The nested builder's quantifier/relation-field ``<select>`` template (#273).
+def relation_match_template() -> Node:
+    """The nested builder's ANY/NONE/ALL relation picker."""
+    return Template(data_relation_match_template="")[
+        ChoicePicker(
+            marker="data-relation-match",
+            name="relation-match",
+            choices=RELATION_MATCH_CHOICES,
+            selected="ANY",
+            aria_label="Relation match",
+            width_class=_RELATION_MATCH_WIDTH,
+        )
+    ]
 
-    One blank styled ``<select>``; the client clones it for both the ANY/NONE/ALL
-    quantifier picker and the relation-field picker, then appends its own
-    ``<option>``s (they are data, not styling)."""
-    return Template(data_relation_select_template="")[
-        Select(class_=_RELATION_SELECT_CLASS)
+
+def relation_field_template(filter_cls: type[OperatorFilter], *, model: str) -> Node:
+    """One model's relation-field picker."""
+    choices = [
+        (meta["name"], meta["label"])
+        for meta in field_metadata(filter_cls)
+        if meta["kind"] == "relation"
+    ]
+    return Template(data_relation_field_template="", **_model_attr(model))[
+        ChoicePicker(
+            marker="data-relation-field",
+            name="relation-field",
+            choices=choices,
+            aria_label="Relation",
+            placeholder="a relation…",
+            width_class=_RELATION_FIELD_WIDTH,
+        )
     ]
 
 
@@ -758,6 +783,44 @@ def _find_label(options: list[LabeledOption], value: str) -> str:
         if str(v) == str(value):
             return label
     return value
+
+
+#: The marker a filter control's picker carries.
+type ChoiceMarker = str  # e.g. "data-fc-op"
+
+
+def ChoicePicker(
+    *,
+    marker: ChoiceMarker | None,
+    name: str,
+    choices: Sequence[LabeledOption],
+    selected: str = "",
+    aria_label: str,
+    placeholder: str = "Choose…",
+    width_class: str = "w-full",
+    dynamic: bool = False,
+) -> Node:
+    """One filter control's single-choice picker.
+
+    ``marker`` None: the caller's wrapper carries it.
+    """
+    options = [
+        SearchSelectOption(value=value, label=label, data={})
+        for value, label in choices
+    ]
+    held = [option for option in options if option["value"] == selected]
+    picker = SearchSelect(
+        name=name,
+        options=options,
+        selected=held,
+        placeholder=placeholder,
+        clearable=False,
+        revert_on_leave=True,
+        dynamic_options=dynamic,
+        search_aria_label=aria_label,
+        host_data={marker: ""} if marker else None,
+    )
+    return Div(class_=width_class)[picker]
 
 
 #: One label per string modifier, in order.
@@ -782,7 +845,7 @@ def StringFilter(
     path: FilterWidgetPath,
     modifiers: Sequence[ModifierToken] | None = None,
 ) -> Node:
-    """A modifier ``<select>`` and a text input.
+    """A modifier picker and a text input.
 
     ``modifiers`` is the field's own vocabulary, read off ``FieldMeta``. A field
     states fewer modes than the eight a string shape allows: a non-nullable
@@ -790,33 +853,25 @@ def StringFilter(
     drops the pair too. A mode the server refuses builds a filter that cannot
     apply.
     """
-    from games.forms import SELECT_CLASS
-
     offered = list(modifiers) if modifiers else list(STRING_MODIFIER_LABELS)
     if modifier not in offered:
         modifier = offered[0]
 
     options = [(token, STRING_MODIFIER_LABELS[token]) for token in offered]
 
-    # A compact modifier dropdown: one control reads well both as a quick-bar
-    # facet and nested in the filter builder's tree.
-    modifier_select = Select(
-        [
-            ("name", f"{input_name_prefix}-modifier"),
-            ("data-string-modifier-select", ""),
-            ("class", SELECT_CLASS),
-        ]
-    )[
-        *[
-            Option(value=mod_val, selected=(modifier == mod_val))[lbl]
-            for mod_val, lbl in options
-        ]
-    ]
+    modifier_select = ChoicePicker(
+        marker="data-string-modifier-select",
+        name=f"{input_name_prefix}-modifier",
+        choices=options,
+        selected=modifier,
+        aria_label="Match mode",
+    )
 
     input_disabled = modifier in ("IS_NULL", "NOT_NULL")
 
     input_attrs = [
         ("type", "text"),
+        ("data-string-value", ""),
         ("name", input_name_prefix),
         ("value", value if not input_disabled else ""),
         ("placeholder", placeholder),
@@ -878,7 +933,7 @@ def NumberFilter(
     path: FilterWidgetPath,
     modifiers: Sequence[ModifierToken] | None = None,
 ) -> Node:
-    """A modifier ``<select>`` and two number inputs.
+    """A modifier picker and two number inputs.
 
     Modeled 1:1 on :func:`StringFilter`, ``modifiers`` included. A column that
     cannot be NULL states no presence pair, and neither does a ``count``, which
@@ -888,26 +943,19 @@ def NumberFilter(
     range one. Initial state is server-rendered, so the widget never flashes
     before its JS runs.
     """
-    from games.forms import SELECT_CLASS
-
     offered = list(modifiers) if modifiers else list(NUMBER_MODIFIER_LABELS)
     if modifier not in offered:
         modifier = offered[0]
 
     options = [(token, NUMBER_MODIFIER_LABELS[token]) for token in offered]
 
-    modifier_select = Select(
-        [
-            ("name", f"{input_name_prefix}-modifier"),
-            ("data-number-modifier-select", ""),
-            ("class", SELECT_CLASS),
-        ]
-    )[
-        *[
-            Option(value=mod_val, selected=(modifier == mod_val))[lbl]
-            for mod_val, lbl in options
-        ]
-    ]
+    modifier_select = ChoicePicker(
+        marker="data-number-modifier-select",
+        name=f"{input_name_prefix}-modifier",
+        choices=options,
+        selected=modifier,
+        aria_label="Comparison",
+    )
 
     inputs_disabled = modifier in ("IS_NULL", "NOT_NULL")
     second_shown = modifier in ("BETWEEN", "NOT_BETWEEN")

@@ -115,7 +115,9 @@ class TestFieldWidgetKindDispatch:
             if meta["kind"] != kind:
                 continue
             html = str(field_widget(filter_cls, meta["name"]))
-            rendered = re.findall(r'<option value="([A-Z_]+)"', html)
+            rendered = re.findall(
+                r'data-search-select-option="" data-value="([A-Z_]+)"', html
+            )
             assert rendered == list(meta["modifiers"]), meta["name"]
 
     def test_a_count_aggregate_offers_no_presence_modifier(self):
