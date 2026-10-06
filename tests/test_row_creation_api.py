@@ -7,6 +7,7 @@ form's, which is the form the add page runs.
 import pytest
 from devices import create_device
 
+from games.forms import platform_option
 from games.models import Device, Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -40,7 +41,8 @@ def test_a_platform_is_created_private_to_the_library(client, user):
     assert response.status_code == 201
     platform = Platform.objects.get(name="Arcade")
     assert platform.library_id == user.library.pk
-    assert response.json() == {"value": str(platform.pk), "label": "Arcade"}
+    option = platform_option(platform)
+    assert response.json() == {"value": option["value"], "label": option["label"]}
 
 
 def test_a_created_platform_starts_unspecified(client, user):

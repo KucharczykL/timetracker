@@ -11,7 +11,6 @@ header row stands over the columns. The header and the cards are
 separate grids, thus both declare `EDITION_COLUMNS`.
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final, Literal, get_args
 
@@ -40,11 +39,14 @@ from games.catalog_form import (
     EDITION_COUNT_FIELD,
     EDITION_PLACEHOLDER,
     MARK_FIELD,
+    NO_PLATFORM_KEY,
     RELEASE_PLACEHOLDER,
     CatalogGraphForm,
     EditionBlock,
+    PlatformNames,
     ReleaseRowForm,
     RowIndex,
+    platform_key,
     release_count_field,
     release_prefix,
     removal_stated,
@@ -55,9 +57,7 @@ CatalogEditor = custom_element_builder("catalog-editor")
 
 #: Radio, platform, date, removal — once the block is wide enough.
 #: A fixed first column so the header labels sit over their own controls.
-EDITION_COLUMNS: Final[str] = (
-    "@2xl/edition:grid-cols-[5.5rem_minmax(0,13rem)_minmax(0,1fr)_auto]"
-)
+EDITION_COLUMNS: Final[str] = "@2xl/edition:grid-cols-[5.5rem_minmax(0,1fr)_11rem_auto]"
 
 #: Visible on a narrow card, named-but-unseen once the headers appear.
 NARROW_LABEL_CLASS: Final[str] = f"{FORM_LABEL_CLASS} @2xl/edition:sr-only"
@@ -223,9 +223,11 @@ def _field_cell(field: BoundField, placement: str) -> Node:
     )
 
 
-def _platform_name(row: ReleaseRowForm, platforms: Mapping[str, str]) -> str:
-    """Bound value's option text, else empty option's."""
-    return platforms.get(str(row["platform"].value() or ""), platforms[""])
+def _platform_name(row: ReleaseRowForm, platforms: PlatformNames) -> str:
+    """The bound value's picker label, else Unspecified."""
+    return platforms.get(
+        platform_key(row["platform"].value()), platforms[NO_PLATFORM_KEY]
+    )
 
 
 def _edition_name(block: EditionBlock) -> str:
@@ -238,7 +240,7 @@ def _release_card(
     index: RowIndex,
     value: str,
     chosen: bool,
-    platforms: Mapping[str, str],
+    platforms: PlatformNames,
 ) -> Node:
     platform = _platform_name(row, platforms)
     return ChoiceCard(
@@ -292,7 +294,7 @@ def _edition_block(
     block: EditionBlock,
     index: RowIndex,
     mark: str,
-    platforms: Mapping[str, str],
+    platforms: PlatformNames,
 ) -> Node:
     rows = [
         _release_card(
@@ -324,7 +326,7 @@ def _edition_block(
     ]
 
 
-def _templates(graph: CatalogGraphForm, platforms: Mapping[str, str]) -> Node:
+def _templates(graph: CatalogGraphForm, platforms: PlatformNames) -> Node:
     """The two blank rows the browser numbers and appends.
 
     The server states this markup once. `renumbered()` puts the row's

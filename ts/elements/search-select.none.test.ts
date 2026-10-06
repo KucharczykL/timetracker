@@ -9,6 +9,7 @@ import type { SearchSelectChangeDetail, SearchSelectOption } from "./search-sele
 Element.prototype.scrollIntoView = () => {};
 
 interface NoneHost extends HTMLElement {
+  readonly wired: boolean;
   setSelected(value: string, label?: string): void;
   setOptions(options: SearchSelectOption[]): void;
 }
@@ -405,5 +406,32 @@ describe("<search-select> without a none label", () => {
     host.querySelector<HTMLElement>('[data-value="2"]')!.click();
     expect(changes(events).map(change => change.none)).toEqual([false, false]);
     expect(hiddenInputs(host).map(input => input.value)).toEqual(["2"]);
+  });
+});
+
+describe("<search-select> heldLabel", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const label = (host: HTMLElement) =>
+    (host as HTMLElement & { heldLabel(): string | null }).heldLabel();
+
+  it("answers the held row's label", () => {
+    expect(label(mount({ held: { value: "1", label: "Deck" } }))).toBe("Deck");
+  });
+
+  it("answers the none label for none", () => {
+    expect(label(mount())).toBe("No device");
+  });
+
+  it("answers null once typing drops the value", () => {
+    const host = mount({ held: { value: "1", label: "Deck" } });
+    type(host, "S");
+    expect(label(host)).toBeNull();
+  });
+
+  it("refuses to answer before it is wired", () => {
+    const host = build();
+    expect(host.wired).toBe(false);
+    expect(() => label(host)).toThrow(/not initialised/);
   });
 });

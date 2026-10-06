@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { hosted } from "../test-setup/search-select-host.js";
 import { filled, renumbered } from "./catalog-editor.js";
 import "./catalog-editor.js";
+
+Element.prototype.scrollIntoView = () => {};
 
 describe("renumbered", () => {
   it("rewrites the edition index in every posted name", () => {
@@ -63,7 +66,9 @@ const PAGE = `
       <input type="radio" data-choice-card name="in_library" value="edition-__edition__-release-__release__">
       <input type="hidden" name="edition-__edition__-release-__release__-removed">
       <button type="button" data-catalog-remove></button>
-      <select name="edition-__edition__-release-__release__-platform"></select>
+      <search-select name="edition-__edition__-release-__release__-platform">
+        <input data-search-select-search id="id_edition-__edition__-release-__release__-platform">
+      </search-select>
     </div>
   </template>
   <template data-catalog-template="edition">
@@ -96,7 +101,7 @@ it("appends a release row and bumps that edition's count", () => {
   const rows = document.querySelectorAll("[data-catalog-edition] [data-catalog-release]");
   expect(rows.length).toBe(2);
   expect(value("edition-0-releases-count")).toBe("2");
-  expect(document.querySelector('select[name="edition-0-release-1-platform"]')).not.toBeNull();
+  expect(document.querySelector('search-select[name="edition-0-release-1-platform"]')).not.toBeNull();
   // The mark is one group over the whole game, so the new row can take it.
   expect(
     document.querySelector<HTMLInputElement>('input[value="edition-0-release-1"]')!.name,
@@ -118,7 +123,20 @@ it("numbers a second added row after the first", () => {
   click('[data-catalog-add="release"]');
 
   expect(value("edition-0-releases-count")).toBe("3");
-  expect(document.querySelector('select[name="edition-0-release-2-platform"]')).not.toBeNull();
+  expect(document.querySelector('search-select[name="edition-0-release-2-platform"]')).not.toBeNull();
+});
+
+it("gives each cloned picker its own id", () => {
+  click('[data-catalog-add="release"]');
+  click('[data-catalog-add="release"]');
+
+  const ids = Array.from(
+    document.querySelectorAll<HTMLInputElement>("[data-catalog-release] [data-search-select-search]"),
+  ).map(input => input.id);
+  expect(ids).toEqual([
+    "id_edition-0-release-1-platform",
+    "id_edition-0-release-2-platform",
+  ]);
 });
 
 it("states a removed release rather than detaching it", () => {
@@ -226,28 +244,76 @@ const NAMED = `
         aria-label="Remove the Amiga release" title="Remove the Amiga release"
         data-catalog-name="Remove the {} release" data-catalog-name-of="platform"></button>
       <input name="edition-0-release-0-release_date-year" value="1984">
-      <select name="edition-0-release-0-platform">
-        <option value="">Unspecified</option>
-        <option value="a" selected>Amiga</option>
-        <option value="d">DOS</option>
-        <option value="p">PS$&amp;</option>
-      </select>
+      <span data-platform-picker></span>
     </div>
   </fieldset>
 </catalog-editor>`;
 
+const PLATFORMS: Record<string, string> = { a: "Amiga", d: "DOS", p: "PS$&" };
+
+/** The platform picker, as the server draws it. */
+function picker(held: string, name = "edition-0-release-0-platform"): HTMLElement {
+  const element = document.createElement("search-select");
+  element.setAttribute("name", name);
+  element.setAttribute("multi", "false");
+  element.setAttribute("none-label", "Unspecified");
+  const rows = Object.entries(PLATFORMS)
+    .map(
+      ([key, label]) =>
+        `<div data-search-select-option role="option" data-value="${key}"><span data-search-select-label></span></div>`,
+    )
+    .join("");
+  const pill = held
+    ? `<input type="hidden" name="${name}" value="${held}">`
+    : `<input type="hidden" name="${name}" value="" data-search-select-none>`;
+  element.innerHTML = `
+    <div data-search-select-pills>${pill}</div>
+    <input data-search-select-search>
+    <div data-search-select-options hidden>
+      <div role="option" data-search-select-none-option data-label="Unspecified"><span>Unspecified</span></div>
+      ${rows}
+      <div data-search-select-no-results class="hidden">No results</div>
+    </div>`;
+  element.querySelector<HTMLInputElement>("[data-search-select-search]")!.value = held
+    ? PLATFORMS[held]
+    : "Unspecified";
+  for (const row of element.querySelectorAll<HTMLElement>("[data-search-select-option]")) {
+    const label = PLATFORMS[row.dataset.value!];
+    row.dataset.label = label;
+    row.querySelector("span")!.textContent = label;
+  }
+  return hosted(element);
+}
+
+/** NAMED, its picker holding `held`. */
+function mountNamed(held = "a", markup = NAMED): void {
+  document.body.innerHTML = markup;
+  document.querySelector("[data-platform-picker]")?.replaceWith(picker(held));
+}
+
 describe("names", () => {
-  beforeEach(() => {
-    document.body.innerHTML = NAMED;
-  });
+  beforeEach(() => mountNamed());
 
   const release = '[data-catalog-release="0"]';
   const edition = '[data-catalog-edition="0"]';
 
+  function platformBox(): HTMLInputElement {
+    return document.querySelector<HTMLInputElement>(
+      `${release} [data-search-select-search]`,
+    )!;
+  }
+
   function choose(key: string): void {
-    const select = document.querySelector<HTMLSelectElement>(`${release} select`)!;
-    select.value = key;
-    select.dispatchEvent(new Event("input", { bubbles: true }));
+    platformBox().focus();
+    const row = key
+      ? `[data-search-select-option][data-value="${key}"]`
+      : "[data-search-select-none-option]";
+    document.querySelector<HTMLElement>(`${release} ${row}`)!.click();
+  }
+
+  function typePlatform(text: string): void {
+    platformBox().value = text;
+    platformBox().dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   function typeName(name: string): void {
@@ -274,6 +340,16 @@ describe("names", () => {
   it("keeps a dollar sign in a platform literal", () => {
     choose("p");
     expect(markText()).toBe("Show the PS$& release in the library");
+  });
+
+  it("names a release with no platform as unspecified", () => {
+    choose("");
+    expect(markText()).toBe("Show the Unspecified release in the library");
+  });
+
+  it("keeps the name while a platform is being typed", () => {
+    typePlatform("D");
+    expect(markText()).toBe("Show the Amiga release in the library");
   });
 
   it("names an edition by what is typed in it, and leaves its releases", () => {
@@ -307,48 +383,52 @@ describe("names", () => {
     afterEach(() => error.mockClear());
 
     it("leaves a hook without a pattern alone, and says so", () => {
-      document.body.innerHTML = NAMED.replace(
-        ' data-catalog-name="Remove the {} release"',
-        "",
-      );
+      mountNamed("a", NAMED.replace(' data-catalog-name="Remove the {} release"', ""));
       choose("d");
       expect(bin(release).getAttribute("aria-label")).toBe("Remove the Amiga release");
       expect(error).toHaveBeenCalled();
     });
 
-    it("says so when a named row has no control", () => {
+    it("keeps the server's name while the picker is unwired", () => {
       document.body.innerHTML = NAMED.replace(
-        'name="edition-0-release-0-platform"',
-        'name="edition-0-release-0-shape"',
+        "<span data-platform-picker></span>",
+        '<search-select name="edition-0-release-0-platform"></search-select>',
       );
+      error.mockClear();
+      window.dispatchEvent(new Event("pageshow"));
+      expect(markText()).toBe("Show the Amiga release in the library");
+      expect(error).not.toHaveBeenCalledWith(
+        expect.stringContaining("<catalog-editor>"),
+        expect.anything(),
+      );
+    });
+
+    it("says so when a named row has no control", () => {
+      document.body.innerHTML = NAMED;
       expect(markText()).toBe("Show the Amiga release in the library");
       expect(error).toHaveBeenCalled();
     });
   });
 
-  it("renames after a late restore, on pageshow", () => {
-    // Chromium restores late, firing no input.
-    document.querySelector<HTMLSelectElement>(`${release} select`)!.value = "d";
+  it("renames on pageshow", () => {
+    const element = document.querySelector<HTMLElement & { holdValue(value: string): boolean }>(
+      `${release} search-select`,
+    )!;
+    // A silent hold fires no change.
+    element.holdValue("d");
     window.dispatchEvent(new Event("pageshow"));
     expect(markText()).toBe("Show the DOS release in the library");
   });
 
   it("stops listening for pageshow once removed", () => {
     const editor = document.querySelector("catalog-editor")!;
+    const element = editor.querySelector<HTMLElement & { holdValue(value: string): boolean }>(
+      `${release} search-select`,
+    )!;
     editor.remove();
-    editor.querySelector<HTMLSelectElement>(`${release} select`)!.value = "d";
+    element.holdValue("d");
     window.dispatchEvent(new Event("pageshow"));
     const mark = editor.querySelector(`${release} span[data-catalog-name]`)!;
     expect(mark.textContent).toBe("Show the Amiga release in the library");
-  });
-
-  it("corrects a stale name on arrival", () => {
-    // As a browser restores a changed select.
-    document.body.innerHTML = NAMED.replace(
-      '<option value="a" selected>Amiga</option>',
-      '<option value="a">Amiga</option>',
-    ).replace('<option value="d">DOS</option>', '<option value="d" selected>DOS</option>');
-    expect(markText()).toBe("Show the DOS release in the library");
-    expect(bin(release).getAttribute("aria-label")).toBe("Remove the DOS release");
   });
 });

@@ -10,8 +10,9 @@ from django.urls import reverse
 
 from common.components.primitives import SECTION_SURFACE_CLASS
 from games.catalog_compat import mirror_legacy_columns
-from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
+from games.catalog_form import LAST_RELEASE, MOST_ROWS, PLATFORM_GONE, TOO_MANY_ROWS
 from games.models import Edition, Game, LibraryEvent, Platform, PlayerGame, Release
+from games.removal import remove
 from games.views.catalog_section import _Name
 from timetracker.temporal import TemporalValue
 
@@ -262,7 +263,7 @@ def test_a_bad_row_leaves_the_rows_after_it_readable(
     )
 
     assert response.status_code == 200
-    assert "Select a valid choice" in response.content.decode()
+    assert PLATFORM_GONE in response.content.decode()
 
 
 def test_add_game_draws_the_same_area(logged_in):
@@ -630,6 +631,77 @@ def test_a_refused_page_names_what_the_person_posted(
     assert ">Show the Unspecified release in the library</span>" in body
     assert ">Gold</legend>" in body
     assert 'aria-label="Remove the Gold edition"' in body
+
+
+def _one_release_post(edition, release, platform: str) -> dict[str, str]:
+    return {
+        "name": "Portal",
+        "status": "played",
+        "reference_wikidata": "",
+        "editions-count": "1",
+        "edition-0-edition_id": str(edition.pk),
+        "edition-0-name": "",
+        "edition-0-releases-count": "1",
+        "edition-0-release-0-release_id": str(release.pk),
+        "edition-0-release-0-platform": platform,
+        "in_library": "edition-0-release-0",
+    }
+
+
+def test_a_removed_stored_platform_is_named_and_kept(
+    logged_in, owned_library, plain_game
+):
+    amiga = Platform.objects.create(library=owned_library, name="Amiga")
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = edition.releases.get(is_default=True)
+    Release.objects.filter(pk=release.pk).update(platform=amiga)
+    remove(amiga)
+
+    body = live(page(logged_in, plain_game))
+    response = logged_in.post(
+        edit_url(plain_game), _one_release_post(edition, release, str(amiga.pk))
+    )
+
+    assert ">Show the Amiga (removed) release in the library</span>" in body
+    assert response.status_code == 302
+    release.refresh_from_db()
+    assert release.platform == amiga
+
+
+def test_a_refused_page_names_no_foreign_platform(
+    logged_in, owned_library, plain_game, django_user_model
+):
+    other = django_user_model.objects.create_user(username="other", password="p")
+    hidden = Platform.objects.create(library=other.library, name="Hidden")
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = edition.releases.get(is_default=True)
+
+    response = logged_in.post(
+        edit_url(plain_game), _one_release_post(edition, release, str(hidden.pk))
+    )
+
+    assert response.status_code == 200
+    assert "Hidden" not in response.content.decode()
+
+
+def test_a_posted_key_in_another_spelling_is_named(
+    logged_in, owned_library, plain_game
+):
+    dos = Platform.objects.create(library=owned_library, name="DOS")
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = edition.releases.get(is_default=True)
+    posted = _one_release_post(edition, release, str(dos.pk).upper())
+    #: An unnamed second edition refuses the page.
+    posted |= {
+        "editions-count": "2",
+        "edition-1-name": "",
+        "edition-1-releases-count": "1",
+        "edition-1-release-0-platform": "",
+    }
+
+    body = live(logged_in.post(edit_url(plain_game), posted).content.decode())
+
+    assert ">Show the DOS release in the library</span>" in body
 
 
 def test_a_blank_edition_name_is_unnamed(logged_in, plain_game):

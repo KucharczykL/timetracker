@@ -119,8 +119,17 @@ def release_card(page: Page, edition: int, release: int) -> Locator:
     )
 
 
+def platform_picker(card: Locator) -> Locator:
+    return card.locator("search-select[name$='-platform']")
+
+
 def choose_platform(card: Locator, name: str) -> None:
-    card.locator("select[name$='-platform']").select_option(label=name)
+    """Search the row's picker; pick by label."""
+    picker = platform_picker(card)
+    search = picker.locator("[data-search-select-search]")
+    search.click()
+    search.fill(name)
+    picker.locator(f'[data-search-select-option][data-label="{name}"]').click()
 
 
 def type_year(card: Locator, year: str) -> None:
@@ -502,8 +511,10 @@ def radio_named(scope: Locator, platform: str) -> Locator:
     )
 
 
-def test_a_restored_value_is_named_on_arrival(signed_in, live_server, game, dos):
-    """Back: the browser restores; the element renames."""
+def test_back_shows_the_stored_platform_and_names_it(
+    signed_in, live_server, game, amiga, dos
+):
+    """Back restores no pick; the stored one stands."""
     page = signed_in
     open_form(page, live_server, game)
     choose_platform(release_card(page, 0, 0), "DOS")
@@ -518,12 +529,60 @@ def test_a_restored_value_is_named_on_arrival(signed_in, live_server, game, dos)
         page.evaluate("performance.getEntriesByType('navigation')[0].type")
         == "back_forward"
     )
-    expect(card.locator("select[name$='-platform']")).to_have_value(str(dos.pk))
-    expect(radio_named(card, "DOS")).to_be_visible()
+    picker = platform_picker(card)
+    expect(picker.locator("[data-search-select-search]")).to_have_value("Amiga")
+    expect(picker.locator("[data-search-select-pills] input")).to_have_value(
+        str(amiga.pk)
+    )
+    expect(radio_named(card, "Amiga")).to_be_visible()
     expect(
-        card.get_by_role("button", name="Remove the DOS release", exact=True)
+        card.get_by_role("button", name="Remove the Amiga release", exact=True)
     ).to_be_visible()
     expect(page.locator("[data-catalog-edition='0']")).to_have_accessible_name("Gold")
+
+
+def test_a_cloned_row_creates_a_platform_from_its_create_row(
+    signed_in, live_server, game, amiga, e2e_library
+):
+    """Typed, created, named; one submit."""
+    page = signed_in
+    open_form(page, live_server, game)
+    page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
+    added = release_card(page, 0, 1)
+    search = platform_picker(added).locator("[data-search-select-search]")
+    search.click()
+    search.fill("Atari ST")
+    platform_picker(added).locator("[data-search-select-create]").click()
+
+    expect(radio_named(added, "Atari ST")).to_be_visible()
+    saved(page, live_server)
+
+    created = Platform.objects.get(library=e2e_library, name="Atari ST")
+    releases = live_releases(default_edition(game))
+    assert [release.platform for release in releases] == [amiga, created]
+
+
+def test_a_cloned_row_creates_a_platform_in_a_dialog(
+    signed_in, live_server, game, amiga, e2e_library
+):
+    """The + opens Add Platform; its row lands."""
+    page = signed_in
+    open_form(page, live_server, game)
+    page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
+    added = release_card(page, 0, 1)
+    platform_picker(added).get_by_role("link", name="New platform").click()
+    dialog = page.locator("dialog[data-modal][open]")
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Add New Platform")
+    dialog.locator('input[name="name"]').fill("Atari ST")
+    dialog.get_by_role("button", name="Submit", exact=True).click()
+
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+    expect(radio_named(added, "Atari ST")).to_be_visible()
+    saved(page, live_server)
+
+    created = Platform.objects.get(library=e2e_library, name="Atari ST")
+    releases = live_releases(default_edition(game))
+    assert [release.platform for release in releases] == [amiga, created]
 
 
 def test_a_refused_page_names_the_posted_platform(signed_in, live_server, game, dos):

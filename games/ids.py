@@ -10,3 +10,5 @@ type PlaythroughId = uuid.UUID
 type HistoricalPlaytimeId = uuid.UUID
 type PlayerSessionId = uuid.UUID
 type ReleaseId = uuid.UUID
+#: A platform's key.
+type PlatformId = uuid.UUID
