@@ -155,12 +155,52 @@ def test_a_release_row_takes_no_platform_as_a_fact(owned_library):
     assert form.cleaned_data["platform"] is None
 
 
-def test_a_release_row_renders_a_plain_select_not_a_combobox(owned_library):
-    """A cloned row cannot rewrite a composite widget's wrapper id."""
+def test_a_release_row_renders_a_platform_picker_with_both_creates(owned_library):
     rendered = str(release_row(library=owned_library)["platform"])
 
-    assert "<select" in rendered
-    assert "search-select" not in rendered
+    assert "<search-select" in rendered
+    assert "<select" not in rendered
+    assert "/api/platforms/" in rendered
+    assert 'aria-label="New platform"' in rendered
+
+
+def test_a_removed_stored_platform_shows_marked_and_resubmits(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    game = Game.objects.create(library=owned_library, name="Removed platform game")
+    stored = Release.objects.create(
+        edition=Edition.objects.create(game=game), platform=platform
+    )
+    remove(platform)
+
+    shown = ReleaseRowForm(
+        initial={"platform": platform.pk},
+        prefix=release_prefix(0, 0),
+        library=owned_library,
+        presentation=PRESENTATION,
+        instance=stored,
+    )
+    posted = ReleaseRowForm(
+        {"platform": str(platform.pk)},
+        library=owned_library,
+        presentation=PRESENTATION,
+        instance=stored,
+    )
+
+    assert "Amiga (removed)" in str(shown["platform"])
+    assert posted.is_valid(), posted.errors
+    assert posted.cleaned_data["platform"] == platform
+
+
+def test_a_removed_platform_no_row_stores_is_refused(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    remove(platform)
+
+    form = release_row(
+        {f"{release_prefix(0, 0)}-platform": str(platform.pk)}, library=owned_library
+    )
+
+    assert not form.is_valid()
+    assert "platform" in form.errors
 
 
 def temporal_payload(prefix, value=None):

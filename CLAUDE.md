@@ -1048,8 +1048,10 @@ Submodules re-exported via `common/components/__init__.py`:
   #1301; `apply_primitive_widget_classes` swaps every fixed-choice field
   still on a plain `forms.Select` for one (× only with a none row,
   `revert_on_leave`, × and `aria-required` decided at render), so no form
-  renders a native select but the release row's platform and a MODEL
-  setting, which `settingControlOf` refuses (#1222, [spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md)); every SELECT setting renders one, read beside native controls
+  renders a native select but a MODEL setting, which `settingControlOf`
+  refuses ([spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md));
+  the release row's platform searches, creates and has a +, its
+  names following `heldLabel()` (#1222, [spec](docs/superpowers/specs/2026-10-06-issue-1222-release-platform-picker-design.md)); every SELECT setting renders one, read beside native controls
   through `ts/setting-control.ts` by `<live-setting-fields>` and
   `<theme-setting>` ([spec](docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-design.md));
   `TextSearchSelectWidget` hosts a text field over suggestions, its

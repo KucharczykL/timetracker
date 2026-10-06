@@ -20,8 +20,8 @@ from common.form_dialog import FORM_DIALOG_HEADER, CreatedRedirect
 from common.layout import render_page
 from common.returns import action_url
 from games.form_dialog_middleware import FormDialogResultMiddleware, dialog_result
-from games.forms import game_option
-from games.models import Device, Game
+from games.forms import game_option, platform_option
+from games.models import Device, Game, Platform
 from games.toast_middleware import EVENTS_HEADER, ToastMessagesMiddleware
 from games.views.returns import READ_ONLY
 
@@ -387,6 +387,34 @@ def test_add_game_answers_the_created_game(logged_in, game_post, owned_library):
     assert answer["messages"] == [
         {"message": "Game “Outer Wilds” added.", "type": "success"}
     ]
+
+
+PLATFORM_POST = {"name": "Amiga", "group": "", "icon": "", "reference_wikidata": ""}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_add_platform_answers_the_created_platform(logged_in, owned_library):
+    response = logged_in.post(
+        reverse("games:add_platform"), PLATFORM_POST, headers=DIALOG_HEADERS
+    )
+
+    answer = response.json()
+    platform = Platform.objects.get(library=owned_library, name="Amiga")
+    assert answer["kind"] == "created"
+    assert answer["option"] == platform_option(platform)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_edit_platform_hands_over_no_row(logged_in, owned_library):
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+
+    response = logged_in.post(
+        reverse("games:edit_platform", args=[platform.pk]),
+        PLATFORM_POST,
+        headers=DIALOG_HEADERS,
+    )
+
+    assert response.json()["kind"] == "done"
 
 
 @pytest.mark.untracked_games

@@ -1,7 +1,7 @@
 import copy
 import datetime
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
@@ -122,6 +122,7 @@ from timetracker.temporal import (
     temporal_draft_from_data,
     temporal_input_name,
 )
+from timetracker.uuidv7 import parse_uuidv7
 
 if TYPE_CHECKING:
     from django.utils.choices import _Choices
@@ -379,6 +380,38 @@ def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
+def platform_option(platform: Platform) -> SearchSelectOption:
+    """One platform as a picker row."""
+    removed = " (removed)" if platform.removed_at is not None else ""
+    return {"value": str(platform.pk), "label": platform.name + removed, "data": {}}
+
+
+def platforms_or_stored(
+    library: UserLibrary, stored: Iterable[uuid.UUID | None] = ()
+) -> QuerySet[Platform, Platform]:
+    """Visible platforms, and the stored ones."""
+    return Platform.objects.filter(Q(library__isnull=True) | Q(library=library)).filter(
+        Q(pk__in=Platform.objects.visible_to(library))
+        | Q(pk__in=[key for key in stored if key is not None])
+    )
+
+
+def platform_options(
+    values, *, library: UserLibrary, stored: Iterable[uuid.UUID | None] = ()
+) -> list[SearchSelectOption]:
+    return [
+        platform_option(platform)
+        for platform in platforms_or_stored(library, stored).filter(
+            #: Its key field refuses any other UUID.
+            pk__in=_parsed_ids(values, parse_uuidv7)
+        )
+    ]
+
+
+#: The + on the release platform picker.
+NEW_PLATFORM = DialogCreate(reverse_lazy("games:add_platform"), "New platform")
+
+
 def release_option(release: Release, ended: EndWay | None) -> SearchSelectOption:
     """One Release as a picker row."""
     option: SearchSelectOption = {
@@ -441,12 +474,14 @@ def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 #: Where a picker searches a library's devices.
 DEVICE_SEARCH_URL = "/api/devices/search"
+PLATFORM_SEARCH_URL: Final = "/api/platforms/search"
 #: Narrows that search to unended devices.
 HELD_DEVICES: Final[ParamSources] = {"held": {"value": "1"}}
 HELD_RELEASE_SEARCH_URL: Final = "/api/releases/held"
 
 #: Where a picker makes the row a person typed.
 DEVICE_CREATE_URL = "/api/devices/"
+PLATFORM_CREATE_URL: Final = "/api/platforms/"
 PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
@@ -2074,14 +2109,14 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         )
 
 
-def _parsed_ids(values) -> list[uuid.UUID]:
+def _parsed_ids(
+    values, parse: Callable[[str], uuid.UUID] = uuid.UUID
+) -> list[uuid.UUID]:
     """The values that are ids; the field reports the rest."""
     parsed = []
     for value in values:
         try:
-            parsed.append(
-                value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
-            )
+            parsed.append(value if isinstance(value, uuid.UUID) else parse(str(value)))
         except ValueError:
             continue
     return parsed

@@ -1888,6 +1888,16 @@ export class SearchSelectElement extends HTMLElement {
     return this.initializedPart("_searchSelectOffers")(value);
   }
 
+  /** The committed label; null when nothing held. */
+  heldLabel(): string | null {
+    // Read directly: the editor asks before init.
+    if (!this.initialized) return null;
+    const pills = this.querySelector("[data-search-select-pills]");
+    const held = pills?.querySelectorAll('input[type="hidden"]').length ?? 0;
+    const label = (this as SearchSelectContainer)._searchSelectLabel ?? "";
+    return held === 1 && label !== "" ? label : null;
+  }
+
   private initializedPart<Part extends HeldPart>(
     part: Part
   ): NonNullable<SearchSelectContainer[Part]> {

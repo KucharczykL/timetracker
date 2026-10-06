@@ -8,14 +8,14 @@ line changing in `timetracker/temporal.py`.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from typing import Final, NamedTuple, cast
 from uuid import UUID
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.forms.models import ModelChoiceIterator
 
-from common.components import TemporalCopySource
+from common.components import PostCreate, TemporalCopySource
 from common.date_time_presentation import DateTimePresentation
 from common.naming import NameKey, name_key
 from games.catalog_compat import MirroredIdentity, mirrored_identity, write_and_mirror
@@ -26,9 +26,19 @@ from games.catalog_writes import (
     RowKey,
     state_catalog_graph,
 )
-from games.forms import PrimitiveWidgetsMixin, TemporalFormField
+from games.forms import (
+    NEW_PLATFORM,
+    PLATFORM_CREATE_URL,
+    PLATFORM_SEARCH_URL,
+    PrimitiveWidgetsMixin,
+    SearchSelectWidget,
+    TemporalFormField,
+    platform_options,
+    platforms_or_stored,
+)
 from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
 from games.reads.catalog_hierarchy import game_hierarchy
+from games.reads.releases import UNSPECIFIED_PLATFORM
 from timetracker.temporal import TemporalValue
 
 #: A flat POST body, the one shape every row reads its own keys from.
@@ -128,28 +138,31 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
     release_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
     removed = forms.BooleanField(required=False, widget=forms.HiddenInput)
 
-    #: A plain select, not `SearchSelectWidget`. A composite widget carries
-    #: its id on a wrapper div, and a cloned row would have to rewrite that
-    #: id and re-run the element's wiring.
-    platform = forms.ModelChoiceField(
-        queryset=Platform.objects.none(),
-        required=False,
-        empty_label="Unspecified",
-    )
+    platform = forms.ModelChoiceField(queryset=Platform.objects.none(), required=False)
 
     def __init__(
         self,
         *args: object,
         library: UserLibrary,
         presentation: DateTimePresentation,
+        instance: Release | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self.library = library
-        self.instance: Release | None = None
-        cast(
-            forms.ModelChoiceField, self.fields["platform"]
-        ).queryset = Platform.objects.visible_to(library).order_by("name")
+        self.instance = instance
+        stored = () if instance is None else (instance.platform_id,)
+        platform = cast(forms.ModelChoiceField, self.fields["platform"])
+        #: A removed stored platform still resubmits.
+        platform.queryset = platforms_or_stored(library, stored)
+        platform.widget = SearchSelectWidget(
+            search_url=PLATFORM_SEARCH_URL,
+            options_resolver=partial(platform_options, library=library, stored=stored),
+            create=PostCreate(PLATFORM_CREATE_URL),
+            dialog_create=NEW_PLATFORM,
+            none_label=UNSPECIFIED_PLATFORM,
+            revert_on_leave=True,
+        )
         self.fields["release_date"] = TemporalFormField(
             presentation=presentation,
             label="Released",
@@ -321,6 +334,7 @@ class CatalogGraphForm:
         edition_index: RowIndex,
         release_index: RowIndex,
         initial: dict[str, object] | None = None,
+        instance: Release | None = None,
     ) -> ReleaseRowForm:
         return ReleaseRowForm(
             data,
@@ -328,6 +342,7 @@ class CatalogGraphForm:
             initial=initial,
             library=self.library,
             presentation=self.presentation,
+            instance=instance,
         )
 
     def _blocks_from_storage(self) -> list[EditionBlock]:
@@ -353,8 +368,8 @@ class CatalogGraphForm:
                         "platform": release.platform_id,
                         "release_date": release.release_date,
                     },
+                    instance=release,
                 )
-                row.instance = release
                 rows.append(row)
             #: An Edition may hold no live Release, and a block with no
             #: row offers nothing to fill in.
@@ -412,9 +427,13 @@ class CatalogGraphForm:
             releases = _count(data, release_count_field(index))
             self._overcounted = self._overcounted or releases.over
             for row_index in range(releases.read):
-                row = self._release_form(data, index, row_index)
-                row.instance = self._posted_release(
-                    data, index, row_index, form.instance
+                row = self._release_form(
+                    data,
+                    index,
+                    row_index,
+                    instance=self._posted_release(
+                        data, index, row_index, form.instance
+                    ),
                 )
                 rows.append(row)
             blocks.append(EditionBlock(form=form, rows=rows))
@@ -437,10 +456,16 @@ class CatalogGraphForm:
         )
 
     def platform_names(self) -> dict[str, str]:
-        """Trimmed option text by key; "" is empty."""
-        field = cast(forms.ModelChoiceField, self.blank_row().fields["platform"])
-        choices = cast(ModelChoiceIterator, field.choices)
-        return {str(key): str(label).strip() for key, label in choices}
+        """Platform labels by key; "" is none."""
+        rows = [row for block in self.blocks for row in block.rows]
+        options = platform_options(
+            [row["platform"].value() for row in rows],
+            library=self.library,
+            stored=[row.instance.platform_id for row in rows if row.instance],
+        )
+        return {"": UNSPECIFIED_PLATFORM} | {
+            str(option["value"]): option["label"].strip() for option in options
+        }
 
     def marked(self) -> tuple[EditionBlock, ReleaseRowForm] | None:
         """The surviving row the mark names, if it names one."""

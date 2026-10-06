@@ -209,12 +209,8 @@ class HtmlValidityTest(TestCase):
         for url in urls:
             response = self.client.get(url)
             assert response.status_code == 200, url
-            names = re.findall(r"<select\b[^>]*>", response.content.decode())
-            #: A release row's platform is the one left.
-            assert all(
-                re.search(r'\bname="edition-[^"]+-release-[^"]+-platform"', tag)
-                for tag in names
-            ), (url, names)
+            selects = re.findall(r"<select\b[^>]*>", response.content.decode())
+            assert selects == [], (url, selects)
 
     def test_no_interactive_element_nested_in_another(self) -> None:
         failures: list[str] = []

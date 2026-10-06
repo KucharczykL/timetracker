@@ -1657,3 +1657,54 @@ class DialogCreateWidgetTest(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             TextSearchSelectWidget(dialog_create=NEW_DEVICE)  # type: ignore[call-arg]
+
+
+@pytest.mark.django_db
+def test_a_platform_option_names_the_platform(owned_library):
+    from games.forms import platform_option
+    from games.models import Platform
+
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+
+    assert platform_option(platform) == {
+        "value": str(platform.pk),
+        "label": "Amiga",
+        "data": {},
+    }
+
+
+@pytest.mark.django_db
+def test_a_removed_stored_platform_resolves_marked(owned_library):
+    from games.forms import platform_options
+    from games.models import Platform
+    from games.removal import remove
+
+    platform = Platform.objects.create(library=owned_library, name="Amiga")
+    remove(platform)
+
+    (option,) = platform_options(
+        [str(platform.pk)], library=owned_library, stored=[platform.pk]
+    )
+
+    assert option["label"] == "Amiga (removed)"
+
+
+@pytest.mark.django_db
+def test_platform_options_read_only_the_librarys_platforms(owned_library):
+    from games.forms import platform_options
+    from games.models import Platform, UserLibrary
+    from games.removal import remove
+
+    other = UserLibrary.objects.exclude(pk=owned_library.pk).first() or (
+        get_user_model().objects.create_user("stranger").library
+    )
+    foreign = Platform.objects.create(library=other, name="Foreign")
+    removed = Platform.objects.create(library=owned_library, name="Gone")
+    remove(removed)
+    shared = Platform.objects.create(name="Shared")
+
+    options = platform_options(
+        [foreign.pk, removed.pk, shared.pk, "not-an-id"], library=owned_library
+    )
+
+    assert [option["label"] for option in options] == ["Shared"]

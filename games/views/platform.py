@@ -31,6 +31,7 @@ from common.components import (
 from common.components.core import Node
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_view
+from common.form_dialog import CreatedRedirect
 from common.layout import render_page
 from common.utils import paginate
 from games.bulk_platform_edit import EDIT_PLATFORMS
@@ -41,7 +42,7 @@ from games.filters import (
     filter_query_context_for_library,
     parse_platform_filter,
 )
-from games.forms import PlatformForm
+from games.forms import PlatformForm, platform_option
 from games.list_columns import column_choice
 from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
@@ -224,12 +225,15 @@ def _platform_form_page(
     )
     #: Both read, whatever either says.
     form_reads = form.is_valid()
-    if (
-        references.is_valid()
-        and form_reads
-        and submitted_or_form_error(form, references) is not None
-    ):
-        return redirect(return_url(request, fallback="games:list_platforms"))
+    if references.is_valid() and form_reads:
+        written = submitted_or_form_error(form, references)
+        if written is not None:
+            back = return_url(request, fallback="games:list_platforms")
+            if platform is None:
+                return CreatedRedirect(
+                    back, option=platform_option(cast(Platform, written))
+                )
+            return redirect(back)
     return render_page(
         request,
         AddForm(

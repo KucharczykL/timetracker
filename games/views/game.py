@@ -142,6 +142,7 @@ from games.reads.playtime import (
     playtime_matching_both,
     playtime_sort_key,
 )
+from games.reads.releases import UNSPECIFIED_PLATFORM
 from games.reads.sums import PlaytimeBreakdown
 from games.reference_form import ReferenceSetForm
 from games.sorting import (
@@ -187,8 +188,6 @@ META_VALUE_CLASS = "text-heading"
 _GRID_CELL_CLASS = "min-w-0"
 #: Formatted with `count`.
 ADDONS_STAY = "{count} add-on(s) stay, off the Games list"
-#: No Platform is a fact, not blank.
-UNSPECIFIED_PLATFORM = "Unspecified"
 #: Said on the page, because the shape is not final.
 EDITIONS_UNDER_CONSTRUCTION = (
     "Under construction. These are catalog facts only. A session cannot name "

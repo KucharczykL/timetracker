@@ -407,3 +407,28 @@ describe("<search-select> without a none label", () => {
     expect(hiddenInputs(host).map(input => input.value)).toEqual(["2"]);
   });
 });
+
+describe("<search-select> heldLabel", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const label = (host: HTMLElement) =>
+    (host as HTMLElement & { heldLabel(): string | null }).heldLabel();
+
+  it("answers the held row's label", () => {
+    expect(label(mount({ held: { value: "1", label: "Deck" } }))).toBe("Deck");
+  });
+
+  it("answers the none label for none", () => {
+    expect(label(mount())).toBe("No device");
+  });
+
+  it("answers null once typing drops the value", () => {
+    const host = mount({ held: { value: "1", label: "Deck" } });
+    type(host, "S");
+    expect(label(host)).toBeNull();
+  });
+
+  it("answers null before it is wired", () => {
+    expect(label(build())).toBeNull();
+  });
+});

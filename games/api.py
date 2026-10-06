@@ -90,6 +90,7 @@ from games.forms import (
     device_option,
     game_option,
     hinted_release_options,
+    platform_option,
 )
 from games.models import (
     Device,
@@ -707,7 +708,8 @@ def create_platform(request, payload: RowIn):
     library = cast(User, request.user).library
     platform = created_by_form(PlatformForm, library=library, name=payload.name)
     messages.success(request, f"{platform.name} added")
-    return Status(201, CreatedRow(value=str(platform.pk), label=platform.name))
+    option = platform_option(cast(Platform, platform))
+    return Status(201, CreatedRow(value=option["value"], label=option["label"]))
 
 
 @platform_router.get("/search", response=list[PickerOption])

@@ -20,6 +20,7 @@ import {
   CATALOG_NAME_SLOT,
   type CatalogNameKind,
 } from "../generated/catalog-names.js";
+import { SearchSelectElement } from "./search-select.js";
 
 // Where a clone learns its own number. Mirrors the placeholders in
 // games/catalog_form.py, which the templates are rendered with.
@@ -68,17 +69,17 @@ export function filled(pattern: string, value: string, empty?: string): string {
 
 // Each name kind's control and row.
 const FOLLOWED = {
-  platform: { control: 'select[name$="-platform"]', row: "[data-catalog-release]" },
+  platform: { control: 'search-select[name$="-platform"]', row: "[data-catalog-release]" },
   name: { control: 'input[name$="-name"]', row: "[data-catalog-edition]" },
 } as const satisfies Record<CatalogNameKind, { control: string; row: string }>;
 
-/** Option text, or the typed value. */
-function shown(control: HTMLInputElement | HTMLSelectElement): string {
-  const text =
-    control instanceof HTMLSelectElement
-      ? (control.selectedOptions[0]?.textContent ?? "")
-      : control.value;
-  return text.trim();
+/** The picked label or typed value; null keeps. */
+function shown(control: Element): string | null {
+  if (control instanceof HTMLInputElement) return control.value.trim();
+  // Script order may leave it un-upgraded.
+  customElements.upgrade(control);
+  if (!(control instanceof SearchSelectElement)) return null;
+  return control.heldLabel()?.trim() ?? null;
 }
 
 class CatalogEditorElement extends HTMLElement {
@@ -92,8 +93,9 @@ class CatalogEditorElement extends HTMLElement {
     this.wired = true;
     // One delegated listener, so a cloned row needs no wiring of its own.
     this.addEventListener("click", this.onClick);
-    // Selects and text fields both fire `input`.
+    // Text fields fire `input`; pickers fire a change.
     this.addEventListener("input", this.onInput);
+    this.addEventListener("search-select:change", this.onInput);
     this.restateNames();
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
@@ -128,14 +130,13 @@ class CatalogEditorElement extends HTMLElement {
   private restateRow(row: HTMLElement, kind: CatalogNameKind): void {
     const nodes = row.querySelectorAll<HTMLElement>(`[data-catalog-name-of="${kind}"]`);
     if (nodes.length === 0) return;
-    const control = row.querySelector<HTMLInputElement | HTMLSelectElement>(
-      FOLLOWED[kind].control,
-    );
+    const control = row.querySelector(FOLLOWED[kind].control);
     if (!control) {
       console.error(`<catalog-editor> row has no ${kind} control`, row);
       return;
     }
     const value = shown(control);
+    if (value === null) return;
     for (const node of nodes) {
       const pattern = node.dataset.catalogName;
       if (pattern === undefined) {

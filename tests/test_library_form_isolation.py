@@ -280,11 +280,7 @@ def test_add_session_post_with_foreign_device_is_rejected_without_mutation(world
 
 
 def test_a_release_row_offers_unspecified_for_no_platform(world):
-    """The row's platform is a plain select, thus every option is drawn.
-
-    An unset Platform is a fact rather than a blank, and the empty
-    option says so in words.
-    """
+    """An unset Platform is a fact, said in words."""
     rendered = str(
         ReleaseRowForm(library=world.owner_library, presentation=PRESENTATION)[
             "platform"
@@ -292,7 +288,17 @@ def test_a_release_row_offers_unspecified_for_no_platform(world):
     )
 
     assert "Unspecified" in rendered
-    assert world.own_platform.name in rendered
+
+
+def test_a_release_row_bound_to_a_foreign_platform_shows_no_name(world):
+    rendered = str(
+        ReleaseRowForm(
+            data={"platform": world.foreign_platform.pk},
+            library=world.owner_library,
+            presentation=PRESENTATION,
+        )["platform"]
+    )
+
     assert world.foreign_platform.name not in rendered
 
 
