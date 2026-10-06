@@ -2104,6 +2104,10 @@ def _stated_row(field, statement: Statement) -> Node:
         ],
         _fact_carrier(field),
     ]
+    # No unlock link beside these errors.
+    # No opener today states a value its form refuses: a
+    # stated game is one the field offers, a stated kind is
+    # valid. Add a link without the fact if one ever does.
     if errors := FieldErrors(field.errors):
         children.append(errors)
     return Div(data_field_row=field.name)[*children]
