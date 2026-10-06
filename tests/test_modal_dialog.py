@@ -1,5 +1,6 @@
 """The dialog the modal layer attaches to."""
 
+import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -11,12 +12,21 @@ from common.components import (
     ModalPanel,
     ModalPanelHeader,
 )
+from common.components.form_dialog import FormDialogHost
 from common.components.modal import (
     _MODAL_DIALOG_CLASS,
     _MODAL_PANEL_CLASS,
     MODAL_ATTRIBUTES,
 )
 
+#: The properties ts/elements/modal-stack.ts writes.
+STACK_PROPERTIES = re.findall(
+    r'"(--modal-[a-z]+)"',
+    Path("ts/elements/modal-stack.ts")
+    .read_text(encoding="utf-8")
+    .split("STACK_PROPERTIES = [", 1)[1]
+    .split("]", 1)[0],
+)
 GENERATED_MODULE = Path("ts/generated/modal-attributes.ts")
 BASE_CSS = Path("games/static/base.css")
 
@@ -49,7 +59,7 @@ class ModalDialogTest(SimpleTestCase):
         self.assertNotIn("open:items-center", tag)
 
     def test_the_dim_classes_name_the_stamped_attributes(self):
-        """Literals for Tailwind; must match the layer."""
+        """Tailwind needs literals; they must match the layer."""
         for role in ("covered", "over"):
             self.assertIn(f"{MODAL_ATTRIBUTES[role]}:", _MODAL_DIALOG_CLASS)
 
@@ -89,7 +99,7 @@ class ModalPanelHeaderTest(SimpleTestCase):
         html = str(ModalPanelHeader("Title", title_id="t"))
         trail = html.index(f'{MODAL_ATTRIBUTES["trail"]}=""')
         self.assertLess(trail, html.index('id="t"'))
-        self.assertIn("hidden", html[trail : html.index(">", trail)])
+        self.assertIn(' hidden=""', html[trail : html.index(">", trail)])
 
 
 class ModalPanelTest(SimpleTestCase):
@@ -100,15 +110,21 @@ class ModalPanelTest(SimpleTestCase):
         self.assertIn("origin-top", html)
 
     def test_the_step_names_the_stamp_and_the_properties(self):
-        """Literals for Tailwind; must match the layer."""
+        """Tailwind needs literals; they must match the layer."""
         self.assertIn(f"{MODAL_ATTRIBUTES['depth']}:", _MODAL_PANEL_CLASS)
-        for name in ("--modal-shift", "--modal-reserve", "--modal-depth"):
+        for name in STACK_PROPERTIES:
             self.assertIn(name, _MODAL_PANEL_CLASS)
 
     def test_the_step_never_takes_the_sheets_translate(self):
         self.assertIn("[transform:", _MODAL_PANEL_CLASS)
         self.assertNotIn("translate-y-", _MODAL_PANEL_CLASS)
         self.assertNotIn("scale-", _MODAL_PANEL_CLASS)
+
+    def test_the_sheet_slide_stays_in_the_transitions(self):
+        """The sheet controller waits on translate."""
+        transitions = re.search(r"transition-\[([^\]]+)\]", _MODAL_PANEL_CLASS)
+        assert transitions
+        self.assertIn("translate", transitions.group(1).split(","))
 
     def test_a_covered_panel_stays_opaque(self):
         self.assertNotIn("opacity", _MODAL_PANEL_CLASS)
@@ -130,3 +146,33 @@ class ModalPanelTest(SimpleTestCase):
         self.assertIn(f'{MODAL_ATTRIBUTES["panel"]}=""', tag)
         self.assertIn("translate-y-full", tag)
         self.assertNotIn("motion-safe:transition-transform", tag)
+
+
+#: Every module that builds a ModalDialog.
+_MODAL_BUILDERS = {
+    Path("common/components/custom_elements.py"),
+    Path("common/components/form_dialog.py"),
+}
+
+
+class EveryModalSteps(SimpleTestCase):
+    """A modal without a panel never steps back."""
+
+    def test_no_other_module_builds_a_modal(self):
+        builders = {
+            path
+            for root in ("common", "games")
+            for path in Path(root).rglob("*.py")
+            if "ModalDialog(" in path.read_text(encoding="utf-8")
+            and path != Path("common/components/modal.py")
+        }
+        self.assertEqual(builders, _MODAL_BUILDERS)
+
+    def test_each_built_modal_has_a_panel_and_a_header(self):
+        html = str(FormDialogHost()) + _sheet_html()
+        dialogs = html.split("<dialog")[1:]
+        self.assertEqual(len(dialogs), 3)
+        for dialog in dialogs:
+            body = dialog.split("</dialog>", 1)[0]
+            self.assertIn(f'{MODAL_ATTRIBUTES["panel"]}=""', body)
+            self.assertIn(f'{MODAL_ATTRIBUTES["header"]}=""', body)

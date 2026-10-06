@@ -1,22 +1,74 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as clientErrors from "../client-errors.js";
 import {
   attachModal,
   refreshModalStack,
+  resetModalLayerForTests,
   type FinishLeave,
   type Modal,
 } from "./modal-layer.js";
+import type { StackProperty } from "./modal-stack.js";
+
+type Pixels = number;
+
+class FakeResizeObserver {
+  static instances: FakeResizeObserver[] = [];
+  readonly targets = new Set<Element>();
+  observeCalls = 0;
+  disconnected = false;
+  constructor(readonly callback: ResizeObserverCallback) {
+    FakeResizeObserver.instances.push(this);
+  }
+  observe(target: Element): void {
+    this.observeCalls += 1;
+    this.targets.add(target);
+  }
+  unobserve(target: Element): void {
+    this.targets.delete(target);
+  }
+  disconnect(): void {
+    this.disconnected = true;
+    this.targets.clear();
+  }
+  fire(): void {
+    this.callback([], this as unknown as ResizeObserver);
+  }
+}
+
+let reports: string[];
+
+beforeEach(() => {
+  FakeResizeObserver.instances = [];
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  reports = [];
+  vi.spyOn(clientErrors, "reportClientError").mockImplementation((_context, detail) => {
+    reports.push(detail);
+    return "id-1";
+  });
+});
 
 afterEach(() => {
+  resetModalLayerForTests();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
 });
 
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+function observer(): FakeResizeObserver {
+  return FakeResizeObserver.instances.at(-1)!;
+}
+
 interface Layout {
   /** The panel's layout top, transforms ignored. */
-  top?: number;
+  top?: Pixels;
   /** The header's height. */
-  header?: number;
+  header?: Pixels;
 }
 
 interface Mount {
@@ -25,12 +77,13 @@ interface Mount {
   leave?: (finish: FinishLeave) => void;
 }
 
-interface Stacked {
-  dialog: HTMLDialogElement;
-  panel: HTMLElement;
-  trail: HTMLElement;
-  title: HTMLElement;
-  modal: Modal;
+interface MountedModal {
+  readonly dialog: HTMLDialogElement;
+  readonly panel: HTMLElement;
+  readonly header: HTMLElement;
+  readonly trail: HTMLElement;
+  readonly title: HTMLElement;
+  readonly modal: Modal;
 }
 
 let mounted = 0;
@@ -43,7 +96,7 @@ function mountStacked(
   name: string,
   { top = 0, header = 44 }: Layout = {},
   { parent = document.body, role = "dialog", leave }: Mount = {},
-): Stacked {
+): MountedModal {
   mounted += 1;
   const titleId = `title-${mounted}`;
   const dialog = document.createElement("dialog");
@@ -60,18 +113,20 @@ function mountStacked(
   `;
   parent.append(dialog);
   const panel = dialog.querySelector<HTMLElement>("[data-modal-panel]")!;
+  const headerElement = dialog.querySelector<HTMLElement>("[data-modal-header]")!;
   stub(panel, "offsetTop", top);
-  stub(dialog.querySelector<HTMLElement>("[data-modal-header]")!, "offsetHeight", header);
+  stub(headerElement, "offsetHeight", header);
   return {
     dialog,
     panel,
+    header: headerElement,
     trail: dialog.querySelector<HTMLElement>("[data-modal-trail]")!,
     title: dialog.querySelector<HTMLElement>("h2")!,
     modal: attachModal(dialog, { leave }),
   };
 }
 
-function property(panel: HTMLElement, name: string): string {
+function property(panel: HTMLElement, name: StackProperty): string {
   return panel.style.getPropertyValue(name);
 }
 
@@ -85,7 +140,9 @@ describe("depth", () => {
     expect(middle.panel.getAttribute("data-modal-depth")).toBe("1");
     expect(top.panel.hasAttribute("data-modal-depth")).toBe(false);
     expect(property(lower.panel, "--modal-depth")).toBe("2");
+    expect(property(lower.panel, "--modal-scale")).toBe("0.9");
     expect(property(top.panel, "--modal-depth")).toBe("0");
+    expect(property(top.panel, "--modal-scale")).toBe("1");
   });
 
   it("clears the stamp when the modal above closes", () => {
@@ -120,7 +177,118 @@ describe("depth", () => {
       expect(property(stacked.panel, "--modal-shift")).toBe("");
       expect(property(stacked.panel, "--modal-reserve")).toBe("");
       expect(property(stacked.panel, "--modal-depth")).toBe("");
+      expect(property(stacked.panel, "--modal-scale")).toBe("");
     }
+  });
+
+  it("is taken off every modal by the test reset", () => {
+    const lower = mountStacked("Lower");
+    const top = mountStacked("Top");
+    lower.modal.open();
+    top.modal.open();
+    resetModalLayerForTests();
+    expect(lower.panel.hasAttribute("data-modal-depth")).toBe(false);
+    expect(lower.dialog.hasAttribute("data-modal-covered")).toBe(false);
+    expect(top.dialog.hasAttribute("data-modal-over")).toBe(false);
+    expect(property(lower.panel, "--modal-shift")).toBe("");
+    expect(top.trail.hidden).toBe(true);
+    expect(top.dialog.hasAttribute("aria-describedby")).toBe(false);
+  });
+});
+
+describe("measuring again", () => {
+  it("writes nothing when nothing moved", async () => {
+    const lower = mountStacked("Lower", { top: 200 });
+    const middle = mountStacked("Middle", { top: 150 });
+    const top = mountStacked("Top", { top: 100 });
+    for (const stacked of [lower, middle, top]) stacked.modal.open();
+    const watcher = new MutationObserver(() => {});
+    watcher.observe(document.body, {
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    refreshModalStack();
+    expect(watcher.takeRecords()).toEqual([]);
+    watcher.disconnect();
+  });
+
+  it("observes each panel and header once", () => {
+    const lower = mountStacked("Lower");
+    const top = mountStacked("Top");
+    lower.modal.open();
+    top.modal.open();
+    refreshModalStack();
+    expect([...observer().targets]).toEqual(
+      expect.arrayContaining([lower.panel, lower.header, top.panel, top.header]),
+    );
+    expect(observer().observeCalls).toBe(4);
+  });
+
+  it("follows a header that grows, a frame later", async () => {
+    const lower = mountStacked("Lower", { header: 40 });
+    const top = mountStacked("Top");
+    lower.modal.open();
+    top.modal.open();
+    stub(lower.header, "offsetHeight", 60);
+    observer().fire();
+    expect(property(top.panel, "--modal-reserve")).toBe("38px");
+    await nextFrame();
+    expect(property(top.panel, "--modal-reserve")).toBe("57px");
+  });
+
+  it("follows a window resize, again after a full close", async () => {
+    let lower = mountStacked("Lower", { top: 200 });
+    let top = mountStacked("Top", { top: 100 });
+    lower.modal.open();
+    top.modal.open();
+    stub(lower.panel, "offsetTop", 300);
+    window.dispatchEvent(new Event("resize"));
+    await nextFrame();
+    // 100 - 41.8 - 300.
+    expect(property(lower.panel, "--modal-shift")).toBe("-241.8px");
+    lower.modal.close();
+    expect(observer().disconnected).toBe(true);
+    lower = mountStacked("Lower", { top: 200 });
+    top = mountStacked("Top", { top: 100 });
+    lower.modal.open();
+    top.modal.open();
+    stub(lower.panel, "offsetTop", 250);
+    window.dispatchEvent(new Event("resize"));
+    await nextFrame();
+    expect(property(lower.panel, "--modal-shift")).toBe("-191.8px");
+  });
+
+  it("stops observing a closed modal", () => {
+    const lower = mountStacked("Lower");
+    const top = mountStacked("Top");
+    lower.modal.open();
+    top.modal.open();
+    top.modal.close();
+    expect(observer().targets.has(top.panel)).toBe(false);
+    expect(observer().targets.has(top.header)).toBe(false);
+    expect(observer().targets.has(lower.panel)).toBe(true);
+  });
+});
+
+describe("a failure while marking", () => {
+  it("is reported and leaves the layer settled", () => {
+    const lower = mountStacked("Lower");
+    const top = mountStacked("Top");
+    lower.modal.open();
+    Object.defineProperty(lower.panel, "offsetTop", {
+      configurable: true,
+      get: () => {
+        throw new Error("layout broke");
+      },
+    });
+    expect(top.modal.open()).toBe(true);
+    top.modal.close();
+    lower.modal.close();
+    expect(lower.modal.state()).toBe("closed");
+    expect(document.body.style.position).toBe("");
+    expect(reports.some((detail) => detail.includes("layout broke"))).toBe(true);
   });
 });
 
@@ -153,7 +321,7 @@ describe("geometry", () => {
     const top = mountStacked("Top", { top: 100, header: 40 });
     for (const stacked of [lower, middle, top]) stacked.modal.open();
     expect(property(middle.panel, "--modal-shift")).toBe("0px");
-    // Middle lands at 20; lower aims 16.
+    // 20 - 36 = -16; -16 - 300 = -316.
     expect(property(lower.panel, "--modal-shift")).toBe("-316px");
   });
 
@@ -248,6 +416,8 @@ describe("trail", () => {
     const top = mountStacked("Top");
     for (const stacked of [labelled, nameless, top]) stacked.modal.open();
     expect(top.trail.textContent).toBe("Bare");
+    refreshModalStack();
+    expect(reports.filter((detail) => detail.includes("no name"))).toHaveLength(1);
   });
 
   it("stays hidden on a lone modal", () => {

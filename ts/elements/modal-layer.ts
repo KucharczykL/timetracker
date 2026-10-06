@@ -1,7 +1,7 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
-import { clearStack, markStack, stopWatchingStack } from "./modal-stack.js";
+import { clearStack, markStack, onStackResize, stopWatchingStack } from "./modal-stack.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -146,15 +146,34 @@ function markBackdrops(): void {
   });
 }
 
+/** Cosmetic; a throw must not unsettle the layer. */
+function markDepth(): void {
+  try {
+    markStack(shown);
+  } catch (error) {
+    report(`markStack threw: ${String(error)}`);
+  }
+}
+
+function unmarkDepth(dialog: HTMLDialogElement): void {
+  try {
+    clearStack(dialog);
+  } catch (error) {
+    report(`clearStack threw: ${String(error)}`);
+  }
+}
+
 function markShown(): void {
   markBackdrops();
-  markStack(shown, refreshModalStack);
+  markDepth();
 }
 
 /** Measures the stack again; safe when empty. */
 export function refreshModalStack(): void {
-  markStack(shown, refreshModalStack);
+  markDepth();
 }
+
+onStackResize(refreshModalStack);
 
 function captureStyles<Names extends readonly LockedStyle[]>(
   element: HTMLElement,
@@ -309,7 +328,7 @@ function finish(entry: Entry): void {
   removeSurface(entry.surface);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
-  clearStack(entry.dialog);
+  unmarkDepth(entry.dialog);
   markShown();
   if (shown.length === 0) {
     stopWatchingRemovals();
@@ -521,7 +540,7 @@ export function resetModalLayerForTests(): void {
     if (entry.dialog.open) entry.dialog.close();
     entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
     entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
-    clearStack(entry.dialog);
+    unmarkDepth(entry.dialog);
   }
   shown.length = 0;
   stopWatchingStack();

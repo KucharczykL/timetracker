@@ -1281,7 +1281,7 @@ _SHEET_DIALOG_CLASS = (
     "motion-safe:data-[sheet-state=closing]:backdrop:duration-200 "
     "motion-safe:data-[sheet-state=closing]:backdrop:ease-out"
 )
-#: The slide; the controller waits on translate.
+#: The slide's positions; ModalPanel times translate.
 _SHEET_PANEL_MOTION_CLASS = (
     "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0"
 )

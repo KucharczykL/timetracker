@@ -57,11 +57,12 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 _HEADER_CLASS = "flex shrink-0 items-center justify-between gap-4 py-1.5 pl-4 pr-1.5"
 _DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay"
 
-#: The layer writes the properties; px only.
+#: The layer writes them; lengths in px.
 #: Arbitrary transform: the sheet's slide owns translate.
+#: Keep translate in the transitions: the sheet waits on it.
 _MODAL_PANEL_CLASS = (
     "mt-[var(--modal-reserve,0px)] origin-top "
-    "data-modal-depth:[transform:translateY(var(--modal-shift))_scale(calc(1-var(--modal-depth)*.05))] "
+    "data-modal-depth:[transform:translateY(var(--modal-shift))_scale(var(--modal-scale))] "
     # Darkens, never translucent: the page stays hidden.
     "data-modal-depth:brightness-[max(.5,calc(1-var(--modal-depth)*.15))] "
     "motion-safe:transition-[transform,translate,filter] "
@@ -134,7 +135,7 @@ def ModalPanelHeader(
     )[
         Div(class_="flex min-w-0 flex-col")[
             P(
-                [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", True)],
+                [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
                 class_="text-type-micro text-body",
             ),
             PlainH2(

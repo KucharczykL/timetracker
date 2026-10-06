@@ -1,27 +1,41 @@
 // Covered modals step back; the top names them.
-import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { reportClientError } from "../client-errors.js";
+import { MODAL_ATTRIBUTES, type ModalAttributeRole } from "../generated/modal-attributes.js";
 import type { ModalState } from "./modal-layer.js";
 
+/** Shown modals, bottom first; open or leaving. */
 export interface StackedModal {
   readonly dialog: HTMLDialogElement;
   readonly state: ModalState;
 }
 
-type StackProperty = "--modal-depth" | "--modal-shift" | "--modal-reserve";
-type Pixels = number;
-
-const STACK_PROPERTIES: readonly StackProperty[] = [
+export const STACK_PROPERTIES = [
   "--modal-depth",
+  "--modal-scale",
   "--modal-shift",
   "--modal-reserve",
-];
+] as const;
+export type StackProperty = (typeof STACK_PROPERTIES)[number];
+
+type Pixels = number;
+/** Open modals above this one. */
+type Depth = number;
+type ScaleFactor = number;
+type CssValue = string; // e.g. "12.5px"
+type ModalName = string;
+type ElementId = string;
+type Refresh = () => void;
+
 const SCALE_STEP = 0.05;
 const SEPARATOR = " › ";
 const SPOKEN_SEPARATOR = ", ";
 
+let refresh: Refresh | null = null;
+let watching = false;
 let resizeObserver: ResizeObserver | null = null;
-let resizeListener: (() => void) | null = null;
+let scheduledFrame: number | null = null;
 const observed = new Set<Element>();
+const unnamedReported = new WeakSet<HTMLDialogElement>();
 let mintedTrails = 0;
 
 interface Parts {
@@ -30,9 +44,19 @@ interface Parts {
   readonly trail: HTMLElement | null;
 }
 
-function ownPart(dialog: HTMLDialogElement, attribute: string): HTMLElement | null {
+interface Layer extends Parts {
+  readonly depth: Depth;
+  /** Header height once stepped back. */
+  readonly strip: Pixels;
+}
+
+function report(detail: string): void {
+  reportClientError("modal-layer", detail, { toast: false });
+}
+
+function ownPart(dialog: HTMLDialogElement, role: ModalAttributeRole): HTMLElement | null {
   return (
-    Array.from(dialog.querySelectorAll<HTMLElement>(`[${attribute}]`)).find(
+    Array.from(dialog.querySelectorAll<HTMLElement>(`[${MODAL_ATTRIBUTES[role]}]`)).find(
       (element) => element.closest("dialog") === dialog,
     ) ?? null
   );
@@ -40,13 +64,13 @@ function ownPart(dialog: HTMLDialogElement, attribute: string): HTMLElement | nu
 
 function partsOf(dialog: HTMLDialogElement): Parts {
   return {
-    panel: ownPart(dialog, MODAL_ATTRIBUTES.panel),
-    header: ownPart(dialog, MODAL_ATTRIBUTES.header),
-    trail: ownPart(dialog, MODAL_ATTRIBUTES.trail),
+    panel: ownPart(dialog, "panel"),
+    header: ownPart(dialog, "header"),
+    trail: ownPart(dialog, "trail"),
   };
 }
 
-function setProperty(element: HTMLElement, name: StackProperty, value: string): void {
+function setProperty(element: HTMLElement, name: StackProperty, value: CssValue): void {
   if (element.style.getPropertyValue(name) !== value) element.style.setProperty(name, value);
 }
 
@@ -58,27 +82,32 @@ function setAttribute(element: Element, name: string, value: string | null): voi
   }
 }
 
-function pixels(value: Pixels): string {
-  // Unitless voids the whole transform.
+function pixels(value: Pixels): CssValue {
+  // Unitless or NaN voids the transform.
   return `${Math.round(value * 100) / 100 || 0}px`;
 }
 
-function scale(depth: number): number {
+function scale(depth: Depth): ScaleFactor {
   return 1 - SCALE_STEP * depth;
 }
 
 /** Labelledby text, else aria-label. */
-function nameOf(dialog: HTMLDialogElement): string {
+function nameOf(dialog: HTMLDialogElement): ModalName {
   const labelled = (dialog.getAttribute("aria-labelledby") ?? "")
     .split(/\s+/)
     .filter(Boolean)
     .map((id) => dialog.ownerDocument.getElementById(id)?.textContent?.trim() ?? "")
     .filter(Boolean)
     .join(" ");
-  return labelled || (dialog.getAttribute("aria-label") ?? "").trim();
+  const name = labelled || (dialog.getAttribute("aria-label") ?? "").trim();
+  if (!name && !unnamedReported.has(dialog)) {
+    unnamedReported.add(dialog);
+    report(`a covered modal has no name: ${dialog.id || dialog.className}`);
+  }
+  return name;
 }
 
-function describedBy(dialog: HTMLDialogElement, trailId: string, shown: boolean): void {
+function describedBy(dialog: HTMLDialogElement, trailId: ElementId, shown: boolean): void {
   const tokens = (dialog.getAttribute("aria-describedby") ?? "")
     .split(/\s+/)
     .filter((token) => token && token !== trailId);
@@ -97,7 +126,11 @@ function hideTrail(dialog: HTMLDialogElement, trail: HTMLElement | null): void {
   if (trail.id) describedBy(dialog, trail.id, false);
 }
 
-function showTrail(dialog: HTMLDialogElement, trail: HTMLElement, names: string[]): void {
+function showTrail(
+  dialog: HTMLDialogElement,
+  trail: HTMLElement,
+  names: readonly ModalName[],
+): void {
   if (trail.textContent !== names.join(`${SEPARATOR}${SPOKEN_SEPARATOR}`)) {
     const children: Node[] = [];
     names.forEach((name, index) => {
@@ -122,52 +155,79 @@ function showTrail(dialog: HTMLDialogElement, trail: HTMLElement, names: string[
   describedBy(dialog, trail.id, true);
 }
 
+/** One refresh per frame; never inside the observer. */
+function scheduleRefresh(): void {
+  if (scheduledFrame !== null || !refresh) return;
+  const run = refresh;
+  scheduledFrame = window.requestAnimationFrame(() => {
+    scheduledFrame = null;
+    run();
+  });
+}
+
 function observe(element: HTMLElement | null): void {
   if (!element || !resizeObserver || observed.has(element)) return;
   observed.add(element);
   resizeObserver.observe(element);
 }
 
-function watch(refresh: () => void): void {
-  if (resizeListener) return;
-  resizeListener = refresh;
-  window.addEventListener("resize", refresh);
-  if (typeof ResizeObserver !== "undefined") resizeObserver = new ResizeObserver(refresh);
+function watch(): void {
+  if (watching) return;
+  window.addEventListener("resize", scheduleRefresh);
+  if (typeof ResizeObserver !== "undefined") resizeObserver = new ResizeObserver(scheduleRefresh);
+  watching = true;
 }
 
-/** Steps, measures and names every shown modal. */
-export function markStack(shown: readonly StackedModal[], refresh: () => void): void {
-  if (shown.length === 0) return;
-  watch(refresh);
-  const open = shown.filter((entry) => entry.state === "open");
-  const top = open.at(-1);
-  for (const entry of shown) {
-    // A leaving modal keeps what it shows.
-    if (entry.state !== "open") continue;
-    const { trail } = partsOf(entry.dialog);
-    const names = open.slice(0, -1).map((below) => nameOf(below.dialog)).filter(Boolean);
-    if (entry === top && trail && names.length > 0) showTrail(entry.dialog, trail, names);
-    else hideTrail(entry.dialog, trail);
-  }
+/** The layer's re-measure, run on resize. */
+export function onStackResize(callback: Refresh): void {
+  refresh = callback;
+}
 
-  const layers = open.map((entry, index) => {
+function layersOf(open: readonly StackedModal[]): Layer[] {
+  return open.map((entry, index) => {
     const parts = partsOf(entry.dialog);
     observe(parts.panel);
     observe(parts.header);
     const depth = open.length - 1 - index;
     return { ...parts, depth, strip: scale(depth) * (parts.header?.offsetHeight ?? 0) };
   });
+}
+
+function markTrails(shown: readonly StackedModal[], open: readonly StackedModal[]): void {
+  const top = open.at(-1);
+  for (const entry of shown) {
+    // A leaving modal keeps what it shows.
+    if (entry.state !== "open") continue;
+    const { trail } = partsOf(entry.dialog);
+    if (entry !== top || !trail) {
+      hideTrail(entry.dialog, trail);
+      continue;
+    }
+    const names = open.slice(0, -1).map((below) => nameOf(below.dialog)).filter(Boolean);
+    if (names.length > 0) showTrail(entry.dialog, trail, names);
+    else hideTrail(entry.dialog, trail);
+  }
+}
+
+/** Steps, measures and names every shown modal. */
+export function markStack(shown: readonly StackedModal[]): void {
+  if (shown.length === 0) return;
+  watch();
+  const open = shown.filter((entry) => entry.state === "open");
+  markTrails(shown, open);
+  const layers = layersOf(open);
   let reserve: Pixels = 0;
   for (const layer of layers) {
     if (layer.panel) {
       setProperty(layer.panel, "--modal-reserve", pixels(reserve));
       setProperty(layer.panel, "--modal-depth", String(layer.depth));
+      setProperty(layer.panel, "--modal-scale", String(scale(layer.depth)));
       setAttribute(layer.panel, MODAL_ATTRIBUTES.depth, layer.depth ? String(layer.depth) : null);
     }
     reserve += layer.strip;
   }
   // Read after every reserve is written.
-  const tops = layers.map((layer) => layer.panel?.offsetTop ?? 0);
+  const tops: Pixels[] = layers.map((layer) => layer.panel?.offsetTop ?? 0);
   let above: Pixels | null = null;
   for (let index = layers.length - 1; index >= 0; index -= 1) {
     const { panel, strip } = layers[index];
@@ -191,9 +251,11 @@ export function clearStack(dialog: HTMLDialogElement): void {
 }
 
 export function stopWatchingStack(): void {
-  if (resizeListener) window.removeEventListener("resize", resizeListener);
-  resizeListener = null;
+  window.removeEventListener("resize", scheduleRefresh);
+  if (scheduledFrame !== null) window.cancelAnimationFrame(scheduledFrame);
+  scheduledFrame = null;
   resizeObserver?.disconnect();
   resizeObserver = null;
   observed.clear();
+  watching = false;
 }
