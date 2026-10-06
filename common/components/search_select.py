@@ -634,7 +634,7 @@ def SearchSelect(
     ``dialog_create``: a + creating the row in a dialog.
     ``host_data``: ``data-*`` attributes on the element.
     ``disabled``, ``described_by``, ``invalid``: the search box's state.
-    ``revert_on_leave``: leaving with nothing picked restores the held.
+    ``revert_on_leave``: leaving mid-edit restores the held.
     """
     host_attributes = list((host_data or {}).items())
     if any(not key.startswith("data-") for key, _ in host_attributes):

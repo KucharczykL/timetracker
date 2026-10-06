@@ -1014,7 +1014,11 @@ Submodules re-exported via `common/components/__init__.py`:
   `clearable=False` opts out, #1287; `dialog_create` adds a + after it,
   and the shell `_combobox_children` builds both (`ClearControl`), #1501;
   `none_label` pins a row that holds none — an empty hidden input, key present — apart from nothing picked,
-  key absent; × then holds none, and the change event states `none`, #1288),
+  key absent; × then holds none, and the change event states `none`, #1288;
+  a form-mode pick that changes nothing emits nothing, `holdValue`/`holdNone`
+  hold silently, and opt-in `revert_on_leave` restores what a first keystroke
+  dropped when focus leaves; the adapter puts `data-*` on the host and
+  `disabled`/`aria-*` on the box, #1289),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
@@ -1030,7 +1034,10 @@ Submodules re-exported via `common/components/__init__.py`:
   `ChoiceField`'s fixed `choices` with no search URL: an optional field's `""`
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
-  #1301; `TextSearchSelectWidget` hosts a text field over suggestions, its
+  #1301; every SELECT setting renders one, read with native controls
+  through `ts/setting-control.ts` by `<live-setting-fields>` and
+  `<theme-setting>` ([spec](docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-design.md));
+  `TextSearchSelectWidget` hosts a text field over suggestions, its
   create row reading `Use “…”`
 - **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
   whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);

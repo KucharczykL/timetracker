@@ -97,7 +97,7 @@ interface SearchSelectContainer extends HTMLElement {
   _searchSelectSetOptions?: (options: SearchSelectOption[]) => void;
 }
 
-//: The held values, none, and the shown label.
+//: Held values, none, and shown label.
 interface HeldState {
   values: string[];
   none: boolean;
@@ -339,7 +339,7 @@ const initWidget = (containerElement: Element): boolean => {
   //: Counts × presses; a create outlived by one selects nothing.
   let clears = 0;
 
-  //: What a first keystroke dropped; revert-on-leave holds it again.
+  //: What a first keystroke dropped.
   let heldBeforeDrop: HeldState | null = null;
   const heldNow = (): HeldState => ({
     values: Array.from(pills.querySelectorAll<HTMLInputElement>(HELD_VALUE_INPUTS)).map(
@@ -1372,7 +1372,7 @@ const initWidget = (containerElement: Element): boolean => {
     if (!sameHeld(before, heldNow())) emitNone();
   };
 
-  //: Hold a row's value silently; unoffered holds none.
+  //: Hold a row's value; unoffered holds none.
   container._searchSelectHoldValue = (value: string) => {
     const offered = Array.from(
       options.querySelectorAll<HTMLElement>("[data-search-select-option]")
@@ -1761,8 +1761,8 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
   }
 
-  /** Hold the row offering `value`, firing no change.
-   *  An unoffered value holds none, or nothing without a none row. */
+  /** Hold the row offering `value`, silently.
+   *  Unoffered holds none, else nothing. */
   holdValue(value: string): void {
     (this as SearchSelectContainer)._searchSelectHoldValue?.(value);
   }

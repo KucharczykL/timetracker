@@ -23,7 +23,7 @@ class ThemeSettingElement extends HTMLElement {
   }
 
   private readonly onChange = (event: Event): void => {
-    // The coordinator saves; the generic element must not.
+    // The coordinator saves, not the generic element.
     event.stopPropagation();
     const value = this.control?.read();
     if (value === undefined) return;

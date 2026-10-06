@@ -1,5 +1,5 @@
 /** One reader over every setting control kind. */
-// Defines <search-select> before a reader meets one.
+// Defines <search-select> before any read.
 import { SearchSelectElement } from "./elements/search-select.js";
 import type { ResolvedSetting, SettingValue } from "./settings-events.js";
 
@@ -60,7 +60,7 @@ class NativeSettingControl implements SettingControl {
     if (control instanceof HTMLInputElement && control.type === "number") {
       return control.value === "" ? null : control.valueAsNumber;
     }
-    // Empty clears: the API's contract is null.
+    // Empty clears: the API takes null.
     if (control.value === "") return null;
     return control.value;
   }
@@ -151,7 +151,7 @@ class SearchSelectSettingControl implements SettingControl {
   }
 
   resolvedSnapshot(attempt: SaveAttempt, resolved: ResolvedSetting): ControlSnapshot {
-    // None stays shown: its label names the default.
+    // None stays: its label names the default.
     if (attempt.value === null || resolved.value === null) return { value: "", none: true };
     return { value: String(resolved.value), none: false };
   }
@@ -174,7 +174,7 @@ class SearchSelectSettingControl implements SettingControl {
 }
 
 export function settingControlOf(element: Element): SettingControl | null {
-  // A parent may connect before its child upgrades.
+  // Parents may connect before children upgrade.
   if (element.localName === "search-select") customElements.upgrade(element);
   if (element instanceof SearchSelectElement) return new SearchSelectSettingControl(element);
   if (
@@ -187,9 +187,9 @@ export function settingControlOf(element: Element): SettingControl | null {
   return null;
 }
 
-/** The marked control an event commits, if any. */
+/** The marked control an event commits. */
 export function changedSettingControl(event: Event): SettingControl | null {
-  // The search box's own blur change carries no marker.
+  // Ignores the search box's own blur change.
   const target = event.target;
   if (!(target instanceof Element) || !target.hasAttribute(LIVE_MARKER)) return null;
   const control = settingControlOf(target);

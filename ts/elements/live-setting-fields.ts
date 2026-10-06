@@ -58,7 +58,7 @@ class LiveSettingFieldsElement extends HTMLElement {
     const key = element.dataset.settingKey ?? "";
     if (!key || !this.patchUrlTemplate.includes("__key__")) return;
     const value = control.read();
-    // A first keystroke drops the value; not a reset.
+    // A first keystroke's drop is no reset.
     if (value === undefined) return;
     if (typeof value === "number" && !Number.isFinite(value)) {
       window.toast("Enter a valid number before saving.", "error");

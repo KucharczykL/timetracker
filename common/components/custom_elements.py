@@ -650,7 +650,7 @@ class SearchSelectProps(TypedDict):
     sync_url: bool
     #: The pinned none row's label; blank offers none.
     none_label: str
-    #: Leaving with nothing picked holds the earlier value again.
+    #: Leaving mid-edit holds the earlier value.
     revert_on_leave: bool
 
 

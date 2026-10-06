@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// A pick that changes nothing, a held value, and leaving mid-edit.
+// Re-picks, silent holds, and leaving mid-edit.
 import { describe, it, expect, beforeEach } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
 import { hosted } from "../test-setup/search-select-host.js";
