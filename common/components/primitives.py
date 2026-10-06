@@ -2144,11 +2144,7 @@ def _with_refusals(
             continue
         note = P(class_="mt-2 text-type-body text-body")[fact.sentence]
         presentation = merged.get(name) or FormFieldPresentation()
-        after = (
-            Fragment(presentation.after_control, note)
-            if presentation.after_control is not None
-            else note
-        )
+        after = Fragment(presentation.after_control, note)
         merged[name] = replace(presentation, after_control=after)
     return merged
 

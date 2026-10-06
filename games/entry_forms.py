@@ -231,10 +231,9 @@ class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFie
         )
         self.state_opener_facts(facts)
         params: ParamSources = {"game_id": {"field": self.add_prefix("game")}}
-        create = True
         game = self.stated("game", Game)
+        create = game is None or game.library_id == library.pk
         if game is not None:
-            create = game.library_id == library.pk
             #: The default Release reads first.
             default = game_releases(library, game).first()
             if default is not None and "release" not in self.initial:
