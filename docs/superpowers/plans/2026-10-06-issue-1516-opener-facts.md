@@ -3,7 +3,8 @@
 **Goal:** A form opened with facts its opener knows states them instead of asking.
 
 **Architecture:** Query parameter per field → `OpenerFactsMixin.state_opener_facts` fixes the field
-(disabled + `StatedFactWidget`) → `FormFields` renders a stated row. Picker + carries field-sourced
+(`disabled`, statement recorded on the form) → `FormFields` renders a `<dl>` stated row and writes the
+hidden carrier itself. Picker + carries field-sourced
 params rewritten client-side.
 
 **Spec:** `docs/superpowers/specs/2026-10-06-issue-1516-opener-facts-design.md`
@@ -27,28 +28,34 @@ params rewritten client-side.
 
 **Interfaces (produces):**
 - `type FieldName = str`; `type StatedFacts = Mapping[FieldName, object]`
-- `class StatedFactWidget(forms.HiddenInput)`: `__init__(self, statement: str | None)`, `.statement`;
-  `get_context` pops `disabled` from `widget.attrs`.
+- `type Statement = str`; `type RefusalSentence = str`
 - `class OpenerFactsMixin`: `opener_fields: ClassVar[tuple[FieldName, ...]] = ()`;
-  `stated_facts: dict[FieldName, object]`; `state_opener_facts(self, facts: Mapping[str, str] | QueryDict | None) -> None`;
-  `fix_field(self, name, value, *, statement: str | None = None) -> None`.
+  `stated_facts: dict[FieldName, object]`; `statements: dict[FieldName, Statement | None]`
+  (None = implied, no row); `refused_facts: dict[FieldName, RefusalSentence]`;
+  `state_opener_facts(self, facts: Mapping[str, str] | QueryDict | None) -> None`;
+  `fix_field(self, name, value, *, statement: Statement | None = None) -> None`.
+- `refusal_sentence(label) -> RefusalSentence`: "The link named a {label} this form cannot use. Pick one."
+  (label lowercased).
 - `action_url(viewname, *args, origin, facts: Mapping[FieldName, str] | None = None, **kwargs)`.
 
 **Logic:**
 - Read key `self.add_prefix(name)`; `QueryDict.getlist` (plain Mapping: one value). ≠1 value or `""` → malformed.
-- `ModelChoiceField`: `parse_uuidv7(raw)` (ValueError → malformed); `field.queryset.filter(pk=key).first()`;
-  `None` → WARNING + `raise Http404`. Statement `field.label_from_instance(row)`.
+- `ModelChoiceField`: `parse_uuidv7(raw)` (ValueError → malformed); `field.queryset.filter(pk=key).first()`
+  (the field's own queryset); `None` → unbound form: WARNING + `raise Http404`; bound form: record in
+  `refused_facts`, no log, leave field editable (posted value hits `invalid_choice`).
+  Statement `field.label_from_instance(row)`.
 - Other field: `field.clean(raw)`; `ValidationError` → malformed. Statement: `dict(field.choices)[value]`
   for a choice field, else `str(value)`.
-- Malformed → WARNING, field untouched.
+- Malformed → WARNING, field untouched (declared `initial` still applies), entry in `refused_facts`.
 - Guard: raise `RuntimeError` if `name in self._bound_fields_cache`.
-- `fix_field`: `self.initial[name] = value`, `field.disabled = True`, `field.widget = StatedFactWidget(statement)`.
+- `fix_field`: `self.initial[name] = value`, `field.disabled = True`, `stated_facts[name] = value`,
+  `statements[name] = statement`. No widget swap.
 - `action_url`: build query dict `{**facts, origin?}`; append even if origin None.
 
 **Tests:** fixed+stated; undeclared param ignored; empty/two values/unknown word/non-v7 text → field
-untouched + WARNING (use `capture_games_logger`); unknown v7 id and foreign library's row → 404;
-bound POST with tampered value cleans to the fact; rendered hidden input has no `disabled`; cache
-guard raises; `action_url` facts with and without origin. Use a tiny test-local Form subclass over
+untouched + WARNING + `refused_facts` (use `capture_games_logger`); unknown v7 id and foreign
+library's row → 404 unbound; same on a bound form → no 404, `invalid_choice` on the field, other
+cleaned values intact; bound POST with tampered value cleans to the fact; cache guard raises; `action_url` facts with and without origin. Use a tiny test-local Form subclass over
 `Game.objects.for_library(...)` and a `ChoiceField`.
 
 - [ ] failing tests → implement → green (`make test ARGS="tests/test_opener_facts.py"`) → commit.
@@ -60,19 +67,26 @@ guard raises; `action_url` facts with and without origin. Use a tiny test-local 
 `tests/test_opener_facts.py`).
 
 **Logic:**
-- `_is_stated_row(field)`: widget is `StatedFactWidget` and `statement is not None`.
-- Plain path: check stated before `is_hidden`; stated → `_stated_row(field)`.
-- Grouped path: `group_fields` keeps stated fields; hidden list excludes them.
-- `_stated_row`: `Div(data_field_row=name)[P(id=field_label_id(id), class_=FORM_LABEL_CLASS)[label],
-  P(class_="text-type-body text-heading")[statement], Safe(str(field)), FieldErrors(field.errors)]`.
-- A silent fixed field (statement None) stays in the hidden branch; its `errors` appended to the
-  non-field errors block.
-- Gotcha: `common` must not import `games`; widget lives in `common/opener_facts.py`; check no
-  import cycle with `common/components/primitives.py` (opener_facts imports only Django).
+- `statements = getattr(form, "statements", {})`; `refused = getattr(form, "refused_facts", {})`.
+- Plain path: test `name in statements` before `is_hidden`; statement str → `_stated_row(field,
+  statement)`; statement None → `_fact_carrier(field)` with the hidden fields.
+- Grouped path: `group_fields` keeps stated fields (row) and drops silent ones; hidden list adds
+  silent carriers.
+- `_fact_carrier(field)`: `Input(type="hidden", name=field.html_name, value=...)` — never
+  `str(field)` (Django stamps `disabled`). Value through `field.field.prepare_value(field.value())`.
+- `_stated_row`: wrapper `Div(data_field_row=name)[Dl[Dt(class_=FORM_LABEL_CLASS)[label],
+  Dd(class_="text-type-body text-heading")[statement]], carrier, FieldErrors]`.
+- Refused fact: its row's `after_control` gains `P(class_="text-type-body text-body")[sentence]`
+  (merge with an existing presentation via `replace`).
+- Silent fixed field errors appended to the non-field errors block.
+- Gotcha: `Dl`/`Dt`/`Dd` may be missing from the builder whitelist — add them in `primitives.py`
+  and export. `common/opener_facts.py` imports only Django.
 
-**Tests:** plain and grouped render the row in field order with label text, statement, hidden
-input; empty group with only a stated field still renders; silent fact renders no row; errors on a
-stated field show in its row; errors on a silent one in non-field errors.
+**Tests:** plain and grouped render the row in field order with dt label, dd statement, hidden
+input without `disabled` carrying the value; empty group with only a stated field still renders;
+silent fact renders no row but its carrier; refused fact sentence after its control; errors on a
+stated field show in its row; errors on a silent one in non-field errors; `test_html_validity`
+stays green.
 
 - [ ] failing → implement → green → commit.
 
@@ -94,7 +108,8 @@ stated field show in its row; errors on a silent one in non-field errors.
 
 **Gotcha:** find how the + is located in TS (marker from `_dialog_create_link`; add a
 `data-search-select-dialog-create` attribute if none). Keep a widget's `dialog_create=` passthrough
-in `games/forms.py` unchanged.
+in `games/forms.py` unchanged. Rewrite on every connect (form-dialog re-inserts content); vitest
+covers a disconnect + re-insert.
 
 - [ ] failing → implement → `make ts` → `make test-ts TS_ARGS=...` + focused pytest → commit.
 
@@ -108,7 +123,10 @@ parent widget uses it), `games/views/game.py` (`add_game` passes `facts=request.
 Tests: `tests/test_dialog_create_pages.py` (+ href/label for parent on add/edit game:
 `add_game?kind=main`, "New main game"), new `tests/test_add_game_opener_facts.py` (kind row, no
 parent row, no `game-addon`, title with/without `addon`, `addon` cut to 255, posted `kind=dlc`
-ignored → saved main game with no parent, `?kind=dlc` states DLC and keeps the parent picker).
+ignored → saved main game with no parent, `?kind=dlc` states DLC and keeps the parent picker,
+`addon` with newline/tab/control chars → single-spaced title).
+`_add_game_title`: control chars → space, collapse whitespace, strip, cut to 255.
+Edit views never pass `facts=`; test that `edit_game?kind=main` on a DLC keeps Kind editable.
 
 **Gotcha:** GameForm's base order `_LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin`
 — put `OpenerFactsMixin` where its method is reachable; `state_opener_facts` call at end of
@@ -122,6 +140,7 @@ ignored → saved main game with no parent, `?kind=dlc` states DLC and keeps the
 - `games/urls.py`: remove `add_playthrough_for_game`, `add_session_for_game`, `add_library_entry`
   (keep `add_library_entry_now`).
 - `games/views/returns.py`: drop the three names.
+- No `facts=` on any edit view (`edit_session`, `edit_playthrough`, `edit_library_entry`).
 - `games/forms.py` `SessionForm`: mixin, `opener_fields=("game",)`, `facts=`; when game stated and
   unbound: `initial["playthrough"]` = `sole_ordinary_run(...)` pk if not given; game widget's
   autofocus gone → `device` widget autofocus.
