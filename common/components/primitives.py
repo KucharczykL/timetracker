@@ -2041,10 +2041,75 @@ def _form_field_row(
     ]
 
 
+def _fact_carrier(field) -> Node:
+    """A fixed field's value, posted; never ``disabled``."""
+    value = field.field.prepare_value(field.value())
+    return Input(
+        type="hidden", name=field.html_name, value="" if value is None else value
+    )
+
+
+def _stated_row(field, statement: str) -> Node:
+    """A fact the opener stated, in its field's place."""
+    return Div(data_field_row=field.name)[
+        Dl()[
+            Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
+            Dd(class_="text-type-body text-heading")[statement],
+        ],
+        _fact_carrier(field),
+        FieldErrors(field.errors),
+    ]
+
+
+type FieldStatements = Mapping[str, str | None]
+
+
+def _visible_field_row(
+    field,
+    presentation: FormFieldPresentation | None,
+    statements: FieldStatements,
+) -> Node:
+    statement = statements.get(field.name)
+    if statement is not None:
+        return _stated_row(field, statement)
+    return _form_field_row(field, presentation)
+
+
+def _is_silent(field, statements: FieldStatements) -> bool:
+    """Hidden, or fixed with no statement."""
+    return field.is_hidden or (
+        field.name in statements and statements[field.name] is None
+    )
+
+
+def _silent_control(field, statements: FieldStatements) -> Node:
+    if field.name in statements:
+        return _fact_carrier(field)
+    return Safe(str(field))
+
+
+def _with_refusals(
+    form, presentations: Mapping[str, FormFieldPresentation]
+) -> dict[str, FormFieldPresentation]:
+    """Each refused fact's sentence after its control."""
+    merged = dict(presentations)
+    for name, sentence in getattr(form, "refused_facts", {}).items():
+        note = P(class_="mt-2 text-type-body text-body")[sentence]
+        presentation = merged.get(name) or FormFieldPresentation()
+        after = (
+            Fragment(presentation.after_control, note)
+            if presentation.after_control is not None
+            else note
+        )
+        merged[name] = replace(presentation, after_control=after)
+    return merged
+
+
 def _grouped_form_fields(
     form,
     groups: Sequence[FormFieldGroup],
     presentations: Mapping[str, FormFieldPresentation],
+    statements: FieldStatements,
 ) -> list[Node]:
     """Render validated fieldsets plus any visible, ungrouped remainder."""
     field_names = set(form.fields)
@@ -2063,7 +2128,11 @@ def _grouped_form_fields(
 
     fieldsets: list[Node] = []
     for group in groups:
-        group_fields = [form[name] for name in group.fields if not form[name].is_hidden]
+        group_fields = [
+            form[name]
+            for name in group.fields
+            if not _is_silent(form[name], statements)
+        ]
         if not group_fields:
             continue
         description_id = f"{group.id}-description" if group.id else ""
@@ -2090,24 +2159,22 @@ def _grouped_form_fields(
                 description_attributes.append(("id", description_id))
             group_children.append(P(description_attributes)[group.description])
         group_children.extend(
-            _form_field_row(
-                field,
-                presentations.get(field.name),
-            )
+            _visible_field_row(field, presentations.get(field.name), statements)
             for field in group_fields
         )
         fieldsets.append(Fieldset(attributes)[*group_children])
 
     # Hidden controls stay outside fieldsets and render exactly once. Visible
     # fields not named by a group follow the fieldsets in their normal order.
-    hidden = [Safe(str(field)) for field in form if field.is_hidden]
-    remainder = [
-        _form_field_row(
-            field,
-            presentations.get(field.name),
-        )
+    hidden = [
+        _silent_control(field, statements)
         for field in form
-        if not field.is_hidden and field.name not in grouped_names
+        if _is_silent(field, statements)
+    ]
+    remainder = [
+        _visible_field_row(field, presentations.get(field.name), statements)
+        for field in form
+        if not _is_silent(field, statements) and field.name not in grouped_names
     ]
     return [*hidden, *fieldsets, *remainder]
 
@@ -2143,6 +2210,7 @@ def FormFields(
     if unknown_presentations:
         unknown = min(unknown_presentations)
         raise ValueError(f"FormFields presentation names unknown field {unknown!r}.")
+    presentations = _with_refusals(form, presentations)
 
     embedded = dict(embedded or {})
     if embedded and groups is not None:
@@ -2183,27 +2251,32 @@ def FormFields(
         )
         return replace(presentation, after_control=combined)
 
+    statements: FieldStatements = getattr(form, "statements", {})
     rows: list[Node] = []
 
-    non_field = FieldErrors(form.non_field_errors())
+    # A silent fact has no row to hold its errors.
+    silent_errors = [
+        error
+        for name, statement in statements.items()
+        if statement is None
+        for error in form[name].errors
+    ]
+    non_field = FieldErrors([*form.non_field_errors(), *silent_errors])
     if non_field:
         rows.append(non_field)
 
     if groups is not None:
-        rows.extend(_grouped_form_fields(form, groups, presentations))
+        rows.extend(_grouped_form_fields(form, groups, presentations, statements))
         return Fragment(*rows, separator="\n")
 
     for field in form:
-        if field.is_hidden:
-            rows.append(Safe(str(field)))
+        if _is_silent(field, statements):
+            rows.append(_silent_control(field, statements))
             continue
         if field.name in embedded:
             continue
         rows.append(
-            _form_field_row(
-                field,
-                _presentation_with_embeds(field.name),
-            )
+            _visible_field_row(field, _presentation_with_embeds(field.name), statements)
         )
 
     return Fragment(*rows, separator="\n")

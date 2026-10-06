@@ -1,5 +1,6 @@
 """A form states the facts its opener names."""
 
+import re
 import uuid
 
 import pytest
@@ -7,6 +8,7 @@ from django import forms
 from django.http import Http404, QueryDict
 from django.urls import reverse
 
+from common.components import FormFieldGroup, FormFields
 from common.opener_facts import OpenerFactsMixin, refusal_sentence
 from common.returns import action_url
 from games.models import Game
@@ -209,3 +211,115 @@ def test_action_url_writes_facts_without_an_origin(db):
     url = action_url("games:add_game", origin=None, facts={"kind": "main"})
 
     assert url == reverse("games:add_game") + "?kind=main"
+
+
+def _render(form, **kwargs) -> str:
+    return str(FormFields(form, **kwargs))
+
+
+def _carrier(html: str, name: str) -> str:
+    match = re.search(rf'<input[^>]*name="{name}"[^>]*>', html)
+    assert match, html
+    return match.group(0)
+
+
+def test_a_stated_fact_renders_a_row_in_place_of_its_control(owner, game):
+    form = GameFactsForm(library=owner.library, facts=_query("kind=dlc"))
+
+    html = _render(form)
+
+    row = re.search(r'<div data-field-row="kind">.*?</div>', html, re.DOTALL)
+    assert row, html
+    assert "<dt" in row.group(0) and ">Kind</dt>" in row.group(0)
+    assert ">DLC</dd>" in row.group(0)
+    carrier = _carrier(html, "kind")
+    assert 'type="hidden"' in carrier
+    assert 'value="dlc"' in carrier
+    assert "disabled" not in carrier
+    assert "<select" not in row.group(0)
+    assert html.index('data-field-row="game"') < html.index('data-field-row="kind"')
+
+
+def test_a_stated_row_carries_the_key_of_its_row(owner, game):
+    form = GameFactsForm(library=owner.library, facts=_query(f"game={game.id}"))
+
+    carrier = _carrier(_render(form), "game")
+
+    assert f'value="{game.id}"' in carrier
+    assert "disabled" not in carrier
+
+
+def test_a_grouped_form_renders_the_stated_row(owner):
+    form = GameFactsForm(library=owner.library, facts=_query("kind=dlc"))
+
+    html = _render(
+        form,
+        groups=[
+            FormFieldGroup(legend="What", fields=["kind"]),
+            FormFieldGroup(legend="Rest", fields=["game", "note"]),
+        ],
+    )
+
+    assert "<legend" in html and ">What</legend>" in html
+    assert ">DLC</dd>" in html
+    assert "disabled" not in _carrier(html, "kind")
+
+
+def test_an_implied_fact_renders_its_carrier_alone(owner):
+    form = GameFactsForm(library=owner.library)
+    form.fix_field("kind", "main")
+
+    html = _render(form)
+
+    assert 'data-field-row="kind"' not in html
+    carrier = _carrier(html, "kind")
+    assert 'type="hidden"' in carrier and 'value="main"' in carrier
+
+
+def test_an_implied_fact_drops_out_of_its_group(owner):
+    form = GameFactsForm(library=owner.library)
+    form.fix_field("kind", "main")
+
+    html = _render(form, groups=[FormFieldGroup(legend="What", fields=["kind"])])
+
+    assert ">What</legend>" not in html
+    assert 'value="main"' in _carrier(html, "kind")
+
+
+def test_a_refused_fact_says_so_after_its_control(owner, capture_games_logger):
+    with capture_games_logger():
+        form = GameFactsForm(library=owner.library, facts=_query("kind=expansion"))
+
+    html = _render(form)
+
+    row = re.search(
+        r'<div data-field-row="kind">.*?</select>(.*?)</div>', html, re.DOTALL
+    )
+    assert row, html
+    assert refusal_sentence("Kind") in row.group(1)
+
+
+def test_errors_on_a_stated_field_show_in_its_row(owner):
+    form = GameFactsForm({}, library=owner.library, facts=_query("kind=dlc"))
+    form.is_valid()
+    form.add_error("kind", "Kind refused.")
+
+    row = re.search(
+        r'<div data-field-row="kind">.*?Kind refused\..*?</div>',
+        _render(form),
+        re.DOTALL,
+    )
+
+    assert row
+
+
+def test_errors_on_an_implied_field_join_the_form_errors(owner):
+    form = GameFactsForm({}, library=owner.library)
+    form.fix_field("kind", "main")
+    form.is_valid()
+    form.add_error("kind", "Kind refused.")
+
+    html = _render(form)
+
+    assert "Kind refused." in html
+    assert html.index("Kind refused.") < html.index('data-field-row="game"')
