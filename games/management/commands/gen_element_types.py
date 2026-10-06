@@ -23,9 +23,11 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
+    UNSAVED_WARNING_PARTS,
     DialogAnswer,
     FormDialogChrome,
     FormDialogPart,
+    UnsavedWarningPart,
 )
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
@@ -89,6 +91,11 @@ def form_dialog_module() -> str:
                 "FORM_DIALOG_PARTS",
                 dict[FormDialogPart, str],
                 dict(FORM_DIALOG_PARTS),
+            ),
+            TsConstant(
+                "UNSAVED_WARNING_PARTS",
+                dict[UnsavedWarningPart, str],
+                dict(UNSAVED_WARNING_PARTS),
             ),
             TsConstant(
                 "FORM_DIALOG_ID_ATTRIBUTES", list[str], list(FORM_DIALOG_ID_ATTRIBUTES)

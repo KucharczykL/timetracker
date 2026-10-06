@@ -7,6 +7,7 @@ import {
   FORM_DIALOG_PARTS,
   FORM_ERRORS_ATTRIBUTE,
   type FormDialogChrome,
+  UNSAVED_WARNING_PARTS,
 } from "../generated/form-dialog.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import {
@@ -34,6 +35,7 @@ import { assertNever, type DoneRoute, routeOpen, routeSubmit } from "./form-dial
 import { changedForms, type FormSnapshot, snapshotForms } from "./form-dialog/unsaved.js";
 import {
   attachModal,
+  isModalLeaving,
   isModalOpen,
   type Modal,
   MODAL_CHANGE,
@@ -55,12 +57,26 @@ interface OpenDialog {
   submitting: boolean;
   /** What the forms held when presented. */
   baseline: FormSnapshot;
-  /** Counts presentations; a late baseline checks it. */
-  presentation: number;
+  /** A late baseline checks it. */
+  baselineGeneration: number;
+}
+
+type SavingButton = HTMLButtonElement | HTMLInputElement;
+
+/** What Save submits, with which button. */
+interface SaveTarget {
+  readonly form: HTMLFormElement;
+  readonly button: SavingButton;
 }
 
 /** The person's answer to the warning. */
-type UnsavedChoice = "discard" | "return" | "save";
+type UnsavedChoice =
+  | { readonly kind: "discard" }
+  | { readonly kind: "return" }
+  | ({ readonly kind: "save" } & SaveTarget);
+
+const DISCARD: UnsavedChoice = { kind: "discard" };
+const RETURN: UnsavedChoice = { kind: "return" };
 
 /** What the next reload carries. */
 interface Reload {
@@ -68,6 +84,8 @@ interface Reload {
   readonly target: URL | null;
   readonly messages: Messages;
   readonly opener: OpenerKey | null;
+  /** A link the person leaves to. */
+  readonly leave: URL | null;
 }
 
 /** What a POST sends. */
@@ -144,7 +162,7 @@ function initialFocus(dialog: HTMLDialogElement, body: HTMLElement): HTMLElement
   return first ?? dialog.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.dismiss}]`);
 }
 
-/** Throws on a malformed target or submitter. */
+/** Lowercased; a submitter's formmethod wins. */
 function submitMethod(form: HTMLFormElement, submitter: HTMLElement | null): string {
   return (
     submitter?.getAttribute("formmethod") ??
@@ -159,10 +177,17 @@ function isSubmitButton(element: Element): element is HTMLButtonElement | HTMLIn
 }
 
 /** The default button, when it posts. */
-function savingButton(form: HTMLFormElement): HTMLButtonElement | HTMLInputElement | null {
+function savingButton(form: HTMLFormElement): SavingButton | null {
   const button = Array.from(form.elements).find(isSubmitButton);
   if (!button || button.disabled || submitMethod(form, button) !== "post") return null;
   return button;
+}
+
+/** Only one changed form can be saved. */
+function saveTarget(forms: readonly HTMLFormElement[]): SaveTarget | null {
+  if (forms.length !== 1) return null;
+  const button = savingButton(forms[0]);
+  return button ? { form: forms[0], button } : null;
 }
 
 function whenClosed(entry: OpenDialog): Promise<void> {
@@ -171,6 +196,7 @@ function whenClosed(entry: OpenDialog): Promise<void> {
   return new Promise((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
 }
 
+/** Throws on a malformed target or submitter. */
 function formRequest(form: HTMLFormElement, submitter: HTMLElement | null): FormRequest {
   const target =
     submitter?.getAttribute("formaction") ?? form.getAttribute("action") ?? location.href;
@@ -196,7 +222,7 @@ function deadlineAfter(milliseconds: number): AbortSignal {
 }
 
 function noReload(): Reload {
-  return { target: null, messages: [], opener: null };
+  return { target: null, messages: [], opener: null, leave: null };
 }
 
 /** Last target, every message, first opener. */
@@ -205,6 +231,7 @@ function mergeReload(current: Reload, more: Partial<Reload>): Reload {
     target: more.target ?? current.target,
     messages: [...current.messages, ...(more.messages ?? [])],
     opener: current.opener ?? more.opener ?? null,
+    leave: more.leave === undefined ? current.leave : more.leave,
   };
 }
 
@@ -242,8 +269,6 @@ export class FormDialogElement extends HTMLElement {
   private csrfInForms = "";
   /** The warning is open. */
   private asking = false;
-  /** Where a link walk leaves to. */
-  private leaveTo: URL | null = null;
 
   connectedCallback(): void {
     this.csrfInForms = csrfCookie();
@@ -296,13 +321,15 @@ export class FormDialogElement extends HTMLElement {
     return changedForms(entry.body, entry.baseline).length > 0;
   }
 
-  /** Closes every dialog, then leaves. */
+  /** Leaves once every dialog closes. */
   private async leaveFor(url: URL): Promise<void> {
-    this.leaveTo = url;
-    if (!(await this.closeInTurn([...this.stack].reverse()))) this.leaveTo = null;
+    this.reload = mergeReload(this.reload, { leave: url });
+    if (!(await this.closeInTurn([...this.stack].reverse()))) {
+      this.reload = mergeReload(this.reload, { leave: null });
+    }
   }
 
-  /** Topmost first; false once one stays. */
+  /** Expects topmost first; false once one stays. */
   private async closeInTurn(entries: readonly OpenDialog[]): Promise<boolean> {
     for (const entry of entries) {
       if (!(await this.closeAsking(entry))) return false;
@@ -313,37 +340,47 @@ export class FormDialogElement extends HTMLElement {
   /** False when the dialog stays open. */
   private async closeAsking(entry: OpenDialog): Promise<boolean> {
     if (entry.submitting) return false;
-    const forms = changedForms(entry.body, entry.baseline);
-    if (forms.length > 0) {
-      const choice = await this.askAbout(entry, forms);
-      if (choice === "save") {
-        const button = savingButton(forms[0]);
-        if (button) forms[0].requestSubmit(button);
+    try {
+      const forms = changedForms(entry.body, entry.baseline);
+      if (forms.length > 0) {
+        const choice = await this.askAbout(entry, forms);
+        if (choice.kind === "save") choice.form.requestSubmit(choice.button);
+        if (choice.kind !== "discard") return false;
       }
-      if (choice !== "discard") return false;
+    } catch (error) {
+      this.lostChanges(`the unsaved-changes warning failed: ${String(error)}`);
     }
     entry.modal.close();
     await whenClosed(entry);
     return true;
   }
 
-  /** A broken warning answers discard. */
+  /** A broken warning must not trap anyone. */
+  private lostChanges(detail: string): void {
+    const id = report(detail);
+    errorToast(`Your changes were not kept: the warning could not open (error ${id}).`);
+  }
+
+  /** Broken: discard. Already asking or busy: return. */
   private askAbout(entry: OpenDialog, forms: readonly HTMLFormElement[]): Promise<UnsavedChoice> {
-    if (this.asking) return Promise.resolve("return");
+    if (this.asking) return Promise.resolve(RETURN);
+    // Another modal still leaving: ask again later.
+    if (isModalLeaving()) return Promise.resolve(RETURN);
     const template = this.querySelector<HTMLTemplateElement>(
-      `template[${FORM_DIALOG_PARTS.unsaved}]`,
+      `template[${UNSAVED_WARNING_PARTS.template}]`,
     );
     const fragment = template?.content.cloneNode(true) as DocumentFragment | undefined;
     const dialog = fragment?.querySelector("dialog");
     if (!fragment || !dialog) {
-      report("the host has no unsaved-changes warning");
-      return Promise.resolve("discard");
+      this.lostChanges("the host has no unsaved-changes warning");
+      return Promise.resolve(DISCARD);
     }
     prefixIds(fragment, this.nextPrefix());
-    const save = dialog.querySelector<HTMLElement>(`[${FORM_DIALOG_PARTS.save}]`);
-    if (save) save.hidden = forms.length !== 1 || savingButton(forms[0]) === null;
+    const target = saveTarget(forms);
+    const save = dialog.querySelector<HTMLElement>(`[${UNSAVED_WARNING_PARTS.save}]`);
+    if (save) save.hidden = target === null;
     return new Promise((resolve) => {
-      let choice: UnsavedChoice = "return";
+      let choice: UnsavedChoice = RETURN;
       const modal = attachModal(dialog, {
         onClosed: () => {
           this.asking = false;
@@ -351,33 +388,40 @@ export class FormDialogElement extends HTMLElement {
           resolve(choice);
         },
       });
-      dialog.querySelector(`[${FORM_DIALOG_PARTS.discard}]`)?.addEventListener("click", () => {
-        choice = "discard";
+      dialog.querySelector(`[${UNSAVED_WARNING_PARTS.discard}]`)?.addEventListener("click", () => {
+        choice = DISCARD;
         // The layer closes the warning first.
         entry.modal.close();
       });
       save?.addEventListener("click", () => {
-        choice = "save";
+        if (target) choice = { kind: "save", ...target };
         modal.close();
       });
       this.append(dialog);
       this.asking = true;
-      if (!modal.open()) {
-        this.asking = false;
-        dialog.remove();
-        report("the layer refused the unsaved-changes warning");
-        resolve("discard");
+      let opened = false;
+      try {
+        opened = modal.open();
+      } finally {
+        if (!opened) {
+          this.asking = false;
+          dialog.remove();
+        }
+      }
+      if (!opened) {
+        this.lostChanges("the layer refused the unsaved-changes warning");
+        resolve(DISCARD);
       }
     });
   }
 
   /** Taken now, and again after late fills. */
   private rebaseline(entry: OpenDialog): void {
-    entry.presentation += 1;
-    const presentation = entry.presentation;
+    entry.baselineGeneration += 1;
+    const generation = entry.baselineGeneration;
     entry.baseline = snapshotForms(entry.body);
     window.setTimeout(() => {
-      if (entry.presentation !== presentation || !this.stack.includes(entry)) return;
+      if (entry.baselineGeneration !== generation || !this.stack.includes(entry)) return;
       entry.baseline = snapshotForms(entry.body);
     });
   }
@@ -550,8 +594,8 @@ export class FormDialogElement extends HTMLElement {
       controller: new AbortController(),
       url,
       submitting: false,
-      baseline: new Map(),
-      presentation: 0,
+      baseline: [],
+      baselineGeneration: 0,
     };
     // Registered first: content may submit on connect.
     this.stack.push(entry);
@@ -616,7 +660,8 @@ export class FormDialogElement extends HTMLElement {
     }
     if (this.stack.includes(entry)) {
       this.fill(entry, page, url);
-      this.rebaseline(entry);
+      // A refusal keeps the person's input unsaved.
+      if (wrote) this.rebaseline(entry);
       entry.modal.focusInitial();
     }
     showToasts(page.messages);
@@ -659,7 +704,7 @@ export class FormDialogElement extends HTMLElement {
       } catch (error) {
         // The close already counted it as a write.
         if (closed()) return;
-        this.unconfirmed(entry, `submit failed: ${String(error)}`);
+        this.unconfirmed(`submit failed: ${String(error)}`);
         return;
       }
       const wrote =
@@ -719,7 +764,8 @@ export class FormDialogElement extends HTMLElement {
           return;
         case "error":
           if (wrote) {
-            this.unconfirmed(entry, `the next answer had no kind (status ${route.status})`);
+            this.rebaseline(entry);
+            this.unconfirmed(`the next answer had no kind (status ${route.status})`);
           } else {
             this.refused(route.status);
           }
@@ -775,10 +821,8 @@ export class FormDialogElement extends HTMLElement {
   }
 
   /** A write may have landed unseen. */
-  private unconfirmed(entry: OpenDialog, detail: string): void {
+  private unconfirmed(detail: string): void {
     this.stale = true;
-    // The input may be saved now.
-    this.rebaseline(entry);
     const id = report(detail);
     const remedy = isReadOnlyHost() ? "Close this to see the current page" : "Reload the page to check";
     errorToast(`The save could not be confirmed. ${remedy} (error ${id}).`);
@@ -787,7 +831,9 @@ export class FormDialogElement extends HTMLElement {
   /** After a write, the save is unconfirmed. */
   private unshownAnswer(entry: OpenDialog, wrote: boolean, detail: string): void {
     if (wrote) {
-      this.unconfirmed(entry, detail);
+      // The write landed; the input is saved.
+      this.rebaseline(entry);
+      this.unconfirmed(detail);
     } else {
       this.unshown(detail);
     }
@@ -817,7 +863,7 @@ export class FormDialogElement extends HTMLElement {
     entry.dialog.remove();
     const index = this.stack.indexOf(entry);
     if (index !== -1) this.stack.splice(index, 1);
-    if (this.stack.length > 0 || !(this.stale || this.leaveTo)) return;
+    if (this.stack.length > 0 || !(this.stale || this.reload.leave)) return;
     this.reload = mergeReload(this.reload, { opener: entry.openerKey });
     this.requestReload();
   }
@@ -841,15 +887,14 @@ export class FormDialogElement extends HTMLElement {
   };
 
   private runReload(): void {
-    const { target, messages, opener } = this.reload;
+    const { target, messages, opener, leave } = this.reload;
     this.reload = noReload();
     this.stale = false;
-    const leaveTo = this.leaveTo;
-    this.leaveTo = null;
-    if (leaveTo) {
+    if (leave) {
+      // Storage refused: the page leaves anyway.
       handOffMessages(messages);
       if (opener) handOffOpener(opener);
-      browser.assign(leaveTo.href);
+      browser.assign(leave.href);
       return;
     }
     // Form host, or storage refused: show here.

@@ -15,17 +15,16 @@ from common.components.modal import (
 )
 from common.components.primitives import (
     FORM_MAX_WIDTH_CLASS,
+    AttributeName,
     ControlButton,
     custom_element_builder,
 )
 from common.notices import ToastPayload
 
 type FormDialogChrome = Literal["header", "bare"]
-type FormDialogPart = Literal[
-    "template", "header", "title", "body", "unsaved", "discard", "save"
-]
+type FormDialogPart = Literal["template", "header", "title", "body"]
+type UnsavedWarningPart = Literal["template", "discard", "save"]
 type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
-type AttributeName = str  # e.g. "aria-controls"
 type AbsoluteUrl = str  # e.g. "https://example.com/devices"
 type ModulePath = str  # static URL: a path, or absolute when hosted
 type DocumentTitle = str  # e.g. "Add New Device"
@@ -95,7 +94,11 @@ FORM_DIALOG_PARTS: Mapping[FormDialogPart, FormDialogAttribute] = {
     "header": "data-form-dialog-header",
     "title": "data-form-dialog-title",
     "body": "data-form-dialog-body",
-    "unsaved": "data-form-dialog-unsaved",
+}
+
+#: The warning template's parts.
+UNSAVED_WARNING_PARTS: Mapping[UnsavedWarningPart, FormDialogAttribute] = {
+    "template": "data-form-dialog-unsaved",
     "discard": "data-form-dialog-discard",
     "save": "data-form-dialog-save",
 }
@@ -128,6 +131,7 @@ FORM_DIALOG_CHROME_BY_MARKER: Mapping[ChromeMarker, FormDialogChrome] = {
 if len(FORM_DIALOG_CHROME_BY_MARKER) != len(FORM_DIALOG_CHROME_VALUES):
     raise TypeError("FORM_DIALOG_CHROME_VALUES markers must differ")
 require_every_key(FormDialogPart, FORM_DIALOG_PARTS)
+require_every_key(UnsavedWarningPart, UNSAVED_WARNING_PARTS)
 
 #: Prefixed per dialog, like every template id.
 _TITLE_ID: ElementId = "form-dialog-title"
@@ -158,9 +162,9 @@ def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
 def _UnsavedWarning() -> Node:
     """Asks before unsaved changes are lost."""
     titled = titled_header(
-        "Unsaved changes", title_id=_UNSAVED_TITLE_ID, close=False, divided=False
+        "Unsaved changes", title_id=_UNSAVED_TITLE_ID, close_label=None, divided=False
     )
-    return Template([(FORM_DIALOG_PARTS["unsaved"], "")])[
+    return Template([(UNSAVED_WARNING_PARTS["template"], "")])[
         ModalDialog(
             [
                 ("role", "alertdialog"),
@@ -176,7 +180,7 @@ def _UnsavedWarning() -> Node:
                     ],
                     Div(class_="mt-2 flex flex-col gap-2 sm:flex-row")[
                         ControlButton(
-                            [(FORM_DIALOG_PARTS["discard"], "")],
+                            [(UNSAVED_WARNING_PARTS["discard"], "")],
                             color="red",
                             class_="sm:mr-auto",
                         )["Discard"],
@@ -187,7 +191,7 @@ def _UnsavedWarning() -> Node:
                             ],
                             color="gray",
                         )["Return to edit"],
-                        ControlButton([(FORM_DIALOG_PARTS["save"], "")])["Save"],
+                        ControlButton([(UNSAVED_WARNING_PARTS["save"], "")])["Save"],
                     ],
                 ],
             ]

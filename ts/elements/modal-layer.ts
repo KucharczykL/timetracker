@@ -113,6 +113,11 @@ export function topModal(): HTMLDialogElement | null {
   return openEntries().at(-1)?.dialog ?? null;
 }
 
+/** While one leaves, opens are refused. */
+export function isModalLeaving(): boolean {
+  return shown.some((entry) => entry.state === "leaving");
+}
+
 export function isModalOpen(): boolean {
   return topModal() !== null;
 }

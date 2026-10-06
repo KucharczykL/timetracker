@@ -73,25 +73,28 @@ def ModalPanelHeader(
     title: Child,
     *,
     title_id: ElementId,
-    close_label: str = "Close dialog",
+    close_label: str | None = "Close dialog",
     attributes: Attributes = (),
     title_attributes: Attributes = (),
-    close: bool = True,
     divided: bool = True,
 ) -> Element:
-    """A modal panel's title row, × optional.
+    """A modal panel's title row; no label, no ×.
 
     `title_id` beats an id in `title_attributes`.
     `divided`: a line over a scrolling body.
     """
-    close_button = ControlButton(
-        [
-            (MODAL_ATTRIBUTES["dismiss"], ""),
-            ("aria-label", close_label),
-            ("class", "shrink-0 focus:ring-inset"),
-        ],
-        variant="ghost",
-    )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    close_button = (
+        None
+        if close_label is None
+        else ControlButton(
+            [
+                (MODAL_ATTRIBUTES["dismiss"], ""),
+                ("aria-label", close_label),
+                ("class", "shrink-0 focus:ring-inset"),
+            ],
+            variant="ghost",
+        )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    )
     return Div(
         attributes,
         class_=(
@@ -106,7 +109,7 @@ def ModalPanelHeader(
                 ("class", "text-type-section text-heading"),
             ],
         )[title],
-        *([close_button] if close else []),
+        close_button,
     ]
 
 
@@ -121,10 +124,9 @@ def titled_header(
     title: Child,
     *,
     title_id: ElementId,
-    close_label: str = "Close dialog",
+    close_label: str | None = "Close dialog",
     attributes: Attributes = (),
     title_attributes: Attributes = (),
-    close: bool = True,
     divided: bool = True,
 ) -> TitledHeader:
     """Pairs a header with its dialog's name."""
@@ -136,7 +138,6 @@ def titled_header(
             close_label=close_label,
             attributes=attributes,
             title_attributes=title_attributes,
-            close=close,
             divided=divided,
         ),
     )

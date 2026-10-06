@@ -30,6 +30,7 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
+    UNSAVED_WARNING_PARTS,
 )
 from common.components.primitives import FORM_ERRORS_ATTRIBUTE, FieldErrors
 from common.components.ts_codegen import render_filter_metadata_module
@@ -76,7 +77,7 @@ class FormDialogHostTest(SimpleTestCase):
 
     def test_the_template_names_every_part(self):
         html = str(FormDialogHost())
-        for part in FORM_DIALOG_PARTS.values():
+        for part in [*FORM_DIALOG_PARTS.values(), *UNSAVED_WARNING_PARTS.values()]:
             self.assertIn(f"{part}=", html)
 
     def test_the_dialog_is_named_by_its_title(self):
@@ -88,7 +89,7 @@ class FormDialogHostTest(SimpleTestCase):
 
     def test_the_warning_is_an_alertdialog(self):
         html = str(FormDialogHost())
-        start = html.index(f"{FORM_DIALOG_PARTS['unsaved']}=")
+        start = html.index(f"{UNSAVED_WARNING_PARTS['template']}=")
         warning = html[start : html.index("</template>", start)]
         self.assertIn('role="alertdialog"', warning)
         for attribute in ("aria-labelledby", "aria-describedby"):
@@ -100,17 +101,17 @@ class FormDialogHostTest(SimpleTestCase):
 
     def test_the_warning_offers_three_acts_in_order(self):
         html = str(FormDialogHost())
-        start = html.index(f"{FORM_DIALOG_PARTS['unsaved']}=")
+        start = html.index(f"{UNSAVED_WARNING_PARTS['template']}=")
         warning = html[start : html.index("</template>", start)]
         buttons = re.findall(r"<button[^>]*>.*?</button>", warning, re.DOTALL)
         self.assertEqual(len(buttons), 3)
         discard, keep, save = buttons
-        self.assertIn(f"{FORM_DIALOG_PARTS['discard']}=", discard)
+        self.assertIn(f"{UNSAVED_WARNING_PARTS['discard']}=", discard)
         self.assertIn("Discard", discard)
         self.assertIn('data-modal-dismiss=""', keep)
         self.assertIn('data-modal-initial-focus=""', keep)
         self.assertIn("Return to edit", keep)
-        self.assertIn(f"{FORM_DIALOG_PARTS['save']}=", save)
+        self.assertIn(f"{UNSAVED_WARNING_PARTS['save']}=", save)
         self.assertIn("Save", save)
         for button in buttons:
             self.assertIn('type="button"', button)
@@ -120,8 +121,9 @@ class FormDialogHostTest(SimpleTestCase):
         self.assertIn(f'"{FORM_DIALOG_ATTRIBUTE}"', module)
         for chrome, value in FORM_DIALOG_CHROME_VALUES.items():
             self.assertIn(f'"{value}": "{chrome}"', module)
-        for part, attribute in FORM_DIALOG_PARTS.items():
-            self.assertIn(f'"{part}": "{attribute}"', module)
+        for parts in (FORM_DIALOG_PARTS, UNSAVED_WARNING_PARTS):
+            for part, attribute in parts.items():
+                self.assertIn(f'"{part}": "{attribute}"', module)
 
 
 class BottomSheetHeaderTest(SimpleTestCase):
@@ -141,25 +143,36 @@ class BottomSheetHeaderTest(SimpleTestCase):
 
 
 class FieldErrorsTest(SimpleTestCase):
-    def test_an_error_list_is_marked_and_focusable(self):
-        html = str(FieldErrors(["Taken"]))
+    def test_a_form_wide_list_is_marked_and_focusable(self):
+        html = str(FieldErrors(["Taken"], form_wide=True))
         self.assertIn(f'{FORM_ERRORS_ATTRIBUTE}=""', html)
         self.assertIn('tabindex="-1"', html)
+
+    def test_a_field_list_is_not_marked(self):
+        html = str(FieldErrors(["Required"]))
+        self.assertNotIn(FORM_ERRORS_ATTRIBUTE, html)
+        self.assertNotIn("tabindex", html)
+
+
+#: A divided header's own classes.
+_DIVIDER = str(ModalPanelHeader("T", title_id="t")).split('class="', 1)[1].split('"')[0]
 
 
 class ModalPanelHeaderTest(SimpleTestCase):
     def test_a_plain_header_has_no_line_and_no_close(self):
-        html = str(ModalPanelHeader("Title", title_id="t", close=False, divided=False))
+        html = str(
+            ModalPanelHeader("Title", title_id="t", close_label=None, divided=False)
+        )
         self.assertIn('id="t"', html)
-        self.assertNotIn("border-b", html)
+        self.assertNotIn(_DIVIDER, html)
         self.assertNotIn("data-modal-dismiss", html)
         self.assertNotIn("None", html)
 
     def test_the_warning_wears_the_plain_header(self):
         html = str(FormDialogHost())
-        start = html.index(f"{FORM_DIALOG_PARTS['unsaved']}=")
+        start = html.index(f"{UNSAVED_WARNING_PARTS['template']}=")
         warning = html[start : html.index("</template>", start)]
-        self.assertNotIn("border-b", warning)
+        self.assertNotIn(_DIVIDER, warning)
         self.assertNotIn("Close dialog", warning)
 
 

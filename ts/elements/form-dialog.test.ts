@@ -1219,6 +1219,9 @@ describe("CSRF", () => {
 });
 
 describe("unsaved changes", () => {
+  const REFUSED = page(`<form method="post"><ul data-form-errors tabindex="-1"><li>Taken</li></ul>
+    <input name="name" value="Deck OLED"><button name="submit" value="save">Save</button></form>`);
+
   function edit(value = "Deck OLED", dialog: HTMLDialogElement = openDialog()): void {
     body(dialog).querySelector<HTMLInputElement>("[name=name]")!.value = value;
   }
@@ -1360,10 +1363,22 @@ describe("unsaved changes", () => {
     expect(document.querySelectorAll("form-dialog > dialog[role=alertdialog]")).toHaveLength(1);
   });
 
-  it("takes a refused answer as the new baseline", async () => {
+  it("keeps the baseline across a refusal", async () => {
     await openPage();
     edit();
-    replies.push(reply(EDIT_FORM, EDIT, 409));
+    replies.push(reply(REFUSED, EDIT, 409));
+    submit();
+    await settle();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBe(warning());
+  });
+
+  it("takes a continued page as the baseline", async () => {
+    await openPage();
+    edit();
+    replies.push(reply(next(EDIT)));
+    replies.push(reply(page(`<form method="post"><input name="name" value="Server"></form>`)));
     submit();
     await settle();
     cancelTop();
@@ -1371,15 +1386,93 @@ describe("unsaved changes", () => {
     expect(topModal()).toBeNull();
   });
 
-  it("takes the input as the baseline after an unconfirmed save", async () => {
+  it("keeps the baseline when a request fails", async () => {
     await openPage();
     edit();
     submit();
     await settle();
     cancelTop();
     await settle();
-    expect(topModal()).toBeNull();
+    expect(topModal()).toBe(warning());
+    press("discard");
+    await settle();
     expect(reloads).toBe(1);
+  });
+
+  it("focuses the refusal after Save", async () => {
+    const dialog = await openPage();
+    edit();
+    cancelTop();
+    await settle();
+    replies.push(reply(REFUSED, EDIT, 409));
+    press("save");
+    await settle();
+    expect(warning()).toBeNull();
+    expect(topModal()).toBe(dialog);
+    expect(document.activeElement?.textContent).toBe("Taken");
+  });
+
+  it("hides Save when the button's formmethod is get", async () => {
+    await openPage(
+      page(`<form method="post"><input name="name"><button formmethod="get">Find</button></form>`),
+    );
+    edit();
+    cancelTop();
+    await settle();
+    expect(saveHidden()).toBe(true);
+  });
+
+  it("returns while another modal leaves, then asks", async () => {
+    const dialog = await openPage();
+    edit();
+    const other = document.createElement("dialog");
+    other.setAttribute("data-modal", "");
+    document.body.append(other);
+    let finishLeave = (): void => {};
+    const leaving = attachModal(other, {
+      leave: (finish) => {
+        finishLeave = finish;
+      },
+    });
+    leaving.open();
+    leaving.close();
+    dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
+    await settle();
+    expect(warning()).toBeNull();
+    expect(openModals()).toEqual([dialog]);
+    finishLeave();
+    cancelTop();
+    await settle();
+    expect(topModal()).toBe(warning());
+  });
+
+  it("closes without asking on a cancel it cannot veto", async () => {
+    const dialog = await openPage();
+    edit();
+    dialog.dispatchEvent(new Event("cancel", { cancelable: false }));
+    dialog.close();
+    await settle();
+    expect(warning()).toBeNull();
+    expect(document.querySelector("form-dialog dialog")).toBeNull();
+  });
+
+  it("guards the unload while a changed dialog submits", async () => {
+    await openPage();
+    edit();
+    pending();
+    submit();
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("stops guarding the unload once disconnected", async () => {
+    await openPage();
+    edit();
+    document.querySelector("form-dialog")!.remove();
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it("absorbs a value content fills after insertion", async () => {
@@ -1401,7 +1494,7 @@ describe("unsaved changes", () => {
     expect(topModal()).toBeNull();
   });
 
-  it("closes and reports when the warning is missing", async () => {
+  it("closes, reports and says so when the warning is missing", async () => {
     document.querySelector("template[data-form-dialog-unsaved]")!.remove();
     await openPage();
     edit();
@@ -1413,6 +1506,7 @@ describe("unsaved changes", () => {
       expect.stringContaining("warning"),
       { toast: false },
     );
+    expect(JSON.stringify(toasts.at(-1))).toContain("were not kept");
   });
 
   it("asks nothing while submitting", async () => {
@@ -1489,6 +1583,39 @@ describe("unsaved changes", () => {
       press("discard");
       await settle();
       expect(assigned).toEqual([`${ORIGIN}/games/1`]);
+      expect(reloads).toBe(0);
+      expect(handedOff("opener")).not.toBeNull();
+    });
+
+    it("cancels the leave when the person saves", async () => {
+      const dialog = await openPage(
+        page(`<form method="post"><input name="name"><button>Save</button></form>
+          <a href="/games/1">View game</a>`),
+      );
+      edit();
+      click(body(dialog).querySelector("a")!);
+      await settle();
+      replies.push(reply(done(HOST, SAVED)));
+      press("save");
+      await settle();
+      expect(assigned).toEqual([]);
+      expect(reloads).toBe(1);
+    });
+
+    it("forgets a returned link on a later Discard", async () => {
+      const dialog = await openPage(
+        page(`<form method="post"><input name="name"></form><a href="/games/1">View game</a>`),
+      );
+      edit();
+      click(body(dialog).querySelector("a")!);
+      await settle();
+      cancelTop();
+      await settle();
+      cancelTop();
+      await settle();
+      press("discard");
+      await settle();
+      expect(assigned).toEqual([]);
       expect(reloads).toBe(0);
     });
 
