@@ -2051,14 +2051,16 @@ def _fact_carrier(field) -> Node:
 
 def _stated_row(field, statement: str) -> Node:
     """A fact the opener stated, in its field's place."""
-    return Div(data_field_row=field.name)[
+    children: list[Node] = [
         Dl()[
             Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
             Dd(class_="text-type-body text-heading")[statement],
         ],
         _fact_carrier(field),
-        FieldErrors(field.errors),
     ]
+    if errors := FieldErrors(field.errors):
+        children.append(errors)
+    return Div(data_field_row=field.name)[*children]
 
 
 type FieldStatements = Mapping[str, str | None]
