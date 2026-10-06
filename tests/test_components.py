@@ -939,10 +939,33 @@ class GenericBuilderContractTest(SimpleTestCase):
             components.Div()[
                 components.Span()["a"],
                 components.Span()["b"] if shown else None,
-                shown and components.Span()["c"],
+                False,
             ]
         )
         self.assertEqual(result, "<div><span>a</span></div>")
+
+    def test_a_true_child_is_refused(self):
+        for children in (True, ("a", True)):
+            with (
+                self.subTest(children=children),
+                self.assertRaisesRegex(TypeError, "True child"),
+            ):
+                components.Div()[children]
+        with self.assertRaisesRegex(TypeError, "True child"):
+            components.Fragment("a", True)
+
+    def test_a_nested_list_child_still_fails_loud(self):
+        with self.assertRaisesRegex(TypeError, "unpack it"):
+            str(components.Div()[["a"], None])
+
+    def test_dropped_children_leave_media_collection_intact(self):
+        widget = components.Span().with_media(components.Media(js=("widget.js",)))
+        for tree in (
+            components.Div()[None, widget, False],
+            components.Fragment(None, widget),
+        ):
+            with self.subTest(tree=type(tree).__name__):
+                self.assertIn("widget.js", components.collect_media(tree).js)
 
     def test_getitem_of_none_alone_renders_empty(self):
         self.assertEqual(str(components.Div()[None]), "<div></div>")

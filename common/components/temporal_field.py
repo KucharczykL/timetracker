@@ -323,11 +323,9 @@ def _endpoint_group(
                     label="Whole decade",
                     checked=bool(decade.strip()),
                 ),
-                *(
-                    [_script_toggle(toggle=open_toggle, label=open_label)]
-                    if open_toggle
-                    else []
-                ),
+                _script_toggle(toggle=open_toggle, label=open_label)
+                if open_toggle
+                else None,
             ]
         ],
     ]

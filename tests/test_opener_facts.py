@@ -258,6 +258,7 @@ def test_a_stated_fact_renders_a_row_in_place_of_its_control(owner, game):
     assert "disabled" not in carrier
     assert "<select" not in row.group(0)
     assert "None" not in html
+    assert "<dd></dd>" not in html
     assert html.index('data-field-row="game"') < html.index('data-field-row="kind"')
 
 

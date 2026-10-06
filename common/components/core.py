@@ -141,38 +141,36 @@ class Node:
         return mark_safe(self._render())
 
 
-# A renderable child is a node or a string. Strings are ALWAYS escaped (a string
-# is untrusted text — ``SafeText``/``mark_safe`` is escaped too); trusted
-# pre-rendered HTML must be a ``Safe`` node. ``Children`` is the type for a
-# builder's ``children``
-# parameter: a sequence of child nodes/strings, a bare string, or nothing. The
-# sequence is a covariant ``Sequence`` so ``list[Element]`` / ``list[Node]`` are
-# accepted (a plain ``list[str]`` would be invariant and reject them). A single
-# bare ``Node`` is accepted only by ``Element`` itself (which wraps it); the
-# higher-level builders take ``Children``. A ``None`` or ``False`` child is
-# dropped, as a ``None``/``False`` attribute is omitted, so
-# ``Div()[a, b if shown else None]`` renders ``a`` alone.
+# A child is a node or a string. Strings are always escaped, ``SafeText``
+# included; trusted HTML must be a ``Safe`` node. ``Children`` is a builder's
+# ``children`` argument: a child, an absent child, or a covariant ``Sequence``
+# of them (so ``list[Element]`` is accepted). An absent child (``None`` or
+# ``False``) is dropped, as a ``None``/``False`` attribute is omitted, so
+# ``Div()[a, b if shown else None]`` renders ``a`` alone. ``True`` is refused.
 Child = Node | str
 AbsentChild = Literal[False] | None
-Children = Sequence[Child | AbsentChild] | Node | str | None
+Children = Sequence[Child | AbsentChild] | Child | AbsentChild
 
 
 def _present[T](children: Iterable[T | AbsentChild]) -> list[T]:
-    return [child for child in children if child is not None and child is not False]
+    present = []
+    for child in children:
+        if child is True:
+            raise TypeError("A True child renders nothing meaningful; pass a node.")
+        if child is not None and child is not False:
+            present.append(child)
+    return present
 
 
 def as_children(children: Children) -> list[Child]:
-    """Normalise a builder's ``children`` argument to a flat list.
+    """Normalise a builder's ``children`` to a list.
 
-    Accepts ``None`` (→ empty), a single node/string (→ one-element list), or a
-    sequence of them, whose ``None``/``False`` members it drops. Lets builders
-    drop the ``children if isinstance(children, list) else [children]`` dance
-    and get a properly typed ``list[Child]``.
+    An absent child gives an empty list, one node or string a one-item list,
+    and a sequence its members less absent ones. A nested sequence is kept,
+    and fails in :func:`_child_key`.
     """
-    if children is None or children is False:
-        return []
-    if isinstance(children, (str, Node)):
-        return [children]
+    if children is None or isinstance(children, (str, Node, bool)):
+        return _present([children])
     return _present(children)
 
 
@@ -325,7 +323,7 @@ def _render_element(
 class Element(Node):
     """Any HTML element: a tag name, attributes and children.
 
-    Children may be other nodes, ``SafeText``, or plain strings (escaped).
+    Children are nodes or strings (always escaped); absent ones are dropped.
     Rendering goes through the memoized :func:`_render_element`.
     """
 
@@ -333,7 +331,7 @@ class Element(Node):
         self,
         tag_name: str,
         attributes: Attributes | None = None,
-        children: Children | Node = None,
+        children: Children = None,
     ) -> None:
         if not tag_name:
             raise ValueError("tag_name is required.")
@@ -341,17 +339,18 @@ class Element(Node):
         self.attributes = normalize_attributes(attributes) if attributes else []
         self.children = as_children(children)
 
-    def __getitem__(self, children: Children | Node) -> Element:
+    def __getitem__(self, children: Children) -> Element:
         """htpy-style children: ``Div(class_="x")[child1, child2]``.
 
         Returns an Element with the same tag/attributes/media and these
         children, so the tree stays walkable (Media still bubbles).
 
         A subscripted tuple (``[a, b]``) and a single bare list (``[items]``)
-        both flatten to their elements via :func:`as_children`; a single
-        node/string becomes one child. Nested lists are *not* flattened — they
-        survive as children and fail loud in :func:`_child_key`."""
-        clone = Element(self.tag_name, self.attributes, as_children(children))
+        both flatten to their elements via :func:`as_children`, which drops
+        ``None``/``False``; a single node/string becomes one child. Nested
+        lists are *not* flattened — they survive as children and fail loud in
+        :func:`_child_key`."""
+        clone = Element(self.tag_name, self.attributes, children)
         clone.media = self.media
         return clone
 
@@ -389,7 +388,8 @@ class Fragment(Node):
     """An ordered group of children with no wrapping tag.
 
     Replaces ``mark_safe(str(a) + str(b))`` / ``"\\n".join(...)`` composition,
-    so media still bubbles up from the grouped children.
+    so media still bubbles up from the grouped children. ``None``, ``False``
+    and ``""`` children are dropped.
     """
 
     def __init__(self, *children: object, separator: str = "") -> None:
