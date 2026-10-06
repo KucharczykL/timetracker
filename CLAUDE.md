@@ -457,7 +457,8 @@ docs/           — Additional documentation
   `record_session`, `restate_session` (timing, then description of differing
   facts, then move, one `correlation_id`), `end_session`, `reset_session`
   (refuses row not running), `remove_session`, `clone_session` (game's latest
-  live ordinary run, calendar zone) — each under `answered("session")`.
+  live ordinary run, calendar zone; `resumed_device`: last session's held
+  device, else the default) — each under `answered("session")`.
   `SessionForm` is plain `Form` that derives mode from what is filled: start
   alone Timed, day and duration Duration-only, start, end and duration
   Corrected; start beside duration with no end, and day beside instant, refused

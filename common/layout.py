@@ -77,7 +77,7 @@ _NAV_LINK_CLASS = (
 def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[PlayerSession]:
     """The most-recent session per distinct played game, newest first (up to
     ``limit``). Each is a resume target for the navbar log dropdown: cloning it
-    starts a fresh session carrying the prior device/emulated flags.
+    starts a fresh session (see `resumed_device`).
 
     Anonymous requests get an empty list — the navbar log button is
     authenticated-only, so its recent-game names never render on the login page.

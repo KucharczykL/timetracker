@@ -65,7 +65,6 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone
 from games.reads.player_sessions import (
-    game_sessions,
     library_sessions,
     listed_sessions,
 )
@@ -462,14 +461,9 @@ def resume_session(request: HttpRequest, game_id: UUID) -> HttpResponse:
     """Start a session now at the game, as its last session was played."""
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    last = game_sessions(library, game).order_by("-sort_instant", "-id").first()
     try:
         clone_session(
-            cast(User, request.user),
-            game,
-            device_id=None if last is None else last.device_id,
-            emulated=False if last is None else last.emulated,
-            correlation_id=new_correlation_id(),
+            cast(User, request.user), game, correlation_id=new_correlation_id()
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)

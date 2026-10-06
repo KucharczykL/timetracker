@@ -1103,8 +1103,6 @@ def test_resume_states_no_release(owned_user, owned_library, graph, run):
     resumed = clone_session(
         owned_user,
         graph.game,
-        device_id=None,
-        emulated=False,
         correlation_id=uuid.uuid7(),
     )
 

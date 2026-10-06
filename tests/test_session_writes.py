@@ -342,8 +342,6 @@ def test_cloning_lands_on_the_ordinary_run_past_the_bucket(
     session_id = clone_session(
         owned_user,
         game,
-        device_id=device.pk,
-        emulated=True,
         correlation_id=uuid.uuid7(),
     )
 
