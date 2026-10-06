@@ -156,7 +156,7 @@ class SearchSelectSettingControl implements SettingControl {
   }
 
   private reportUnoffered(value: SettingValue): void {
-    console.error(`search-select[${this.element.getAttribute("name")}]: no row offers`, value);
+    console.error(`search-select[${this.element.getAttribute("name")}]: no option offers`, value);
   }
 
   private heldInput(): HTMLInputElement | null {

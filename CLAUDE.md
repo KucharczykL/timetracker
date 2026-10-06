@@ -216,7 +216,8 @@ docs/           — Additional documentation
   `given_away`/`broken`/`stolen`; `EndDeviceAccess`,
   `CorrectDeviceAccessEnd`, `VoidDeviceAccessEnd`, and `CreateDevice`'s
   `access_end`. An ended device stays in session and record pickers,
-  hinted, and is no default. Contract is
+  hinted, and is no default: the Library page's picker searches
+  `/api/devices/search?held=1`. Contract is
   [A device's access ends](docs/superpowers/specs/2026-09-28-issue-1275-device-access-end-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year;
   `rate` is `Decimal(24, 12)`, read and fetched through `exchange_rate`
@@ -1017,7 +1018,9 @@ Submodules re-exported via `common/components/__init__.py`:
   key absent; × then holds none, and the change event states `none`, #1288;
   a form-mode pick that changes nothing emits nothing, `holdValue`/`holdNone`
   hold silently, and opt-in `revert_on_leave` restores what a first keystroke
-  dropped when focus leaves; the adapter puts `data-*` on the host,
+  dropped when focus leaves; a single-select remembers each option it held,
+  so `holdValue`/`offers` answer for a value the last search dropped, and
+  `setOptions` forgets them (#1523); the adapter puts `data-*` on the host,
   `disabled`, `aria-describedby` and `aria-invalid` on the box, and refuses
   any other attr, #1289),
   `FilterSelect()` (include/exclude

@@ -1000,6 +1000,17 @@ const initWidget = (containerElement: Element): boolean => {
   //    pick filling in its label — blur touches neither value nor text. ──
   if (!multi) container._searchSelectLabel = search.value;
 
+  //: Single-select: each option held since setOptions.
+  const remembered = new Map<string, SearchSelectOption>();
+  const renderedHeld = multi ? null : pills.querySelector<HTMLInputElement>(HELD_VALUE_INPUTS);
+  if (renderedHeld) {
+    remembered.set(renderedHeld.value, {
+      value: renderedHeld.value,
+      label: search.value,
+      data: {},
+    });
+  }
+
   const runFocus = () => {
     if (!multi) {
       const committedLabel = container._searchSelectLabel ?? "";
@@ -1320,6 +1331,7 @@ const initWidget = (containerElement: Element): boolean => {
       search.value = option.label;
       container._searchSelectLabel = option.label;
       container._searchSelectDirty = false;
+      remembered.set(option.value, option);
       hidePanel();
     }
     if (emit) soleDeclined = false;
@@ -1399,32 +1411,31 @@ const initWidget = (containerElement: Element): boolean => {
     Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).find(
       row => row.getAttribute("data-value") === value
     );
-  container._searchSelectOffers = (value: string) => offeredRow(value) !== undefined;
-
-  //: Hold a row's value; unoffered holds none, or nothing.
-  container._searchSelectHoldValue = (value: string): boolean => {
+  const knownOption = (value: string): SearchSelectOption | undefined => {
     const offered = offeredRow(value);
+    return offered ? optionFromRow(offered) : remembered.get(value);
+  };
+  container._searchSelectOffers = (value: string) => knownOption(value) !== undefined;
+
+  //: Hold a row or remembered value.
+  container._searchSelectHoldValue = (value: string): boolean => {
+    const option = knownOption(value);
     const alreadyHeld =
       !container._searchSelectDirty && sameHeld(heldNow(), { values: [value], none: false });
-    if (offered && alreadyHeld) return true;
-    if (offered) selectOption(optionFromRow(offered), false);
+    if (option && alreadyHeld) return true;
+    if (option) selectOption(option, false);
     else if (noneLabel) holdNone();
     else container._searchSelectClear?.();
-    return offered !== undefined;
+    return option !== undefined;
   };
   container._searchSelectHoldNone = () => {
     // A rewrite would close an open panel.
     if (!holdsNone()) holdNone();
   };
 
-  // Public option swap: replace the pre-rendered (inline, no search-url) option
-  // set without a fetch — the comparison widget re-filters a right-operand list
-  // client-side as the left column / operator changes (#282). A committed
-  // single-select value that is no longer offered is dropped (to none, where
-  // offered) so it cannot
-  // serialize a stale operand; a still-offered value is preserved. Panel
-  // visibility is left untouched (no forced open).
+  //: Replace rows; forget memory; drop unoffered held.
   container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
+    remembered.clear();
     options
       .querySelectorAll<HTMLElement>(
         "[data-search-select-option], [data-search-select-group-header]"
@@ -1794,8 +1805,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
   }
 
-  /** Hold the row offering `value`, silently.
-   *  Unoffered holds none, else nothing; answers false. */
+  /** Hold `value` silently, else none or nothing. */
   holdValue(value: string): boolean {
     return this.initializedPart("_searchSelectHoldValue")(value);
   }
@@ -1805,7 +1815,7 @@ export class SearchSelectElement extends HTMLElement {
     this.initializedPart("_searchSelectHoldNone")();
   }
 
-  /** Whether a loaded row offers `value`. */
+  /** Whether a row or memory offers `value`. */
   offers(value: string): boolean {
     return this.initializedPart("_searchSelectOffers")(value);
   }
@@ -1825,10 +1835,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectClear?.();
   }
 
-  /** Replace the inline option set client-side (no fetch). A committed value no
-   *  longer offered is dropped, to none where offered; a still-offered one is kept. For inline
-   *  (no search-url) single-selects whose options are recomputed on the client
-   *  — e.g. the field-comparison right operand (#282). No change event fires. */
+  /** Replace inline rows silently; drops an unoffered value. */
   setOptions(options: SearchSelectOption[]): void {
     (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
   }

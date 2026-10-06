@@ -10,6 +10,7 @@ from games.commands.device import VoidDeviceAccessEnd
 from games.end_ways import EndWay
 from games.events.dispatch import append_command
 from games.events.rebuild import RebuildMode, rebuild_projections
+from games.forms import DEVICE_SEARCH_URL, HELD_DEVICES
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
 
@@ -152,23 +153,38 @@ def test_an_ended_default_is_no_default_until_the_end_is_voided(user):
     assert preferences.default_device == device
 
 
-def test_the_settings_page_shows_an_ended_default_and_offers_held_devices(client, user):
+def test_the_settings_page_holds_an_ended_default_by_name(client, user):
     library = user.library
     kept = create_device(library=library, name="Deck")
-    end_device_access(create_device(library=library, name="Old laptop"))
-    phone = create_device(library=library, name="Phone")
     settings_commands.change_library_default_device(library, kept)
     end_device_access(kept, way=EndWay.LOST)
     client.force_login(user)
 
     body = client.get(reverse("games:library")).content.decode()
+    picker = body[body.index('name="default_device" search-url') :]
+    picker = picker[: picker.index("</search-select>")]
 
-    assert f'<option value="{kept.pk}" selected>Deck (Unknown) · Lost</option>' in body
-    assert f'<option value="{phone.pk}">Phone (Unknown)</option>' in body
-    assert (
-        "Old laptop" not in body.split('name="default_device"')[1].split("</select>")[0]
-    )
+    assert f'name="default_device" value="{kept.pk}"' in picker
+    assert 'value="Deck"' in picker
+    assert "Lost" not in picker
     assert "Lost, so new sessions name no device. Choose another." in body
+
+
+def test_device_search_held_omits_an_ended_device(client, user):
+    library = user.library
+    create_device(library=library, name="Deck")
+    end_device_access(create_device(library=library, name="Old laptop"))
+    client.force_login(user)
+
+    held = {key: source["value"] for key, source in HELD_DEVICES.items()}
+
+    def labels(**params):
+        answer = client.get(DEVICE_SEARCH_URL, params).json()
+        return {row["label"] for row in answer}
+
+    assert labels(**held) == {"Deck"}
+    assert labels(**held, q="o") == set()
+    assert labels() == {"Deck", "Old laptop"}
 
 
 def test_the_api_refuses_an_ended_device_even_as_the_stored_default(client, user):

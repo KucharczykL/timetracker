@@ -55,7 +55,7 @@ from common.components.primitives import (
     Radio,
     field_label_id,
 )
-from common.components.search_select import DialogCreate
+from common.components.search_select import DialogCreate, ParamSources
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
@@ -240,41 +240,28 @@ class PrimitiveWidgetsMixin:
         apply_primitive_widget_classes(self.fields)
 
 
-class DeviceChoiceField(forms.ModelChoiceField):
-    """A device, and how it left."""
-
-    def label_from_instance(self, obj) -> str:
-        device = cast(Device, obj)
-        option = device_option(device)
-        hint = option.get("hint")
-        return str(device) if hint is None else f"{device} · {hint}"
-
-
 class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
-    """Library-owned preferences rendered through the shared settings field kit."""
+    """Library-owned preferences rendered through the shared settings field kit.
 
-    default_device = DeviceChoiceField(
-        queryset=Device.objects.none(),
-        label="Default device",
-        required=False,
-        empty_label="No default device",
+    Renders only; the PATCH route validates.
+    """
+
+    default_device = forms.ModelChoiceField(
+        queryset=Device.objects.none(), label="Default device", required=False
     )
 
-    def __init__(
-        self,
-        *,
-        devices: QuerySet[Device],
-        default_device: Device | None,
-    ) -> None:
-        """Held devices, and the stored default."""
+    def __init__(self, *, library: UserLibrary, default_device: Device | None) -> None:
         super().__init__()
-        default_device_field = cast(
-            forms.ModelChoiceField, self.fields["default_device"]
+        field = cast(forms.ModelChoiceField, self.fields["default_device"])
+        field.queryset = Device.objects.for_library(library)
+        field.widget = SearchSelectWidget(
+            search_url=DEVICE_SEARCH_URL,
+            #: An ended device is no default.
+            params=HELD_DEVICES,
+            options_resolver=partial(device_options, library=library),
+            none_label="No device",
+            revert_on_leave=True,
         )
-        offered = devices.filter(access_end_recorded_at__isnull=True)
-        if default_device is not None:
-            offered = offered | devices.filter(pk=default_device.pk)
-        default_device_field.queryset = offered
         self.initial["default_device"] = default_device
 
 
@@ -418,6 +405,8 @@ def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 #: Where a picker searches a library's devices.
 DEVICE_SEARCH_URL = "/api/devices/search"
+#: Narrows that search to unended devices.
+HELD_DEVICES: Final[ParamSources] = {"held": {"value": "1"}}
 HELD_RELEASE_SEARCH_URL: Final = "/api/releases/held"
 
 #: Where a picker makes the row a person typed.
@@ -525,6 +514,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         clearable: bool = True,
         none_label: NoneLabel | None = None,
         dialog_create: DialogCreate | None = None,
+        revert_on_leave: bool = False,
         attrs=None,
     ):
         super().__init__(
@@ -532,6 +522,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             autofocus=autofocus,
             clearable=clearable,
             dialog_create=dialog_create,
+            revert_on_leave=revert_on_leave,
             attrs=attrs,
         )
         self.none_label = none_label

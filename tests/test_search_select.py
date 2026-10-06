@@ -1261,6 +1261,23 @@ class ClearableWidgetTest(unittest.TestCase):
                 self.assertIn("data-search-select-clear", html)
 
 
+def test_search_widget_passes_revert_on_leave_to_the_host():
+    from games.forms import SearchSelectWidget
+
+    def host(**kwargs) -> str:
+        widget = SearchSelectWidget(
+            search_url="/api/devices/search",
+            options_resolver=lambda values: [],
+            **kwargs,
+        )
+        html = widget.render("device", None)
+        start = html.index("<search-select")
+        return html[start : html.index(">", start)]
+
+    assert 'revert-on-leave="true"' in host(revert_on_leave=True)
+    assert "revert-on-leave" not in host()
+
+
 def _row_classes(html: str, hook: str) -> list[str]:
     return [
         match.group(1)

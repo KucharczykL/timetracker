@@ -602,23 +602,26 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
 
 
 @device_router.get("/search", response=list[PickerOption])
-def search_devices(request, q: str = "", limit: int = 10):
+def search_devices(request, q: str = "", limit: int = 10, held: bool = False):
     library = cast(User, request.user).library
+    devices = Device.objects.for_library(library)
+    if held:
+        devices = devices.filter(access_end_recorded_at__isnull=True)
     #: Held first; ended ones serve past sessions.
-    qs = Device.objects.for_library(library).annotate(
+    devices = devices.annotate(
         ended=Case(When(access_end_recorded_at__isnull=True, then=0), default=1)
     )
     if q:
-        qs = qs.filter(name__icontains=q).order_by("ended", "name")
+        devices = devices.filter(name__icontains=q).order_by("ended", "name")
     else:
         #: The live rows, on the base manager: a removed one moves nothing.
-        qs = qs.annotate(
+        devices = devices.annotate(
             last_used=Max(
                 "player_sessions__sort_instant",
                 filter=Q(player_sessions__removed_at__isnull=True),
             )
         ).order_by("ended", F("last_used").desc(nulls_last=True), "-created_at", "name")
-    return [device_option(device) for device in qs[:limit]]
+    return [device_option(device) for device in devices[:limit]]
 
 
 class RowIn(Schema):

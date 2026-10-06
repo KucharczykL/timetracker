@@ -75,6 +75,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("<live-setting-fields>", () => {
@@ -585,11 +586,16 @@ describe("<live-setting-fields>", () => {
 
 const ZONE_NONE = "Use site default (UTC)";
 
-function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLInputElement } {
+function mountPicker(searchUrl?: string): {
+  host: HTMLElement;
+  picker: HTMLElement;
+  search: HTMLInputElement;
+} {
   document.body.innerHTML = `
     <live-setting-fields patch-url-template="/api/settings/user/__key__"
         csrf="token" namespace="user">
       <drop-down behavior="inline-combobox"><search-select name="zone" multi="false"
+          ${searchUrl ? `search-url="${searchUrl}"` : ""}
           none-label="${ZONE_NONE}" revert-on-leave="true"
           data-setting-key="DISPLAY_TIME_ZONE" data-live-setting-control>
         <div data-search-select-pills><input type="hidden" name="zone" value="Europe/Prague"></div>
@@ -735,6 +741,36 @@ describe("<live-setting-fields> over a <search-select>", () => {
 
     expect(sentValues(fetchStub)).toEqual([null]);
     expect(search.value).toBe(ZONE_NONE);
+  });
+
+  it("keeps a saved pick the next search answer no longer offers", async () => {
+    const save = deferredResponse();
+    const fetchStub = vi
+      .fn()
+      .mockImplementationOnce(() => save.promise)
+      .mockResolvedValueOnce({ ok: false, status: 500 } as Response);
+    window.fetchWithEvents = fetchStub;
+    const prague = { value: "Europe/Prague", label: "Europe/Prague", data: {} };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => [prague] }) as Response)
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { picker, search } = mountPicker("/api/zones");
+
+    pickRow(picker, zoneRow("Asia/Tokyo"));
+    search.value = "Eu";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(picker.querySelector(zoneRow("Asia/Tokyo"))).toBeNull());
+    save.resolve(zoneAnswer("Asia/Tokyo"));
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+    pickRow(picker, "[data-search-select-none-option]");
+    await vi.waitFor(() => expect(window.toast).toHaveBeenCalled());
+
+    expect(search.value).toBe("Asia/Tokyo");
+    expect(picker.querySelector<HTMLInputElement>('input[type="hidden"]')!.value).toBe(
+      "Asia/Tokyo"
+    );
   });
 
   it("does not PATCH a disabled picker", async () => {
