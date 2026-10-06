@@ -1521,6 +1521,12 @@ def test_a_form_re_render_carries_an_ended_devices_hint(owned_library):
 NEW_DEVICE = DialogCreate("/device/add", "New device")
 
 
+def _container_tag(html: str) -> str:
+    found = re.search(r"<search-select[^>]*>", html)
+    assert found, html
+    return found.group(0)
+
+
 class DialogCreateTest(unittest.TestCase):
     def _link(self, html: str) -> str:
         return _tag_around(html, "data-form-dialog=")
@@ -1564,6 +1570,36 @@ class DialogCreateTest(unittest.TestCase):
         create = DialogCreate(reverse_lazy("games:add_game"), "New game")
         html = str(SearchSelect(name="game", dialog_create=create))
         self.assertIn(f'href="{reverse("games:add_game")}"', self._link(html))
+
+    def test_literal_params_join_the_href(self):
+        create = DialogCreate(
+            "/game/add",
+            "New main game",
+            params={"kind": {"value": "main"}, "addon": {"field": "name"}},
+        )
+        html = str(SearchSelect(name="parent", dialog_create=create))
+        self.assertIn('href="/game/add?kind=main"', self._link(html))
+
+    def test_field_params_reach_the_element(self):
+        create = DialogCreate(
+            "/game/add",
+            "New main game",
+            params={"kind": {"value": "main"}, "addon": {"field": "name"}},
+        )
+        container = _container_tag(
+            str(SearchSelect(name="parent", dialog_create=create))
+        )
+        self.assertIn(
+            'dialog-create-params="{&quot;addon&quot;: {&quot;field&quot;: '
+            '&quot;name&quot;}}"',
+            container,
+        )
+
+    def test_no_field_params_leave_the_prop_blank(self):
+        container = _container_tag(
+            str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        )
+        self.assertIn('dialog-create-params=""', container)
 
 
 class DialogCreateWidgetTest(unittest.TestCase):

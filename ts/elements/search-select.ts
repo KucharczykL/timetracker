@@ -96,6 +96,7 @@ interface SearchSelectContainer extends HTMLElement {
   _searchSelectHoldNone?: () => void;
   _searchSelectOffers?: (value: string) => boolean;
   _searchSelectSetOptions?: (options: SearchSelectOption[]) => void;
+  _searchSelectRewriteDialogCreate?: () => void;
 }
 
 //: Held values and none.
@@ -231,6 +232,27 @@ const fieldLabel = (container: Element, field: string): string => {
   return (label?.textContent ?? "").trim().toLowerCase() || field;
 };
 
+/** The fields a set of sources names. */
+const sourceFields = (params: ParamSources): string[] =>
+  Object.values(params)
+    .filter((source): source is FieldParam => "field" in source)
+    .map(source => source.field);
+
+/** The + link's query, set from its sources now. */
+const rewriteDialogCreate = (container: Element, params: ParamSources): void => {
+  const link = container.querySelector("a[data-search-select-dialog-create]");
+  const href = link?.getAttribute("href");
+  if (!link || !href || !container.isConnected) return;
+  const url = new URL(href, location.href);
+  Object.keys(params).forEach(key => url.searchParams.delete(key));
+  Object.entries(resolveParams(container, params)).forEach(([key, value]) =>
+    url.searchParams.set(key, value),
+  );
+  //: A dialog's content holds absolute URLs.
+  const relative = href.startsWith("/");
+  link.setAttribute("href", relative ? `${url.pathname}${url.search}${url.hash}` : url.href);
+};
+
 /** What the dependencies hold, as one comparable string. */
 const dependencySignature = (container: Element, fields: string[]): string =>
   fields.map(field => `${field}=${fieldValue(container, field)}`).join("&");
@@ -279,9 +301,7 @@ const initWidget = (containerElement: Element): boolean => {
       ?.querySelector<HTMLInputElement>('[name="csrfmiddlewaretoken"]')?.value ||
     "";
   //: Every field a param names: a change to one searches again.
-  const dependencyFields = Object.values(params)
-    .filter((source): source is FieldParam => "field" in source)
-    .map(source => source.field);
+  const dependencyFields = sourceFields(params);
   //: What each dependency held when the loaded window was fetched.
   let dependencyValues = "";
 
@@ -1634,6 +1654,24 @@ const initWidget = (containerElement: Element): boolean => {
     form?.addEventListener("search-select:change", onDependencyChange);
   }
 
+  // The + carries what its source fields hold.
+  const dialogCreateParams = parseParams(props.dialogCreateParams || null);
+  const dialogCreateFields = sourceFields(dialogCreateParams);
+  if (dialogCreateFields.length) {
+    const rewrite = (): void => rewriteDialogCreate(container, dialogCreateParams);
+    container._searchSelectRewriteDialogCreate = rewrite;
+    const onSourceInput = (event: Event): void => {
+      const target = event.target;
+      if (target instanceof Element && dialogCreateFields.includes(target.getAttribute("name") ?? "")) {
+        rewrite();
+      }
+    };
+    const form = container.closest("form");
+    form?.addEventListener("input", onSourceInput);
+    form?.addEventListener("change", onSourceInput);
+    rewrite();
+  }
+
   // Focus before wiring fired no event; replay.
   if (!search.hasAttribute("autofocus")) {
     //: A click or script focused it first.
@@ -1779,6 +1817,8 @@ export class SearchSelectElement extends HTMLElement {
   connectedCallback(): void {
     // Moved rows keep listeners; wire once.
     if (!this.initialized) this.initialized = initWidget(this);
+    //: Inserted anew, the source may differ.
+    else (this as SearchSelectContainer)._searchSelectRewriteDialogCreate?.();
   }
 
   /** Programmatically commit a selection without firing a change event.

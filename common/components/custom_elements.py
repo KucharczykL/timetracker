@@ -652,6 +652,8 @@ class SearchSelectProps(TypedDict):
     none_label: str
     #: Leaving mid-edit holds the earlier value.
     revert_on_leave: bool
+    #: Field sources the + link's query follows.
+    dialog_create_params: SearchSelectParams
 
 
 register_element("search-select", "SearchSelect", SearchSelectProps)

@@ -51,6 +51,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Final, Literal, NamedTuple, NotRequired, TypedDict
+from urllib.parse import urlencode
 
 from django.utils.functional import Promise
 
@@ -306,6 +307,23 @@ class DialogCreate:
 
     url: str | Promise
     label: ControlLabel
+    #: Literals join the href; fields follow typing.
+    params: ParamSources | None = None
+
+    def literal_query(self) -> dict[str, str]:
+        literal: dict[str, str] = {}
+        for key, source in (self.params or {}).items():
+            match source:
+                case {"value": str(value)}:
+                    literal[key] = value
+        return literal
+
+    def field_sources(self) -> ParamSources:
+        return {
+            key: source
+            for key, source in (self.params or {}).items()
+            if "field" in source
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,11 +351,15 @@ def _clear_button(clear: ClearControl) -> Node:
 
 def _dialog_create_link(create: DialogCreate) -> Node:
     """The divider and the +."""
+    href = str(create.url)
+    if literal := create.literal_query():
+        href = f"{href}?{urlencode(literal)}"
     return Fragment(
         Span(aria_hidden="true", class_=_DIVIDER_CLASS),
         ControlButton(
             form_dialog_link(),
-            href=str(create.url),
+            href=href,
+            data_search_select_dialog_create="",
             variant="ghost",
             size="compact",
             aria_label=create.label,
@@ -805,6 +827,9 @@ def SearchSelect(
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
+        dialog_create_params=json.dumps(field_sources)
+        if dialog_create and (field_sources := dialog_create.field_sources())
+        else "",
         **_create_props(create),
         csrf=csrf,
         commit_sole_option="true" if commit_sole_option else "false",
