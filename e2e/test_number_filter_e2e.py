@@ -18,7 +18,7 @@ from django.urls import path
 
 from common.components import QuickFilterBar
 from common.date_time_presentation import date_time_presentation_for_request
-from e2e.helpers import open_facet
+from e2e.helpers import held_choice, offered_choices, open_facet, pick_choice
 
 _PAGE_TEMPLATE = """<!DOCTYPE html>
 <html>
@@ -99,16 +99,11 @@ def test_number_filter_defaults_and_greater_than(live_server, page):
     value2_input = page.locator('input[name="quick-year_released-value2"]')
     assert value_input.is_enabled()
     # EQUALS is the default; the second input is hidden.
-    assert (
-        page.locator('select[name="quick-year_released-modifier"]').input_value()
-        == "EQUALS"
-    )
+    assert held_choice(page, "quick-year_released-modifier").input_value() == "EQUALS"
     assert value2_input.is_hidden()
 
     value_input.fill("2015")
-    page.locator('select[name="quick-year_released-modifier"]').select_option(
-        "GREATER_THAN"
-    )
+    pick_choice(page, "quick-year_released-modifier", "GREATER_THAN")
     _submit(page)
 
     parsed = _filter_from_url(page.url)
@@ -124,7 +119,7 @@ def test_number_filter_between_reveals_and_serializes(live_server, page):
     value2_input = page.locator('input[name="quick-year_released-value2"]')
     assert value2_input.is_hidden()
 
-    page.locator('select[name="quick-year_released-modifier"]').select_option("BETWEEN")
+    pick_choice(page, "quick-year_released-modifier", "BETWEEN")
     assert value2_input.is_visible()
 
     page.locator('input[name="quick-year_released"]').fill("2000")
@@ -148,7 +143,7 @@ def test_number_filter_null_states(live_server, page):
     value_input = page.locator('input[name="quick-year_released"]')
     value_input.fill("1999")
 
-    page.locator('select[name="quick-year_released-modifier"]').select_option("IS_NULL")
+    pick_choice(page, "quick-year_released-modifier", "IS_NULL")
 
     # Both inputs disable and clear under a presence modifier.
     assert not value_input.is_enabled()
@@ -172,21 +167,17 @@ def test_number_filter_prefilled_states(live_server, page):
         page.locator('input[name="quick-year_released-value2"]').input_value() == "2010"
     )
     assert page.locator('input[name="quick-year_released-value2"]').is_visible()
-    assert (
-        page.locator('select[name="quick-year_released-modifier"]').input_value()
-        == "BETWEEN"
-    )
+    assert held_choice(page, "quick-year_released-modifier").input_value() == "BETWEEN"
 
     # session_count: GREATER_THAN 5 — value prefilled, input enabled.
     open_facet(page, "session_count")
     session_input = page.locator('input[name="quick-session_count"]')
     assert session_input.is_enabled()
     assert session_input.input_value() == "5"
-    modifier_select = page.locator('select[name="quick-session_count-modifier"]')
-    assert modifier_select.input_value() == "GREATER_THAN"
-    # A count states no presence pair.
-    offered = modifier_select.locator("option").evaluate_all(
-        "options => options.map(option => option.value)"
+    assert held_choice(page, "quick-session_count-modifier").input_value() == (
+        "GREATER_THAN"
     )
+    # A count states no presence pair.
+    offered = offered_choices(page, "quick-session_count-modifier")
     assert "IS_NULL" not in offered
     assert "NOT_NULL" not in offered

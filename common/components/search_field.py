@@ -187,7 +187,7 @@ def SearchField(
     def box(shape: ButtonShape) -> Node:
         """The box, stating the corners it rounds."""
         return Input(
-            [("data-match-value", "")],
+            [("data-match-value", ""), ("data-string-value", "")],
             type="text",
             name=name,
             value=value,

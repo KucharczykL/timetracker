@@ -12,6 +12,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from django.test import SimpleTestCase, TestCase
+from pickers import held
 
 from common.components import (
     QUICK_FACET_KINDS,
@@ -381,7 +382,9 @@ class QuickFilterBarRenderingTest(TestCase):
             QuickFilterBar(mode="sessions", filter_json=filter_json, builder_url="/x")
         )
         self.assertNotIn("Advanced filter active", html)
-        self.assertIn('value="GREATER_THAN_OR_EQUAL" selected', html)
+        self.assertEqual(
+            held(html, "quick-duration_hours-modifier"), "GREATER_THAN_OR_EQUAL"
+        )
         self.assertIn(">is at least<", html)
         self.assertIn(">is at most<", html)
 
@@ -406,7 +409,7 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertNotIn("Advanced filter active", html)
         # NumberFilter prefill: value + modifier selection survive the round trip.
         self.assertIn('value="2"', html)
-        self.assertIn('value="GREATER_THAN" selected', html)
+        self.assertEqual(held(html, "quick-duration_hours-modifier"), "GREATER_THAN")
         # DateRangePicker prefill: both hidden ISO bounds carry the range.
         self.assertIn('value="2026-01-01"', html)
         self.assertIn('value="2026-02-01"', html)

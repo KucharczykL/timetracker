@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   applyComparisonSelection,
   comparisonOperandValue,
@@ -9,53 +9,13 @@ import {
   wireComparisonRowListeners,
 } from "./field-comparison-set.js";
 import type { Column } from "./field-comparison-set.js";
-import type { SearchSelectOption } from "./search-select.js";
+import type { SearchSelectElement, SearchSelectOption } from "./search-select.js";
+import { choiceControl } from "./choice-control.js";
+import { choicePickerHtml } from "../test-setup/choice-picker.js";
 
-// A minimal <search-select> stub implementing the contract the comparison widget
-// depends on (setSelected / setOptions / clearSelection + a committed hidden
-// input under [data-search-select-pills]). field-comparison-set.ts imports only
-// TYPES from search-select.js, so the real element is never registered here and
-// this stub owns the tag. setOptions mirrors the real one: it drops a committed
-// value no longer offered.
-class StubSearchSelect extends HTMLElement {
-  lastOptions: SearchSelectOption[] = [];
+Element.prototype.scrollIntoView = () => {};
 
-  private pills(): HTMLElement {
-    let pills = this.querySelector<HTMLElement>("[data-search-select-pills]");
-    if (!pills) {
-      pills = document.createElement("div");
-      pills.setAttribute("data-search-select-pills", "");
-      this.appendChild(pills);
-    }
-    return pills;
-  }
-
-  private committed(): string {
-    return this.pills().querySelector<HTMLInputElement>('input[type="hidden"]')?.value ?? "";
-  }
-
-  setSelected(value: string, _label?: string): void {
-    const pills = this.pills();
-    pills.replaceChildren();
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.value = value;
-    pills.appendChild(input);
-  }
-
-  clearSelection(): void {
-    this.pills().replaceChildren();
-  }
-
-  setOptions(options: SearchSelectOption[]): void {
-    this.lastOptions = options;
-    const current = this.committed();
-    if (current && !options.some((option) => String(option.value) === current)) {
-      this.clearSelection();
-    }
-  }
-}
-customElements.define("search-select", StubSearchSelect);
+afterEach(() => document.body.replaceChildren());
 
 const ORDERED_MODIFIERS = [
   "EQUALS",
@@ -75,47 +35,52 @@ const COLUMNS: Column[] = [
   { value: "game__purchases__date_refunded", label: "Game › Purchases: Refunded", group: "date", operators: ORDERED_MODIFIERS, source: "Game › Purchases", multivalued: true },
 ];
 
-/** Build the row markup _field_comparison_row emits: left/right are
- *  <search-select> operands (stubbed), operator + quantifier are plain <select>s
- *  with data-selected holding the seeded value. */
+/** The row _field_comparison_row emits, connected, so every picker wires. */
 function buildRow(operatorSelected = "", quantifierSelected = ""): HTMLElement {
   const row = document.createElement("div");
   row.setAttribute("data-fc-row", "");
-
-  const left = document.createElement("div");
-  left.setAttribute("data-fc-left", "");
-  left.appendChild(document.createElement("search-select"));
-  row.appendChild(left);
-
-  const operator = document.createElement("select");
-  operator.setAttribute("data-fc-op", "");
-  if (operatorSelected) operator.setAttribute("data-selected", operatorSelected);
-  row.appendChild(operator);
-
-  const quantifier = document.createElement("select");
-  quantifier.setAttribute("data-fc-quantifier", "");
-  quantifier.className = "hidden";
-  for (const value of ["ANY", "ALL", "NONE"]) {
-    const option = document.createElement("option");
-    option.value = value;
-    quantifier.appendChild(option);
-  }
-  if (quantifierSelected) quantifier.setAttribute("data-selected", quantifierSelected);
-  row.appendChild(quantifier);
-
-  const right = document.createElement("div");
-  right.setAttribute("data-fc-right", "");
-  right.appendChild(document.createElement("search-select"));
-  row.appendChild(right);
+  const operatorSeed = operatorSelected ? ` data-selected="${operatorSelected}"` : "";
+  const quantifierSeed = quantifierSelected ? ` data-selected="${quantifierSelected}"` : "";
+  row.innerHTML =
+    `<div data-fc-left>${choicePickerHtml({
+      name: "fc-left",
+      rows: COLUMNS.map((column) => ({ value: column.value, label: column.label })),
+    })}</div>` +
+    `<div data-fc-op${operatorSeed}>${choicePickerHtml({ name: "fc-op" })}</div>` +
+    `<div data-fc-quantifier class="hidden"${quantifierSeed}>${choicePickerHtml({
+      name: "fc-quantifier",
+      rows: ["ANY", "NONE", "ALL"].map((value) => ({ value, label: value.toLowerCase() })),
+      held: "ANY",
+    })}</div>` +
+    `<div data-fc-right>${choicePickerHtml({ name: "fc-right" })}</div>`;
+  document.body.append(row);
   return row;
 }
 
-function operand(row: HTMLElement, side: "left" | "right"): StubSearchSelect {
-  return row.querySelector<StubSearchSelect>(`[data-fc-${side}] search-select`)!;
+function operand(row: HTMLElement, side: "left" | "right"): SearchSelectElement {
+  return row.querySelector<SearchSelectElement>(`[data-fc-${side}] search-select`)!;
 }
 
-function optgroupLabels(select: HTMLSelectElement): string[] {
-  return [...select.querySelectorAll("optgroup")].map((group) => group.label);
+// The rows a picker offers now.
+function offered(picker: HTMLElement): SearchSelectOption[] {
+  return [...picker.querySelectorAll<HTMLElement>("[data-search-select-option]")].map((row) => {
+    const data: Record<string, string> = {};
+    for (const key of ["group", "multivalued"]) {
+      const value = row.getAttribute(`data-${key}`);
+      if (value !== null) data[key] = value;
+    }
+    return { value: row.getAttribute("data-value") ?? "", label: row.getAttribute("data-label") ?? "", data };
+  });
+}
+
+function groupHeaders(row: HTMLElement): string[] {
+  return [...row.querySelectorAll("[data-fc-op] [data-search-select-group-header]")].map(
+    (header) => header.textContent ?? "",
+  );
+}
+
+function operatorBox(row: HTMLElement): HTMLInputElement {
+  return row.querySelector<HTMLInputElement>("[data-fc-op] [data-search-select-search]")!;
 }
 
 describe("unpackOperator", () => {
@@ -145,13 +110,13 @@ describe("refreshRow operator options", () => {
     const row = buildRow();
     operand(row, "left").setSelected("timestamp_start");
     refreshRow(row, COLUMNS);
-    expect(optgroupLabels(row.querySelector("[data-fc-op]")!)).toEqual(["Exact", "By date", "By year"]);
+    expect(groupHeaders(row)).toEqual(["Exact", "By date", "By year"]);
   });
 
   it("disables the operator until a left operand is chosen", () => {
     const row = buildRow();
     refreshRow(row, COLUMNS);
-    expect(row.querySelector<HTMLSelectElement>("[data-fc-op]")!.disabled).toBe(true);
+    expect(operatorBox(row).disabled).toBe(true);
   });
 });
 
@@ -160,7 +125,7 @@ describe("right-operand repopulation via setOptions", () => {
     const row = buildRow("EQUALS");
     operand(row, "left").setSelected("timestamp_start");
     refreshRow(row, COLUMNS);
-    const values = operand(row, "right").lastOptions.map((option) => option.value);
+    const values = offered(operand(row, "right")).map((option) => option.value);
     expect(values).toContain("timestamp_end"); // datetime, same group
     expect(values).not.toContain("timestamp_start"); // the left column itself
     expect(values).not.toContain("game__year_released"); // number, wrong group
@@ -170,7 +135,7 @@ describe("right-operand repopulation via setOptions", () => {
     const row = buildRow("EQUALS:year");
     operand(row, "left").setSelected("timestamp_start");
     refreshRow(row, COLUMNS);
-    const values = operand(row, "right").lastOptions.map((option) => option.value);
+    const values = offered(operand(row, "right")).map((option) => option.value);
     expect(values).toContain("game__year_released");
   });
 
@@ -178,7 +143,7 @@ describe("right-operand repopulation via setOptions", () => {
     const row = buildRow("GREATER_THAN:date");
     operand(row, "left").setSelected("timestamp_end");
     refreshRow(row, COLUMNS);
-    const option = operand(row, "right").lastOptions.find(
+    const option = offered(operand(row, "right")).find(
       (candidate) => candidate.value === "game__purchases__date_refunded",
     )!;
     expect(option.data).toEqual({ group: "date", multivalued: "true" });
@@ -191,7 +156,7 @@ describe("quantifier visibility + read (#282)", () => {
     operand(row, "left").setSelected("timestamp_start");
     operand(row, "right").setSelected("timestamp_end");
     refreshRow(row, COLUMNS);
-    const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
+    const quantifier = row.querySelector<HTMLElement>("[data-fc-quantifier]")!;
     expect(quantifier.classList.contains("hidden")).toBe(true);
     expect(readComparisonRow(row)?.quantifier).toBeUndefined();
   });
@@ -201,7 +166,7 @@ describe("quantifier visibility + read (#282)", () => {
     operand(row, "left").setSelected("timestamp_end");
     operand(row, "right").setSelected("game__purchases__date_refunded");
     refreshRow(row, COLUMNS);
-    expect(row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!.classList.contains("hidden")).toBe(false);
+    expect(row.querySelector<HTMLElement>("[data-fc-quantifier]")!.classList.contains("hidden")).toBe(false);
   });
 
   it("emits a non-default quantifier and omits ANY", () => {
@@ -209,10 +174,10 @@ describe("quantifier visibility + read (#282)", () => {
     operand(row, "left").setSelected("timestamp_end");
     operand(row, "right").setSelected("game__purchases__date_refunded");
     refreshRow(row, COLUMNS);
-    const quantifier = row.querySelector<HTMLSelectElement>("[data-fc-quantifier]")!;
-    quantifier.value = "ALL";
+    const quantifier = choiceControl(row, "data-fc-quantifier")!;
+    quantifier.write("ALL");
     expect(readComparisonRow(row)?.quantifier).toBe("ALL");
-    quantifier.value = "ANY";
+    quantifier.write("ANY");
     expect(readComparisonRow(row)?.quantifier).toBeUndefined();
   });
 
@@ -231,7 +196,7 @@ describe("readComparisonRow", () => {
     operand(row, "left").setSelected("timestamp_start");
     operand(row, "right").setSelected("timestamp_end");
     refreshRow(row, COLUMNS);
-    row.querySelector<HTMLSelectElement>("[data-fc-op]")!.value = "LESS_THAN:date";
+    choiceControl(row, "data-fc-op")!.write("LESS_THAN:date");
     expect(readComparisonRow(row)).toEqual({
       left: "timestamp_start",
       right: "timestamp_end",
@@ -245,7 +210,7 @@ describe("readComparisonRow", () => {
     operand(row, "left").setSelected("timestamp_start");
     operand(row, "right").setSelected("timestamp_start");
     refreshRow(row, COLUMNS);
-    row.querySelector<HTMLSelectElement>("[data-fc-op]")!.value = "EQUALS";
+    choiceControl(row, "data-fc-op")!.write("EQUALS");
     expect(readComparisonRow(row)).toBeNull();
   });
 
@@ -281,7 +246,7 @@ describe("applyComparisonSelection + wiring", () => {
     wireComparisonRowListeners(row, COLUMNS);
     const left = operand(row, "left");
     left.setSelected("timestamp_start");
-    // The stub does not emit events; simulate the pick from the operand element
+    // setSelected is silent; simulate the pick from the operand element
     // (the listener detects the side by ancestry, not the event name). A pick
     // carries the chosen option as `last` — the listener acts only on picks.
     left.dispatchEvent(
@@ -294,7 +259,7 @@ describe("applyComparisonSelection + wiring", () => {
         },
       }),
     );
-    expect(operand(row, "right").lastOptions.length).toBeGreaterThan(0);
+    expect(offered(operand(row, "right")).length).toBeGreaterThan(0);
   });
 
   it("a left-operand edit-clear (last=null) does not cascade through the row", () => {
@@ -316,10 +281,26 @@ describe("applyComparisonSelection + wiring", () => {
       }),
     );
     // The operator and right operand survive; only a real pick re-derives.
-    const operator = row.querySelector<HTMLSelectElement>("[data-fc-op]")!;
-    expect(operator.disabled).toBe(false);
-    expect(operator.value).toBe("LESS_THAN:date");
+    expect(operatorBox(row).disabled).toBe(false);
+    expect(choiceControl(row, "data-fc-op")!.read()).toBe("LESS_THAN:date");
     expect(comparisonOperandValue(row, "right")).toBe("timestamp_end");
+  });
+
+  it("an operator pick refilters the right list", () => {
+    const row = buildRow("EQUALS");
+    operand(row, "left").setSelected("timestamp_start");
+    refreshRow(row, COLUMNS);
+    wireComparisonRowListeners(row, COLUMNS);
+    expect(offered(operand(row, "right")).map((option) => option.value)).not.toContain(
+      "game__year_released",
+    );
+    operatorBox(row).focus();
+    row
+      .querySelector<HTMLElement>('[data-fc-op] [data-search-select-option][data-value="EQUALS:year"]')!
+      .click();
+    expect(offered(operand(row, "right")).map((option) => option.value)).toContain(
+      "game__year_released",
+    );
   });
 
   it("setOptions drops a right value no longer compatible", () => {

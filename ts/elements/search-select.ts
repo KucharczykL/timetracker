@@ -58,6 +58,12 @@ export interface SearchSelectOption {
   hint?: string;
 }
 
+//: A labelled run of rows; blank labels render no header.
+export interface SearchSelectOptionGroup {
+  label: string;
+  options: SearchSelectOption[];
+}
+
 //: `none: true` is a committed none, never a mid-edit drop.
 export type SearchSelectChangeDetail =
   | { name: string; values: string[]; last: SearchSelectOption | null; none: false }
@@ -111,7 +117,7 @@ interface SearchSelectContainer extends HTMLElement {
   _searchSelectHoldNone?: () => void;
   _searchSelectOffers?: (value: string) => boolean;
   _searchSelectHeldLabel?: () => string | null;
-  _searchSelectSetOptions?: (options: SearchSelectOption[]) => void;
+  _searchSelectSetOptionGroups?: (groups: SearchSelectOptionGroup[]) => void;
   _searchSelectRewriteDialogCreate?: () => void;
 }
 
@@ -1495,7 +1501,7 @@ const initWidget = (containerElement: Element): boolean => {
   };
 
   //: Replace rows; forget memory; drop unoffered held.
-  container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
+  container._searchSelectSetOptionGroups = (groups: SearchSelectOptionGroup[]) => {
     remembered.clear();
     options
       .querySelectorAll<HTMLElement>(
@@ -1503,7 +1509,15 @@ const initWidget = (containerElement: Element): boolean => {
       )
       .forEach(node => node.remove());
     const before = noResults ?? null;
-    items.forEach(item => options.insertBefore(buildRow(item), before));
+    const items = groups.flatMap(group => group.options);
+    for (const group of groups) {
+      const header = group.label ? cloneTemplate("header") : null;
+      if (header) {
+        header.textContent = group.label;
+        options.insertBefore(header, before);
+      }
+      group.options.forEach(item => options.insertBefore(buildRow(item), before));
+    }
     const selected = getSelectedValues();
     const stillOffered = items.some(item => selected.has(String(item.value)));
     if (selected.size && !stillOffered) {
@@ -1928,7 +1942,12 @@ export class SearchSelectElement extends HTMLElement {
 
   /** Replace inline rows silently; drops an unoffered value. */
   setOptions(options: SearchSelectOption[]): void {
-    (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
+    this.setOptionGroups([{ label: "", options }]);
+  }
+
+  /** Grouped `setOptions`; a blank label heads nothing. */
+  setOptionGroups(groups: SearchSelectOptionGroup[]): void {
+    (this as SearchSelectContainer)._searchSelectSetOptionGroups?.(groups);
   }
 }
 

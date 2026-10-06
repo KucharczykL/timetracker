@@ -483,7 +483,8 @@ def _grouped_option_rows(groups: list[OptionGroup]) -> list[Node]:
     """Flatten groups into header + option-row nodes for the options panel."""
     rows: list[Node] = []
     for group in groups:
-        rows.append(_group_header(group.label))
+        if group.label:
+            rows.append(_group_header(group.label))
         rows.extend(_option_row(_normalize_option(option)) for option in group.options)
     return rows
 
@@ -616,6 +617,7 @@ def SearchSelect(
     invalid: bool = False,
     required: bool = False,
     revert_on_leave: bool = False,
+    search_aria_label: str = "",
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -635,7 +637,7 @@ def SearchSelect(
     complete-set case.
 
     ``dynamic_options`` ships the row ``<template>`` even without a ``search_url``,
-    so the client can swap the inline option set via the element's ``setOptions``
+    so the client can swap the inline option set via ``setOptionGroups``
     (the field-comparison right operand recomputes its list per left column +
     operator, #282). Ignored when a ``search_url`` already ships the template.
 
@@ -663,6 +665,7 @@ def SearchSelect(
     ``disabled``, ``described_by``, ``invalid``, ``required``: the search
     box's state.
     ``revert_on_leave``: leaving mid-edit restores the held value.
+    ``search_aria_label``: the search box's accessible name.
     """
     host_attributes = list((host_data or {}).items())
     host_keys = {key for key, _ in host_attributes}
@@ -735,6 +738,8 @@ def SearchSelect(
         search_attrs.append(("aria-invalid", "true"))
     if required:
         search_attrs.append(("aria-required", "true"))
+    if search_aria_label:
+        search_attrs.append(("aria-label", search_aria_label))
 
     home: ComboboxHome = "dialog" if panel else "drop_down"
 
@@ -768,6 +773,9 @@ def SearchSelect(
     if search_url or dynamic_options:
         templates.append(
             Template(data_search_select_template="row")[_option_row(_BLANK_OPTION)]
+        )
+        templates.append(
+            Template(data_search_select_template="header")[_group_header("")]
         )
     if multi_select:
         templates.append(

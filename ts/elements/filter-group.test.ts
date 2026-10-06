@@ -2,6 +2,57 @@
 import { describe, it, expect } from "vitest";
 import { FILTER_TREE_CHANGE_EVENT } from "./filter-group.js"; // also registers the custom element
 import type { FilterGroupElement } from "./filter-group.js";
+import { choicePickerHtml } from "../test-setup/choice-picker.js";
+import { choiceControl, choiceOf } from "./choice-control.js";
+
+Element.prototype.scrollIntoView = () => {};
+
+const QUANTIFIER_PICKER = choicePickerHtml({
+  name: "fc-quantifier",
+  rows: ["ANY", "NONE", "ALL"].map((value) => ({ value, label: value.toLowerCase() })),
+  held: "ANY",
+});
+
+// The relation pickers the server ships beside the `models` prop.
+function withRelationTemplates(host: HTMLElement): void {
+  const models = JSON.parse(host.getAttribute("models") ?? "{}") as Record<
+    string,
+    { fields: { name: string; label: string; kind: string }[] }
+  >;
+  const match = document.createElement("template");
+  match.setAttribute("data-relation-match-template", "");
+  match.innerHTML = choicePickerHtml({
+    name: "relation-match",
+    marker: "data-relation-match",
+    rows: ["ANY", "NONE", "ALL"].map((value) => ({ value, label: value.toLowerCase() })),
+    held: "ANY",
+  });
+  host.appendChild(match);
+  for (const [model, bundle] of Object.entries(models)) {
+    const field = document.createElement("template");
+    field.setAttribute("data-relation-field-template", "");
+    field.setAttribute("data-model", model);
+    field.innerHTML = choicePickerHtml({
+      name: "relation-field",
+      marker: "data-relation-field",
+      rows: bundle.fields
+        .filter((meta) => meta.kind === "relation")
+        .map((meta) => ({ value: meta.name, label: meta.label })),
+      placeholder: "a relation…",
+    });
+    host.appendChild(field);
+  }
+}
+
+// A string or number widget's modifier picker, as the server renders it.
+function modifierPicker(kind: "string" | "number", rows: [string, string][], held: string): string {
+  return choicePickerHtml({
+    name: `${kind}-modifier`,
+    marker: `data-${kind}-modifier-select`,
+    rows: rows.map(([value, label]) => ({ value, label })),
+    held,
+  });
+}
 
 // A node path: group-child indices plus the "child" sentinel for descending into a
 // relation's child group (RELATION_CHILD, #193).
@@ -33,6 +84,7 @@ function mount(): FilterGroupElement {
   const host = document.createElement("filter-group") as FilterGroupElement;
   host.setAttribute("model", "game");
   host.setAttribute("models", JSON.stringify(MODELS_BASE));
+  withRelationTemplates(host);
   document.body.appendChild(host); // connectedCallback → initial render
   return host;
 }
@@ -65,6 +117,7 @@ describe("<filter-group> action-button template cloning", () => {
     template.setAttribute("data-action-button-template", "");
     template.innerHTML = '<button type="button" class="from-server"></button>';
     host.appendChild(template);
+    withRelationTemplates(host);
     document.body.appendChild(host);
 
     const addCondition = button(host, "add-condition", []);
@@ -101,10 +154,7 @@ describe("<filter-group> chip and relation-select template cloning", () => {
       template.innerHTML = `<button type="button" class="chip-${state}"></button>`;
       host.appendChild(template);
     }
-    const selectTemplate = document.createElement("template");
-    selectTemplate.setAttribute("data-relation-select-template", "");
-    selectTemplate.innerHTML = '<select class="select-from-server"></select>';
-    host.appendChild(selectTemplate);
+    withRelationTemplates(host);
     document.body.appendChild(host);
     return host;
   }
@@ -126,23 +176,31 @@ describe("<filter-group> chip and relation-select template cloning", () => {
     expect(negated?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("clones the relation-select template for both relation-row selects", () => {
+  it("clones the relation templates into the relation row", () => {
     const host = mountWithControlTemplates();
     clickAction(host, "add-relation", []);
-    const match = host.querySelector<HTMLSelectElement>("[data-relation-match]");
-    const field = host.querySelector<HTMLSelectElement>("[data-relation-field]");
-    expect(match?.className).toBe("select-from-server");
-    expect(field?.className).toBe("select-from-server");
-    // Options are still the client's data: the quantifier choices arrive on the clone.
-    expect(match?.options.length).toBeGreaterThan(0);
+    expect(relationValue(host, [1], "data-relation-match")).toBe("ANY");
+    expect(relationValue(host, [1], "data-relation-field")).toBeNull();
+    const field = relationSelect(host, [1], "data-relation-field");
+    expect(field.querySelector('[data-value="session_filter"]')).not.toBeNull();
   });
 
-  it("falls back to classless bare chips and selects without templates", () => {
+  it("falls back to classless bare chips without templates", () => {
     const host = mount();
     expect(button(host, "toggle-connective", [])?.className).toBe("");
     expect(button(host, "toggle-negate", [])?.className).toBe("");
+  });
+
+  it("renders a relation row without pickers whose templates are missing", () => {
+    document.body.replaceChildren();
+    const host = document.createElement("filter-group") as FilterGroupElement;
+    host.setAttribute("model", "game");
+    host.setAttribute("models", JSON.stringify(MODELS_BASE));
+    document.body.appendChild(host);
     clickAction(host, "add-relation", []);
-    expect(host.querySelector<HTMLSelectElement>("[data-relation-match]")?.className).toBe("");
+    const card = slots(host).find((slot) => slot.dataset.nodeKind === "relation")!;
+    expect(card).toBeDefined();
+    expect(card.querySelector("search-select")).toBeNull();
   });
 });
 
@@ -272,34 +330,38 @@ function mountRelation(): FilterGroupElement {
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
     <template data-model="session" data-field="name">
-      <div class="flex-col">
-        <select data-string-modifier-select>
-          <option value="EQUALS" selected>is</option>
-          <option value="INCLUDES">includes</option>
-        </select>
-        <input type="text" />
+      <div class="flex-col" data-filter-widget>
+        ${modifierPicker("string", [["EQUALS", "is"], ["INCLUDES", "includes"]], "EQUALS")}
+        <input type="text" data-string-value />
       </div>
     </template>`;
+  withRelationTemplates(host);
   document.body.appendChild(host);
   return host;
 }
 
-function relationSelect(host: HTMLElement, path: Path, hook: string): HTMLSelectElement {
-  return host.querySelector<HTMLSelectElement>(
-    `[data-node-slot][data-path='${JSON.stringify(path)}'] [${hook}]`,
+function relationSelect(host: HTMLElement, path: Path, hook: string): HTMLElement {
+  return host.querySelector<HTMLElement>(
+    `[data-node-slot][data-path='${JSON.stringify(path)}'] search-select[${hook}]`,
   )!;
 }
 
+function relationValue(host: HTMLElement, path: Path, hook: string): string | null {
+  return choiceOf(relationSelect(host, path, hook)).read();
+}
+
+// A person's pick: focus the box, click the row.
+function pickIn(picker: HTMLElement, value: string): void {
+  picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+  picker.querySelector<HTMLElement>(`[data-search-select-option][data-value="${value}"]`)!.click();
+}
+
 function pickRelation(host: HTMLElement, path: Path, field: string): void {
-  const select = relationSelect(host, path, "data-relation-field");
-  select.value = field;
-  select.dispatchEvent(new Event("change", { bubbles: true }));
+  pickIn(relationSelect(host, path, "data-relation-field"), field);
 }
 
 function setRelationMatch(host: HTMLElement, path: Path, value: string): void {
-  const select = relationSelect(host, path, "data-relation-match");
-  select.value = value;
-  select.dispatchEvent(new Event("change", { bubbles: true }));
+  pickIn(relationSelect(host, path, "data-relation-match"), value);
 }
 
 function relationChildText(host: HTMLElement, path: Path): string {
@@ -324,8 +386,11 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     const host = mountRelation();
     clickAction(host, "add-relation", []);
     const match = relationSelect(host, [1], "data-relation-match");
-    expect([...match.options].map((option) => option.value)).toEqual(["ANY", "NONE", "ALL"]);
-    expect(match.value).toBe("ANY");
+    const values = [...match.querySelectorAll("[data-search-select-option]")].map((row) =>
+      row.getAttribute("data-value"),
+    );
+    expect(values).toEqual(["ANY", "NONE", "ALL"]);
+    expect(choiceOf(match).read()).toBe("ANY");
   });
 
   it("picking a relation opens a child group built from the target model", () => {
@@ -344,8 +409,7 @@ describe("<filter-group> relation descent (component 5, #193)", () => {
     const host = mountRelation();
     clickAction(host, "add-relation", []);
     pickRelation(host, [1], "session_filter");
-    relationSelect(host, [1], "data-relation-match").value = "ALL";
-    relationSelect(host, [1], "data-relation-match").dispatchEvent(new Event("change", { bubbles: true }));
+    setRelationMatch(host, [1], "ALL");
     clickAction(host, "add-condition", [1, "child"]); // child criterion at [1,"child",0]
     pickField(host, [1, "child", 0], NAME_META); // session's `name` field
     typeValue(host, [1, "child", 0], "Hades");
@@ -591,15 +655,12 @@ function mountLive(): FilterGroupElement {
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
     <template data-model="game" data-field="name">
-      <div class="flex-col">
-        <select data-string-modifier-select>
-          <option value="EQUALS" selected>is</option>
-          <option value="INCLUDES">includes</option>
-          <option value="IS_NULL">is null</option>
-        </select>
-        <input type="text" />
+      <div class="flex-col" data-filter-widget>
+        ${modifierPicker("string", [["EQUALS", "is"], ["INCLUDES", "includes"], ["IS_NULL", "is null"]], "EQUALS")}
+        <input type="text" data-string-value />
       </div>
     </template>`;
+  withRelationTemplates(host);
   document.body.appendChild(host); // connectedCallback → captures templates + renders
   return host;
 }
@@ -621,7 +682,7 @@ function pickField(host: HTMLElement, path: Path, meta: object): void {
 }
 
 function typeValue(host: HTMLElement, path: Path, text: string): void {
-  const input = row(host, path).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!;
+  const input = row(host, path).querySelector<HTMLInputElement>('[data-value-cell] input[data-string-value]')!;
   input.value = text;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -629,9 +690,9 @@ function typeValue(host: HTMLElement, path: Path, text: string): void {
 describe("<filter-group> live criterion leaf row (#192)", () => {
   it("picking a field swaps in that field's value widget", () => {
     const host = mountLive();
-    expect(row(host, [0]).querySelector('[data-value-cell] input[type="text"]')).toBeNull();
+    expect(row(host, [0]).querySelector('[data-value-cell] input[data-string-value]')).toBeNull();
     pickField(host, [0], NAME_META);
-    expect(row(host, [0]).querySelector('[data-value-cell] input[type="text"]')).not.toBeNull();
+    expect(row(host, [0]).querySelector('[data-value-cell] input[data-string-value]')).not.toBeNull();
   });
 
   it("serializeForQuery reads the live widget into the exact backend payload shape", () => {
@@ -654,7 +715,7 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
         detail: { name: "field-picker", values: [], last: null },
       }),
     );
-    expect(row(host, [0]).querySelector('[data-value-cell] input[type="text"]')).toBeNull();
+    expect(row(host, [0]).querySelector('[data-value-cell] input[data-string-value]')).toBeNull();
     expect(host.serializeForQuery()).toEqual({});
   });
 
@@ -672,7 +733,7 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
     typeValue(host, [0], "Hades");
     clickAction(host, "add-condition", []); // structural re-render of the whole tree
     // The first row's widget DOM (and its typed value) is reused, not rebuilt.
-    const input = row(host, [0]).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!;
+    const input = row(host, [0]).querySelector<HTMLInputElement>('[data-value-cell] input[data-string-value]')!;
     expect(input.value).toBe("Hades");
   });
 
@@ -765,28 +826,22 @@ function mountComparison(): FilterGroupElement {
     <template data-model="game" data-fc-row-template>
       <div data-fc-row>
         ${fcOperand("left")}
-        <!-- Operator + quantifier are plain <select>s; op/quantifier ship empty
-             with a data-selected attribute that seedComparisonRow writes the saved
-             (packed) value into and refreshRow adopts. The left/right operands are
-             <search-select>s seeded on the reflect pass (applyComparisonSelection). -->
-        <select data-fc-op data-selected></select>
-        <select data-fc-quantifier class="hidden" data-selected>
-          <option value="ANY">any</option>
-          <option value="ALL">all</option>
-          <option value="NONE">none</option>
-        </select>
+        <div data-fc-op data-selected>${choicePickerHtml({ name: "fc-op" })}</div>
+        <div data-fc-quantifier class="hidden" data-selected>${QUANTIFIER_PICKER}</div>
         ${fcOperand("right")}
         <button data-fc-remove>✕</button>
       </div>
     </template>`;
+  withRelationTemplates(host);
   document.body.appendChild(host);
   return host;
 }
 
+// A person's pick in a picker under `hook`.
 function setSelect(host: HTMLElement, path: Path, hook: string, value: string): void {
-  const select = row(host, path).querySelector<HTMLSelectElement>(`[data-value-cell] [${hook}]`)!;
-  select.value = value;
-  select.dispatchEvent(new Event("change", { bubbles: true }));
+  const cell = row(host, path).querySelector<HTMLElement>(`[data-value-cell] [${hook}]`)!;
+  cell.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+  cell.querySelector<HTMLElement>(`[data-search-select-option][data-value="${value}"]`)!.click();
 }
 
 describe("<filter-group> live field-comparison leaf (#246)", () => {
@@ -938,6 +993,7 @@ describe("<filter-group> initial filter-tree-change on connect (prefill sync)", 
     group.setAttribute("model", "game");
     group.setAttribute("models", MODELS);
     group.setAttribute("filter", prefillFilter);
+    withRelationTemplates(group);
     document.body.appendChild(group); // connectedCallback fires here
     expect(events.length).toBeGreaterThanOrEqual(1);
     // The dispatched event must carry the seeded (non-empty) tree
@@ -974,6 +1030,7 @@ function mountGroup(filter = ""): FilterGroupElement {
   group.setAttribute("model", "game");
   group.setAttribute("models", MODELS);
   if (filter) group.setAttribute("filter", filter);
+  withRelationTemplates(group);
   document.body.appendChild(group);
   return group;
 }
@@ -1036,12 +1093,10 @@ function mountWithFieldPickerTemplate(): FilterGroupElement {
     </template>
     <template data-model="game" data-field="status">
       <div>
-        <select data-modifier-select>
-          <option value="INCLUDES" selected>includes</option>
-          <option value="EXCLUDES">excludes</option>
-        </select>
+        <search-select name="status" filter-mode="true"><div data-search-select-pills></div></search-select>
       </div>
     </template>`;
+  withRelationTemplates(group);
   document.body.appendChild(group);
   return group;
 }
@@ -1096,7 +1151,7 @@ describe("loadFilter with a set field — regression for #196 crash", () => {
         </div>
       </template>
       <template data-model="game" data-field="status">
-        <div><select data-modifier-select><option value="INCLUDES" selected>includes</option></select></div>
+        <div><search-select name="status" filter-mode="true"><div data-search-select-pills></div></search-select></div>
       </template>`;
     // connectedCallback calls deserialize + render — must not throw.
     expect(() => document.body.appendChild(group)).not.toThrow();
@@ -1169,23 +1224,14 @@ const HYDRATION_TEMPLATES = `
     <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
   </template>
   <template data-model="game" data-field="name">
-    <div class="flex-col">
-      <select data-string-modifier-select>
-        <option value="EQUALS" selected>is</option>
-        <option value="INCLUDES">includes</option>
-        <option value="IS_NULL">is empty</option>
-      </select>
-      <input type="text" />
+    <div class="flex-col" data-filter-widget>
+      ${modifierPicker("string", [["EQUALS", "is"], ["INCLUDES", "includes"], ["IS_NULL", "is empty"]], "EQUALS")}
+      <input type="text" data-string-value />
     </div>
   </template>
   <template data-model="game" data-field="year">
-    <div class="flex-col">
-      <select data-number-modifier-select>
-        <option value="EQUALS" selected>=</option>
-        <option value="GREATER_THAN">&gt;</option>
-        <option value="BETWEEN">between</option>
-        <option value="IS_NULL">is empty</option>
-      </select>
+    <div class="flex-col" data-filter-widget>
+      ${modifierPicker("number", [["EQUALS", "="], ["GREATER_THAN", ">"], ["BETWEEN", "between"], ["IS_NULL", "is empty"]], "EQUALS")}
       <div>
         <input type="number" />
         <input type="number" data-number-value2 class="hidden" />
@@ -1230,12 +1276,8 @@ const HYDRATION_TEMPLATES = `
       ${fcOperand("left")}
       <!-- data-selected present-but-empty: see the contract comment on
            mountComparison's fixture above. -->
-      <select data-fc-op data-selected></select>
-      <select data-fc-quantifier class="hidden" data-selected>
-        <option value="ANY">any</option>
-        <option value="ALL">all</option>
-        <option value="NONE">none</option>
-      </select>
+      <div data-fc-op data-selected>${choicePickerHtml({ name: "fc-op" })}</div>
+      <div data-fc-quantifier class="hidden" data-selected>${QUANTIFIER_PICKER}</div>
       ${fcOperand("right")}
       <button data-fc-remove>✕</button>
     </div>
@@ -1244,12 +1286,9 @@ const HYDRATION_TEMPLATES = `
     <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
   </template>
   <template data-model="session" data-field="name">
-    <div class="flex-col">
-      <select data-string-modifier-select>
-        <option value="EQUALS" selected>is</option>
-        <option value="INCLUDES">includes</option>
-      </select>
-      <input type="text" />
+    <div class="flex-col" data-filter-widget>
+      ${modifierPicker("string", [["EQUALS", "is"], ["INCLUDES", "includes"]], "EQUALS")}
+      <input type="text" data-string-value />
     </div>
   </template>
   <template data-model="playthrough" data-field-picker-template>
@@ -1275,6 +1314,7 @@ function mountHydration(filter = ""): FilterGroupElement {
   host.setAttribute("models", HYDRATION_MODELS);
   if (filter) host.setAttribute("filter", filter);
   host.innerHTML = HYDRATION_TEMPLATES;
+  withRelationTemplates(host);
   document.body.appendChild(host);
   return host;
 }
@@ -1296,15 +1336,15 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     const filter = { AND: [{ name: { value: "Hades", modifier: "INCLUDES" } }] };
     const host = loadHydration(filter);
     const cell = valueCell(host, [0]);
-    expect(cell.querySelector<HTMLSelectElement>("[data-string-modifier-select]")!.value).toBe("INCLUDES");
-    expect(cell.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(choiceControl(cell, "data-string-modifier-select")!.read()).toBe("INCLUDES");
+    expect(cell.querySelector<HTMLInputElement>('input[data-string-value]')!.value).toBe("Hades");
     expect(host.serializeForQuery()).toEqual(filter);
   });
 
   it("string presence (IS_NULL): disables the text input and round-trips {modifier} only", () => {
     const filter = { AND: [{ name: { modifier: "IS_NULL" } }] };
     const host = loadHydration(filter);
-    const input = valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!;
+    const input = valueCell(host, [0]).querySelector<HTMLInputElement>('input[data-string-value]')!;
     expect(input.disabled).toBe(true);
     expect(input.value).toBe("");
     expect(host.serializeForQuery()).toEqual(filter);
@@ -1465,7 +1505,7 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     };
     const host = loadHydration(filter);
     expect(operandValueOf(host, [0], "left")).toBe("year_released");
-    expect(valueCell(host, [0]).querySelector<HTMLSelectElement>("[data-fc-op]")!.value).toBe("LESS_THAN");
+    expect(choiceControl(valueCell(host, [0]), "data-fc-op")!.read()).toBe("LESS_THAN");
     expect(operandValueOf(host, [0], "right")).toBe("original_year_released");
     expect(host.serializeForQuery()).toEqual(filter);
   });
@@ -1481,15 +1521,14 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
       }],
     };
     const host = loadHydration(filter);
-    const operatorSelect = valueCell(host, [0]).querySelector<HTMLSelectElement>("[data-fc-op]")!;
-    expect(operatorSelect.value).toBe("LESS_THAN:date");
+    expect(choiceControl(valueCell(host, [0]), "data-fc-op")!.read()).toBe("LESS_THAN:date");
     expect(host.serializeForQuery()).toEqual(filter);
   });
 
   it("hydrates via the ?filter= prop on connect too (the builder-page path)", () => {
     const filter = { AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] };
     const host = mountHydration(JSON.stringify(filter));
-    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[data-string-value]')!.value).toBe("Hades");
     expect(host.serializeForQuery()).toEqual(filter);
   });
 
@@ -1497,7 +1536,7 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
     typeValue(host, [0], "Celeste");
     clickAction(host, "add-condition", []); // structural re-render reuses the cached cell
-    expect(row(host, [0]).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!.value).toBe("Celeste");
+    expect(row(host, [0]).querySelector<HTMLInputElement>('[data-value-cell] input[data-string-value]')!.value).toBe("Celeste");
     // The new empty leaf is pruned; the edited value — not the hydrated one — serializes.
     expect(host.serializeForQuery()).toEqual({ AND: [{ name: { value: "Celeste", modifier: "EQUALS" } }] });
   });
@@ -1510,9 +1549,30 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     expect(host.serializeForQuery()).toEqual({}); // incomplete leaf → pruned
   });
 
+  it("a dropped modifier restored on leave leaves the row complete", () => {
+    const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
+    const box = valueCell(host, [0]).querySelector<HTMLInputElement>(
+      "[data-string-modifier-select] [data-search-select-search]",
+    )!;
+    let incomplete = -1;
+    host.addEventListener(FILTER_TREE_CHANGE_EVENT, (event) => {
+      incomplete = (event as CustomEvent<{ incompleteCount: number }>).detail.incompleteCount;
+    });
+    box.focus();
+    box.value = "inc";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(incomplete).toBe(1);
+    // Focus moves on within the same value cell.
+    valueCell(host, [0]).querySelector<HTMLInputElement>("input[data-string-value]")!.focus();
+    expect(incomplete).toBe(0);
+    expect(host.serializeForQuery()).toEqual({
+      AND: [{ name: { value: "Hades", modifier: "EQUALS" } }],
+    });
+  });
+
   it("string: an untrimmed stored value hydrates trimmed, matching the read side", () => {
     const host = loadHydration({ AND: [{ name: { value: " Hades ", modifier: "EQUALS" } }] });
-    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("Hades");
+    expect(valueCell(host, [0]).querySelector<HTMLInputElement>('input[data-string-value]')!.value).toBe("Hades");
     expect(host.serializeForQuery()).toEqual({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
   });
 
@@ -1532,7 +1592,7 @@ describe("<filter-group> prefill hydrates leaf value widgets (#263)", () => {
     const host = loadHydration({ AND: [{ name: { value: "Hades", modifier: "EQUALS" } }] });
     typeValue(host, [0], ""); // the user deletes the prefilled value
     clickAction(host, "duplicate", [0]);
-    const inputs = [...host.querySelectorAll<HTMLInputElement>('[data-value-cell] input[type="text"]')];
+    const inputs = [...host.querySelectorAll<HTMLInputElement>('[data-value-cell] input[data-string-value]')];
     expect(inputs.map((input) => input.value)).toEqual(["", ""]);
     expect(host.serializeForQuery()).toEqual({}); // both leaves incomplete → pruned
   });
@@ -1552,9 +1612,9 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
     const host = loadHydration(filter);
     const card = row(host, [0]);
     expect(card.dataset.nodeKind).toBe("relation");
-    expect(relationSelect(host, [0], "data-relation-field").value).toBe("session_filter");
+    expect(relationValue(host, [0], "data-relation-field")).toBe("session_filter");
     expect(card.querySelector("[data-incomplete-badge]")).toBeNull();
-    const input = valueCell(host, [0, "child", 0]).querySelector<HTMLInputElement>('input[type="text"]')!;
+    const input = valueCell(host, [0, "child", 0]).querySelector<HTMLInputElement>('input[data-string-value]')!;
     expect(input.value).toBe("Hades");
     expect(host.getIncompleteCount()).toBe(0);
     expect(host.serializeForQuery()).toEqual(filter);
@@ -1572,11 +1632,11 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
     });
     const outer = row(host, [0]);
     expect(outer.dataset.nodeKind).toBe("relation");
-    expect(relationSelect(host, [0], "data-relation-field").value).toBe("session_filter");
+    expect(relationValue(host, [0], "data-relation-field")).toBe("session_filter");
     expect(outer.querySelector("[data-incomplete-badge]")).toBeNull();
     const inner = row(host, [0, "child", 0]);
     expect(inner.dataset.nodeKind).toBe("relation");
-    expect(relationSelect(host, [0, "child", 0], "data-relation-field").value).toBe("playthrough_filter");
+    expect(relationValue(host, [0, "child", 0], "data-relation-field")).toBe("playthrough_filter");
     const dateCell = valueCell(host, [0, "child", 0, "child", 0]);
     expect(dateCell.querySelector<HTMLInputElement>("[data-range-min]")!.value).toBe("2026-01-01");
     expect(dateCell.querySelector<HTMLInputElement>("[data-range-max]")!.value).toBe("2026-12-31");
@@ -1624,6 +1684,7 @@ describe("<filter-group> prefill hydrates relation subtrees", () => {
     badgeTemplate.setAttribute("data-incomplete-badge-template", "");
     badgeTemplate.innerHTML = "<span></span>";
     host.appendChild(badgeTemplate);
+    withRelationTemplates(host);
     document.body.appendChild(host);
     const card = row(host, [0]);
     expect(card.dataset.nodeKind).toBe("criterion");
@@ -1671,11 +1732,8 @@ function mountScope(): FilterGroupElement {
       <div data-field-picker><search-select name="field-picker"><input data-search-select-search /></search-select></div>
     </template>
     <template data-model="game" data-field="session_count">
-      <div class="flex-col">
-        <select data-number-modifier-select>
-          <option value="EQUALS" selected>=</option>
-          <option value="GREATER_THAN">&gt;</option>
-        </select>
+      <div class="flex-col" data-filter-widget>
+        ${modifierPicker("number", [["EQUALS", "="], ["GREATER_THAN", ">"]], "EQUALS")}
         <div>
           <input type="number" />
           <input type="number" data-number-value2 class="hidden" />
@@ -1683,17 +1741,18 @@ function mountScope(): FilterGroupElement {
       </div>
     </template>
     <template data-model="game" data-field="name">
-      <div class="flex-col">
-        <select data-string-modifier-select><option value="EQUALS" selected>is</option></select>
-        <input type="text" />
+      <div class="flex-col" data-filter-widget>
+        ${modifierPicker("string", [["EQUALS", "is"]], "EQUALS")}
+        <input type="text" data-string-value />
       </div>
     </template>
     <template data-model="session" data-field="note">
-      <div class="flex-col">
-        <select data-string-modifier-select><option value="EQUALS" selected>is</option></select>
-        <input type="text" />
+      <div class="flex-col" data-filter-widget>
+        ${modifierPicker("string", [["EQUALS", "is"]], "EQUALS")}
+        <input type="text" data-string-value />
       </div>
     </template>`;
+  withRelationTemplates(host);
   document.body.appendChild(host);
   return host;
 }
@@ -1813,7 +1872,7 @@ describe("<filter-group> aggregate scope (#151)", () => {
     // The scope group renders with its hydrated row.
     expect(row(host, [0, "scope", 0])).not.toBeNull();
     expect(
-      row(host, [0, "scope", 0]).querySelector<HTMLInputElement>('[data-value-cell] input[type="text"]')!
+      row(host, [0, "scope", 0]).querySelector<HTMLInputElement>('[data-value-cell] input[data-string-value]')!
         .value,
     ).toBe("docked");
     expect(host.serializeForQuery()).toEqual({
@@ -1876,6 +1935,7 @@ describe("<filter-group> incomplete-cue popover clone", () => {
       '<span data-pop-over-trigger aria-describedby="incomplete-badge">!</span>' +
       '<div data-pop-over-panel id="incomplete-badge"></div>' +
       "</pop-over></template>";
+    withRelationTemplates(host);
     document.body.appendChild(host);
     return host;
   }
@@ -1923,8 +1983,9 @@ describe("<filter-group> incomplete-cue popover clone", () => {
     host.innerHTML = `
       <template data-incomplete-badge-template><span></span></template>
       <template data-model="session" data-field="name">
-        <div><select data-string-modifier-select><option value="EQUALS" selected>is</option></select><input type="text" /></div>
+        <div>${modifierPicker("string", [["EQUALS", "is"]], "EQUALS")}<input type="text" data-string-value /></div>
       </template>`;
+    withRelationTemplates(host);
     document.body.appendChild(host);
     // Exactly one badge — the nested leaf's — survives the complete relation card.
     expect(host.querySelectorAll("[data-incomplete-badge]")).toHaveLength(1);

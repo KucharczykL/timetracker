@@ -212,6 +212,13 @@ class HtmlValidityTest(TestCase):
             selects = re.findall(r"<select\b[^>]*>", response.content.decode())
             assert selects == [], (url, selects)
 
+    def test_list_and_builder_pages_render_no_native_select(self) -> None:
+        for url in self._urls():
+            response = self.client.get(url, follow=True)
+            assert response.status_code == 200, url
+            selects = re.findall(r"<select\b[^>]*>", response.content.decode())
+            assert selects == [], (url, selects)
+
     def test_no_interactive_element_nested_in_another(self) -> None:
         failures: list[str] = []
         for url in self._urls():

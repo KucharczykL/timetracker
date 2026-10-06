@@ -824,6 +824,31 @@ class GroupedSearchSelectTest(unittest.TestCase):
         self.assertIn('data-value="name"', html)
         self.assertIn('data-value="year"', html)
 
+    def test_a_blank_group_label_renders_no_header(self):
+        from common.components import OptionGroup
+
+        html = str(
+            SearchSelect(
+                name="x",
+                option_groups=[
+                    OptionGroup(label="Text", options=[("name", "Name")]),
+                    OptionGroup(label="", options=[("year", "Year")]),
+                ],
+            )
+        )
+        self.assertEqual(html.count("data-search-select-group-header"), 1)
+        self.assertIn('data-value="year"', html)
+
+    def test_dynamic_options_ship_a_header_template(self):
+        html = str(SearchSelect(name="x", dynamic_options=True))
+        self.assertIn('data-search-select-template="header"', html)
+
+    def test_search_aria_label_names_the_box(self):
+        html = str(SearchSelect(name="x", search_aria_label="Operator"))
+        box = re.search(r"<input\b[^>]*data-search-select-search[^>]*>", html)
+        assert box
+        self.assertIn('aria-label="Operator"', box.group(0))
+
     def test_options_and_groups_are_mutually_exclusive(self):
         from common.components import OptionGroup
 

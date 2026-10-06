@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./quick-filter-bar.js";
 import { applyUrl } from "./filter-url.js";
+import { choicePickerHtml } from "../test-setup/choice-picker.js";
 import { openSurfaces } from "./surface-stack.js";
 import {
   PRESET_LOAD_EVENT,
@@ -35,10 +36,15 @@ function includePill(value: string, label: string): string {
 function numberFacet(field: string, modifier: string, value: string): string {
   return `
     <div data-filter-widget data-path='["${field}"]' data-kind="number">
-      <select data-number-modifier-select>
-        <option value="EQUALS">is</option>
-        <option value="GREATER_THAN"${modifier === "GREATER_THAN" ? " selected" : ""}>is greater than</option>
-      </select>
+      ${choicePickerHtml({
+        name: `quick-${field}-modifier`,
+        marker: "data-number-modifier-select",
+        rows: [
+          { value: "EQUALS", label: "is" },
+          { value: "GREATER_THAN", label: "is greater than" },
+        ],
+        held: modifier,
+      })}
       <input type="number" value="${value}">
       <input type="number" data-number-value2 class="hidden">
     </div>`;

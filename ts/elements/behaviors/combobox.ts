@@ -23,18 +23,21 @@ interface ComboboxWidget extends HTMLElement {
   refetchOptions?: () => void;
 }
 
+const PANEL_PICKER = 'search-select[always-visible="true"]';
+
 registerBehavior("combobox", {
   menuOptions: () => ({
     itemSelector: "[data-combobox-no-items]",
   }),
   wire: ({ host, menu }) => {
-    const searchInput = menu.querySelector<HTMLInputElement>(
-      "[data-search-select-search]",
-    );
+    // The panel's own picker; a nested field picker opens its own list.
+    const widget = menu.querySelector<ComboboxWidget>(PANEL_PICKER);
+    const searchInput =
+      widget?.querySelector<HTMLInputElement>("[data-search-select-search]") ?? null;
     const onShow = () => {
       // Refetch first: it resets the query and marks the widget prefetched, so
       // the focus below cannot trigger a second (stale-query) fetch.
-      menu.querySelector<ComboboxWidget>("search-select")?.refetchOptions?.();
+      widget?.refetchOptions?.();
       searchInput?.focus();
     };
     const onSearchKeydown = (event: KeyboardEvent) => {

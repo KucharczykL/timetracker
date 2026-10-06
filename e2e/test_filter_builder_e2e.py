@@ -140,10 +140,10 @@ def test_builder_page_elements_load_and_initialize(
     expect(action_button).not_to_have_class("")
     add_relation = page.locator('filter-group button[data-action="add-relation"]').first
     add_relation.click()
-    relation_match_select = page.locator(
-        "filter-group select[data-relation-match]"
+    relation_match_box = page.locator(
+        "filter-group search-select[data-relation-match] [data-search-select-box]"
     ).first
-    expect(relation_match_select).to_have_class(re.compile(r"rounded"))
+    expect(relation_match_box).to_have_class(re.compile(r"rounded"))
 
 
 def test_apply_navigates_to_game_list(
@@ -573,12 +573,12 @@ def test_nested_relation_prefill_renders_full_tree(
     # outer card and its own picker is the first select inside it.
     relation_rows = group.locator('[data-node-slot][data-node-kind="relation"]')
     expect(relation_rows).to_have_count(2)
-    expect(relation_rows.nth(0).locator("[data-relation-field]").first).to_have_value(
-        "game_filter"
-    )
-    expect(relation_rows.nth(1).locator("[data-relation-field]").first).to_have_value(
-        "playthrough_filter"
-    )
+    expect(
+        _held(relation_rows.nth(0).locator("[data-relation-field]").first)
+    ).to_have_value("game_filter")
+    expect(
+        _held(relation_rows.nth(1).locator("[data-relation-field]").first)
+    ).to_have_value("playthrough_filter")
 
     # Nothing is incomplete: the inner date criterion hydrated both bounds.
     expect(group.locator("[data-incomplete-badge]")).to_have_count(0)
@@ -781,10 +781,9 @@ def test_cross_model_year_comparison_filters_sessions(
     page.locator('filter-group button[data-action="add-comparison"]').first.click()
     row = page.locator('filter-group [data-node-kind="comparison"]').first
 
-    # Select left operand (searchable combobox), year-space operator (native
-    # select), and cross-model right operand (searchable combobox).
+    # Select left operand, year-space operator, and cross-model right operand.
     _pick_operand(row, "left", "started_at")
-    row.locator("[data-fc-op]").select_option("EQUALS:year")
+    _pick_in(row.locator("[data-fc-op]"), "EQUALS:year")
     _pick_operand(row, "right", "playthrough__player_game__game__year_released")
 
     # Apply navigates to the sessions list carrying the ?filter=.
@@ -800,11 +799,20 @@ def test_cross_model_year_comparison_filters_sessions(
     expect(session_table_rows.filter(has_text="MissGame")).not_to_be_visible()
 
 
-def _select_option_values(select_locator) -> list[str]:
-    """The value of every <option> currently in a <select> (optgroups included)."""
-    return select_locator.evaluate(
-        "select => [...select.options].map(option => option.value)"
-    )
+def _pick_in(scope, value: str) -> None:
+    """Pick a row in the picker under ``scope``."""
+    scope.locator("[data-search-select-search]").click()
+    scope.locator(f"[data-search-select-option][data-value='{value}']").click()
+
+
+def _held(scope):
+    """The hidden input the picker under ``scope`` holds."""
+    return scope.locator("[data-search-select-pills] input[type='hidden']")
+
+
+def _box(scope):
+    """The search box of the picker under ``scope``."""
+    return scope.locator("[data-search-select-search]")
 
 
 def _pick_operand(row, side: str, value: str) -> None:
@@ -881,7 +889,7 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     # as the packed operator value, and both operand comboboxes restore their
     # committed values (the hidden-input channel).
     expect(_operand_value_locator(comparison_row, "left")).to_have_value("created_at")
-    expect(operator_select).to_have_value("LESS_THAN:date")
+    expect(_held(operator_select)).to_have_value("LESS_THAN:date")
     expect(_operand_value_locator(comparison_row, "right")).to_have_value("updated_at")
 
     # Right list under the restored date-space operator: Game's other datetime
@@ -894,7 +902,7 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     # 3. Operator-change rewiring: switching to the year space rebuilds the
     # right list to that space's groups (number joins date/datetime) while the
     # current right selection survives the rebuild.
-    operator_select.select_option("LESS_THAN:year")
+    _pick_in(operator_select, "LESS_THAN:year")
     expect(_operand_value_locator(comparison_row, "right")).to_have_value("updated_at")
     year_space_values = _operand_option_values(comparison_row, "right")
     assert "year_released" in year_space_values
@@ -906,10 +914,10 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     page.locator('filter-group button[data-action="add-comparison"]').first.click()
     expect(comparison_row).to_have_count(2)
     new_row = comparison_row.nth(1)
-    expect(new_row.locator("[data-fc-op]")).to_be_disabled()
+    expect(_box(new_row.locator("[data-fc-op]"))).to_be_disabled()
     assert _operand_option_values(new_row, "right") == []
     _pick_operand(new_row, "left", "year_released")
-    expect(new_row.locator("[data-fc-op]")).to_be_enabled()
+    expect(_box(new_row.locator("[data-fc-op]"))).to_be_enabled()
     assert "original_year_released" in _operand_option_values(new_row, "right")
 
 
@@ -941,7 +949,7 @@ def test_comparison_left_operand_survives_keystroke(
     comparison_row = page.locator('filter-group [data-node-kind="comparison"]')
     operator_select = comparison_row.locator("[data-fc-op]")
     expect(_operand_value_locator(comparison_row, "left")).to_have_value("created_at")
-    expect(operator_select).to_have_value("LESS_THAN:date")
+    expect(_held(operator_select)).to_have_value("LESS_THAN:date")
 
     # Typing in the committed left operand drops its own committed value…
     left_search = comparison_row.locator("[data-fc-left] [data-search-select-search]")
@@ -950,8 +958,8 @@ def test_comparison_left_operand_survives_keystroke(
     expect(_operand_value_locator(comparison_row, "left")).to_have_count(0)
 
     # …but the rest of the row survives the transient clear.
-    expect(operator_select).to_have_value("LESS_THAN:date")
-    expect(operator_select).to_be_enabled()
+    expect(_held(operator_select)).to_have_value("LESS_THAN:date")
+    expect(_box(operator_select)).to_be_enabled()
     expect(_operand_value_locator(comparison_row, "right")).to_have_value("updated_at")
 
     # A real pick still re-derives: choosing a number column rebuilds the right
@@ -1160,7 +1168,7 @@ def test_a_saved_preset_states_the_edited_leaf(
     )
     expect(page.locator("filter-count")).not_to_contain_text("Counting…")
     value_box = page.locator(
-        "[data-node-kind='criterion'] [data-value-cell] input[type='text']"
+        "[data-node-kind='criterion'] [data-value-cell] input[data-string-value]"
     ).first
     value_box.fill("new")
 
@@ -1176,3 +1184,56 @@ def test_a_saved_preset_states_the_edited_leaf(
     )
     assert '"new"' in saved
     assert '"old"' not in saved
+
+
+def _relation_card(page: Page):
+    return page.locator('filter-group [data-node-kind="relation"]').first
+
+
+def test_a_relation_field_picks_by_click_and_by_keyboard(
+    authenticated_page: Page, live_server
+) -> None:
+    """A relation pick re-renders the row; the builder stays usable."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
+    page.locator('filter-group button[data-action="add-relation"]').first.click()
+    field = _relation_card(page).locator("search-select[data-relation-field]").first
+    _pick_in(field, "session_filter")
+    expect(
+        _held(_relation_card(page).locator("search-select[data-relation-field]").first)
+    ).to_have_value("session_filter")
+    expect(_relation_card(page).locator("[data-incomplete-badge]")).to_have_count(0)
+
+    match = _relation_card(page).locator("search-select[data-relation-match]").first
+    box = _box(match)
+    box.click()
+    box.fill("all")
+    box.press("ArrowDown")
+    box.press("Enter")
+    expect(
+        _held(_relation_card(page).locator("search-select[data-relation-match]").first)
+    ).to_have_value("ALL")
+    page.locator('filter-group button[data-action="add-condition"]').first.click()
+    expect(page.locator('filter-group [data-node-kind="criterion"]')).to_have_count(2)
+
+
+def test_a_dropped_modifier_returns_on_leave(
+    authenticated_page: Page, live_server
+) -> None:
+    """Typing in a modifier box, then leaving, keeps the leaf whole."""
+    page = authenticated_page
+    filter_param = _encode_filter({"name": {"modifier": "INCLUDES", "value": "Halo"}})
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={filter_param}"
+    )
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…")
+    modifier = page.locator(
+        "[data-node-kind='criterion'] search-select[data-string-modifier-select]"
+    ).first
+    _box(modifier).click()
+    _box(modifier).press_sequentially("xyz")
+    expect(page.locator("filter-group [data-incomplete-badge]")).to_have_count(1)
+    _box(modifier).press("Tab")
+    expect(_held(modifier)).to_have_value("INCLUDES")
+    expect(page.locator("filter-group [data-incomplete-badge]")).to_have_count(0)
