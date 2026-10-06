@@ -297,3 +297,26 @@ describe("<search-select> review cases", () => {
     expect(() => host.holdNone()).toThrow(/not initialised/);
   });
 });
+
+describe("<search-select> a click into the focused box", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it("opens the list again after a pick", () => {
+    const host = mount({ held: "1" });
+    searchBox(host).focus();
+    row(host, "2").click();
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("false");
+
+    searchBox(host).click();
+
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("true");
+    expect(held(host).values).toEqual(["2"]);
+  });
+
+  it("leaves an open list open", () => {
+    const host = mount({ held: "1" });
+    searchBox(host).focus();
+    searchBox(host).click();
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("true");
+  });
+});

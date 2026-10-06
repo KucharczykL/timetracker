@@ -1013,6 +1013,11 @@ const initWidget = (containerElement: Element): boolean => {
         search.setSelectionRange(search.value.length, search.value.length);
       }
     }
+    openList();
+  };
+
+  //: Fill the list for the box text, then open.
+  const openList = () => {
     if (freeText) {
       rebuildFreeTextRow(currentQuery());
     } else if (searchUrl) {
@@ -1033,6 +1038,11 @@ const initWidget = (containerElement: Element): boolean => {
     showPanel();
   };
   search.addEventListener("focus", runFocus);
+
+  // A click fires no focus while focused.
+  search.addEventListener("click", () => {
+    if (document.activeElement === search && !isPanelOpen() && !search.disabled) openList();
+  });
 
   // Focus via mouse click: Chromium collapses runFocus's search.select() to a
   // caret on the following mouseup, so click-then-type would append to the label
