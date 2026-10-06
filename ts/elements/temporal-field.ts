@@ -596,8 +596,7 @@ function bindControls(host: HTMLElement): void {
 /**
  * The copy button; answers its painter, if any.
  *
- * The source may be absent: a value no segment can hold renders the
- * bare controls. Treat that as a source stating nothing.
+ * An absent source states nothing.
  */
 function initCopyControl(host: HTMLElement): (() => void) | null {
   const button = host.querySelector<HTMLButtonElement>("[data-temporal-copy]");

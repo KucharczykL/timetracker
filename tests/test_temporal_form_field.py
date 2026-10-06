@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django import forms
-from pickers import held, picker, search_box
 
 from common.components import collect_media, render
 from common.components.temporal_field import _DISCLOSURE_CLASS, TemporalField
@@ -209,12 +208,13 @@ def test_a_stored_qualifier_opens_expanded() -> None:
     assert 'expanded="true"' in markup(data)
 
 
-def test_text_a_segment_cannot_hold_keeps_the_native_controls() -> None:
-    """Segments take digits. Hiding them would swallow what was typed."""
-    html = markup(posted(kind="date", start_year="nineteen"))
+def test_text_a_segment_cannot_hold_renders_empty() -> None:
+    """Only a crafted post reaches it."""
+    html = markup(posted(kind="date", start_year="12345", start_month="6"))
 
-    assert "<temporal-field" not in html
-    assert 'name="release-year" value="nineteen"' in html
+    assert "<temporal-field" in html
+    assert 'name="release-year" value=""' in html
+    assert 'name="release-month" value="6"' in html
 
 
 def test_the_control_says_when_its_precision_changes() -> None:
@@ -230,37 +230,11 @@ def _hidden_kind(html: str) -> str | None:
     return value.group(1) if value else None
 
 
-#: Text no segment holds, so no element runs.
-UNHELD = {"start_year": "nineteen"}
-
-
-def test_the_element_derives_a_hidden_shape() -> None:
+def test_the_element_writes_a_hidden_shape() -> None:
     html = markup()
 
     assert "<search-select" not in html
     assert _hidden_kind(html) == "unknown"
-
-
-def test_without_the_element_the_shape_is_a_picker() -> None:
-    html = markup(posted(kind="range", **UNHELD))
-
-    assert held(html, "release-kind") == "range"
-    assert 'aria-required="true"' not in search_box(picker(html, "release-kind"))
-    for kind in ("date", "range", "since", "until", "unknown"):
-        assert f'data-value="{kind}"' in picker(html, "release-kind")
-
-
-def test_a_required_shape_picker_says_so() -> None:
-    html = markup(posted(kind="range", **UNHELD), required=True)
-
-    assert 'aria-required="true"' in search_box(picker(html, "release-kind"))
-
-
-def test_the_widget_loads_the_shape_picker() -> None:
-    scripts = TemporalWidget.component_media.js
-
-    assert "dist/elements/search-select.js" in scripts
-    assert "dist/elements/drop-down.js" in scripts
 
 
 def test_the_stored_kind_is_the_held_one() -> None:
@@ -319,10 +293,6 @@ def test_each_endpoint_names_its_own_parts() -> None:
 def test_a_shape_the_form_never_offers_echoes_back() -> None:
     """Showing Date instead would invent a shape nobody picked."""
     assert _hidden_kind(markup(posted(kind="season"))) == "season"
-    html = markup(posted(kind="season", **UNHELD))
-
-    assert held(html, "release-kind") == "season"
-    assert picker(html, "release-kind").count('data-value="season"') == 1
 
 
 def test_the_first_control_takes_the_label_target() -> None:
@@ -394,14 +364,15 @@ def test_a_disagreement_is_a_field_error_with_a_sentence() -> None:
     assert form.errors["released"] == ["A month needs a year beside it."]
 
 
-def test_a_refused_submission_re_renders_what_was_typed() -> None:
-    """Not a normalized guess. The characters a person typed."""
+def test_a_refused_submission_re_renders_what_segments_hold() -> None:
+    """The error names the part it empties."""
     form = ReleaseForm(data=post(kind="date", year="nineteen", month="6"))
 
     assert not form.is_valid()
+    assert "released" in form.errors
     html = str(form["released"])
 
-    assert 'name="released-year" value="nineteen"' in html
+    assert 'name="released-year" value=""' in html
     assert 'name="released-month" value="6"' in html
 
 

@@ -1077,8 +1077,8 @@ Submodules re-exported via `common/components/__init__.py`:
   endpoint. `<temporal-field>` (#965) writes the shape (a hidden input),
   hides number inputs behind segmented date, adds whole-decade box,
   open-start box, three-way end-shape radio group, and disclosure that closes as
-  well as opens. Text a segment cannot hold renders bare, the shape a
-  `SearchSelect`. Precision never picked from menu; derived from which parts
+  well as opens; always wrapped, a part no segment holds renders empty.
+  Precision never picked from menu; derived from which parts
   person filled.
   Its posted names and their draft keys live in `timetracker/temporal.py`
   (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in

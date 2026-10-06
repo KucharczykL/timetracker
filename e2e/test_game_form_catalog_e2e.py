@@ -704,31 +704,3 @@ def test_a_keystroke_in_kind_keeps_the_parent(signed_in, live_server, game):
     expect(held_choice(page, "kind")).to_have_value("dlc")
     expect(page.locator("[data-field-row='parent']")).to_be_visible()
     expect(held_choice(page, "parent")).to_have_value(str(game.pk))
-
-
-def test_a_refused_date_offers_its_shape_as_a_picker(
-    signed_in, live_server, e2e_library
-):
-    """Text no segment holds renders the bare controls."""
-    page = signed_in
-    open_add_form(page, live_server)
-    page.fill("input[name='name']", "Shapeless")
-    #: Five digits: wider than the year segment.
-    for posted, value in (("kind", "date"), ("year", "12345")):
-        page.locator(f"input[name='original_release_date-{posted}']").evaluate(
-            f"input => {{ input.value = '{value}'; }}"
-        )
-    #: Skips the browser's own range check.
-    page.locator(SUBMIT).first.evaluate("button => { button.form.noValidate = true; }")
-    page.click(SUBMIT)
-
-    expect(
-        page.locator("search-select[name='original_release_date-kind']")
-    ).to_be_visible()
-    pick_choice(page, "original_release_date-kind", "range")
-    page.fill("input[name='original_release_date-year']", "1990")
-    page.fill("input[name='original_release_date-end-year']", "1995")
-    saved(page, live_server)
-
-    written = Game.objects.get(library=e2e_library, name="Shapeless")
-    assert written.original_release_date.canonical == "1990/1995"

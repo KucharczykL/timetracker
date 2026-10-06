@@ -1114,21 +1114,14 @@ class TemporalWidget(forms.Widget):
     Follows `DatePickerWidget`: one field name yields several inputs, and
     `value_from_datadict` reads them all back. What it returns is the raw
     posted text, not a parsed draft, so a submission the grammar refuses
-    re-renders the characters a person typed.
+    re-renders each part a segment holds.
 
-    `component_media` carries the element and the picker.
+    `component_media` carries the element's module.
     """
 
     #: A ⊘ stands beside it.
     draws_own_box: ClassVar[bool] = True
-    #: The picker states a refused value's shape.
-    component_media: ClassVar[Media] = Media(
-        js=(
-            "dist/elements/temporal-field.js",
-            "dist/elements/search-select.js",
-            "dist/elements/drop-down.js",
-        )
-    )
+    component_media: ClassVar[Media] = Media(js=("dist/elements/temporal-field.js",))
 
     def __init__(
         self,

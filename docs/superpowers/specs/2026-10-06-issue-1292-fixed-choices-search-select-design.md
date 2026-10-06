@@ -53,14 +53,15 @@ does not block the submit. The server refusal is the only check.
 
 ## The temporal shape
 
-When the segments can hold the value, `<temporal-field>` derives the
-shape. The shape is then a hidden input with
-`data-temporal-input="kind"`, and a dated value needs the element.
+`<temporal-field>` always wraps the field and writes the shape. The
+shape is a hidden input with `data-temporal-input="kind"`, so a dated
+value needs the element. No person picks a shape.
 
-When the segments cannot hold the value, no element runs. The shape is
-then a `SearchSelect` over `TEMPORAL_DRAFT_KIND_LABELS`, with no × and
-with `revert_on_leave`. A refused shape is one more row.
-`TemporalWidget.component_media` carries the picker's modules.
+A posted part that no segment can hold, such as a five-digit year,
+renders empty. The form's error names the refused part. The segments
+take only digits up to their width, so only a crafted post reaches this
+case. No bare fallback renders, because a fallback no person can reach
+is a second interface with no use.
 
 ## Out of scope
 
@@ -74,5 +75,6 @@ with `revert_on_leave`. A refused shape is one more row.
 - `tests/test_html_validity.py`: the listed form pages render no native
   select but the release platform.
 - `tests/pickers.py` reads a picker's held value from markup.
-- e2e: cloned edition kinds, a keystroke in Kind, and a refused date's
-  shape picker.
+- `tests/test_temporal_form_field.py`: the hidden shape, and an
+  unholdable part rendered empty inside the element.
+- e2e: cloned edition kinds and a keystroke in Kind.

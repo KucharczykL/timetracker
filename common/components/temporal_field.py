@@ -6,10 +6,9 @@ inputs and two checkboxes per endpoint, and the server rebuilds the
 value from what they post.
 
 ``ts/elements/temporal-field.ts`` hides the number inputs, shows a
-segmented date in their place, and derives the shape from what a person
-fills, so the shape is a hidden input there. Text a segment cannot hold
-keeps the number inputs alone, with no element, and the shape is a
-picker a person sets.
+segmented date in their place, and writes the shape, a hidden input,
+from what a person fills. Text a segment cannot hold renders empty; the
+form's error names what was refused.
 
 The precision is never picked from a menu. It is derived from which
 parts a person filled, which is why there is no precision control here.
@@ -41,11 +40,9 @@ from common.components.primitives import (
     Radio,
     field_label_id,
 )
-from common.components.search_select import SearchSelect, SearchSelectOption
 from common.components.unset_field import PostedName
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
-    TEMPORAL_DRAFT_KIND_LABELS,
     TemporalDraftData,
     TemporalDraftKind,
     temporal_input_name,
@@ -101,15 +98,11 @@ def TemporalField(
 ) -> Node:
     """The whole control: a shape, two endpoints, two qualifiers.
 
-    ``input_id`` goes on the shape. Only the picker takes the row's
-    ``<label for>``; a hidden shape takes none. The container is
-    additionally a named ``role="group"``, so the field keeps its name.
-
-    Text a segment cannot hold keeps the number inputs and the picker:
-    hiding them would swallow the characters somebody typed.
+    ``input_id`` goes on the hidden shape. The container is a named
+    ``role="group"``, so the field keeps its name.
     """
+    data = _holdable(data)
     label_id = field_label_id(input_id)
-    holds = _segments_can_hold(data)
     group = Div(
         role="group",
         aria_labelledby=label_id or None,
@@ -120,11 +113,7 @@ def TemporalField(
         class_=_GROUP_CLASS,
     )[
         Div(data_temporal_native="")[
-            _derived_kind(name=name, kind=data["kind"], input_id=input_id)
-            if holds
-            else _kind_picker(
-                name=name, kind=data["kind"], input_id=input_id, required=required
-            )
+            _kind_input(name=name, kind=data["kind"], input_id=input_id)
         ],
         _endpoint_group(
             name=name,
@@ -164,8 +153,6 @@ def TemporalField(
         ),
         *([_copy_button(copy_source)] if copy_source else []),
     ]
-    if not holds:
-        return group
     return _TemporalField(
         expanded="true" if _needs_precision_controls(data) else "false",
         field_name=name,
@@ -200,13 +187,15 @@ def _needs_precision_controls(data: TemporalDraftData) -> bool:
     )
 
 
-def _segments_can_hold(data: TemporalDraftData) -> bool:
-    """Whether every part is digits a segment has room for."""
-    return all(
-        _fits(data[f"{endpoint}_{part}"], width)  # type: ignore[literal-required]
-        for endpoint in ("start", "end")
-        for part, width in _PART_WIDTHS.items()
-    )
+def _holdable(data: TemporalDraftData) -> TemporalDraftData:
+    """Empties each part no segment holds."""
+    held = TemporalDraftData(**data)
+    for endpoint in ("start", "end"):
+        for part, width in _PART_WIDTHS.items():
+            key = f"{endpoint}_{part}"
+            if not _fits(held[key], width):  # type: ignore[literal-required]
+                held[key] = ""  # type: ignore[literal-required]
+    return held
 
 
 def _fits(text: str, width: int) -> bool:
@@ -214,47 +203,14 @@ def _fits(text: str, width: int) -> bool:
     return not stripped or (stripped.isdigit() and len(stripped) <= width)
 
 
-#: A shape word, or a refused echo.
-type KindText = str
-
-
-def _held_kind(kind: KindText) -> KindText:
-    return kind.strip() or TemporalDraftKind.UNKNOWN.value
-
-
-def _derived_kind(*, name: PostedName, kind: KindText, input_id: str) -> Node:
+def _kind_input(*, name: PostedName, kind: str, input_id: str) -> Node:
     """The shape the element writes."""
     return Input(
         type="hidden",
         name=temporal_input_name(name, "kind"),
         id_=input_id or None,
         data_temporal_input="kind",
-        value=_held_kind(kind),
-    )
-
-
-def _kind_picker(
-    *, name: PostedName, kind: KindText, input_id: str, required: bool
-) -> Node:
-    """The shape a person picks."""
-    selected = _held_kind(kind)
-    options = [
-        SearchSelectOption(value=draft_kind.value, label=text, data={})
-        for draft_kind, text in TEMPORAL_DRAFT_KIND_LABELS.items()
-    ]
-    held = next((option for option in options if option["value"] == selected), None)
-    if held is None:
-        # A refused shape echoes back, like a number.
-        held = SearchSelectOption(value=selected, label=selected, data={})
-        options.insert(0, held)
-    return SearchSelect(
-        name=temporal_input_name(name, "kind"),
-        id=input_id,
-        options=options,
-        selected=[held],
-        clearable=False,
-        revert_on_leave=True,
-        required=required,
+        value=kind.strip() or TemporalDraftKind.UNKNOWN.value,
     )
 
 
