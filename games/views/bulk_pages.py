@@ -15,17 +15,20 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.primitives import (
-    FORM_MAX_WIDTH_CLASS,
     Column,
     Input,
+    PageWidth,
     StyledTable,
     make_row,
 )
 from games.bulk_actions import BulkAction
 from games.bulk_parts import Presentations, Refused
 
-#: A page that asks for a fact beside its rows.
-WIDE_CONFIRMATION = "max-w-3xl"
+
+def confirmation_width(choice: Node | None) -> PageWidth:
+    """A control needs the sample's room."""
+    return "form" if choice is None else "wide"
+
 
 #: The confirmation's words.
 WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
@@ -155,8 +158,6 @@ def ConfirmBatch(
         post_url=post_url,
         csrf_token=csrf_token,
         cancel_url=cancel_url,
-        #: A control needs the sample's room.
-        max_width=WIDE_CONFIRMATION if choice is not None else FORM_MAX_WIDTH_CLASS,
         #: Nothing to do admits no press.
         confirm_label=action.confirm_label if total else None,
         #: The act declares one colour.

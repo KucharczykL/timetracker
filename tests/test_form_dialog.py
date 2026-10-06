@@ -30,9 +30,16 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
+    PAGE_WIDTH_ATTRIBUTE,
+    PAGE_WIDTHS,
     UNSAVED_WARNING_PARTS,
 )
-from common.components.primitives import FORM_ERRORS_ATTRIBUTE, FieldErrors
+from common.components.modal import MODAL_ATTRIBUTES
+from common.components.primitives import (
+    FORM_ERRORS_ATTRIBUTE,
+    PAGE_WIDTH_CLASSES,
+    FieldErrors,
+)
 from common.components.ts_codegen import render_filter_metadata_module
 from common.form_dialog import FORM_DIALOG_HEADER
 from common.layout import render_page
@@ -243,7 +250,9 @@ class DialogModeTest(TestCase):
         SessionMiddleware(lambda request: HttpResponse()).process_request(request)
         MessageMiddleware(lambda request: HttpResponse()).process_request(request)
         messages.error(request, "Refused")
-        response = render_page(request, Div()["Body"], title="T", status=409)
+        response = render_page(
+            request, Div()["Body"], title="T", width="form", status=409
+        )
         self.assertEqual(response.status_code, 409)
         answer = json.loads(response.content)
         self.assertEqual(answer["messages"], [{"message": "Refused", "type": "error"}])
@@ -253,7 +262,52 @@ class DialogModeTest(TestCase):
         request.user = self.user
         content = Div()["Body"].with_media(Media(js_external=("vendor.js",)))
         with self.assertRaises(ImproperlyConfigured):
-            render_page(request, content, title="T")
+            render_page(request, content, title="T", width="form")
+
+
+class PageWidthTest(TestCase):
+    """A page's width reaches its container and its dialog."""
+
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(username="width", password="width")
+
+    def _request(self, headers: dict[str, str] | None = None):
+        request = RequestFactory().get("/", headers=headers or {})
+        request.user = self.user
+        return request
+
+    def test_each_width_caps_the_page_container(self):
+        for width in PAGE_WIDTHS:
+            with self.subTest(width=width):
+                html = render_page(
+                    self._request(), Div(id="page-body")["Body"], width=width
+                ).content.decode()
+                before = html[: html.index('<div id="page-body"')]
+                tag = before[before.rindex("<div") :]
+                self.assertIn(PAGE_WIDTH_CLASSES[width], tag)
+
+    def test_each_width_reaches_the_dialog_answer(self):
+        for width in PAGE_WIDTHS:
+            with self.subTest(width=width):
+                response = render_page(
+                    self._request(DIALOG_HEADERS), Div()["Body"], width=width
+                )
+                self.assertEqual(json.loads(response.content)["width"], width)
+
+    def test_the_panel_states_a_cap_per_width(self):
+        html = str(FormDialogHost())
+        panel = _opening_tag(html, MODAL_ATTRIBUTES["panel"])
+        self.assertIn(f'{PAGE_WIDTH_ATTRIBUTE}="form"', panel)
+        for width in PAGE_WIDTHS:
+            with self.subTest(width=width):
+                self.assertIn(
+                    f"data-[page-width={width}]:{PAGE_WIDTH_CLASSES[width]}", panel
+                )
+
+    def test_the_game_form_is_wide(self):
+        self.client.force_login(self.user)
+        answer = _dialog_get(self.client, reverse("games:add_game")).json()
+        self.assertEqual(answer["width"], "wide")
 
 
 class AnswerCodegenTest(SimpleTestCase):

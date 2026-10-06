@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     Column,
-    ContentContainer,
+    Div,
     Li,
     QuickFilterBar,
     TableData,
@@ -164,18 +164,21 @@ def list_devices(request: HttpRequest) -> HttpResponse:
         builder_url=builder_url,
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[quick_bar, content]
+    content = Div()[quick_bar, content]
     return render_page(
         request,
         content,
         title="Manage devices",
+        width="full",
     )
 
 
 def _render_form(
     request: HttpRequest, form: DeviceForm, title: str, *, status: int = 200
 ) -> HttpResponse:
-    response = render_page(request, AddForm(form, request=request), title=title)
+    response = render_page(
+        request, AddForm(form, request=request), title=title, width="form"
+    )
     response.status_code = status
     return response
 

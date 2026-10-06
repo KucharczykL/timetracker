@@ -91,6 +91,7 @@ def form_page(
         ),
         title=title,
         status=status,
+        width="form",
     )
 
 

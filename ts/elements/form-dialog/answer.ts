@@ -1,12 +1,14 @@
 /** A dialog answer, read and checked. */
 import { reportClientError } from "../../client-errors.js";
-import type {
-  ContinueAnswer,
-  CreatedAnswer,
-  CreatedOption,
-  DoneAnswer,
-  PageAnswer,
-  ToastPayload,
+import {
+  type ContinueAnswer,
+  type CreatedAnswer,
+  type CreatedOption,
+  type DoneAnswer,
+  PAGE_WIDTHS,
+  type PageAnswer,
+  type PageWidth,
+  type ToastPayload,
 } from "../../generated/form-dialog.js";
 
 /** Origin, path and sorted query. */
@@ -37,6 +39,7 @@ export interface Page {
   /** Fitted by prepare, emptied by fill; once. */
   readonly content: DocumentFragment;
   readonly title: string;
+  readonly width: PageWidth;
   readonly modules: readonly ResolvedModuleUrl[];
   readonly messages: Messages;
 }
@@ -75,6 +78,10 @@ function isText(value: unknown): value is string {
   return typeof value === "string";
 }
 
+function isPageWidth(value: unknown): value is PageWidth {
+  return PAGE_WIDTHS.includes(value as PageWidth);
+}
+
 function isTextList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isText);
 }
@@ -91,6 +98,7 @@ function isPage(fields: Fields): fields is Fields & PageAnswer {
   return (
     fields.kind === PAGE &&
     isText(fields.title) &&
+    isPageWidth(fields.width) &&
     isText(fields.html) &&
     isTextList(fields.modules) &&
     isMessages(fields.messages)
@@ -168,6 +176,7 @@ export async function readAnswer(response: Response, requested: URL): Promise<An
     const page: Page = {
       content: contentOf(fields.html),
       title: fields.title,
+      width: fields.width,
       modules: fields.modules.map((module) => new URL(module, url).href),
       messages: fields.messages,
     };

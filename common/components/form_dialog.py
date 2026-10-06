@@ -15,9 +15,10 @@ from common.components.modal import (
     titled_header,
 )
 from common.components.primitives import (
-    FORM_MAX_WIDTH_CLASS,
+    PAGE_WIDTH_CLASSES,
     AttributeName,
     ControlButton,
+    PageWidth,
     custom_element_builder,
 )
 from common.notices import ToastPayload
@@ -38,6 +39,7 @@ class PageAnswer(TypedDict):
 
     kind: Literal["page"]
     title: DocumentTitle
+    width: PageWidth
     html: HtmlText
     modules: list[ModulePath]
     messages: list[ToastPayload]
@@ -143,7 +145,27 @@ _SURFACE_CLASS = (
     "max-h-[calc(100dvh-2rem-var(--modal-reserve,0px))] flex-col overflow-hidden rounded-base border "
     f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
-_PANEL_CLASS = f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} {_SURFACE_CLASS}"
+#: The panel states its page's width here.
+PAGE_WIDTH_ATTRIBUTE: Final[FormDialogAttribute] = "data-page-width"
+#: Every width, for the client to check.
+PAGE_WIDTHS: tuple[PageWidth, ...] = tuple(PAGE_WIDTH_CLASSES)
+
+#: Literal for Tailwind's scanner; checked below.
+_PANEL_WIDTH_CLASSES: Mapping[PageWidth, str] = {
+    "form": "data-[page-width=form]:max-w-xl",
+    "wide": "data-[page-width=wide]:max-w-4xl",
+    "full": "data-[page-width=full]:max-w-7xl",
+}
+require_every_key(PageWidth, _PANEL_WIDTH_CLASSES)
+for _width, _class in _PANEL_WIDTH_CLASSES.items():
+    _name = PAGE_WIDTH_ATTRIBUTE.removeprefix("data-")
+    if _class != f"data-[{_name}={_width}]:{PAGE_WIDTH_CLASSES[_width]}":
+        raise TypeError(f"_PANEL_WIDTH_CLASSES[{_width!r}] drifted from the page's")
+
+_PANEL_CLASS = (
+    f"flex w-[calc(100%-2rem)] {' '.join(_PANEL_WIDTH_CLASSES.values())} "
+    f"{_SURFACE_CLASS}"
+)
 _WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm {_SURFACE_CLASS}"
 
 #: The link loading, or the body submitting.
@@ -211,7 +233,10 @@ def FormDialogHost() -> Node:
     return _FormDialog()[
         Template([(FORM_DIALOG_PARTS["template"], "")])[
             ModalDialog([titled.labelled_by])[
-                ModalPanel(class_=_PANEL_CLASS)[
+                ModalPanel(
+                    [(PAGE_WIDTH_ATTRIBUTE, "form")],
+                    class_=_PANEL_CLASS,
+                )[
                     titled.header,
                     Div(
                         [(FORM_DIALOG_PARTS["body"], "")],

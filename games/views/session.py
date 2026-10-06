@@ -296,7 +296,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         page_size=find.per_page,
     )
     from common.components import (
-        ContentContainer,
+        Div,
         PlaytimeTabs,
         QuickFilterBar,
         parse_filter_dict,
@@ -319,11 +319,12 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[PlaytimeTabs("sessions"), quick_bar, content]
+    content = Div()[PlaytimeTabs("sessions"), quick_bar, content]
     return render_page(
         request,
         content,
         title="Manage sessions",
+        width="full",
     )
 
 
@@ -371,6 +372,7 @@ def _render_session_form(
         ),
         title=title,
         status=status,
+        width="form",
     )
 
 

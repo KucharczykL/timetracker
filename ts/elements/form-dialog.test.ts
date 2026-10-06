@@ -35,11 +35,12 @@ const onToast = (event: Event): void => {
 
 function page(
   html: string,
-  options: { title?: string; messages?: unknown[]; modules?: string[] } = {},
+  options: { title?: string; width?: string; messages?: unknown[]; modules?: string[] } = {},
 ): unknown {
   return {
     kind: "page",
     title: options.title ?? "Edit device",
+    width: options.width ?? "form",
     html,
     modules: options.modules ?? [],
     messages: options.messages ?? [],
@@ -101,7 +102,7 @@ function mountHost(): FormDialogElement {
     "beforeend",
     `<form-dialog><template data-form-dialog-template>
       <dialog data-modal aria-labelledby="form-dialog-title">
-        <div>
+        <div data-modal-panel data-page-width="form">
           <div data-form-dialog-header>
             <h2 id="form-dialog-title" data-form-dialog-title></h2>
             <button data-modal-dismiss aria-label="Close dialog">×</button>
@@ -286,6 +287,11 @@ describe("open", () => {
     expect(body(dialog).querySelector("h1")).toBeNull();
     expect(body(dialog).querySelector("form")!.getAttribute("action")).toBe(EDIT);
     expect(document.activeElement).toBe(body(dialog).querySelector("input"));
+  });
+
+  it("sizes the panel to the page's width", async () => {
+    const dialog = await openPage(page("<form></form>", { width: "wide" }));
+    expect(dialog.querySelector("[data-modal-panel]")!.getAttribute("data-page-width")).toBe("wide");
   });
 
   it("prefixes ids per dialog", async () => {
@@ -604,10 +610,13 @@ describe("submit", () => {
   it("fetches a continue answer into the same dialog", async () => {
     const dialog = await openPage();
     replies.push(reply(next(`${ORIGIN}/entry/add?game=1`)));
-    replies.push(reply(page(`<form method="post"></form>`, { title: "Add to library" }), `${ORIGIN}/entry/add?game=1`));
+    replies.push(
+      reply(page(`<form method="post"></form>`, { title: "Add to library", width: "full" }), `${ORIGIN}/entry/add?game=1`),
+    );
     submit();
     await settle();
     expect(calls.at(-1)![1]?.method).toBeUndefined();
+    expect(dialog.querySelector("[data-modal-panel]")!.getAttribute("data-page-width")).toBe("full");
     expect(openDialog()).toBe(dialog);
     expect(dialog.querySelector("[data-form-dialog-title]")!.textContent).toBe("Add to library");
     expect(body().querySelector("form")!.getAttribute("action")).toBe(`${ORIGIN}/entry/add?game=1`);

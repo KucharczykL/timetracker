@@ -11,8 +11,8 @@ from django.urls import reverse
 
 from common.components import (
     Column,
-    ContentContainer,
     ControlButton,
+    Div,
     GameLink,
     GamesTabs,
     Icon,
@@ -181,5 +181,5 @@ def list_library(request: HttpRequest) -> HttpResponse:
     add = ControlButton(
         href=action_url("games:add_to_library", origin=origin), color="gray"
     )[Icon("plus", size=ICON_BUTTON_SIZE_CLASS), "Add to library"]
-    content = ContentContainer()[GamesTabs("library", trailing=add), quick_bar, table]
-    return render_page(request, content, title="Manage library")
+    content = Div()[GamesTabs("library", trailing=add), quick_bar, table]
+    return render_page(request, content, title="Manage library", width="full")

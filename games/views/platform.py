@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     Column,
-    ContentContainer,
+    Div,
     ExternalReferenceLinks,
     FormFields,
     Fragment,
@@ -158,11 +158,12 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         builder_url=builder_url,
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[quick_bar, content]
+    content = Div()[quick_bar, content]
     return render_page(
         request,
         content,
         title="Manage platforms",
+        width="full",
     )
 
 
@@ -242,6 +243,7 @@ def _platform_form_page(
             fields=Fragment(FormFields(form), references_area(references)),
         ),
         title=title,
+        width="form",
     )
 
 

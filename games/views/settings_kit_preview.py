@@ -14,7 +14,6 @@ from common.components import (
     Badge,
     BadgeTone,
     Checkbox,
-    ContentContainer,
     Div,
     FormFieldGroup,
     Input,
@@ -363,7 +362,7 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
             "A live target for the bottom-sheet and sticky-rail behavior.",
         ),
     ]
-    intro = ContentContainer(class_="mb-6 flex flex-col gap-3")[
+    intro = Div(class_="mb-6 flex flex-col gap-3")[
         PageHeading(["Settings UI kit preview"]),
         Div(class_="flex flex-wrap gap-2")[
             Badge("DEBUG only", tone="warning"),
@@ -385,6 +384,7 @@ def settings_kit_preview(request: HttpRequest) -> HttpResponse:
         ],
         title="Settings UI kit preview",
         is_settings_page=True,
+        width="full",
     )
 
 

@@ -23,6 +23,8 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_ATTRIBUTES,
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
+    PAGE_WIDTH_ATTRIBUTE,
+    PAGE_WIDTHS,
     UNSAVED_WARNING_PARTS,
     DialogAnswer,
     FormDialogChrome,
@@ -35,6 +37,7 @@ from common.components.primitives import (
     SHAPE_CLASSES,
     YEAR_PICKER_CLASSES,
     ButtonShape,
+    PageWidth,
 )
 from common.components.ts_codegen import (
     ChoiceVocab,
@@ -100,6 +103,8 @@ def form_dialog_module() -> str:
             TsConstant(
                 "FORM_DIALOG_ID_ATTRIBUTES", list[str], list(FORM_DIALOG_ID_ATTRIBUTES)
             ),
+            TsConstant("PAGE_WIDTH_ATTRIBUTE", str, PAGE_WIDTH_ATTRIBUTE),
+            TsConstant("PAGE_WIDTHS", list[PageWidth], list(PAGE_WIDTHS)),
             TsConstant(
                 "FORM_DIALOG_ID_LIST_ATTRIBUTES",
                 list[str],

@@ -98,6 +98,7 @@ def edit_page_view(request: HttpRequest) -> HttpResponse:
             ControlButton(type="submit")["Save"],
         ],
         title="Unset field harness",
+        width="full",
     )
 
 

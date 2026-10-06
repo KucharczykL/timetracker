@@ -8,7 +8,6 @@ from common.components.core import Child, Children, Node, as_children, randomid
 from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
     SECTION_SURFACE_CLASS,
-    ContentContainer,
     ControlButton,
     ControlLink,
     Div,
@@ -74,7 +73,7 @@ def SectionedPageHeader(
                 class_="flex flex-wrap items-start gap-2",
             )[*action_children]
         )
-    return ContentContainer()[
+    return Div()[
         Div(
             data_sectioned_page_header="",
             class_="flex flex-wrap items-start justify-between gap-4",
@@ -248,7 +247,7 @@ def _sectioned_page_scaffold(
     jump_label: str,
 ) -> Node:
     """Render a scaffold whose sections have already been validated."""
-    return ContentContainer(class_="@container")[
+    return Div(class_="@container")[
         Div(
             data_sectioned_page_scaffold="",
             class_=(

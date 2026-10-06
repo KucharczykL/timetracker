@@ -448,15 +448,13 @@ class SectionedPageHeaderTest(SimpleTestCase):
             'data-sectioned-page-actions=""'
         )
 
-    def test_header_owns_its_width_container_and_bakes_no_margin(self):
+    def test_header_bakes_no_margin(self):
         """Per docs/visual-conventions.md, parents own spacing via `gap` and
         components never bake margins — the page body's gap sets the distance to
         the content below, so a header dropped into any layout cannot double-space."""
         html = str(SectionedPageHeader("Settings"))
 
         header_start = html.index("<div")
-        outer_tag = html[header_start : html.index(">", header_start) + 1]
-        assert "max-w-7xl" in outer_tag
         assert "mb-" not in html[header_start : html.index("<h1")]
 
 

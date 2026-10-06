@@ -7,6 +7,7 @@ import { routeOpen, routeSubmit } from "./routes.js";
 const PAGE: Page = {
   content: document.createDocumentFragment(),
   title: "",
+  width: "form",
   modules: [],
   messages: [],
 };

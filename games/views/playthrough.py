@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
-    ContentContainer,
+    Div,
     QuickFilterBar,
     paginated_table_content,
     parse_filter_dict,
@@ -213,11 +213,12 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[quick_bar, content]
+    content = Div()[quick_bar, content]
     return render_page(
         request,
         content,
         title="Manage playthroughs",
+        width="full",
     )
 
 
@@ -259,6 +260,7 @@ def add_playthrough(request: HttpRequest) -> HttpResponse:
         AddForm(form, request=request),
         title="Add new playthrough",
         status=refused_status,
+        width="form",
     )
 
 
@@ -469,6 +471,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         AddForm(form, request=request),
         title="Edit playthrough",
         status=refused_status,
+        width="form",
     )
 
 

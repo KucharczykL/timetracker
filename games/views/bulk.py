@@ -46,7 +46,7 @@ from games.bulk_parts import (
 from games.events.dispatch import CommandRejected
 from games.models import BulkBatch, UserLibrary
 from games.reads.events import batch_events
-from games.views.bulk_pages import ConfirmBatch, RefusedBatch
+from games.views.bulk_pages import ConfirmBatch, RefusedBatch, confirmation_width
 from games.views.returns import return_url
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
@@ -306,6 +306,7 @@ def _confirm_page(
             refusal=refusal,
         ),
         title=action.title.for_count(len(rows)),
+        width=confirmation_width(choice),
         status=400 if refusal else 200,
     )
 
@@ -357,6 +358,7 @@ def _refused_page(
             cancel_url=return_url(request, fallback=fallback),
         ),
         title=title,
+        width="form",
         status=400,
     )
 

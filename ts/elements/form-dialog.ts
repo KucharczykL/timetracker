@@ -7,6 +7,7 @@ import {
   FORM_DIALOG_PARTS,
   FORM_ERRORS_ATTRIBUTE,
   type FormDialogChrome,
+  PAGE_WIDTH_ATTRIBUTE,
   UNSAVED_WARNING_PARTS,
 } from "../generated/form-dialog.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
@@ -641,6 +642,9 @@ export class FormDialogElement extends HTMLElement {
     } else {
       entry.dialog.setAttribute("aria-label", page.title);
     }
+    entry.dialog
+      .querySelector(`[${MODAL_ATTRIBUTES.panel}]`)
+      ?.setAttribute(PAGE_WIDTH_ATTRIBUTE, page.width);
     entry.body.replaceChildren(page.content);
     entry.url = url;
     // A trail above may name it.

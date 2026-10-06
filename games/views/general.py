@@ -25,7 +25,7 @@ from common.components.custom_elements import (
     DropdownLinkItem,
     ModelKey,
 )
-from common.components.primitives import ContentContainer, PageHeading, Span
+from common.components.primitives import PageHeading, Span
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
@@ -118,7 +118,10 @@ def stats_alltime(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     return render_page(
-        request, stats_content(data, presentation, durations), title=data["title"]
+        request,
+        stats_content(data, presentation, durations),
+        title=data["title"],
+        width="full",
     )
 
 
@@ -136,7 +139,10 @@ def stats(request: HttpRequest, year: int = 0) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     return render_page(
-        request, stats_content(data, presentation, durations), title=data["title"]
+        request,
+        stats_content(data, presentation, durations),
+        title=data["title"],
+        width="full",
     )
 
 
@@ -198,7 +204,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
         id="model-switcher", items=items, label=meta.verbose_name.title()
     )
 
-    content = ContentContainer(class_="flex flex-col gap-4")[
+    content = Div(class_="flex flex-col gap-4")[
         PageHeading(
             [
                 Span(class_="flex align-center gap-2")[
@@ -234,7 +240,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
         ],
         FilterGroup(presentation=presentation, model=model, filter=filter_json),
     ]
-    return render_page(request, content, title=f"Filter {label}")
+    return render_page(request, content, title=f"Filter {label}", width="full")
 
 
 @login_required

@@ -909,7 +909,9 @@ code.
 ### Key patterns
 
 **Layout system** (`common/layout.py`): views call `render_page(request, content,
-title=...)` instead of Django's `render()`. Assembles full HTML document via
+title=..., width=...)` instead of Django's `render()`. `width` is a
+`PageWidth` (`form`/`wide`/`full`, caps in `PAGE_WIDTH_CLASSES`), stated
+once: the page's container and its dialog panel both take it. Assembles full HTML document via
 `Page()` — analogous to FastHTML's `fast_app()`: `<head>`, navbar, toast
 container, FOUC-prevention script, and **JS includes** (calls
 `collect_media(content)`, emits `<script>` tags automatically; there is no
@@ -982,9 +984,7 @@ Submodules re-exported via `common/components/__init__.py`:
   is generated `H1`), `ConfirmPage()` (full-page POST confirmation — the only
   confirmation; `details` is block slot beside `message`, which
   renders inside `<p>`), `StyledTable()`, `TableRow()`, `TableTd()`,
-  `TableHeader()`, `ContentContainer()` (page-body width container,
-  `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
-  `paginated_table_content()`, `AddForm()`, `YearPicker()`,
+  `TableHeader()`, `paginated_table_content()`, `AddForm()`, `YearPicker()`,
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
 - **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
   (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto),
@@ -1651,7 +1651,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   header. `<form-dialog>` fetches in dialog mode (`X-Form-Dialog`):
   `render_page()` answers `page`, `FormDialogResultMiddleware`
   (`games/form_dialog_middleware.py`) turns a redirect into `done` (a
-  `READ_ONLY` target) or `continue`. After a write the element reloads a
+  `READ_ONLY` target) or `continue`. The `page` answer carries the
+page's `width`; the panel's `data-page-width` takes it. After a write the element reloads a
   read-only host once no modal is open, or on `page:stale` (a batch from
   this page ends, or a toast action answers `done` or `created`); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue

@@ -18,7 +18,7 @@ from django.views.decorators.http import require_POST
 from common.components import (
     Cell,
     Column,
-    ContentContainer,
+    Div,
     PurchaseAmount,
     PurchaseName,
     QuickFilterBar,
@@ -222,11 +222,12 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[quick_bar, content]
+    content = Div()[quick_bar, content]
     return render_page(
         request,
         content,
         title="Manage purchases",
+        width="full",
     )
 
 

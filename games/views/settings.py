@@ -57,7 +57,9 @@ def user_settings(request: HttpRequest) -> HttpResponse:
         sections,
         navigation_label="Settings sections",
     )
-    return render_page(request, content, title="Settings", is_settings_page=True)
+    return render_page(
+        request, content, title="Settings", is_settings_page=True, width="full"
+    )
 
 
 def _infra_fields() -> list[Node]:
@@ -98,6 +100,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
             title="Admin settings",
             is_settings_page=True,
             status=403,
+            width="full",
         )
 
     page = settings_page_data(SiteSettingsForm)
@@ -144,6 +147,7 @@ def admin_settings(request: HttpRequest) -> HttpResponse:
         content,
         title="Admin settings",
         is_settings_page=True,
+        width="full",
     )
 
 

@@ -54,6 +54,7 @@ def letter_page_view(request: HttpRequest) -> HttpResponse:
             ControlButton(type="submit")["Save"],
         ],
         title="Fixed choices harness",
+        width="full",
     )
 
 
