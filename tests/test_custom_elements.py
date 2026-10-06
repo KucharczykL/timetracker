@@ -358,7 +358,7 @@ class RowActionMenuTest(unittest.TestCase):
         from common.components import render
 
         html = render(self._menu())
-        self.assertIn('d="M24 15a2.4 2.4 0 1 0 0.001 0z', html)
+        self.assertIn('cx="12" cy="5"', html)
 
     def test_the_id_reaches_the_element(self):
         from common.components import render
