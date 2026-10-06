@@ -815,6 +815,33 @@ SHAPE_CLASSES: dict[ButtonShape, str] = {
     "end": "rounded-e-base",
     "square": "",
 }
+#: "fixed": a value set elsewhere, never typed into.
+type FieldBoxLook = Literal["editable", "fixed"]
+
+_FIELD_BOX_LOOK_CLASSES: dict[FieldBoxLook, str] = {
+    "editable": (
+        "bg-neutral-secondary-medium border border-default-medium "
+        "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
+        f"{DISABLED_WITHIN_CLASS}"
+    ),
+    "fixed": (
+        "bg-neutral-primary-soft border border-dashed border-default-medium "
+        "text-heading"
+    ),
+}
+
+
+def field_box_class(shape: ButtonShape, *, look: FieldBoxLook = "editable") -> str:
+    """Field-box classes, rounding ``shape``'s corners.
+
+    Every control drawn as a field shares it.
+    """
+    return (
+        "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control "
+        f"{SHAPE_CLASSES[shape]} text-type-body {_FIELD_BOX_LOOK_CLASSES[look]}"
+    )
+
+
 #: The control radius, scaled to a glyph square.
 COMPACT_SHAPE_CLASSES: dict[ButtonShape, str] = {
     "full": "rounded",
@@ -2041,14 +2068,6 @@ def _form_field_row(
     ]
 
 
-#: Field-sized, dashed: fixed, never typed into.
-_STATED_VALUE_CLASS = (
-    "flex items-center gap-2 px-3 py-1 min-h-control rounded-base "
-    "border border-dashed border-default-medium bg-neutral-primary-soft "
-    "text-type-body text-heading"
-)
-
-
 def _fact_carrier(field) -> Node:
     """A fixed field's value, posted; never ``disabled``."""
     value = field.field.prepare_value(field.value())
@@ -2062,8 +2081,11 @@ def _stated_row(field, statement: str) -> Node:
     children: list[Node] = [
         Dl()[
             Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
-            Dd(class_=_STATED_VALUE_CLASS)[
-                Icon("lock", [("aria-hidden", "true"), ("class", "size-4 text-body")]),
+            Dd(class_=field_box_class("full", look="fixed"))[
+                Icon(
+                    "lock",
+                    [("aria-hidden", "true"), ("class", "mr-1 size-4 text-body")],
+                ),
                 statement,
             ],
         ],

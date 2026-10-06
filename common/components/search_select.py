@@ -79,8 +79,6 @@ from common.components.form_dialog import CreatedOption, form_dialog_link
 from common.components.modal import ElementId
 from common.components.primitives import (
     CLOSED_POPOVER,
-    DISABLED_WITHIN_CLASS,
-    SHAPE_CLASSES,
     AppliedDot,
     ButtonColor,
     ButtonGroupMember,
@@ -93,6 +91,7 @@ from common.components.primitives import (
     Pill,
     Span,
     Template,
+    field_box_class,
     filter_widget_attributes,
 )
 
@@ -144,21 +143,6 @@ class OptionGroup(NamedTuple):
 
     label: str
     options: list[SearchSelectOption]
-
-
-def field_box_class(shape: ButtonShape) -> str:
-    """Field-box classes, rounding ``shape``'s corners.
-
-    Every control drawn as a field shares it.
-    """
-    return (
-        "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control "
-        f"{SHAPE_CLASSES[shape]} "
-        "text-type-body "
-        "bg-neutral-secondary-medium border border-default-medium "
-        "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
-        f"{DISABLED_WITHIN_CLASS}"
-    )
 
 
 _BOX_CLASS = field_box_class("full")
