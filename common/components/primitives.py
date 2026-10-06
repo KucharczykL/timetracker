@@ -15,6 +15,7 @@ import logging
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import (
+    Final,
     Literal,
     NamedTuple,
     NotRequired,
@@ -1914,12 +1915,19 @@ _FIELD_ERROR_CLASS = (
 _CHECKBOX_ROW_CLASS = "flex flex-row items-center justify-between gap-6 mt-3"
 
 
+#: Marks an error list; a form dialog focuses it.
+FORM_ERRORS_ATTRIBUTE: Final = "data-form-errors"
+
+
 def FieldErrors(errors) -> Node | None:
     """Render a form/field ErrorList as a styled <ul>, or None if empty."""
     items = [Li()[str(error)] for error in errors]
     if not items:
         return None
-    return Ul(class_=_FIELD_ERROR_CLASS)[*items]
+    return Ul(
+        [(FORM_ERRORS_ATTRIBUTE, ""), ("tabindex", "-1")],
+        class_=f"{_FIELD_ERROR_CLASS} focus:outline-hidden",
+    )[*items]
 
 
 #: How a group shows its legend.

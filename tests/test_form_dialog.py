@@ -31,6 +31,7 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
 )
+from common.components.primitives import FORM_ERRORS_ATTRIBUTE, FieldErrors
 from common.components.ts_codegen import render_filter_metadata_module
 from common.form_dialog import FORM_DIALOG_HEADER
 from common.layout import render_page
@@ -137,6 +138,13 @@ class BottomSheetHeaderTest(SimpleTestCase):
         self.assertIn('id="sheet-title"', html)
         self.assertIn('aria-label="Close dialog"', html)
         self.assertIn("border-b border-default-medium", html)
+
+
+class FieldErrorsTest(SimpleTestCase):
+    def test_an_error_list_is_marked_and_focusable(self):
+        html = str(FieldErrors(["Taken"]))
+        self.assertIn(f'{FORM_ERRORS_ATTRIBUTE}=""', html)
+        self.assertIn('tabindex="-1"', html)
 
 
 class ModalPanelHeaderTest(SimpleTestCase):

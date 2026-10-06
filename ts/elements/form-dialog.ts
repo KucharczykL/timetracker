@@ -5,6 +5,7 @@ import {
   FORM_DIALOG_CHROME_BY_MARKER,
   FORM_DIALOG_HEADER,
   FORM_DIALOG_PARTS,
+  FORM_ERRORS_ATTRIBUTE,
   type FormDialogChrome,
 } from "../generated/form-dialog.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
@@ -131,6 +132,9 @@ function chromeOf(marker: string | null): FormDialogChrome | null {
 function initialFocus(dialog: HTMLDialogElement, body: HTMLElement): HTMLElement | null {
   const invalid = body.querySelector<HTMLElement>('[aria-invalid="true"]');
   if (invalid) return invalid;
+  // A refusal no field owns.
+  const errors = body.querySelector<HTMLElement>(`[${FORM_ERRORS_ATTRIBUTE}]`);
+  if (errors) return errors;
   const form = body.querySelector("form");
   const first = form
     ? Array.from(form.querySelectorAll<HTMLElement>(TABBABLE)).find(

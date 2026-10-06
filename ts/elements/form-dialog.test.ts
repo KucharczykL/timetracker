@@ -322,6 +322,14 @@ describe("open", () => {
     expect(document.activeElement?.getAttribute("name")).toBe("b");
   });
 
+  it("focuses an error list no field owns", async () => {
+    await openPage(
+      page(`<form method="post"><ul data-form-errors tabindex="-1"><li>Taken</li></ul>
+        <input name="name"></form>`),
+    );
+    expect(document.activeElement?.textContent).toBe("Taken");
+  });
+
   it("skips a hidden control for focus", async () => {
     await openPage(page(`<form method="post"><div hidden><input name="a"></div><input name="b"></form>`));
     expect(document.activeElement?.getAttribute("name")).toBe("b");

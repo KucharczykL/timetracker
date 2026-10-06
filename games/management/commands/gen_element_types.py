@@ -29,6 +29,7 @@ from common.components.form_dialog import (
 )
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
+    FORM_ERRORS_ATTRIBUTE,
     SHAPE_CLASSES,
     YEAR_PICKER_CLASSES,
     ButtonShape,
@@ -78,6 +79,7 @@ def form_dialog_module() -> str:
         constants=[
             TsConstant("FORM_DIALOG_HEADER", str, FORM_DIALOG_HEADER),
             TsConstant("FORM_DIALOG_ATTRIBUTE", str, FORM_DIALOG_ATTRIBUTE),
+            TsConstant("FORM_ERRORS_ATTRIBUTE", str, FORM_ERRORS_ATTRIBUTE),
             TsConstant(
                 "FORM_DIALOG_CHROME_BY_MARKER",
                 dict[str, FormDialogChrome],
