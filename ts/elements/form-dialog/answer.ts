@@ -195,6 +195,10 @@ export async function readAnswer(response: Response, requested: URL): Promise<An
     return { kind: DONE, url: target, messages: fields.messages };
   }
   if (isContinue(fields)) return { kind: CONTINUE, url: new URL(fields.url, url) };
+  if (fields.kind === PAGE && !isPageWidth(fields.width)) {
+    report(`page answer with an unknown width: ${JSON.stringify(fields.width)}`);
+    return { kind: "none", status: response.status };
+  }
   report(`unknown answer (status ${response.status}): ${String(fields.kind)}`);
   return { kind: "none", status: response.status };
 }

@@ -406,6 +406,21 @@ describe("open", () => {
     expect(JSON.stringify(toasts.at(-1))).toContain("could not open here");
   });
 
+  it("reports and follows the link when the template has no panel", async () => {
+    const template = document.querySelector<HTMLTemplateElement>("template[data-form-dialog-template]")!;
+    template.content.querySelector("[data-modal-panel]")!.removeAttribute("data-modal-panel");
+    replies.push(reply(EDIT_FORM));
+    click(mountLink());
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(assigned).toEqual([EDIT]);
+    expect(clientErrors.reportClientError).toHaveBeenCalledWith(
+      "form-dialog",
+      expect.stringContaining("panel"),
+      { toast: false },
+    );
+  });
+
   it("follows the link when a module fails", async () => {
     document.querySelector<FormDialogElement>("form-dialog")!.loadModule = () =>
       Promise.reject(new Error("404"));

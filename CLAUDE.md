@@ -911,8 +911,8 @@ code.
 **Layout system** (`common/layout.py`): views call `render_page(request, content,
 title=..., width=...)` instead of Django's `render()`. `width` is a
 `PageWidth` (`form`/`wide`/`full`, caps in `PAGE_WIDTH_CLASSES`), stated
-once: the page's container and its dialog panel both take it. Assembles full HTML document via
-`Page()` — analogous to FastHTML's `fast_app()`: `<head>`, navbar, toast
+once: the page's container and its dialog panel both take it. Assembles
+full HTML document via `Page()` — analogous to FastHTML's `fast_app()`: `<head>`, navbar, toast
 container, FOUC-prevention script, and **JS includes** (calls
 `collect_media(content)`, emits `<script>` tags automatically; there is no
 `scripts=`). A request carrying `X-Form-Dialog: 1` gets the content alone as
@@ -1652,8 +1652,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `render_page()` answers `page`, `FormDialogResultMiddleware`
   (`games/form_dialog_middleware.py`) turns a redirect into `done` (a
   `READ_ONLY` target) or `continue`. The `page` answer carries the
-page's `width`; the panel's `data-page-width` takes it. After a write the element reloads a
-  read-only host once no modal is open, or on `page:stale` (a batch from
+  page's `width`; the panel's `data-page-width` takes it. After a write
+  the element reloads a read-only host once no modal is open, or on `page:stale` (a batch from
   this page ends, or a toast action answers `done` or `created`); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
   is an element (`<field-mirror>`).

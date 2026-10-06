@@ -49,12 +49,11 @@ _VOID_ELEMENTS = {
 }
 
 
-class _ContentContainerAncestry(HTMLParser):
+class _PageWidthAncestry(HTMLParser):
     """For each target tag, record the nearest ``max-w-7xl`` ancestor *outside*
-    ``<nav>`` — the page-content container. The navbar has its own ``max-w-7xl``
-    div, so a flat "``max-w-7xl`` appears before X" string assertion is vacuous;
-    only real ancestry proves the filter tiers sit in the content container
-    (issue #313).
+    ``<nav>`` — the ``full`` page width wrapper. The navbar has its own
+    ``max-w-7xl`` div, so a flat string assertion is vacuous; only real
+    ancestry proves the filter tiers sit in the page body.
     """
 
     def __init__(self, target_tags: list[str]) -> None:
@@ -210,11 +209,10 @@ class RenderedPagesTest(TestCase):
         # refreshes itself.
         self.assertIn(f"session-{self.session.pk}-device", html)
 
-    def test_list_page_filter_tiers_share_content_container(self):
+    def test_list_page_filter_tiers_share_the_full_width_body(self):
         """Every list page renders exactly one filter tier —
-        the quick bar — inside the same non-navbar ``max-w-7xl`` content
-        container (``ContentContainer``) as its table, and no flat
-        filter-bar at all."""
+        the quick bar — inside the same ``full`` page width wrapper as its
+        table, and no flat filter-bar at all."""
         for url_name in (
             "games:list_games",
             "games:list_sessions",
@@ -226,7 +224,7 @@ class RenderedPagesTest(TestCase):
             with self.subTest(url_name=url_name):
                 html = self.get(url_name).content.decode()
                 self.assertNotIn("<filter-bar", html)
-                ancestry = _ContentContainerAncestry(["quick-filter-bar", "table"])
+                ancestry = _PageWidthAncestry(["quick-filter-bar", "table"])
                 ancestry.feed(html)
                 self.assertEqual(
                     set(ancestry.found),

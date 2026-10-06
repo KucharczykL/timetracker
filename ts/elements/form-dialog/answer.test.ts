@@ -87,13 +87,18 @@ describe("readAnswer", () => {
     expect(report).toHaveBeenCalledOnce();
   });
 
-  it("refuses a width it does not know", async () => {
-    vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
+  it("refuses a width it does not know, naming it", async () => {
+    const report = vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
     const answer = await readAnswer(
       jsonResponse({ kind: "page", title: "", width: "huge", html: "", modules: [], messages: [] }),
       FETCHED,
     );
     expect(answer.kind).toBe("none");
+    expect(report).toHaveBeenCalledWith(
+      "form-dialog[answer]",
+      'page answer with an unknown width: "huge"',
+      { toast: false },
+    );
   });
 
   it("reads done and continue", async () => {

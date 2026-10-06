@@ -17,7 +17,6 @@ from common.components.core import (
     randomid,
 )
 from common.components.primitives import (
-    PAGE_WIDTH_CLASSES,
     Badge,
     Div,
     FormFieldGroup,
@@ -39,7 +38,7 @@ _SettingSourceBadge = custom_element_builder("setting-source-badge")
 
 type SettingsFieldColumns = Literal[1, 2, 3]
 _SETTINGS_FIELD_LAYOUT_CLASSES: dict[SettingsFieldColumns, str] = {
-    1: f"flex w-full {PAGE_WIDTH_CLASSES['form']} flex-col gap-6",
+    1: "flex w-full max-w-xl flex-col gap-6",
     2: "grid w-full grid-cols-1 gap-6 @md:grid-cols-2",
     3: "grid w-full grid-cols-1 gap-6 @md:grid-cols-2 @4xl:grid-cols-3",
 }

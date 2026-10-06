@@ -24,7 +24,6 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
     PAGE_WIDTH_ATTRIBUTE,
-    PAGE_WIDTHS,
     UNSAVED_WARNING_PARTS,
     DialogAnswer,
     FormDialogChrome,
@@ -34,6 +33,7 @@ from common.components.form_dialog import (
 from common.components.modal import MODAL_ATTRIBUTES, ModalAttributeRole
 from common.components.primitives import (
     FORM_ERRORS_ATTRIBUTE,
+    PAGE_WIDTHS,
     SHAPE_CLASSES,
     YEAR_PICKER_CLASSES,
     ButtonShape,

@@ -7,7 +7,7 @@ page-local variants.
 
 | Need | Decision | Existing base | Why |
 |---|---|---|---|
-| Page width and shell | Reuse | `render_page(width="full")` | Settings are a normal page body and must keep the shared max width and gutters. |
+| Page width and shell | Reuse | `render_page(width="full")` | Settings are a normal page body and must keep the `full` width and gutters. |
 | Responsive section layout | New | The page body; container-query vocabulary | There is no existing rail/two-pane component. One scaffold owns the mobile stack and desktop rail with the same DOM. |
 | Responsive section navigation | Extend dropdown shell, new sheet controller | `Dropdown` trigger/panel contract + native `<dialog>` | Mobile uses one self-explanatory sticky trigger and a modal bottom sheet; desktop uses the sticky rail. One semantic link list moves between them and is never cloned. The sheet deliberately does not reuse anchored positioning or ARIA-menu keyboard behavior. |
 | Section headings and surfaces | Reuse | `text-type-subheading`, `text-type-section`, semantic surface/border tokens, `@container` | Outer section headings use the stronger subheading role; nested field-group headings use the section role. |

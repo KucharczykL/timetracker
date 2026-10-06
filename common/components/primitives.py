@@ -22,6 +22,7 @@ from typing import (
     Protocol,
     TypedDict,
     assert_never,
+    get_args,
     runtime_checkable,
 )
 
@@ -47,6 +48,7 @@ from common.components.core import (
     as_attributes,
     as_children,
     randomid,
+    require_every_key,
 )
 from common.components.elements import (
     H1,
@@ -240,15 +242,19 @@ def filter_widget_attributes(
 #: A page's width, stated once in render_page.
 type PageWidth = Literal["form", "wide", "full"]
 
-#: Page and dialog alike read these caps.
-PAGE_WIDTH_CLASSES: Mapping[PageWidth, str] = {
+#: Every width, in the type's order.
+PAGE_WIDTHS: Final[tuple[PageWidth, ...]] = get_args(PageWidth.__value__)
+
+#: Each width's cap; page, dialog and navbar.
+PAGE_WIDTH_CLASSES: Final[Mapping[PageWidth, str]] = {
     "form": "max-w-xl",
     "wide": "max-w-4xl",
     "full": "max-w-7xl",
 }
+require_every_key(PageWidth, PAGE_WIDTH_CLASSES)
 
-# Horizontal page gutter: keeps content off the viewport edges below the
-# page width cap (everything is edge-to-edge under 1280px without
+# Horizontal page gutter: keeps content off the viewport edges below any
+# page width cap (everything is edge-to-edge below the cap without
 # it). Applied at the shell (#main-container) and the navbar row so every page
 # inherits it in one place. `sm:px-6` widens the gutter on larger screens.
 PAGE_GUTTER_CLASS = "px-4 sm:px-6"
@@ -346,8 +352,8 @@ type TextAttribute = tuple[str, str]
 CLOSED_POPOVER: tuple[TextAttribute, ...] = (("hidden", ""), ("popover", "manual"))
 
 _TOOLTIP_PANEL_CLASS = (
-    f"inline-block font-sans text-type-body text-heading bg-brand-soft "
-    f"border border-brand/30 rounded-base shadow-xs {PAGE_WIDTH_CLASSES['full']}"
+    "inline-block font-sans text-type-body text-heading bg-brand-soft "
+    "border border-brand/30 rounded-base shadow-xs max-w-7xl"
 )
 
 

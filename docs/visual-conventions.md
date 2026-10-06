@@ -165,7 +165,7 @@ inputs, dropdown triggers, `YearPicker` — floors to **one shared height**:
 
 ## 4. Container widths — adopt as-is (already converged)
 
-The one sub-dimension that is already what an audit hopes to find: two constants,
+The one sub-dimension that is already what an audit hopes to find: one mapping,
 universally adopted, test-pinned —
 
 - `PAGE_WIDTH_CLASSES` — `render_page(width=...)` states one per page:
@@ -464,7 +464,7 @@ Surfaces `neutral-primary` (page) / `neutral-primary-medium` (card) /
 accent `brand` family; callouts `brand-soft`; status `danger`/`success`/`warning` families.
 Radius `rounded-base`, chips `rounded`. Rhythm `px-3 py-2.5 text-sm`, compact tier via
 `@container` + `@md:`; parent `gap`, no baked margins. Widths `PAGE_WIDTH_CLASSES` /
-`w-72` dialogs. Components: ControlButton, Badge(+tone), the
+`w-72` list popovers. Components: ControlButton, Badge(+tone), the
 mixin→FormFields→AddForm path, StyledTable for tabular lists, the overlay stack. New color
 pairings clear `scripts/contrast_audit.py` before landing.
 

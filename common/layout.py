@@ -450,6 +450,7 @@ def TimetrackerDocument(
                             tabindex="-1",
                             class_=f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS}",
                         )[
+                            # w-full: self-center drops flex stretch.
                             Div(
                                 class_="flex w-full flex-col self-center "
                                 f"{PAGE_WIDTH_CLASSES[width]}"

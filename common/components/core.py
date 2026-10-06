@@ -16,10 +16,18 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from functools import lru_cache
-from typing import Literal, Self
+from typing import Literal, Self, TypeAliasType, get_args
 
 from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
+
+
+def require_every_key(alias: TypeAliasType, table: Iterable[str]) -> None:
+    """Refuses a table missing a Literal member."""
+    members = set(get_args(alias.__value__))
+    if set(table) != members:
+        raise TypeError(f"{alias.__name__} table keys {set(table)} != {members}")
+
 
 HTMLAttribute = tuple[str, str | int | bool]
 

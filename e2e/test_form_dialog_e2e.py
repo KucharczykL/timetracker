@@ -502,7 +502,10 @@ def test_a_wide_page_widens_its_dialog(
 
     if phone:
         #: The viewport less the 1rem gutters.
-        assert form == wide == viewport - 32
+        assert form == pytest.approx(viewport - 32)
+        assert wide == pytest.approx(viewport - 32)
     else:
-        assert wide > form
+        #: max-w-xl and max-w-4xl.
+        assert form == pytest.approx(576)
+        assert wide == pytest.approx(896)
     assert errors == []

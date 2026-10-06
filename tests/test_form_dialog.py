@@ -4,6 +4,7 @@ import json
 import re
 from html.parser import HTMLParser
 
+from django import forms
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.messages.middleware import MessageMiddleware
@@ -13,6 +14,7 @@ from django.http import HttpResponse
 from django.templatetags.static import static
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
+from tracked_games import create_tracked_game
 
 from common.components import (
     BottomSheet,
@@ -31,20 +33,24 @@ from common.components.form_dialog import (
     FORM_DIALOG_ID_LIST_ATTRIBUTES,
     FORM_DIALOG_PARTS,
     PAGE_WIDTH_ATTRIBUTE,
-    PAGE_WIDTHS,
     UNSAVED_WARNING_PARTS,
 )
 from common.components.modal import MODAL_ATTRIBUTES
 from common.components.primitives import (
     FORM_ERRORS_ATTRIBUTE,
     PAGE_WIDTH_CLASSES,
+    PAGE_WIDTHS,
+    AddForm,
+    ConfirmPage,
     FieldErrors,
+    PageWidth,
 )
 from common.components.ts_codegen import render_filter_metadata_module
 from common.form_dialog import FORM_DIALOG_HEADER
 from common.layout import render_page
 from common.notices import ToastPayload
 from games.management.commands.gen_element_types import form_dialog_module
+from games.views.bulk_pages import confirmation_width
 
 #: What every dialog fetch sends.
 DIALOG_HEADERS = {FORM_DIALOG_HEADER: "1", "Accept": "application/json"}
@@ -304,10 +310,40 @@ class PageWidthTest(TestCase):
                     f"data-[page-width={width}]:{PAGE_WIDTH_CLASSES[width]}", panel
                 )
 
-    def test_the_game_form_is_wide(self):
+    def test_each_route_states_its_width(self):
         self.client.force_login(self.user)
-        answer = _dialog_get(self.client, reverse("games:add_game")).json()
-        self.assertEqual(answer["width"], "wide")
+        game = create_tracked_game(self.user.library, "Outer Wilds")
+        routes: list[tuple[str, list[object], PageWidth]] = [
+            ("games:add_device", [], "form"),
+            ("games:add_platform", [], "form"),
+            ("games:add_playthrough", [], "form"),
+            ("games:add_session", [], "form"),
+            ("games:remove_game", [game.pk], "form"),
+            ("games:add_game", [], "wide"),
+            ("games:edit_game", [game.pk], "wide"),
+            ("games:list_games", [], "full"),
+            ("games:stats_alltime", [], "full"),
+        ]
+        for name, args, width in routes:
+            with self.subTest(route=name):
+                answer = _dialog_get(self.client, reverse(name, args=args)).json()
+                self.assertEqual(answer["width"], width)
+
+    def test_a_confirmation_widens_for_a_choice(self):
+        self.assertEqual(confirmation_width(None), "form")
+        self.assertEqual(confirmation_width(Div()["Pick one"]), "wide")
+
+    def test_form_bodies_set_no_cap_of_their_own(self):
+        request = self._request()
+        bodies = {
+            "AddForm": AddForm(forms.Form(), request=request),
+            "ConfirmPage": ConfirmPage(
+                title="Remove?", post_url="/", csrf_token="t", cancel_url="/"
+            ),
+        }
+        for name, body in bodies.items():
+            with self.subTest(body=name):
+                self.assertNotIn("max-w-", str(body))
 
 
 class AnswerCodegenTest(SimpleTestCase):
