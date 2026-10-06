@@ -1433,13 +1433,7 @@ const initWidget = (containerElement: Element): boolean => {
     if (!holdsNone()) holdNone();
   };
 
-  // Public option swap: replace the pre-rendered (inline, no search-url) option
-  // set without a fetch — the comparison widget re-filters a right-operand list
-  // client-side as the left column / operator changes. These rows are the whole
-  // set, so remembered options go. A committed single-select value that is no
-  // longer offered is dropped (to none, where offered) so it cannot serialize a
-  // stale operand; a still-offered value is preserved. Panel visibility is left
-  // untouched (no forced open).
+  //: Replace rows; forget memory; drop unoffered held.
   container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
     remembered.clear();
     options
@@ -1811,7 +1805,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
   }
 
-  /** Hold `value` silently; else hold none or nothing. */
+  /** Hold `value` silently, else none or nothing. */
   holdValue(value: string): boolean {
     return this.initializedPart("_searchSelectHoldValue")(value);
   }
@@ -1841,11 +1835,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectClear?.();
   }
 
-  /** Replace the inline option set client-side (no fetch); forgets remembered
-   *  options. A committed value no longer offered is dropped, to none where
-   *  offered; a still-offered one is kept. For inline (no search-url)
-   *  single-selects whose options are recomputed on the client — e.g. the
-   *  field-comparison right operand. No change event fires. */
+  /** Replace inline rows silently; drops an unoffered value. */
   setOptions(options: SearchSelectOption[]): void {
     (this as SearchSelectContainer)._searchSelectSetOptions?.(options);
   }

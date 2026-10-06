@@ -63,7 +63,7 @@ def test_a_pick_saves_and_none_saves_null(
     picker = page.locator('search-select[name="default_device"]')
 
     _search(page).click()
-    #: Phone arrives with the answer, so absence is checked after it.
+    #: Waits for the answer before the absence.
     expect(picker.get_by_role("option", name="Phone")).to_be_visible()
     expect(picker.get_by_role("option", name="Old laptop")).to_have_count(0)
     with _saved(page) as picked:

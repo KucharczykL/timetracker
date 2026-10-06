@@ -10,7 +10,7 @@ Its `default_device` field is a `ModelChoiceField` over
 `__init__`, because the resolver needs the library:
 
 - `SearchSelectWidget` over `DEVICE_SEARCH_URL`.
-- `params` is `{"held": {"value": "1"}}`.
+- `params` is `HELD_DEVICES`, `{"held": {"value": "1"}}`.
 - `options_resolver` is `device_options` bound to the library.
 - `none_label` is "No device".
 - `revert_on_leave` is true.
@@ -67,6 +67,7 @@ or × sends `null`, and the box shows "No device".
 ## Tests
 
 - `held=1` omits an ended device. A request without `held` includes it.
+- The session and record device pickers send no `held`.
 - The form widget states the search URL, `held`, the none label and
   `revert_on_leave`. The resolver reads one library.
 - The Library page holds an ended default by name. The help text names the
