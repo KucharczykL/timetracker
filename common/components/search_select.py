@@ -645,9 +645,10 @@ def SearchSelect(
     ``revert_on_leave``: leaving mid-edit restores the held value.
     """
     host_attributes = list((host_data or {}).items())
-    if any(not key.startswith("data-") for key, _ in host_attributes):
+    host_keys = {key for key, _ in host_attributes}
+    if any(not key.startswith("data-") for key in host_keys):
         raise ValueError(f"host_data takes data-* only: {host_data!r}")
-    reserved = RESERVED_HOST_DATA.intersection(key for key, _ in host_attributes)
+    reserved = RESERVED_HOST_DATA & host_keys
     if reserved:
         raise ValueError(f"host_data names the element's own {sorted(reserved)}")
     if dialog_create and panel:

@@ -58,15 +58,16 @@ export function snapshotsEqual(left: ControlSnapshot, right: ControlSnapshot): b
   return false;
 }
 
-const markBusy = (element: HTMLElement, busy: boolean): void => {
+function markBusy(element: HTMLElement, busy: boolean): void {
   if (busy) element.setAttribute("aria-busy", "true");
   else element.removeAttribute("aria-busy");
-};
+}
 
 type NativeElement = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
-const isCheckbox = (element: NativeElement): element is HTMLInputElement =>
-  element instanceof HTMLInputElement && element.type === "checkbox";
+function isCheckbox(element: NativeElement): element is HTMLInputElement {
+  return element instanceof HTMLInputElement && element.type === "checkbox";
+}
 
 function refuseKind(expected: ControlSnapshot["kind"], state: ControlSnapshot): never {
   throw new Error(`setting control: a ${state.kind} snapshot is no ${expected} one`);
@@ -154,6 +155,10 @@ class SearchSelectSettingControl implements SettingControl {
     this.search = search;
   }
 
+  private reportUnoffered(value: SettingValue): void {
+    console.error(`search-select[${this.element.getAttribute("name")}]: no row offers`, value);
+  }
+
   private heldInput(): HTMLInputElement | null {
     return this.element.querySelector<HTMLInputElement>(
       '[data-search-select-pills] input[type="hidden"]'
@@ -181,7 +186,7 @@ class SearchSelectSettingControl implements SettingControl {
     if (value === null || value === "") {
       this.element.holdNone();
     } else if (!this.element.holdValue(String(value))) {
-      console.error(`search-select[${this.element.getAttribute("name")}]: no row offers`, value);
+      this.reportUnoffered(value);
     }
   }
 
@@ -190,7 +195,7 @@ class SearchSelectSettingControl implements SettingControl {
     if (attempt.value === null || resolved.value === null) return HELD_NONE;
     const value = String(resolved.value);
     if (!this.element.offers(value)) {
-      console.error(`search-select[${this.element.getAttribute("name")}]: no row offers`, value);
+      this.reportUnoffered(value);
       return HELD_NONE;
     }
     return { kind: "held", value, none: false };

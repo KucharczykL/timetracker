@@ -107,6 +107,9 @@ interface HeldState {
 //: A single-select's held value, or none.
 type DroppedHeld = { none: true } | { none: false; value: string; label: string };
 
+//: Container parts the public hold methods call.
+type HeldPart = "_searchSelectHoldValue" | "_searchSelectHoldNone" | "_searchSelectOffers";
+
 //: A label change alone is no change.
 const sameHeld = (left: HeldState, right: HeldState): boolean =>
   left.none === right.none &&
@@ -1391,9 +1394,8 @@ const initWidget = (containerElement: Element): boolean => {
   //: Hold a row's value; unoffered holds none, or nothing.
   container._searchSelectHoldValue = (value: string): boolean => {
     const offered = offeredRow(value);
-    const held = heldNow();
     const alreadyHeld =
-      !container._searchSelectDirty && !held.none && sameHeld(held, { values: [value], none: false });
+      !container._searchSelectDirty && sameHeld(heldNow(), { values: [value], none: false });
     if (offered && alreadyHeld) return true;
     if (offered) selectOption(optionFromRow(offered), false);
     else if (noneLabel) holdNone();
@@ -1798,7 +1800,7 @@ export class SearchSelectElement extends HTMLElement {
     return this.initializedPart("_searchSelectOffers")(value);
   }
 
-  private initializedPart<Part extends "_searchSelectHoldValue" | "_searchSelectHoldNone" | "_searchSelectOffers">(
+  private initializedPart<Part extends HeldPart>(
     part: Part
   ): NonNullable<SearchSelectContainer[Part]> {
     const found = (this as SearchSelectContainer)[part];
