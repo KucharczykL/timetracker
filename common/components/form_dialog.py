@@ -5,20 +5,26 @@ from typing import Final, Literal, TypedDict
 
 from common.components.core import Attributes, Node
 from common.components.custom_elements import OVERLAY_SURFACE_CLASS
-from common.components.elements import Div, Template
+from common.components.elements import Div, P, Template
 from common.components.modal import (
+    MODAL_ATTRIBUTES,
     ElementId,
     ModalDialog,
     require_every_key,
     titled_header,
 )
-from common.components.primitives import FORM_MAX_WIDTH_CLASS, custom_element_builder
+from common.components.primitives import (
+    FORM_MAX_WIDTH_CLASS,
+    AttributeName,
+    ControlButton,
+    custom_element_builder,
+)
 from common.notices import ToastPayload
 
 type FormDialogChrome = Literal["header", "bare"]
 type FormDialogPart = Literal["template", "header", "title", "body"]
+type UnsavedWarningPart = Literal["template", "discard", "save"]
 type FormDialogAttribute = str  # e.g. "data-form-dialog", "data-form-dialog-body"
-type AttributeName = str  # e.g. "aria-controls"
 type AbsoluteUrl = str  # e.g. "https://example.com/devices"
 type ModulePath = str  # static URL: a path, or absolute when hosted
 type DocumentTitle = str  # e.g. "Add New Device"
@@ -90,6 +96,13 @@ FORM_DIALOG_PARTS: Mapping[FormDialogPart, FormDialogAttribute] = {
     "body": "data-form-dialog-body",
 }
 
+#: The warning template's parts.
+UNSAVED_WARNING_PARTS: Mapping[UnsavedWarningPart, FormDialogAttribute] = {
+    "template": "data-form-dialog-unsaved",
+    "discard": "data-form-dialog-discard",
+    "save": "data-form-dialog-save",
+}
+
 #: Attributes naming one id; the dialog prefixes them.
 FORM_DIALOG_ID_ATTRIBUTES: tuple[AttributeName, ...] = (
     "list",
@@ -118,15 +131,19 @@ FORM_DIALOG_CHROME_BY_MARKER: Mapping[ChromeMarker, FormDialogChrome] = {
 if len(FORM_DIALOG_CHROME_BY_MARKER) != len(FORM_DIALOG_CHROME_VALUES):
     raise TypeError("FORM_DIALOG_CHROME_VALUES markers must differ")
 require_every_key(FormDialogPart, FORM_DIALOG_PARTS)
+require_every_key(UnsavedWarningPart, UNSAVED_WARNING_PARTS)
 
 #: Prefixed per dialog, like every template id.
 _TITLE_ID: ElementId = "form-dialog-title"
+_UNSAVED_TITLE_ID: ElementId = "form-dialog-unsaved-title"
+_UNSAVED_MESSAGE_ID: ElementId = "form-dialog-unsaved-message"
 
-_PANEL_CLASS = (
-    f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} max-h-[calc(100dvh-2rem)] "
-    "flex-col overflow-hidden rounded-base border border-default-medium "
-    f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
+_SURFACE_CLASS = (
+    "max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-base border "
+    f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
+_PANEL_CLASS = f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} {_SURFACE_CLASS}"
+_WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm {_SURFACE_CLASS}"
 
 #: The link loading, or the body submitting.
 _BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
@@ -142,8 +159,48 @@ def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
     )
 
 
+def _UnsavedWarning() -> Node:
+    """Asks before unsaved changes are lost."""
+    titled = titled_header(
+        "Unsaved changes", title_id=_UNSAVED_TITLE_ID, close_label=None, divided=False
+    )
+    return Template([(UNSAVED_WARNING_PARTS["template"], "")])[
+        ModalDialog(
+            [
+                ("role", "alertdialog"),
+                titled.labelled_by,
+                ("aria-describedby", _UNSAVED_MESSAGE_ID),
+            ]
+        )[
+            Div(class_=_WARNING_PANEL_CLASS)[
+                titled.header,
+                Div(class_="flex flex-col gap-3 px-4 pt-3 pb-4")[
+                    P(id=_UNSAVED_MESSAGE_ID, class_="text-body")[
+                        "Your changes are not saved."
+                    ],
+                    Div(class_="mt-2 flex flex-col gap-2 sm:flex-row")[
+                        ControlButton(
+                            [(UNSAVED_WARNING_PARTS["discard"], "")],
+                            color="red",
+                            class_="sm:mr-auto",
+                        )["Discard"],
+                        ControlButton(
+                            [
+                                (MODAL_ATTRIBUTES["dismiss"], ""),
+                                (MODAL_ATTRIBUTES["initial_focus"], ""),
+                            ],
+                            color="gray",
+                        )["Return to edit"],
+                        ControlButton([(UNSAVED_WARNING_PARTS["save"], "")])["Save"],
+                    ],
+                ],
+            ]
+        ]
+    ]
+
+
 def FormDialogHost() -> Node:
-    """The page's one host and its chrome template."""
+    """The page's one host and its templates."""
     titled = titled_header(
         "",
         title_id=_TITLE_ID,
@@ -161,5 +218,6 @@ def FormDialogHost() -> Node:
                     ),
                 ]
             ]
-        ]
+        ],
+        _UnsavedWarning(),
     ]

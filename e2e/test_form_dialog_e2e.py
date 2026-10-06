@@ -132,6 +132,108 @@ def test_escape_closes_only_the_top_dialog(
     assert errors == []
 
 
+def _warning(page: Page):
+    return page.get_by_role("alertdialog", name="Unsaved changes")
+
+
+def _edit_and_escape(page: Page, live_server, device: Device):
+    _open_device_edit(page, live_server, device)
+    dialog = page.locator("dialog[data-modal][open]").first
+    dialog.locator('input[name="name"]').fill("Deck OLED")
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_be_visible()
+    return dialog
+
+
+def test_an_unchanged_edit_closes_at_once(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    _open_device_edit(page, live_server, deck)
+    page.keyboard.press("Escape")
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+    expect(_warning(page)).to_have_count(0)
+    assert errors == []
+
+
+def test_escape_warns_and_return_keeps_the_input(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    dialog = _edit_and_escape(page, live_server, deck)
+    expect(_warning(page)).to_contain_text("Your changes are not saved.")
+    keep = _warning(page).get_by_role("button", name="Return to edit")
+    expect(keep).to_be_focused()
+    keep.click()
+    expect(_warning(page)).to_have_count(0)
+    expect(dialog).to_be_visible()
+    expect(dialog.locator('input[name="name"]')).to_have_value("Deck OLED")
+    expect(dialog.locator('input[name="name"]')).to_be_focused()
+    assert errors == []
+
+
+def test_a_second_escape_returns_to_the_edit(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    dialog = _edit_and_escape(page, live_server, deck)
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_have_count(0)
+    expect(dialog).to_be_visible()
+    expect(dialog.locator('input[name="name"]')).to_have_value("Deck OLED")
+    assert errors == []
+
+
+def test_typing_then_escape_twice_keeps_the_edit(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    _open_device_edit(page, live_server, deck)
+    dialog = page.locator("dialog[data-modal][open]").first
+    name = dialog.locator('input[name="name"]')
+    name.click()
+    page.keyboard.press("End")
+    page.keyboard.type(" OLED")
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(_warning(page)).to_have_count(0)
+    expect(dialog).to_be_visible()
+    expect(name).to_have_value("Deck OLED")
+    assert errors == []
+
+
+def test_discard_closes_without_a_write(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    _edit_and_escape(page, live_server, deck)
+    _warning(page).get_by_role("button", name="Discard").click()
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+    assert not _reloaded(page)
+    assert Device.objects.get(pk=deck.pk).name == "Deck"
+    assert errors == []
+
+
+def test_save_submits_the_edit(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    deck = create_device(e2e_library, "Deck")
+    _edit_and_escape(page, live_server, deck)
+    _warning(page).get_by_role("button", name="Save").click()
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+    expect(page.locator("tbody tr", has_text="Deck OLED")).to_be_visible()
+    assert _reloaded(page)
+    assert Device.objects.get(pk=deck.pk).name == "Deck OLED"
+    assert errors == []
+
+
 def test_a_removal_confirms_in_the_dialog(
     authenticated_page: Page, live_server, e2e_library, errors
 ):

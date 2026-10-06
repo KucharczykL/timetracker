@@ -159,7 +159,7 @@ def _hidden_errors(form: BaseForm) -> list[Node]:
     posted id would land nowhere. A row states it beside the rest.
     """
     sentences = [error for field in form if field.is_hidden for error in field.errors]
-    errors = FieldErrors(sentences)
+    errors = FieldErrors(sentences, form_wide=True)
     return [] if errors is None else [errors]
 
 
@@ -191,7 +191,7 @@ def _hidden_fields(form: BaseForm) -> list[Node]:
 
 
 def _non_field_errors(form: BaseForm) -> list[Node]:
-    errors = FieldErrors(form.non_field_errors())
+    errors = FieldErrors(form.non_field_errors(), form_wide=True)
     return [] if errors is None else [errors]
 
 

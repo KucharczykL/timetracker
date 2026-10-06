@@ -42,6 +42,9 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 }
 
 
+_DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay py-3"
+
+
 def require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
     """Refuses a table missing a Literal member."""
     members = set(get_args(alias.__value__))
@@ -70,27 +73,33 @@ def ModalPanelHeader(
     title: Child,
     *,
     title_id: ElementId,
-    close_label: str = "Close dialog",
+    close_label: str | None = "Close dialog",
     attributes: Attributes = (),
     title_attributes: Attributes = (),
+    divided: bool = True,
 ) -> Element:
-    """A modal panel's title row with its ×.
+    """A modal panel's title row; no label, no ×.
 
     `title_id` beats an id in `title_attributes`.
+    `divided`: a line over a scrolling body.
     """
-    close_button = ControlButton(
-        [
-            (MODAL_ATTRIBUTES["dismiss"], ""),
-            ("aria-label", close_label),
-            ("class", "shrink-0 focus:ring-inset"),
-        ],
-        variant="ghost",
-    )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    close_button = (
+        None
+        if close_label is None
+        else ControlButton(
+            [
+                (MODAL_ATTRIBUTES["dismiss"], ""),
+                ("aria-label", close_label),
+                ("class", "shrink-0 focus:ring-inset"),
+            ],
+            variant="ghost",
+        )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
+    )
     return Div(
         attributes,
         class_=(
-            "flex shrink-0 items-center justify-between gap-4 "
-            "border-b border-default-medium bg-surface-overlay px-4 py-3"
+            "flex shrink-0 items-center justify-between gap-4 px-4 "
+            f"{_DIVIDED_HEADER_CLASS if divided else 'pt-4'}"
         ),
     )[
         PlainH2(
@@ -115,9 +124,10 @@ def titled_header(
     title: Child,
     *,
     title_id: ElementId,
-    close_label: str = "Close dialog",
+    close_label: str | None = "Close dialog",
     attributes: Attributes = (),
     title_attributes: Attributes = (),
+    divided: bool = True,
 ) -> TitledHeader:
     """Pairs a header with its dialog's name."""
     return TitledHeader(
@@ -128,5 +138,6 @@ def titled_header(
             close_label=close_label,
             attributes=attributes,
             title_attributes=title_attributes,
+            divided=divided,
         ),
     )

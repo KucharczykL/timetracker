@@ -15,6 +15,7 @@ import logging
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import (
+    Final,
     Literal,
     NamedTuple,
     NotRequired,
@@ -1914,12 +1915,22 @@ _FIELD_ERROR_CLASS = (
 _CHECKBOX_ROW_CLASS = "flex flex-row items-center justify-between gap-6 mt-3"
 
 
-def FieldErrors(errors) -> Node | None:
-    """Render a form/field ErrorList as a styled <ul>, or None if empty."""
+type AttributeName = str  # e.g. "aria-controls"
+
+#: A form dialog focuses form-wide errors.
+FORM_ERRORS_ATTRIBUTE: Final[AttributeName] = "data-form-errors"
+
+
+def FieldErrors(errors, *, form_wide: bool = False) -> Node | None:
+    """Render a form/field ErrorList as a styled <ul>, or None if empty.
+
+    `form_wide`: no field owns it; focusable.
+    """
     items = [Li()[str(error)] for error in errors]
     if not items:
         return None
-    return Ul(class_=_FIELD_ERROR_CLASS)[*items]
+    marks = [(FORM_ERRORS_ATTRIBUTE, ""), ("tabindex", "-1")] if form_wide else []
+    return Ul(marks, class_=f"{_FIELD_ERROR_CLASS} focus:outline-hidden")[*items]
 
 
 #: How a group shows its legend.
@@ -2301,7 +2312,7 @@ def FormFields(
         if _is_silent(form[name], facts)
         for error in form[name].errors
     ]
-    non_field = FieldErrors([*form.non_field_errors(), *silent_errors])
+    non_field = FieldErrors([*form.non_field_errors(), *silent_errors], form_wide=True)
     if non_field:
         rows.append(non_field)
 
@@ -2432,7 +2443,7 @@ def ConfirmPage(
     removal would take with it). ``max_width`` widens the page for a table the
     form width would crush.
     """
-    refused = FieldErrors(refusal)
+    refused = FieldErrors(refusal, form_wide=True)
     return Div(
         class_=f"mx-auto w-full {max_width} p-5 @container",
     )[

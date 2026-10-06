@@ -113,6 +113,11 @@ export function topModal(): HTMLDialogElement | null {
   return openEntries().at(-1)?.dialog ?? null;
 }
 
+/** While one leaves, opens are refused. */
+export function isModalLeaving(): boolean {
+  return shown.some((entry) => entry.state === "leaving");
+}
+
 export function isModalOpen(): boolean {
   return topModal() !== null;
 }
@@ -446,9 +451,9 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
 
   dialog.addEventListener("cancel", (event) => {
     if (event.target !== dialog) return;
-    // Not cancelable: the browser closes it.
     event.preventDefault();
-    dismiss();
+    // Not cancelable: the browser closes it.
+    if (event.cancelable) dismiss();
   });
   dialog.addEventListener("close", (event) => {
     // A queued close may follow a reopen.
