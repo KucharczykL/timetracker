@@ -5,7 +5,7 @@ from typing import Final, Literal, TypedDict
 
 from common.components.core import Attributes, Node
 from common.components.custom_elements import OVERLAY_SURFACE_CLASS
-from common.components.elements import Div, P, PlainH2, Template
+from common.components.elements import Div, P, Template
 from common.components.modal import (
     MODAL_ATTRIBUTES,
     ElementId,
@@ -139,7 +139,7 @@ _SURFACE_CLASS = (
     f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
 _PANEL_CLASS = f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} {_SURFACE_CLASS}"
-_WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm gap-3 p-4 {_SURFACE_CLASS}"
+_WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm {_SURFACE_CLASS}"
 
 #: The link loading, or the body submitting.
 _BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
@@ -157,35 +157,38 @@ def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
 
 def _UnsavedWarning() -> Node:
     """Asks before unsaved changes are lost."""
+    titled = titled_header(
+        "Unsaved changes", title_id=_UNSAVED_TITLE_ID, close=False, divided=False
+    )
     return Template([(FORM_DIALOG_PARTS["unsaved"], "")])[
         ModalDialog(
             [
                 ("role", "alertdialog"),
-                ("aria-labelledby", _UNSAVED_TITLE_ID),
+                titled.labelled_by,
                 ("aria-describedby", _UNSAVED_MESSAGE_ID),
             ]
         )[
             Div(class_=_WARNING_PANEL_CLASS)[
-                PlainH2(id=_UNSAVED_TITLE_ID, class_="text-type-section text-heading")[
-                    "Unsaved changes"
-                ],
-                P(id=_UNSAVED_MESSAGE_ID, class_="text-body")[
-                    "Your changes are not saved."
-                ],
-                Div(class_="mt-2 flex flex-col gap-2 sm:flex-row")[
-                    ControlButton(
-                        [(FORM_DIALOG_PARTS["discard"], "")],
-                        color="red",
-                        class_="sm:mr-auto",
-                    )["Discard"],
-                    ControlButton(
-                        [
-                            (MODAL_ATTRIBUTES["dismiss"], ""),
-                            (MODAL_ATTRIBUTES["initial_focus"], ""),
-                        ],
-                        color="gray",
-                    )["Return to edit"],
-                    ControlButton([(FORM_DIALOG_PARTS["save"], "")])["Save"],
+                titled.header,
+                Div(class_="flex flex-col gap-3 px-4 pt-3 pb-4")[
+                    P(id=_UNSAVED_MESSAGE_ID, class_="text-body")[
+                        "Your changes are not saved."
+                    ],
+                    Div(class_="mt-2 flex flex-col gap-2 sm:flex-row")[
+                        ControlButton(
+                            [(FORM_DIALOG_PARTS["discard"], "")],
+                            color="red",
+                            class_="sm:mr-auto",
+                        )["Discard"],
+                        ControlButton(
+                            [
+                                (MODAL_ATTRIBUTES["dismiss"], ""),
+                                (MODAL_ATTRIBUTES["initial_focus"], ""),
+                            ],
+                            color="gray",
+                        )["Return to edit"],
+                        ControlButton([(FORM_DIALOG_PARTS["save"], "")])["Save"],
+                    ],
                 ],
             ]
         ]

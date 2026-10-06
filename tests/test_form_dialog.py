@@ -21,6 +21,7 @@ from common.components import (
     DropdownLinkItem,
     FormDialogHost,
     Media,
+    ModalPanelHeader,
     form_dialog_link,
 )
 from common.components.form_dialog import (
@@ -136,6 +137,21 @@ class BottomSheetHeaderTest(SimpleTestCase):
         self.assertIn('id="sheet-title"', html)
         self.assertIn('aria-label="Close dialog"', html)
         self.assertIn("border-b border-default-medium", html)
+
+
+class ModalPanelHeaderTest(SimpleTestCase):
+    def test_a_plain_header_has_no_line_and_no_close(self):
+        html = str(ModalPanelHeader("Title", title_id="t", close=False, divided=False))
+        self.assertIn('id="t"', html)
+        self.assertNotIn("border-b", html)
+        self.assertNotIn("data-modal-dismiss", html)
+
+    def test_the_warning_wears_the_plain_header(self):
+        html = str(FormDialogHost())
+        start = html.index(f"{FORM_DIALOG_PARTS['unsaved']}=")
+        warning = html[start : html.index("</template>", start)]
+        self.assertNotIn("border-b", warning)
+        self.assertNotIn("Close dialog", warning)
 
 
 class LayoutStampTest(TestCase):
