@@ -106,7 +106,6 @@ def test_theme_component_keeps_three_icons_and_tooltip(db):
 
     assert "<theme-toggle" in html
     assert 'data-theme-icon="system"' in html
-    assert "data-theme-system-half" in html
     assert 'data-theme-icon="light"' in html
     assert 'data-theme-icon="dark"' in html
     assert "<pop-over" in html

@@ -18,7 +18,7 @@ serializers read into a ``DateCriterion``. All behaviour is wired by
 
 from typing import Literal
 
-from common.components.core import Node, Safe
+from common.components.core import Node
 from common.components.custom_elements import (
     OVERLAY_SURFACE_CLASS,
     _DateRangePicker,
@@ -30,6 +30,7 @@ from common.components.primitives import (
     ControlButton,
     Div,
     FilterWidgetPath,
+    Icon,
     Input,
     Span,
     Template,
@@ -61,17 +62,6 @@ _SEGMENT_INPUT_CLASS = (
 )
 
 _SEGMENT_WIDTH_CLASSES = {2: "w-[2ch]", 4: "w-[4ch]"}
-
-CALENDAR_ICON_SVG = (
-    '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" '
-    'stroke="currentColor" aria-hidden="true">'
-    '<path stroke-linecap="round" stroke-linejoin="round" '
-    'd="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5'
-    "A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5"
-    "A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5"
-    'A2.25 2.25 0 0 1 21 11.25v7.5"/>'
-    "</svg>"
-)
 
 _PRESET_OPTIONS: list[tuple[str, str]] = [
     ("today", "Today"),
@@ -344,7 +334,7 @@ def DateRangeField(
                 data_date_range_calendar_toggle="",
                 aria_label=f"Open {label} calendar",
                 class_="ms-auto",
-            )[Safe(CALENDAR_ICON_SVG)]
+            )[Icon("calendar", decorative=True)]
         )
     # role="group" + the field name, matching DatePickerField: the six segments
     # have no <label> of their own, so without it a screen reader reaches
@@ -359,8 +349,8 @@ def DateRangeField(
     )[*children]
 
 
-def _calendar_nav_button(direction: str, arrow: str, label: str) -> Node:
-    # Ghost: transparent chrome at rest, which is what the ‹/› glyphs had
+def _calendar_nav_button(direction: str, glyph: str, label: str) -> Node:
+    # Ghost: transparent chrome at rest, which is what the bare glyphs had
     # before — but now with ControlButton's 42px height and a matched cell
     # width, so the hit area clears the 24x24 WCAG 2.5.8 floor by a wide
     # margin (it used to be 16px wide, see e2e/test_touch_targets_e2e.py).
@@ -369,7 +359,7 @@ def _calendar_nav_button(direction: str, arrow: str, label: str) -> Node:
         variant="ghost",
         aria_label=label,
         class_=_NAV_BUTTON_GEOMETRY_CLASS,
-    )[arrow]
+    )[Icon(glyph, decorative=True)]
 
 
 def footer_button(action: str, label: str, *, color: ButtonColor = "gray") -> Node:
@@ -431,12 +421,12 @@ def date_calendar_shell(
     children.append(
         Div(class_="p-2")[
             Div(class_="flex items-center justify-between gap-2")[
-                _calendar_nav_button("prev", "‹", "Previous month"),
+                _calendar_nav_button("prev", "arrowleft", "Previous month"),
                 Span(
                     class_="text-type-body font-medium text-heading",
                     data_date_range_month_label="",
                 ),
-                _calendar_nav_button("next", "›", "Next month"),
+                _calendar_nav_button("next", "arrowright", "Next month"),
             ],
             # w-77 (7 * the w-11 day-cell width) is explicit, not
             # relied-on-shrink-to-fit: Firefox's shrink-to-fit algorithm for

@@ -137,7 +137,6 @@ def SectionNav(
             Icon(
                 "arrowdown",
                 [("aria-hidden", "true"), ("class", "shrink-0 rotate-180")],
-                size="h-3 w-3",
             ),
         ]
     ].as_element()

@@ -1689,7 +1689,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   snippet is named for the glyph it draws, and no two draw one (a test holds
   it). Add/edit snippet, run `make gen-icons`, list a platform glyph in
   `PLATFORM_ICONS` (`common/platform_icons.py`); `canonical_icon` there maps a
-  retired slug (`RETIRED_ICONS`). `Icon(name, attributes=...)` returns node:
+  retired slug (`RETIRED_ICONS`). Every non-brand glyph is a Lucide file
+  copied verbatim (a missing glyph is the one exception, drawn on Lucide's
+  grid), never hand-drawn or inline. A control-height `ControlButton` states
+  `--icon-size`, so an icon inside one needs no `size=`.
+  `Icon(name, attributes=...)` returns node:
   `class` merges onto svg, `title` becomes `<title>` child. An unknown name
   draws `unspecified` and logs a WARNING on `games.icons`; a test that draws
   one fails unless marked `draws_unknown_icon` (`tests/icon_names.py`). Never

@@ -1107,7 +1107,6 @@ def DropdownSubmenuItem(
         Icon(
             "arrowright",
             [("aria-hidden", "true"), ("class", "ms-auto shrink-0 text-body-subtle")],
-            size="size-3.5",
         ),
     ]
     return Li(role="presentation")[
@@ -1403,9 +1402,7 @@ def ButtonDropdown(
     # The stamping machinery is typed on Element (it reads tag_name/attributes
     # off the node), so unwrap the component to its rendered <button>.
     trigger = _as_menu_trigger(
-        ControlButton(color=color)[
-            label, Icon("arrowdown", [("class", "h-3 w-3")])
-        ].as_element()
+        ControlButton(color=color)[label, Icon("arrowdown")].as_element()
     )
     return Dropdown(
         trigger_element=trigger,
@@ -1544,7 +1541,8 @@ def SelectDropdown(
         aria_haspopup="listbox",
     )[
         Span(class_="flex flex-row gap-4 justify-between items-center")[
-            Span(data_label="")[current_label], Icon("arrowdown")
+            Span(data_label="")[current_label],
+            Icon("arrowdown"),
         ]
     ].as_element()
     config: dict[str, str] = {

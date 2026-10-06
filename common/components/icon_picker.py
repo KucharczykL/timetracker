@@ -90,7 +90,7 @@ def IconPicker(
             data_keep="" if not shown.value else None,
             class_="grow truncate data-[keep]:text-body",
         )[shown.label],
-        Icon("arrowdown", size="h-3 w-3"),
+        Icon("arrowdown"),
     ]
     panel = DropdownPanel(role="dialog", aria_label=label, width="w-72")[
         Fieldset(class_="grid grid-cols-6 gap-1 border-0 p-0 m-0")[
