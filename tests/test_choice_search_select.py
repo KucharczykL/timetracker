@@ -355,14 +355,35 @@ def test_a_plain_select_becomes_the_picker(field):
     assert widget.choices == LETTERS
 
 
+def _clears(field: forms.Field) -> bool:
+    return "data-search-select-clear" in _render(field)
+
+
 def test_a_swapped_field_clears_only_with_a_none_row():
-    optional = _swapped(forms.ChoiceField(required=False, choices=[PROMPT, *LETTERS]))
-    assert optional.widget.clearable
+    assert _clears(
+        _swapped(forms.ChoiceField(required=False, choices=[PROMPT, *LETTERS]))
+    )
     for field in (
         forms.ChoiceField(required=False, choices=LETTERS),
         forms.ChoiceField(choices=[PROMPT, *LETTERS]),
     ):
-        assert not _swapped(field).widget.clearable
+        assert not _clears(_swapped(field))
+
+
+def test_the_clear_follows_a_later_choices_assignment():
+    field = _swapped(forms.ChoiceField(required=False, choices=LETTERS))
+    field.choices = [PROMPT, *LETTERS]
+    assert _clears(field)
+
+
+def test_aria_required_follows_the_form():
+    class QuietForm(forms.Form):
+        use_required_attribute = False
+        choice = forms.ChoiceField(choices=LETTERS)
+
+    form = QuietForm()
+    apply_primitive_widget_classes(form.fields)
+    assert "aria-required" not in _search_box(str(FormFields(form)))
 
 
 def test_a_later_choices_assignment_reaches_the_swapped_widget():

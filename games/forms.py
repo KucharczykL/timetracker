@@ -222,14 +222,14 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
     Callable on its own so a form that builds fields after ``super().__init__()``
     can opt in; :class:`PrimitiveWidgetsMixin` is the declarative path.
     """
-    for name, field in fields.items():
+    for field in fields.values():
         if _holds_a_plain_select(field):
             picker = ChoiceSearchSelectWidget(
-                revert_on_leave=True, attrs=field.widget.attrs
+                clearable=WITH_NONE_ROW,
+                revert_on_leave=True,
+                attrs=dict(field.widget.attrs),
             )
             host_choices(field, picker)
-            # No none row, nothing to clear.
-            picker.clearable = picker.offers_none(name)
             continue
         if isinstance(field, forms.BooleanField):
             # An explicitly hidden boolean is a choice the form made: a
@@ -485,7 +485,15 @@ class _SearchSelectAdapter(forms.Widget):
         self.dialog_create = dialog_create
         self.revert_on_leave = revert_on_leave
 
-    def _render(self, name, attrs, *, shape: ButtonShape, **component) -> str:
+    def _render(
+        self,
+        name,
+        attrs,
+        *,
+        shape: ButtonShape,
+        clearable: bool | None = None,
+        **component,
+    ) -> str:
         merged = {**self.attrs, **(attrs or {})}
         homeless = {
             key
@@ -502,7 +510,7 @@ class _SearchSelectAdapter(forms.Widget):
                 id=input_id,
                 placeholder=self.placeholder,
                 autofocus=self.autofocus,
-                clearable=self.clearable,
+                clearable=self.clearable if clearable is None else clearable,
                 dialog_create=self.dialog_create,
                 clear_description_id=field_label_id(input_id) if input_id else None,
                 host_data={
@@ -513,7 +521,7 @@ class _SearchSelectAdapter(forms.Widget):
                 disabled=_attr_flag(merged.get("disabled")),
                 described_by=merged.get("aria-describedby") or None,
                 invalid=_attr_flag(merged.get("aria-invalid")),
-                required=self.is_required,
+                required=_attr_flag(merged.get("required")),
                 revert_on_leave=self.revert_on_leave,
                 shape=shape,
                 **component,
@@ -696,6 +704,11 @@ def offer_platform_groups(
     return widget
 
 
+#: A × only where a none row stands.
+WITH_NONE_ROW: Final = "with_none_row"
+type ClearRule = bool | Literal["with_none_row"]
+
+
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):
     """A `SearchSelect()` over a field's fixed choices."""
 
@@ -706,7 +719,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
         self,
         *,
         placeholder: str | None = None,
-        clearable: bool = True,
+        clearable: ClearRule = True,
         autofocus: bool = False,
         dialog_create: DialogCreate | None = None,
         revert_on_leave: bool = False,
@@ -717,11 +730,12 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             if placeholder is None
             else placeholder,
             autofocus=autofocus,
-            clearable=clearable,
+            clearable=clearable is True,
             dialog_create=dialog_create,
             revert_on_leave=revert_on_leave,
             attrs=attrs,
         )
+        self.clear_rule: ClearRule = clearable
 
     def __deepcopy__(self, memo):
         copied = super().__deepcopy__(memo)
@@ -758,12 +772,16 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             if key != ""
         ]
         held = _choice_key(value)
+        offers_none = self.offers_none(name)
         return self._render(
             name,
             attrs,
             selected=[option for option in options if option["value"] == held],
             options=options,
-            none_label=empty[0] if empty and not self.is_required else None,
+            none_label=empty[0] if offers_none else None,
+            clearable=offers_none
+            if self.clear_rule == WITH_NONE_ROW
+            else self.clear_rule is True,
             shape=shape,
         )
 

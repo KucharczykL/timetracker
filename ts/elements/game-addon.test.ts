@@ -48,11 +48,11 @@ function render(
   return { picker, row, input, clear };
 }
 
-function change(picker: Element, values: string[]): void {
+function change(picker: Element, values: string[], none = false): void {
   picker.dispatchEvent(
     new CustomEvent("search-select:change", {
       bubbles: true,
-      detail: { name: "", values, last: null, none: false },
+      detail: { name: "", values, last: null, none },
     })
   );
 }
@@ -124,6 +124,27 @@ it("keeps the parent while a keystroke drops the kind", () => {
 
   expect(row.hidden).toBe(false);
   expect(clear).not.toHaveBeenCalled();
+});
+
+it("says so when the kind holds none", () => {
+  const { picker, row } = render("dlc", "parent-key");
+
+  change(picker, [], true);
+
+  expect(row.hidden).toBe(false);
+  expect(console.error).toHaveBeenCalled();
+});
+
+it("says so when the kind picker holds nothing", () => {
+  render("main");
+  document.querySelector('search-select[name="kind"] input')!.remove();
+  document.querySelector("game-addon")!.remove();
+  const element = document.createElement("game-addon");
+  element.setAttribute("kind-field", "kind");
+  element.setAttribute("parent-field", "parent");
+  document.querySelector("form")!.append(element);
+
+  expect(console.error).toHaveBeenCalled();
 });
 
 it("ignores the parent picker's own changes", () => {

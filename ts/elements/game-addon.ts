@@ -1,6 +1,6 @@
 import { ADDON_KINDS } from "../generated/game-kinds.js";
 import { readGameAddonProps } from "../generated/props.js";
-import type { SearchSelectChangeDetail } from "./search-select.js";
+import { heldValue, type SearchSelectChangeDetail } from "./search-select.js";
 
 /** Shows the parent row for add-ons only. */
 class GameAddonElement extends HTMLElement {
@@ -25,10 +25,10 @@ class GameAddonElement extends HTMLElement {
       );
       return;
     }
-    this.kind =
-      this.kindPicker.querySelector<HTMLInputElement>(
-        "[data-search-select-pills] input[type=hidden]"
-      )?.value ?? "";
+    const held = heldValue(this.kindPicker);
+    //: A required kind always holds one.
+    if (held === null) console.error(`game-addon: ${kindField} holds no kind`);
+    this.kind = held ?? "";
     this.kindPicker.addEventListener("search-select:change", this.onKindChange);
     //: A refused posted parent stays visible.
     if (!this.parentHeld()) this.show(this.isAddon());
@@ -41,8 +41,12 @@ class GameAddonElement extends HTMLElement {
     );
   }
 
-  private readonly onKindChange = (event: Event): void => {
-    const [kind] = (event as CustomEvent<SearchSelectChangeDetail>).detail.values;
+  private readonly onKindChange = (event: CustomEvent<SearchSelectChangeDetail>): void => {
+    if (event.detail.none) {
+      console.error("game-addon: the kind holds none");
+      return;
+    }
+    const [kind] = event.detail.values;
     //: A first keystroke drops the value; no pick.
     if (kind === undefined) return;
     this.kind = kind;

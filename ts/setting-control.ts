@@ -223,6 +223,10 @@ export function settingControlOf(element: Element): SettingControl | null {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     return new NativeSettingControl(element);
   }
+  //: A setting picks through a search-select.
+  if (element instanceof HTMLSelectElement) {
+    throw new Error(`select[${element.name}]: a setting renders a search-select`);
+  }
   return null;
 }
 

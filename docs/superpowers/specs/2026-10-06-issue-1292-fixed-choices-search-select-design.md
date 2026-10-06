@@ -14,15 +14,17 @@ when all of these are true:
 - The field is not a `ModelChoiceField` or a `MultipleChoiceField`.
 - The widget is exactly `forms.Select`. A subclass stays.
 
-The replacement goes through `host_choices`. It keeps the field's
-`required` and the old widget's `attrs`. The adapter refuses an attr
-that has no home, so a lost attr fails at render.
+The replacement takes a copy of the old widget's `attrs`.
+`host_choices` then gives it the field's choices and `required`. The
+adapter refuses an attr that has no home, so a lost attr fails at
+render.
 
-The replacement shows × only when the field is optional and its choices
-hold `""`. Without a none row, a native select cannot be emptied, so the
-picker cannot be emptied either. The replacement sets
-`revert_on_leave`: a keystroke drops the held value, and focus that
-leaves without a pick puts the value back.
+The replacement takes `clearable=WITH_NONE_ROW`: it shows × only when
+the field is optional and its choices hold `""`, decided at render. A
+native select without a none row cannot be emptied, so the picker
+cannot be emptied either. The replacement sets `revert_on_leave`: a
+keystroke drops the held value, and focus that leaves without a pick
+puts the value back. Enter in the search box never submits the form.
 
 A form that changes `required` after the build calls `host_choices`
 again.
@@ -30,8 +32,9 @@ again.
 ## Required
 
 `SearchSelect(required=True)` writes `aria-required="true"` on the
-search box. The adapter forwards `is_required`. The browser does not
-block the submit. The server refusal is the only check.
+search box. The adapter forwards the `required` attr Django renders, so
+a form with `use_required_attribute = False` marks nothing. The browser
+does not block the submit. The server refusal is the only check.
 
 ## Forms
 
@@ -45,14 +48,14 @@ block the submit. The server refusal is the only check.
 - `<game-addon>` reads the kind `<search-select>`. It listens on that
   element, so the parent picker's events do not reach it. A change with
   no value is a keystroke, not a pick, and moves nothing.
-- `ts/setting-control.ts` reads checkbox, number and text controls and
-  the picker. It reads no native select.
+- `ts/setting-control.ts` reads inputs, textareas and the picker. It
+  refuses a native select, which only a `MODEL` setting would render.
 
 ## The temporal shape
 
 When the segments can hold the value, `<temporal-field>` derives the
 shape. The shape is then a hidden input with
-`data-temporal-input="kind"`.
+`data-temporal-input="kind"`, and a dated value needs the element.
 
 When the segments cannot hold the value, no element runs. The shape is
 then a `SearchSelect` over `TEMPORAL_DRAFT_KIND_LABELS`, with no × and
@@ -68,7 +71,7 @@ with `revert_on_leave`. A refused shape is one more row.
 
 - `tests/test_choice_search_select.py`: the swap, ×, `required`, attrs,
   and the widgets the swap leaves alone.
-- `tests/test_html_validity.py`: every form page renders no native
+- `tests/test_html_validity.py`: the listed form pages render no native
   select but the release platform.
 - `tests/pickers.py` reads a picker's held value from markup.
 - e2e: cloned edition kinds, a keystroke in Kind, and a refused date's

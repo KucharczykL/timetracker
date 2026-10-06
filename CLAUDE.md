@@ -1045,8 +1045,9 @@ Submodules re-exported via `common/components/__init__.py`:
   `required` changed, after the field is built goes through `host_choices`,
   #1301; `apply_primitive_widget_classes` swaps every fixed-choice field
   still on a plain `forms.Select` for one (× only with a none row,
-  `revert_on_leave`), so no form renders a native select but the release
-  row's platform (#1222, [spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md)); every SELECT setting renders one, read with native controls
+  `revert_on_leave`, × and `aria-required` decided at render), so no form
+  renders a native select but the release row's platform and a MODEL
+  setting, which `settingControlOf` refuses (#1222, [spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md)); every SELECT setting renders one, read beside native controls
   through `ts/setting-control.ts` by `<live-setting-fields>` and
   `<theme-setting>` ([spec](docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-design.md));
   `TextSearchSelectWidget` hosts a text field over suggestions, its
@@ -1073,8 +1074,8 @@ Submodules re-exported via `common/components/__init__.py`:
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, controls for date at any
   precision: shape, then four number inputs and qualifier pair per
-  endpoint. `<temporal-field>` (#965) derives the shape (a hidden input),
-  hides number inputs for segmented date, whole-decade box,
+  endpoint. `<temporal-field>` (#965) writes the shape (a hidden input),
+  hides number inputs behind segmented date, adds whole-decade box,
   open-start box, three-way end-shape radio group, and disclosure that closes as
   well as opens. Text a segment cannot hold renders bare, the shape a
   `SearchSelect`. Precision never picked from menu; derived from which parts

@@ -198,15 +198,23 @@ class HtmlValidityTest(TestCase):
             reverse("games:edit_library_entry", args=[self.entry.id]),
             reverse("games:end_library_entry", args=[self.entry.id]),
             reverse("games:edit_library_entry_end", args=[ended.id]),
+            reverse("games:add_device"),
             reverse("games:edit_device", args=[self.device.id]),
             reverse("games:add_session"),
+            reverse("games:edit_session", args=[self.session.id]),
             reverse("games:add_playthrough"),
+            reverse("games:edit_playthrough", args=[self.playthrough.id]),
+            reverse("games:settings"),
         ]
         for url in urls:
-            body = self.client.get(url).content.decode()
-            names = re.findall(r'<select\b[^>]*\bname="([^"]*)"', body)
+            response = self.client.get(url)
+            assert response.status_code == 200, url
+            names = re.findall(r"<select\b[^>]*>", response.content.decode())
             #: A release row's platform is the one left.
-            assert all(name.endswith("-platform") for name in names), (url, names)
+            assert all(
+                re.search(r'\bname="edition-[^"]+-release-[^"]+-platform"', tag)
+                for tag in names
+            ), (url, names)
 
     def test_no_interactive_element_nested_in_another(self) -> None:
         failures: list[str] = []

@@ -225,6 +225,7 @@ def _hidden_kind(html: str) -> str | None:
     match = re.search(r'<input\b[^>]*\bname="release-kind"[^>]*>', html)
     assert match
     assert 'type="hidden"' in match.group(0)
+    assert 'data-temporal-input="kind"' in match.group(0)
     value = re.search(r'value="([^"]*)"', match.group(0))
     return value.group(1) if value else None
 
@@ -247,6 +248,19 @@ def test_without_the_element_the_shape_is_a_picker() -> None:
     assert 'aria-required="true"' not in search_box(picker(html, "release-kind"))
     for kind in ("date", "range", "since", "until", "unknown"):
         assert f'data-value="{kind}"' in picker(html, "release-kind")
+
+
+def test_a_required_shape_picker_says_so() -> None:
+    html = markup(posted(kind="range", **UNHELD), required=True)
+
+    assert 'aria-required="true"' in search_box(picker(html, "release-kind"))
+
+
+def test_the_widget_loads_the_shape_picker() -> None:
+    scripts = TemporalWidget.component_media.js
+
+    assert "dist/elements/search-select.js" in scripts
+    assert "dist/elements/drop-down.js" in scripts
 
 
 def test_the_stored_kind_is_the_held_one() -> None:

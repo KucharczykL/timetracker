@@ -6,6 +6,7 @@ import pytest
 from django import forms
 from django.test import SimpleTestCase
 from django.utils.html import escape
+from pickers import picker
 
 from common.components import (
     Badge,
@@ -158,7 +159,8 @@ class GroupedFormFieldsTest(SimpleTestCase):
             )
         )
 
-        assert re.search(r"<control-owner><drop-down[^>]*><search-select", html)
+        owner = html[html.index("<control-owner>") : html.index("</control-owner>")]
+        assert picker(owner, "destination")
         assert html.index("<legend") < html.index("<control-owner>")
 
     def test_unknown_presentation_field_fails_loudly(self):
@@ -402,7 +404,8 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
 
         assert 'data-setting-key="THEME"' in html
         assert "data-live-setting-control" not in html
-        assert re.search(r"<theme-setting><drop-down[^>]*><search-select", html)
+        owner = html[html.index("<theme-setting>") : html.index("</theme-setting>")]
+        assert picker(owner, "destination")
 
 
 class SectionedPageHeaderTest(SimpleTestCase):

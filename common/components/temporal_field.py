@@ -42,6 +42,7 @@ from common.components.primitives import (
     field_label_id,
 )
 from common.components.search_select import SearchSelect, SearchSelectOption
+from common.components.unset_field import PostedName
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
     TEMPORAL_DRAFT_KIND_LABELS,
@@ -100,13 +101,12 @@ def TemporalField(
 ) -> Node:
     """The whole control: a shape, two endpoints, two qualifiers.
 
-    ``input_id`` goes on the shape control, so the form row's
-    ``<label for>`` names it. The container is
-    additionally a named ``role="group"``, because the part inputs carry
-    their own labels and the row label would otherwise name nothing.
+    ``input_id`` goes on the shape. Only the picker takes the row's
+    ``<label for>``; a hidden shape takes none. The container is
+    additionally a named ``role="group"``, so the field keeps its name.
 
-    Text a segment cannot hold keeps the native controls alone: hiding
-    them would swallow the characters somebody typed.
+    Text a segment cannot hold keeps the number inputs and the picker:
+    hiding them would swallow the characters somebody typed.
     """
     label_id = field_label_id(input_id)
     holds = _segments_can_hold(data)
@@ -120,12 +120,10 @@ def TemporalField(
         class_=_GROUP_CLASS,
     )[
         Div(data_temporal_native="")[
-            _kind_control(
-                name=name,
-                kind=data["kind"],
-                input_id=input_id,
-                derived=holds,
-                required=required,
+            _derived_kind(name=name, kind=data["kind"], input_id=input_id)
+            if holds
+            else _kind_picker(
+                name=name, kind=data["kind"], input_id=input_id, required=required
             )
         ],
         _endpoint_group(
@@ -216,20 +214,30 @@ def _fits(text: str, width: int) -> bool:
     return not stripped or (stripped.isdigit() and len(stripped) <= width)
 
 
-def _kind_control(
-    *, name: str, kind: str, input_id: str, derived: bool, required: bool
+#: A shape word, or a refused echo.
+type KindText = str
+
+
+def _held_kind(kind: KindText) -> KindText:
+    return kind.strip() or TemporalDraftKind.UNKNOWN.value
+
+
+def _derived_kind(*, name: PostedName, kind: KindText, input_id: str) -> Node:
+    """The shape the element writes."""
+    return Input(
+        type="hidden",
+        name=temporal_input_name(name, "kind"),
+        id_=input_id or None,
+        data_temporal_input="kind",
+        value=_held_kind(kind),
+    )
+
+
+def _kind_picker(
+    *, name: PostedName, kind: KindText, input_id: str, required: bool
 ) -> Node:
-    """Hidden where the element derives it."""
-    selected = kind.strip() or TemporalDraftKind.UNKNOWN.value
-    posted = temporal_input_name(name, "kind")
-    if derived:
-        return Input(
-            type="hidden",
-            name=posted,
-            id_=input_id or None,
-            data_temporal_input="kind",
-            value=selected,
-        )
+    """The shape a person picks."""
+    selected = _held_kind(kind)
     options = [
         SearchSelectOption(value=draft_kind.value, label=text, data={})
         for draft_kind, text in TEMPORAL_DRAFT_KIND_LABELS.items()
@@ -240,7 +248,7 @@ def _kind_control(
         held = SearchSelectOption(value=selected, label=selected, data={})
         options.insert(0, held)
     return SearchSelect(
-        name=posted,
+        name=temporal_input_name(name, "kind"),
         id=input_id,
         options=options,
         selected=[held],

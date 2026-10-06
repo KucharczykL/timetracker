@@ -42,7 +42,6 @@ def test_stamping_applies_the_shared_control_classes_by_widget_type():
     apply_primitive_widget_classes(fields)
 
     assert isinstance(fields["choice"].widget, ChoiceSearchSelectWidget)
-    assert "class" not in fields["choice"].widget.attrs
     assert fields["text"].widget.attrs["class"] == INPUT_CLASS
 
 

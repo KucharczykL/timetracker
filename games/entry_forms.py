@@ -386,7 +386,6 @@ class EntryEndForm(PrimitiveWidgetsMixin, Submission, _SeenEnd, forms.Form):
     ):
         kwargs["initial"] = {
             "access_end_seen": end_seen(entry),
-            #: The picker holds nothing otherwise.
             "way": EndWay.UNSTATED.value,
         } | dict(kwargs.get("initial") or {})
         super().__init__(*args, **kwargs)

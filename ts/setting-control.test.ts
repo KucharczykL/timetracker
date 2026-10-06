@@ -79,9 +79,14 @@ describe("settingControlOf a native control", () => {
     expect(text.changeEvent).toBe("change");
   });
 
-  it("is none for anything else, a native select included", () => {
+  it("is none for anything else", () => {
     expect(settingControlOf(document.querySelector("div")!)).toBeNull();
-    expect(settingControlOf(document.querySelector("select")!)).toBeNull();
+  });
+
+  it("refuses a native select", () => {
+    expect(() => settingControlOf(document.querySelector("select")!)).toThrow(
+      "renders a search-select",
+    );
   });
 
   it("writes and restores", () => {
