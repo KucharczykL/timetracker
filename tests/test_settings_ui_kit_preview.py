@@ -7,6 +7,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client, override_settings
 from django.urls import reverse
+from pickers import picker, search_box
 
 from games.models import SiteSetting, UserPreferences
 from games.urls import _settings_kit_preview_urlpatterns
@@ -89,7 +90,7 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "priority-plus and sticky-rail" not in body
 
     assert 'type="checkbox"' in _named_tag(body, "input", "enabled")
-    assert _named_tag(body, "select", "destination")
+    assert picker(body, "destination")
     assert 'type="number"' in _named_tag(body, "input", "limit")
     assert 'type="text"' in _named_tag(body, "input", "display_name")
     assert " disabled" in _named_tag(body, "input", "pinned_url")
@@ -133,7 +134,7 @@ def test_preview_disables_only_the_navbar_theme_switcher(preview_client):
     assert "disabled:opacity-50" in toggle_button
     assert not re.search(
         r'\sdisabled(?:="disabled")?(?=\s|>)',
-        _named_tag(body, "select", "destination"),
+        search_box(picker(body, "destination")),
     )
 
 

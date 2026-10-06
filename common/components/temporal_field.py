@@ -1,22 +1,18 @@
-"""TemporalField: native controls for a date at any precision.
+"""TemporalField: controls for a date at any precision.
 
 A person states a shape, the parts they know, and whether the date is
-approximate or uncertain. Nothing here needs a script: the controls are
-a select, then four number inputs and two checkboxes per endpoint, and
-the server rebuilds the value from what they post.
+approximate or uncertain. The controls are a shape, then four number
+inputs and two checkboxes per endpoint, and the server rebuilds the
+value from what they post.
 
-``ts/elements/temporal-field.ts`` enhances that. It hides the number
-inputs and the shape select, shows a segmented date in their place, and
-derives the shape from what a person fills. Remove the script and every
-control above is still here, still named, and still read the same way.
+``ts/elements/temporal-field.ts`` hides the number inputs, shows a
+segmented date in their place, and derives the shape from what a person
+fills, so the shape is a hidden input there. Text a segment cannot hold
+keeps the number inputs alone, with no element, and the shape is a
+picker a person sets.
 
 The precision is never picked from a menu. It is derived from which
 parts a person filled, which is why there is no precision control here.
-
-Only what a script would use is rendered hidden: the segments, the
-nameless toggles, the end-shape radios, the disclosure and any copy
-button. Every posted control is shown; the element hides what a
-person does not need yet.
 
 Nothing the element hides carries a Tailwind ``display`` utility: the
 ``hidden`` attribute is a user-agent rule any such class outranks.
@@ -35,9 +31,7 @@ from common.components.elements import (
     Fieldset,
     Label,
     Legend,
-    Option,
     P,
-    Select,
     Span,
 )
 from common.components.primitives import (
@@ -47,6 +41,7 @@ from common.components.primitives import (
     Radio,
     field_label_id,
 )
+from common.components.search_select import SearchSelect, SearchSelectOption
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
     TEMPORAL_DRAFT_KIND_LABELS,
@@ -105,8 +100,8 @@ def TemporalField(
 ) -> Node:
     """The whole control: a shape, two endpoints, two qualifiers.
 
-    ``input_id`` goes on the kind select, so the form row's
-    ``<label for>`` focuses the first control. The container is
+    ``input_id`` goes on the shape control, so the form row's
+    ``<label for>`` names it. The container is
     additionally a named ``role="group"``, because the part inputs carry
     their own labels and the row label would otherwise name nothing.
 
@@ -114,6 +109,7 @@ def TemporalField(
     them would swallow the characters somebody typed.
     """
     label_id = field_label_id(input_id)
+    holds = _segments_can_hold(data)
     group = Div(
         role="group",
         aria_labelledby=label_id or None,
@@ -124,7 +120,13 @@ def TemporalField(
         class_=_GROUP_CLASS,
     )[
         Div(data_temporal_native="")[
-            _kind_select(name=name, kind=data["kind"], input_id=input_id)
+            _kind_control(
+                name=name,
+                kind=data["kind"],
+                input_id=input_id,
+                derived=holds,
+                required=required,
+            )
         ],
         _endpoint_group(
             name=name,
@@ -164,7 +166,7 @@ def TemporalField(
         ),
         *([_copy_button(copy_source)] if copy_source else []),
     ]
-    if not _segments_can_hold(data):
+    if not holds:
         return group
     return _TemporalField(
         expanded="true" if _needs_precision_controls(data) else "false",
@@ -214,25 +216,38 @@ def _fits(text: str, width: int) -> bool:
     return not stripped or (stripped.isdigit() and len(stripped) <= width)
 
 
-def _kind_select(*, name: str, kind: str, input_id: str) -> Node:
-    # Imported here: games.forms imports this module.
-    from games.forms import SELECT_CLASS
-
+def _kind_control(
+    *, name: str, kind: str, input_id: str, derived: bool, required: bool
+) -> Node:
+    """Hidden where the element derives it."""
     selected = kind.strip() or TemporalDraftKind.UNKNOWN.value
-    offered = [draft_kind.value for draft_kind in TEMPORAL_DRAFT_KIND_LABELS]
+    posted = temporal_input_name(name, "kind")
+    if derived:
+        return Input(
+            type="hidden",
+            name=posted,
+            id_=input_id or None,
+            data_temporal_input="kind",
+            value=selected,
+        )
     options = [
-        Option(value=draft_kind.value, selected=draft_kind.value == selected)[text]
+        SearchSelectOption(value=draft_kind.value, label=text, data={})
         for draft_kind, text in TEMPORAL_DRAFT_KIND_LABELS.items()
     ]
-    if selected not in offered:
+    held = next((option for option in options if option["value"] == selected), None)
+    if held is None:
         # A refused shape echoes back, like a number.
-        options.insert(0, Option(value=selected, selected=True)[selected])
-    return Select(
-        name=temporal_input_name(name, "kind"),
-        id_=input_id or None,
-        data_temporal_input="kind",
-        class_=SELECT_CLASS,
-    )[*options]
+        held = SearchSelectOption(value=selected, label=selected, data={})
+        options.insert(0, held)
+    return SearchSelect(
+        name=posted,
+        id=input_id,
+        options=options,
+        selected=[held],
+        clearable=False,
+        revert_on_leave=True,
+        required=required,
+    )
 
 
 def _endpoint_group(

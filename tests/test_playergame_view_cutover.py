@@ -5,6 +5,7 @@ import re
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from pickers import held
 from session_rows import session_row
 from stated_runs import state_run
 
@@ -113,7 +114,7 @@ def test_the_edit_form_shows_the_games_current_status(
     #: They left Meta.fields, so the form seeds them itself —
     #: from the projection row, which is where the word lives.
     #: Read from the HTML: render_page() returns no context.
-    assert '<option value="completed" selected>' in response.content.decode()
+    assert held(response.content.decode(), "status") == "completed"
 
 
 @pytest.mark.django_db(transaction=True)

@@ -1,10 +1,12 @@
 """What the temporal control renders, and what it binds."""
 
+import re
 from typing import cast
 from zoneinfo import ZoneInfo
 
 import pytest
 from django import forms
+from pickers import held, picker, search_box
 
 from common.components import collect_media, render
 from common.components.temporal_field import _DISCLOSURE_CLASS, TemporalField
@@ -219,17 +221,38 @@ def test_the_control_says_when_its_precision_changes() -> None:
     assert 'data-temporal-announcement="" role="status" aria-live="polite"' in markup()
 
 
-def test_the_kind_select_offers_every_shape() -> None:
+def _hidden_kind(html: str) -> str | None:
+    match = re.search(r'<input\b[^>]*\bname="release-kind"[^>]*>', html)
+    assert match
+    assert 'type="hidden"' in match.group(0)
+    value = re.search(r'value="([^"]*)"', match.group(0))
+    return value.group(1) if value else None
+
+
+#: Text no segment holds, so no element runs.
+UNHELD = {"start_year": "nineteen"}
+
+
+def test_the_element_derives_a_hidden_shape() -> None:
     html = markup()
 
+    assert "<search-select" not in html
+    assert _hidden_kind(html) == "unknown"
+
+
+def test_without_the_element_the_shape_is_a_picker() -> None:
+    html = markup(posted(kind="range", **UNHELD))
+
+    assert held(html, "release-kind") == "range"
+    assert 'aria-required="true"' not in search_box(picker(html, "release-kind"))
     for kind in ("date", "range", "since", "until", "unknown"):
-        assert f'value="{kind}"' in html
+        assert f'data-value="{kind}"' in picker(html, "release-kind")
 
 
-def test_the_stored_kind_is_the_selected_one() -> None:
+def test_the_stored_kind_is_the_held_one() -> None:
     data = temporal_draft_data(TemporalDraft.from_value(TemporalValue.parse("198X")))
 
-    assert '<option value="date" selected' in markup(data)
+    assert _hidden_kind(markup(data)) == "date"
 
 
 def test_a_stored_part_is_the_input_value() -> None:
@@ -281,10 +304,11 @@ def test_each_endpoint_names_its_own_parts() -> None:
 
 def test_a_shape_the_form_never_offers_echoes_back() -> None:
     """Showing Date instead would invent a shape nobody picked."""
-    html = markup(posted(kind="season"))
+    assert _hidden_kind(markup(posted(kind="season"))) == "season"
+    html = markup(posted(kind="season", **UNHELD))
 
-    assert '<option value="season" selected' in html
-    assert html.count('selected="selected"') == 1
+    assert held(html, "release-kind") == "season"
+    assert picker(html, "release-kind").count('data-value="season"') == 1
 
 
 def test_the_first_control_takes_the_label_target() -> None:
@@ -401,7 +425,7 @@ def test_a_stored_value_renders_as_its_parts() -> None:
     html = str(form["released"])
 
     assert 'name="released-decade" value="1980"' in html
-    assert '<option value="date" selected' in html
+    assert re.search(r'name="released-kind"[^>]*value="date"', html)
 
 
 def test_an_omitted_control_is_reported_as_omitted() -> None:

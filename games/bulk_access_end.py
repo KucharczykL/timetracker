@@ -47,9 +47,6 @@ class AccessEndJson(TypedDict):
 
 _KEYS = frozenset(AccessEndJson.__required_keys__)
 
-#: Leads where Not said is not offered.
-_NO_WAY_CHOSEN = ("", "Choose…")
-
 
 def encode_access_end(statement: WayActStatement) -> ChoiceValue:
     """Both unknown spellings encode as null."""
@@ -111,8 +108,6 @@ class BulkAccessEndForm(PrimitiveWidgetsMixin, forms.Form):
             #: Unstated leads, preselected.
             choices.sort(key=lambda choice: choice[0] != EndWay.UNSTATED.value)
             self.initial.setdefault("way", EndWay.UNSTATED.value)
-        else:
-            choices.insert(0, _NO_WAY_CHOSEN)
         way = self.fields["way"]
         assert isinstance(way, forms.ChoiceField)
         way.choices = choices

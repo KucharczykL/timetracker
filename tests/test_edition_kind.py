@@ -2,6 +2,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 from entries import record_entry
+from pickers import held
 
 from games.catalog_release import release_on_platform
 from games.catalog_writes import (
@@ -109,8 +110,7 @@ def test_the_kind_round_trips_through_the_game_form(
     graph.edition.refresh_from_db()
     assert graph.edition.kind == EditionKind.PRERELEASE
     page = client.get(url).content.decode()
-    assert 'name="edition-0-kind"' in page
-    assert '<option value="prerelease" selected>' in page
+    assert held(page, "edition-0-kind") == "prerelease"
 
 
 def test_edition_words_name_an_unnamed_prerelease():

@@ -6,6 +6,7 @@ import pytest
 from devices import create_device, end_device_access, remove_device
 from django.db import transaction
 from django.urls import reverse
+from pickers import held
 
 from games.commands.device import VoidDeviceAccessEnd
 from games.events.dispatch import append_command
@@ -185,7 +186,7 @@ def test_the_edit_page_shows_the_stated_end(logged_in, owned_library):
     page = logged_in.get(reverse("games:edit_device", args=[device.pk]))
 
     body = page.content.decode()
-    assert '<option value="lost" selected>' in body
+    assert held(body, "access") == "lost"
     assert "on a train" in body
 
 

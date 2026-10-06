@@ -6,7 +6,7 @@ import re
 import pytest
 from django import forms
 
-from common.components import FormFields, SearchSelect
+from common.components import FormFields, SearchSelect, render
 from games.forms import (
     ChoiceSearchSelectWidget,
     apply_primitive_widget_classes,
@@ -320,3 +320,83 @@ def test_host_data_is_refused(host_data):
 def test_revert_on_leave_is_single_select_and_field_hosted(shape):
     with pytest.raises(ValueError, match="revert_on_leave"):
         SearchSelect(name="choice", revert_on_leave=True, **shape)
+
+
+def test_a_required_field_marks_its_search_box():
+    assert 'aria-required="true"' in _search_box(_render(_required(LETTERS)))
+    assert "aria-required" not in _search_box(_render(_optional(LETTERS)))
+
+
+def test_required_reaches_the_search_box():
+    html = render(SearchSelect(name="choice", required=True))
+    assert 'aria-required="true"' in _search_box(html)
+    assert "aria-required" not in _search_box(render(SearchSelect(name="choice")))
+
+
+def _swapped(field: forms.Field) -> forms.Field:
+    fields = {"choice": field}
+    apply_primitive_widget_classes(fields)
+    return fields["choice"]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        forms.ChoiceField(choices=LETTERS),
+        forms.TypedChoiceField(choices=LETTERS, coerce=str),
+    ],
+    ids=["choice", "typed"],
+)
+def test_a_plain_select_becomes_the_picker(field):
+    widget = _swapped(field).widget
+    assert isinstance(widget, ChoiceSearchSelectWidget)
+    assert widget.is_required
+    assert widget.revert_on_leave
+    assert widget.choices == LETTERS
+
+
+def test_a_swapped_field_clears_only_with_a_none_row():
+    optional = _swapped(forms.ChoiceField(required=False, choices=[PROMPT, *LETTERS]))
+    assert optional.widget.clearable
+    for field in (
+        forms.ChoiceField(required=False, choices=LETTERS),
+        forms.ChoiceField(choices=[PROMPT, *LETTERS]),
+    ):
+        assert not _swapped(field).widget.clearable
+
+
+def test_a_later_choices_assignment_reaches_the_swapped_widget():
+    field = _swapped(forms.ChoiceField(choices=LETTERS))
+    field.choices = [("z", "Z")]
+    assert field.widget.choices == [("z", "Z")]
+
+
+def test_a_swapped_field_keeps_its_widget_attrs():
+    field = forms.ChoiceField(
+        choices=LETTERS, widget=forms.Select(attrs={"data-kind": "x"})
+    )
+    assert 'data-kind="x"' in _host_tag(_render(_swapped(field)))
+
+
+def test_a_swapped_field_refuses_an_attr_with_no_home():
+    field = forms.ChoiceField(
+        choices=LETTERS, widget=forms.Select(attrs={"title": "x"})
+    )
+    with pytest.raises(ValueError, match="title"):
+        _render(_swapped(field))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "field",
+    [
+        forms.ModelChoiceField(queryset=Device.objects.all()),
+        forms.MultipleChoiceField(choices=LETTERS),
+        forms.ChoiceField(choices=LETTERS, widget=forms.RadioSelect),
+        forms.ChoiceField(choices=LETTERS, widget=forms.SelectMultiple),
+    ],
+    ids=["model", "multiple", "radio", "select multiple"],
+)
+def test_other_choice_widgets_stay(field):
+    widget = field.widget
+    assert _swapped(field).widget is widget

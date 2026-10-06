@@ -8,6 +8,7 @@ another — the safety net that lets popover triggers default to tappable withou
 a per-component guard a caller-supplied wrapper could defeat.
 """
 
+import re
 from collections import Counter
 from datetime import datetime
 from html.parser import HTMLParser
@@ -17,7 +18,7 @@ from devices import create_device
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
-from entries import record_entry
+from entries import end_entry_access, record_entry
 from graphs import default_graph
 from historical_playtime_rows import record_row
 from purchases import record_purchase
@@ -180,6 +181,32 @@ class HtmlValidityTest(TestCase):
         ):
             urls.append(reverse("games:filter_builder", args=[model]))
         return urls
+
+    def test_form_pages_render_no_native_select(self) -> None:
+        ended = end_entry_access(
+            record_entry(
+                self.user.library,
+                default_graph(self.other_game, self.user.library).release,
+            )
+        )
+        urls = [
+            reverse("games:add_game"),
+            reverse("games:edit_game", args=[self.long_game.id]),
+            reverse("games:add_purchase", args=[self.entry.id]),
+            reverse("games:edit_purchase", args=[self.purchase.id]),
+            f"{reverse('games:add_to_library')}?game={self.long_game.id}",
+            reverse("games:edit_library_entry", args=[self.entry.id]),
+            reverse("games:end_library_entry", args=[self.entry.id]),
+            reverse("games:edit_library_entry_end", args=[ended.id]),
+            reverse("games:edit_device", args=[self.device.id]),
+            reverse("games:add_session"),
+            reverse("games:add_playthrough"),
+        ]
+        for url in urls:
+            body = self.client.get(url).content.decode()
+            names = re.findall(r'<select\b[^>]*\bname="([^"]*)"', body)
+            #: A release row's platform is the one left.
+            assert all(name.endswith("-platform") for name in names), (url, names)
 
     def test_no_interactive_element_nested_in_another(self) -> None:
         failures: list[str] = []

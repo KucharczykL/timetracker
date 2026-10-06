@@ -5,7 +5,16 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Final,
+    Literal,
+    NamedTuple,
+    TypeGuard,
+    cast,
+)
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -196,13 +205,32 @@ class PrimitiveCheckboxWidget(forms.CheckboxInput):
         )
 
 
+def _holds_a_plain_select(field: forms.Field) -> TypeGuard[forms.ChoiceField]:
+    """A fixed-choice field on Django's default select."""
+    return (
+        isinstance(field, forms.ChoiceField)
+        and not isinstance(field, (forms.ModelChoiceField, forms.MultipleChoiceField))
+        and type(field.widget) is forms.Select
+    )
+
+
 def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
     """Stamp the shared native-control classes over a form's fields.
+
+    A fixed-choice field on a plain select gets the picker.
 
     Callable on its own so a form that builds fields after ``super().__init__()``
     can opt in; :class:`PrimitiveWidgetsMixin` is the declarative path.
     """
-    for field in fields.values():
+    for name, field in fields.items():
+        if _holds_a_plain_select(field):
+            picker = ChoiceSearchSelectWidget(
+                revert_on_leave=True, attrs=field.widget.attrs
+            )
+            host_choices(field, picker)
+            # A native select without a none row cannot be emptied.
+            picker.clearable = picker.offers_none(name)
+            continue
         if isinstance(field, forms.BooleanField):
             # An explicitly hidden boolean is a choice the form made: a
             # checkbox here puts the field back on the page, and
@@ -485,6 +513,7 @@ class _SearchSelectAdapter(forms.Widget):
                 disabled=_attr_flag(merged.get("disabled")),
                 described_by=merged.get("aria-describedby") or None,
                 invalid=_attr_flag(merged.get("aria-invalid")),
+                required=self.is_required,
                 revert_on_leave=self.revert_on_leave,
                 shape=shape,
                 **component,
@@ -1066,12 +1095,19 @@ class TemporalWidget(forms.Widget):
     posted text, not a parsed draft, so a submission the grammar refuses
     re-renders the characters a person typed.
 
-    `component_media` carries the element's module.
+    `component_media` carries the element and the picker.
     """
 
     #: A ⊘ stands beside it.
     draws_own_box: ClassVar[bool] = True
-    component_media: ClassVar[Media] = Media(js=("dist/elements/temporal-field.js",))
+    #: The picker states a refused value's shape.
+    component_media: ClassVar[Media] = Media(
+        js=(
+            "dist/elements/temporal-field.js",
+            "dist/elements/search-select.js",
+            "dist/elements/drop-down.js",
+        )
+    )
 
     def __init__(
         self,

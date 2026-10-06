@@ -29,7 +29,11 @@ from common.components import (
     assert_unique_element_ids,
     collect_media,
 )
-from games.forms import PrimitiveCheckboxWidget, PrimitiveWidgetsMixin
+from games.forms import (
+    ChoiceSearchSelectWidget,
+    PrimitiveCheckboxWidget,
+    PrimitiveWidgetsMixin,
+)
 
 
 class KitForm(PrimitiveWidgetsMixin, forms.Form):
@@ -111,7 +115,7 @@ class GroupedFormFieldsTest(SimpleTestCase):
     def test_all_plain_setting_widget_types_use_the_mixin_path(self):
         form = KitForm()
         assert isinstance(form.fields["enabled"].widget, PrimitiveCheckboxWidget)
-        assert "min-h-control" in form.fields["destination"].widget.attrs["class"]
+        assert isinstance(form.fields["destination"].widget, ChoiceSearchSelectWidget)
         assert "min-h-control" in form.fields["limit"].widget.attrs["class"]
         assert "min-h-control" in form.fields["display_name"].widget.attrs["class"]
 
@@ -154,7 +158,7 @@ class GroupedFormFieldsTest(SimpleTestCase):
             )
         )
 
-        assert "<control-owner><select" in html
+        assert re.search(r"<control-owner><drop-down[^>]*><search-select", html)
         assert html.index("<legend") < html.index("<control-owner>")
 
     def test_unknown_presentation_field_fails_loudly(self):
@@ -398,7 +402,7 @@ class SettingsBadgeAndFieldStateTest(SimpleTestCase):
 
         assert 'data-setting-key="THEME"' in html
         assert "data-live-setting-control" not in html
-        assert "<theme-setting><select" in html
+        assert re.search(r"<theme-setting><drop-down[^>]*><search-select", html)
 
 
 class SectionedPageHeaderTest(SimpleTestCase):

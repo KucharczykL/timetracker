@@ -88,16 +88,18 @@ belongs to: `edition-0-release-1-release_date`.
 
 ## The element
 
-The posted controls are a shape select, then four number inputs and two
+The posted controls are a shape, then four number inputs and two
 checkboxes per endpoint. The server rebuilds the value from what they post.
 
-`<temporal-field>` (`ts/elements/temporal-field.ts`) hides the
+`<temporal-field>` (`ts/elements/temporal-field.ts`) derives the shape,
+which is then a hidden input, hides the
 number inputs and shows a segmented date, offers a whole-decade box and an
 open-start box, gives the end a three-way shape radio group, and puts the
 second endpoint behind a disclosure. Nothing it does is needed to save a value,
 and the precision is never picked from a menu — it is derived from which parts a
 person filled. A part typed before its coarser part stays; the server refuses
-the hole at submit.
+the hole at submit. Text a segment cannot hold renders the number inputs with
+no element, and the shape is then a `SearchSelect` a person sets.
 
 The element uses `Temporal`, which arrives in Node 26. On an older runtime the
 formatters return null and the vitest assertions fail; see the environment notes
@@ -105,7 +107,8 @@ in `CLAUDE.md`.
 
 ## Hosting one
 
-`TemporalWidget` states the element's module as `component_media`.
+`TemporalWidget` states the element's and the picker's modules as
+`component_media`.
 `FormFields` attaches it; a field rendered outside it goes through
 `bound_control(field)`, as the Editions area's Release rows do.
 

@@ -9,6 +9,7 @@ from bulk_posts import act_url, posted, said, selection
 from django.db import transaction
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from pickers import held
 from purchases import record_purchase, refund_purchase
 
 from games.bulk_actions import BULK_ACTIONS
@@ -150,7 +151,7 @@ def test_the_confirmation_asks_way_day_and_note(logged_in, owned_library, first)
 
     assert f'name="{CHOICE_FIELD}-way"' in html
     assert f'name="{CHOICE_FIELD}-note"' in html
-    assert re.search(r'<option value="unstated"[^>]*selected[^>]*>Not said<', html)
+    assert held(html, f"{CHOICE_FIELD}-way") == "unstated"
     today = calendar_today(owned_library)
     year = temporal_input_name(f"{CHOICE_FIELD}-ended", "start_year")
     assert re.search(rf'name="{year}"[^>]*value="{today.year}"', html) or re.search(
