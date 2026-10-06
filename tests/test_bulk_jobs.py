@@ -658,6 +658,38 @@ def test_the_api_answers_the_asked_batches_of_this_library(
     assert response.json()[0]["toast"] == batch_toast(ours)
 
 
+def test_the_api_answers_what_a_page_carries_when_no_token_is_named(
+    client_in, owned_library, other_library
+):
+    now = timezone.now()
+    running = a_batch(owned_library, state=BulkBatch.State.RUNNING)
+    unseen = a_batch(owned_library, state=BulkBatch.State.FINISHED, ended_at=now)
+    a_batch(
+        owned_library,
+        state=BulkBatch.State.FINISHED,
+        ended_at=now,
+        announced_at=now,
+    )
+    a_batch(other_library, state=BulkBatch.State.RUNNING)
+
+    response = client_in.get("/api/bulk/batches")
+
+    assert response.status_code == 200
+    assert [one["token"] for one in response.json()] == [
+        str(running.token),
+        str(unseen.token),
+    ]
+
+
+def test_the_api_answers_nothing_for_an_empty_token_list(client_in, owned_library):
+    a_batch(owned_library, state=BulkBatch.State.RUNNING)
+
+    response = client_in.get("/api/bulk/batches", {"tokens": ""})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_the_api_refuses_a_token_it_cannot_read(client_in, owned_library):
     response = client_in.get("/api/bulk/batches", {"tokens": "junk"})
 

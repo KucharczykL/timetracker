@@ -42,7 +42,13 @@ from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
 from games.api_creation import RowRefused, created_by_form, refusal_sentence
-from games.bulk_jobs import BatchOut, announce, batch_out, batches_named
+from games.bulk_jobs import (
+    BatchOut,
+    announce,
+    batch_out,
+    batches_named,
+    visible_batches,
+)
 from games.catalog_release import release_on_platform
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import EntryStatement
@@ -2079,8 +2085,10 @@ bulk_router = Router()
 
 
 @bulk_router.get("/batches", response=list[BatchOut])
-def bulk_batches(request, tokens: str = ""):
-    """The asked batches this library holds."""
+def bulk_batches(request, tokens: str | None = None):
+    """Asked batches; none named, what pages carry."""
+    if tokens is None:
+        return [batch_out(batch) for batch in visible_batches(request.user.library)]
     asked = []
     for raw in filter(None, tokens.split(",")):
         try:

@@ -104,14 +104,21 @@ export class BulkBatchCoordinator {
   private readonly sent = new Map<string, string>();
   private readonly statusUrl: string | null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private polling = false;
   private failures = 0;
   private destroyed = false;
+  /** Set while this coordinator dispatches page:stale. */
+  private staling = false;
+  /** Only the latest reconcile's answer applies. */
+  private reconciliation = 0;
 
   constructor() {
     const root = document.documentElement;
     this.statusUrl = root.dataset.bulkBatchesUrl ?? null;
     this.onToastDismissed = this.onToastDismissed.bind(this);
+    this.onPageStale = this.onPageStale.bind(this);
     window.addEventListener("toast-dismissed", this.onToastDismissed);
+    if (this.statusUrl) document.addEventListener(PAGE_STALE, this.onPageStale);
     for (const batch of this.read(root.dataset.bulkBatches)) this.apply(batch);
     this.scheduleNext();
   }
@@ -121,6 +128,7 @@ export class BulkBatchCoordinator {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     window.removeEventListener("toast-dismissed", this.onToastDismissed);
+    document.removeEventListener(PAGE_STALE, this.onPageStale);
   }
 
   private read(raw: string | undefined): BatchOut[] {
@@ -138,9 +146,16 @@ export class BulkBatchCoordinator {
   private apply(batch: BatchOut): void {
     if (this.destroyed) return;
     const held = this.batches.get(batch.token);
+    // A late answer read before the end.
+    if (held?.terminal && !batch.terminal) return;
     this.batches.set(batch.token, batch);
     if (held && !held.terminal && batch.terminal && onThisPage(batch.origin)) {
-      document.dispatchEvent(new CustomEvent(PAGE_STALE));
+      this.staling = true;
+      try {
+        document.dispatchEvent(new CustomEvent(PAGE_STALE));
+      } finally {
+        this.staling = false;
+      }
     }
     this.show(batch);
   }
@@ -179,6 +194,39 @@ export class BulkBatchCoordinator {
     }
   }
 
+  private onPageStale(): void {
+    if (this.staling) return;
+    void this.reconcile();
+  }
+
+  /** Take what a page load would carry. */
+  private async reconcile(): Promise<void> {
+    if (this.destroyed || !this.statusUrl) return;
+    this.reconciliation += 1;
+    const asked = this.reconciliation;
+    let answered: BatchOut[];
+    try {
+      const response = await fetch(this.statusUrl, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`bulk batches ${response.status}`);
+      const value: unknown = await response.json();
+      if (!Array.isArray(value)) throw new Error("bulk batches answer is no list");
+      answered = batchesIn(value);
+    } catch (error) {
+      // The page's next load shows them.
+      console.error("Could not reread bulk batches", error);
+      return;
+    }
+    if (this.destroyed || asked !== this.reconciliation) return;
+    for (const batch of answered) this.apply(batch);
+    const shown = new Set(answered.map((batch) => batch.token));
+    for (const token of [...this.batches.keys()]) {
+      if (!shown.has(token)) this.forget(token);
+    }
+    this.scheduleNext();
+  }
+
   private async announce(batch: BatchOut): Promise<void> {
     if (!this.statusUrl) return;
     try {
@@ -201,6 +249,8 @@ export class BulkBatchCoordinator {
   private scheduleNext(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    // The poll out schedules the next.
+    if (this.polling) return;
     if (this.destroyed || !this.statusUrl || this.running().length === 0) return;
     const delay = Math.min(POLL_INTERVAL_MS * 2 ** this.failures, MAX_POLL_INTERVAL_MS);
     this.timer = setTimeout(() => void this.poll(), delay);
@@ -209,6 +259,18 @@ export class BulkBatchCoordinator {
   private async poll(): Promise<void> {
     const tokens = this.running();
     if (this.destroyed || !this.statusUrl || tokens.length === 0) return;
+    this.polling = true;
+    let goOn: boolean;
+    try {
+      goOn = await this.pollOnce(tokens);
+    } finally {
+      this.polling = false;
+    }
+    if (goOn) this.scheduleNext();
+  }
+
+  /** True when polling should go on. */
+  private async pollOnce(tokens: string[]): Promise<boolean> {
     try {
       const query = new URLSearchParams({ tokens: tokens.join(",") });
       const response = await fetch(`${this.statusUrl}?${query}`, {
@@ -234,9 +296,9 @@ export class BulkBatchCoordinator {
       if (error instanceof PollRefused || this.failures === FAILURES_TOLD) {
         window.toast(POLL_FAILED, "warning", { id: POLL_FAILED_TOAST, duration: null });
       }
-      if (error instanceof PollRefused) return;
+      if (error instanceof PollRefused) return false;
     }
-    this.scheduleNext();
+    return true;
   }
 }
 

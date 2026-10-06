@@ -257,3 +257,127 @@ describe("BulkBatchCoordinator", () => {
     );
   });
 });
+
+describe("BulkBatchCoordinator on page:stale", () => {
+  const OTHER = "01900000-0000-7000-8000-000000000002";
+  const undoBatch = (state: BatchOut["state"]): BatchOut =>
+    batch(state, {
+      token: OTHER,
+      toast: { ...batch(state).toast, id: `bulk-batch:${OTHER}`, message: `Undo: ${state}.` },
+    });
+
+  function stale(): void {
+    document.dispatchEvent(new CustomEvent(PAGE_STALE));
+  }
+
+  function deferred(): { promise: Promise<Response>; resolve: (value: Response) => void } {
+    let resolve!: (value: Response) => void;
+    const promise = new Promise<Response>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  it("reads what a page carries, naming no token", async () => {
+    configure([]);
+    fetchMock.mockResolvedValue(answer([]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/bulk/batches", expect.anything());
+  });
+
+  it("shows a batch it did not know, then follows it", async () => {
+    configure([]);
+    fetchMock.mockResolvedValueOnce(answer([undoBatch("queued")]));
+    fetchMock.mockResolvedValueOnce(answer([undoBatch("finished")]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toast).toHaveBeenCalledWith("Undo: queued.", "info", expect.anything());
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `/api/bulk/batches?tokens=${OTHER}`,
+      expect.anything(),
+    );
+    expect(toast).toHaveBeenLastCalledWith("Undo: finished.", "success", expect.anything());
+  });
+
+  it("takes away the toast of a batch the server no longer shows", async () => {
+    configure([batch("finished")]);
+    fetchMock.mockResolvedValue(answer([undoBatch("queued")]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(removeToast).toHaveBeenCalledWith(`bulk-batch:${TOKEN}`);
+    expect(removeToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads nothing for its own page:stale", async () => {
+    configure([batch("running")]);
+    fetchMock.mockResolvedValue(answer([batch("finished")]));
+    start();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/bulk/batches", expect.anything());
+  });
+
+  it("never steps a known end back to running", async () => {
+    configure([batch("finished")]);
+    fetchMock.mockResolvedValue(answer([batch("running")]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops an answer a later reconcile overtook", async () => {
+    configure([]);
+    const first = deferred();
+    fetchMock.mockReturnValueOnce(first.promise);
+    fetchMock.mockResolvedValueOnce(answer([undoBatch("queued")]));
+    fetchMock.mockResolvedValue(answer([undoBatch("running")]));
+    start();
+    stale();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    first.resolve(answer([]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(removeToast).not.toHaveBeenCalled();
+  });
+
+  it("starts no second poll while one is out", async () => {
+    configure([batch("running")]);
+    const poll = deferred();
+    fetchMock.mockReturnValueOnce(poll.promise);
+    fetchMock.mockResolvedValueOnce(answer([batch("running")]));
+    start();
+    await vi.advanceTimersByTimeAsync(2_000);
+    stale();
+    await vi.advanceTimersByTimeAsync(4_000);
+    const polls = fetchMock.mock.calls.filter(([url]) => String(url).includes("tokens="));
+    expect(polls).toHaveLength(1);
+    poll.resolve(answer([batch("running")]));
+  });
+
+  it("says nothing when a reconcile fails", async () => {
+    configure([]);
+    fetchMock.mockResolvedValue(answer(null, 500));
+    start();
+    for (let press = 0; press < 6; press += 1) stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toast).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it("listens to nothing without a route", async () => {
+    document.documentElement.dataset.bulkBatches = "[]";
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
