@@ -1,6 +1,6 @@
 /** What a form dialog's forms hold. */
 
-/** A form's position in the body, then a field name. */
+/** Form index, then field name. */
 type SnapshotKey = string;
 /** Every form's values, by form and name. */
 export type FormSnapshot = ReadonlyMap<SnapshotKey, readonly string[]>;

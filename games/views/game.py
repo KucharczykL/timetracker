@@ -5,6 +5,7 @@ from functools import partial
 from typing import Any, NamedTuple, NoReturn, cast
 from uuid import UUID
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Count, F, Max, Min, Sum
@@ -441,6 +442,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             if not recorded:
                 #: Re-rendering would invite a second game.
                 return redirect(return_url(request, fallback="games:list_games"))
+            messages.success(request, f"Game “{game.name}” added.")
             if "submit_and_add_to_library" in request.POST:
                 return redirect(
                     action_url(

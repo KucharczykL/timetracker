@@ -1915,7 +1915,7 @@ _FIELD_ERROR_CLASS = (
 _CHECKBOX_ROW_CLASS = "flex flex-row items-center justify-between gap-6 mt-3"
 
 
-#: Marks an error list; a form dialog focuses it.
+#: A form dialog focuses marked errors.
 FORM_ERRORS_ATTRIBUTE: Final = "data-form-errors"
 
 

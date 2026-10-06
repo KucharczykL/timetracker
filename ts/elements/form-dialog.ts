@@ -296,7 +296,7 @@ export class FormDialogElement extends HTMLElement {
     return changedForms(entry.body, entry.baseline).length > 0;
   }
 
-  /** Every dialog closes first, then the page leaves. */
+  /** Closes every dialog, then leaves. */
   private async leaveFor(url: URL): Promise<void> {
     this.leaveTo = url;
     if (!(await this.closeInTurn([...this.stack].reverse()))) this.leaveTo = null;

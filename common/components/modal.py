@@ -82,7 +82,7 @@ def ModalPanelHeader(
     """A modal panel's title row, × optional.
 
     `title_id` beats an id in `title_attributes`.
-    `divided` draws the line above a scrolling body.
+    `divided`: a line over a scrolling body.
     """
     close_button = ControlButton(
         [

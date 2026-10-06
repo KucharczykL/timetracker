@@ -129,7 +129,8 @@ def test_a_continue_hands_the_queue_to_the_next_answer(
 
     assert answer["kind"] == "page"
     assert [message["message"] for message in answer["messages"]] == [
-        "Deck removed from your library."
+        "Deck removed from your library.",
+        "Game “Outer Wilds” added.",
     ]
     assert _page_messages(logged_in, reverse("games:list_devices")) == []
 
@@ -208,7 +209,8 @@ def test_a_page_answer_uses_up_the_queue(logged_in, owned_library):
     answer = logged_in.get(reverse("games:add_device"), headers=DIALOG_HEADERS).json()
 
     assert [message["message"] for message in answer["messages"]] == [
-        "Deck removed from your library."
+        "Deck removed from your library.",
+        "Game “Outer Wilds” added.",
     ]
     assert _page_messages(logged_in, reverse("games:list_devices")) == []
 
@@ -384,6 +386,9 @@ def test_add_game_answers_the_created_game(logged_in, game_post, owned_library):
     assert answer["kind"] == "created"
     assert answer["option"] == game_option(game)
     assert answer["url"] == SERVER + reverse("games:list_games")
+    assert answer["messages"] == [
+        {"message": "Game “Outer Wilds” added.", "type": "success"}
+    ]
 
 
 @pytest.mark.untracked_games

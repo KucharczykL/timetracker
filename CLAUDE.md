@@ -1652,6 +1652,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   [A dialog hands a created row to its picker](docs/superpowers/specs/2026-10-05-issue-1501-dialog-created-design.md).
   `DialogCreate(params=...)` takes the pickers' param shape: a literal joins
   the +'s href, a field source follows typing (`NEW_MAIN_GAME` on "Add-on of").
+  A dialog whose forms left their baseline asks before Escape, the
+  backdrop, ×, a link or an unload closes it (Discard, Return to edit,
+  Save); a refusal focuses `data-form-errors` (`FieldErrors`). Contract is
+  [Unsaved changes](docs/superpowers/specs/2026-10-06-issue-1513-unsaved-changes-design.md)
 - **A link states what its opener knows** (#1516): `action_url(...,
   facts={"game": id})` writes `?game=`; a form with `OpenerFactsMixin`,
   `opener_fields` and `facts=request.GET` (add views only, never edit)
