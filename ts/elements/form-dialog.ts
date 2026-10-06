@@ -39,6 +39,7 @@ import {
   isModalOpen,
   type Modal,
   MODAL_CHANGE,
+  refreshModalStack,
   topModal,
 } from "./modal-layer.js";
 
@@ -642,6 +643,8 @@ export class FormDialogElement extends HTMLElement {
     }
     entry.body.replaceChildren(page.content);
     entry.url = url;
+    // A trail above may name it.
+    refreshModalStack();
   }
 
   private async present(

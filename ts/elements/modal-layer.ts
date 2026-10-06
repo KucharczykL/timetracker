@@ -1,6 +1,7 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { clearStack, markStack, onStackResize, stopWatchingStack } from "./modal-stack.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -144,6 +145,37 @@ function markBackdrops(): void {
     entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.over, index > 0);
   });
 }
+
+type StepName = string; // e.g. "markStack"
+
+/** Cosmetic; a throw must not unsettle the layer. */
+function cosmetic(name: StepName, step: () => void): void {
+  try {
+    step();
+  } catch (error) {
+    report(`${name} threw: ${String(error)}`);
+  }
+}
+
+function markDepth(): void {
+  cosmetic("markStack", () => markStack(shown));
+}
+
+function unmarkDepth(dialog: HTMLDialogElement): void {
+  cosmetic("clearStack", () => clearStack(dialog));
+}
+
+function markShown(): void {
+  markBackdrops();
+  markDepth();
+}
+
+/** Measures the stack again; safe when empty. */
+export function refreshModalStack(): void {
+  markDepth();
+}
+
+onStackResize(refreshModalStack);
 
 function captureStyles<Names extends readonly LockedStyle[]>(
   element: HTMLElement,
@@ -298,9 +330,11 @@ function finish(entry: Entry): void {
   removeSurface(entry.surface);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
-  markBackdrops();
+  unmarkDepth(entry.dialog);
+  markShown();
   if (shown.length === 0) {
     stopWatchingRemovals();
+    stopWatchingStack();
     unlockDocumentScroll();
   }
   returnFocus(entry);
@@ -353,7 +387,7 @@ function open(entry: Entry, opener: HTMLElement | undefined): boolean {
   shown.push(entry);
   watchRemovals();
   pushSurface(entry.surface);
-  markBackdrops();
+  markShown();
   entry.focusInitial();
   notifyChange();
   return true;
@@ -370,7 +404,7 @@ function close(entry: Entry): void {
   entry.state = "leaving";
   // Inner panels close before the leave.
   removeSurface(entry.surface);
-  markBackdrops();
+  markShown();
   notifyChange();
   const leave = entry.options.leave;
   if (!entry.surface.host.isConnected || !leave) {
@@ -506,8 +540,12 @@ export function resetModalLayerForTests(): void {
     clearLeaveLimit(entry);
     removeSurface(entry.surface);
     if (entry.dialog.open) entry.dialog.close();
+    entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
+    entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
+    unmarkDepth(entry.dialog);
   }
   shown.length = 0;
+  stopWatchingStack();
   lastTop = null;
   stopWatchingRemovals();
   unlockDocumentScroll();

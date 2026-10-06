@@ -10,6 +10,7 @@ from common.components.modal import (
     MODAL_ATTRIBUTES,
     ElementId,
     ModalDialog,
+    ModalPanel,
     require_every_key,
     titled_header,
 )
@@ -139,7 +140,7 @@ _UNSAVED_TITLE_ID: ElementId = "form-dialog-unsaved-title"
 _UNSAVED_MESSAGE_ID: ElementId = "form-dialog-unsaved-message"
 
 _SURFACE_CLASS = (
-    "max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-base border "
+    "max-h-[calc(100dvh-2rem-var(--modal-reserve,0px))] flex-col overflow-hidden rounded-base border "
     f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
 _PANEL_CLASS = f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} {_SURFACE_CLASS}"
@@ -172,7 +173,7 @@ def _UnsavedWarning() -> Node:
                 ("aria-describedby", _UNSAVED_MESSAGE_ID),
             ]
         )[
-            Div(class_=_WARNING_PANEL_CLASS)[
+            ModalPanel(class_=_WARNING_PANEL_CLASS)[
                 titled.header,
                 Div(class_="flex flex-col gap-3 px-4 pt-3 pb-4")[
                     P(id=_UNSAVED_MESSAGE_ID, class_="text-body")[
@@ -210,7 +211,7 @@ def FormDialogHost() -> Node:
     return _FormDialog()[
         Template([(FORM_DIALOG_PARTS["template"], "")])[
             ModalDialog([titled.labelled_by])[
-                Div(class_=_PANEL_CLASS)[
+                ModalPanel(class_=_PANEL_CLASS)[
                     titled.header,
                     Div(
                         [(FORM_DIALOG_PARTS["body"], "")],

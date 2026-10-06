@@ -37,7 +37,7 @@ from common.components.core import (
     Node,
     as_children,
 )
-from common.components.modal import ElementId, ModalDialog, titled_header
+from common.components.modal import ElementId, ModalDialog, ModalPanel, titled_header
 from common.components.primitives import (
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
@@ -1283,10 +1283,9 @@ _SHEET_DIALOG_CLASS = (
     "motion-safe:data-[sheet-state=closing]:backdrop:duration-200 "
     "motion-safe:data-[sheet-state=closing]:backdrop:ease-out"
 )
-#: The slide; the controller waits on translate.
+#: The slide's positions; ModalPanel times translate.
 _SHEET_PANEL_MOTION_CLASS = (
-    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0 "
-    "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
+    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0"
 )
 
 
@@ -1311,8 +1310,8 @@ def BottomSheet(
         align="end",
         class_=_SHEET_DIALOG_CLASS,
     )[
-        Div(
-            data_sheet_panel="",
+        ModalPanel(
+            [("data-sheet-panel", "")],
             class_=(
                 "flex w-full max-h-[min(80dvh,32rem)] flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "

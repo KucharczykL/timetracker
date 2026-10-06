@@ -1,9 +1,20 @@
 """The modal layer in a real browser."""
 
-from django.test import override_settings
-from playwright.sync_api import Page, expect
+import re
 
-from common.components import ControlButton, Div, Fragment, ModalDialog, Node
+from django.test import override_settings
+from playwright.sync_api import FloatRect, Page, expect
+
+from common.components import (
+    ControlButton,
+    Div,
+    Fragment,
+    ModalDialog,
+    ModalPanel,
+    Node,
+)
+from common.components.form_dialog import _PANEL_CLASS
+from common.components.modal import titled_header
 
 on_kit = override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
 
@@ -134,3 +145,63 @@ def test_only_the_top_modal_dims(live_server, page: Page):
         )"""
     )
     assert opacities == ["0", "0", "1"]
+
+
+MOUNT_STACKED_MODALS = """async (markup) => {
+    const { attachModal } = await import("/static/js/dist/elements/modal-layer.js");
+    document.body.insertAdjacentHTML("beforeend", markup);
+    for (const id of ["lower", "middle", "top"]) {
+        attachModal(document.getElementById(id)).open();
+    }
+}"""
+
+#: Each panel's body height; Lower overflows.
+_STACKED_BODIES = {"Lower": 2000, "Middle": 120, "Top": 300}
+
+
+def _stacked_modals_markup() -> str:
+    """Three sibling modals of differing height."""
+    dialogs = []
+    for name, height in _STACKED_BODIES.items():
+        titled = titled_header(name, title_id=f"{name.lower()}-title")
+        dialogs.append(
+            ModalDialog([("id", name.lower()), titled.labelled_by])[
+                ModalPanel(class_=_PANEL_CLASS)[
+                    titled.header,
+                    Div(class_="min-h-0 overflow-y-auto")[
+                        Div(style=f"height:{height}px")
+                    ],
+                ]
+            ]
+        )
+    return str(Fragment(*dialogs))
+
+
+@on_kit
+def test_covered_modals_step_back_and_the_top_names_them(live_server, page: Page):
+    page.emulate_media(reduced_motion="reduce")
+    page.set_viewport_size({"width": 800, "height": 700})
+    page.goto(f"{live_server.url}/settings-kit-test/")
+    page.evaluate(MOUNT_STACKED_MODALS, _stacked_modals_markup())
+
+    def box(selector: str) -> FloatRect:
+        found = page.locator(selector).bounding_box()
+        assert found, selector
+        return found
+
+    for covered, above in (("#lower", "#middle"), ("#middle", "#top")):
+        panel = box(f"{covered} [data-modal-panel]")
+        over = box(f"{above} [data-modal-panel]")
+        title = box(f"{covered} h2")
+        assert 0 <= panel["y"] < over["y"]
+        # The covered title shows in its strip.
+        assert panel["y"] <= title["y"]
+        assert title["y"] + title["height"] <= over["y"] + 0.5
+
+    top = page.locator("#top")
+    trail = top.locator("[data-modal-trail]")
+    expect(trail).to_be_visible()
+    expect(trail).to_have_text("Lower › , Middle")
+    # Chromium spaces inline spans; spoken alike.
+    expect(top).to_have_accessible_description(re.compile(r"^Lower\s*,\s*Middle\s*$"))
+    expect(page.locator("#middle [data-modal-trail]")).to_be_hidden()

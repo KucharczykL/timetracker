@@ -1639,7 +1639,13 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   moves its toasts into the top modal. Centred by default; a bottom sheet
   (`BottomSheet`, `behavior="sheet"`) is a per-modal opt-in. Scope a
   backdrop transition to the closing state. Contract is
-  [The modal layer](docs/superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md)
+  [The modal layer](docs/superpowers/specs/2026-10-04-issue-1499-modal-layer-design.md).
+  A modal's visible panel is `ModalPanel`, its header `ModalPanelHeader`
+  (44 px, compact ×, hidden trail); `ts/elements/modal-stack.ts` steps a
+  covered panel up, scaled and darkened (never `opacity`: the page would
+  show through), and fills the top modal's trail and `aria-describedby`.
+  Content that renames a dialog calls `refreshModalStack()`. Contract is
+  [Stacked depth](docs/superpowers/specs/2026-10-06-issue-1514-stacked-modal-depth-design.md)
 - **A form page opens in a modal by marking its link**, opt-in per link (#1384):
   `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no
   header. `<form-dialog>` fetches in dialog mode (`X-Form-Dialog`):
