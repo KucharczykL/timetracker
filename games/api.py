@@ -602,10 +602,13 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
 
 
 @device_router.get("/search", response=list[PickerOption])
-def search_devices(request, q: str = "", limit: int = 10):
+def search_devices(request, q: str = "", limit: int = 10, held: bool = False):
     library = cast(User, request.user).library
+    qs = Device.objects.for_library(library)
+    if held:
+        qs = qs.filter(access_end_recorded_at__isnull=True)
     #: Held first; ended ones serve past sessions.
-    qs = Device.objects.for_library(library).annotate(
+    qs = qs.annotate(
         ended=Case(When(access_end_recorded_at__isnull=True, then=0), default=1)
     )
     if q:

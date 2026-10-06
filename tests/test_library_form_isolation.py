@@ -14,11 +14,13 @@ from common.date_time_presentation import (
 )
 from games.catalog_form import ReleaseRowForm
 from games.forms import (
+    DEVICE_SEARCH_URL,
     DeviceForm,
     GameForm,
     LibraryPreferencesForm,
     PlatformForm,
     PlaythroughForm,
+    SearchSelectWidget,
     SessionForm,
 )
 from games.models import (
@@ -83,16 +85,23 @@ def test_form_relationship_querysets_are_explicitly_library_bound(world):
     assert _ids(release.fields["platform"].queryset) == visible_platforms
 
 
-def test_library_preferences_default_device_is_a_scoped_model_choice(world):
+def test_library_preferences_default_device_is_a_scoped_held_picker(world):
     form = LibraryPreferencesForm(
-        devices=Device.objects.for_library(world.owner_library).order_by("name"),
-        default_device=world.own_device,
+        library=world.owner_library, default_device=world.own_device
     )
     field = form.fields["default_device"]
+    widget = field.widget
 
     assert isinstance(field, forms.ModelChoiceField)
     assert _ids(field.queryset) == {world.own_device.pk}
     assert form.initial["default_device"] == world.own_device
+    assert isinstance(widget, SearchSelectWidget)
+    assert widget.search_url == DEVICE_SEARCH_URL
+    assert widget.params == {"held": {"value": "1"}}
+    assert widget.none_label == "No device"
+    assert widget.revert_on_leave
+    assert widget.create is None
+    assert widget.options_resolver([world.foreign_device.pk]) == []
 
 
 @pytest.mark.parametrize(

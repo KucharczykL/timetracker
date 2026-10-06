@@ -1000,6 +1000,17 @@ const initWidget = (containerElement: Element): boolean => {
   //    pick filling in its label — blur touches neither value nor text. ──
   if (!multi) container._searchSelectLabel = search.value;
 
+  //: Every option held, keyed by value.
+  const remembered = new Map<string, SearchSelectOption>();
+  const renderedHeld = multi ? null : pills.querySelector<HTMLInputElement>(HELD_VALUE_INPUTS);
+  if (renderedHeld) {
+    remembered.set(renderedHeld.value, {
+      value: renderedHeld.value,
+      label: search.value,
+      data: {},
+    });
+  }
+
   const runFocus = () => {
     if (!multi) {
       const committedLabel = container._searchSelectLabel ?? "";
@@ -1320,6 +1331,7 @@ const initWidget = (containerElement: Element): boolean => {
       search.value = option.label;
       container._searchSelectLabel = option.label;
       container._searchSelectDirty = false;
+      remembered.set(option.value, option);
       hidePanel();
     }
     if (emit) soleDeclined = false;
@@ -1399,18 +1411,22 @@ const initWidget = (containerElement: Element): boolean => {
     Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).find(
       row => row.getAttribute("data-value") === value
     );
-  container._searchSelectOffers = (value: string) => offeredRow(value) !== undefined;
-
-  //: Hold a row's value; unoffered holds none, or nothing.
-  container._searchSelectHoldValue = (value: string): boolean => {
+  const offeredOption = (value: string): SearchSelectOption | undefined => {
     const offered = offeredRow(value);
+    return offered ? optionFromRow(offered) : remembered.get(value);
+  };
+  container._searchSelectOffers = (value: string) => offeredOption(value) !== undefined;
+
+  //: Hold an offered value; else none, or nothing.
+  container._searchSelectHoldValue = (value: string): boolean => {
+    const option = offeredOption(value);
     const alreadyHeld =
       !container._searchSelectDirty && sameHeld(heldNow(), { values: [value], none: false });
-    if (offered && alreadyHeld) return true;
-    if (offered) selectOption(optionFromRow(offered), false);
+    if (option && alreadyHeld) return true;
+    if (option) selectOption(option, false);
     else if (noneLabel) holdNone();
     else container._searchSelectClear?.();
-    return offered !== undefined;
+    return option !== undefined;
   };
   container._searchSelectHoldNone = () => {
     // A rewrite would close an open panel.
@@ -1425,6 +1441,7 @@ const initWidget = (containerElement: Element): boolean => {
   // serialize a stale operand; a still-offered value is preserved. Panel
   // visibility is left untouched (no forced open).
   container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
+    remembered.clear();
     options
       .querySelectorAll<HTMLElement>(
         "[data-search-select-option], [data-search-select-group-header]"
@@ -1794,7 +1811,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
   }
 
-  /** Hold the row offering `value`, silently.
+  /** Hold an offered `value`, silently.
    *  Unoffered holds none, else nothing; answers false. */
   holdValue(value: string): boolean {
     return this.initializedPart("_searchSelectHoldValue")(value);
@@ -1805,7 +1822,7 @@ export class SearchSelectElement extends HTMLElement {
     this.initializedPart("_searchSelectHoldNone")();
   }
 
-  /** Whether a loaded row offers `value`. */
+  /** Whether a row or a held option offers `value`. */
   offers(value: string): boolean {
     return this.initializedPart("_searchSelectOffers")(value);
   }

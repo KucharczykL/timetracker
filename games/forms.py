@@ -240,41 +240,25 @@ class PrimitiveWidgetsMixin:
         apply_primitive_widget_classes(self.fields)
 
 
-class DeviceChoiceField(forms.ModelChoiceField):
-    """A device, and how it left."""
-
-    def label_from_instance(self, obj) -> str:
-        device = cast(Device, obj)
-        option = device_option(device)
-        hint = option.get("hint")
-        return str(device) if hint is None else f"{device} · {hint}"
-
-
 class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
     """Library-owned preferences rendered through the shared settings field kit."""
 
-    default_device = DeviceChoiceField(
-        queryset=Device.objects.none(),
-        label="Default device",
-        required=False,
-        empty_label="No default device",
+    default_device = forms.ModelChoiceField(
+        queryset=Device.objects.none(), label="Default device", required=False
     )
 
-    def __init__(
-        self,
-        *,
-        devices: QuerySet[Device],
-        default_device: Device | None,
-    ) -> None:
-        """Held devices, and the stored default."""
+    def __init__(self, *, library: UserLibrary, default_device: Device | None) -> None:
         super().__init__()
-        default_device_field = cast(
-            forms.ModelChoiceField, self.fields["default_device"]
+        field = cast(forms.ModelChoiceField, self.fields["default_device"])
+        field.queryset = Device.objects.for_library(library)
+        #: An ended device is no default.
+        field.widget = SearchSelectWidget(
+            search_url=DEVICE_SEARCH_URL,
+            params={"held": {"value": "1"}},
+            options_resolver=partial(device_options, library=library),
+            none_label="No device",
+            revert_on_leave=True,
         )
-        offered = devices.filter(access_end_recorded_at__isnull=True)
-        if default_device is not None:
-            offered = offered | devices.filter(pk=default_device.pk)
-        default_device_field.queryset = offered
         self.initial["default_device"] = default_device
 
 
@@ -525,6 +509,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         clearable: bool = True,
         none_label: NoneLabel | None = None,
         dialog_create: DialogCreate | None = None,
+        revert_on_leave: bool = False,
         attrs=None,
     ):
         super().__init__(
@@ -532,6 +517,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             autofocus=autofocus,
             clearable=clearable,
             dialog_create=dialog_create,
+            revert_on_leave=revert_on_leave,
             attrs=attrs,
         )
         self.none_label = none_label

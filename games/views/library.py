@@ -125,9 +125,7 @@ def library(request: HttpRequest) -> HttpResponse:
     )
     stored_default = library.preferences.stored_default_device
     default_device_control = LiveSettingFields(
-        LibraryPreferencesForm(
-            devices=devices.order_by("name"), default_device=stored_default
-        ),
+        LibraryPreferencesForm(library=library, default_device=stored_default),
         states={
             "default_device": SettingFieldState(
                 key=DEFAULT_DEVICE,

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Re-picks, silent holds, and leaving mid-edit.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
 import { hosted } from "../test-setup/search-select-host.js";
 import type { SearchSelectChangeDetail, SearchSelectElement } from "./search-select.js";
@@ -13,6 +13,7 @@ interface MountOptions {
   noneLabel?: string;
   revertOnLeave?: boolean;
   describedBy?: string;
+  searchUrl?: string;
 }
 
 const LABELS: Record<string, string> = { "1": "Deck", "2": "Switch" };
@@ -22,6 +23,7 @@ function mount({
   noneLabel = "Use site default (Deck)",
   revertOnLeave = true,
   describedBy,
+  searchUrl,
 }: MountOptions = {}): SearchSelectElement {
   document.body.replaceChildren();
   const host = document.createElement("search-select") as SearchSelectElement;
@@ -29,6 +31,7 @@ function mount({
   host.setAttribute("multi", "false");
   if (noneLabel) host.setAttribute("none-label", noneLabel);
   if (revertOnLeave) host.setAttribute("revert-on-leave", "true");
+  if (searchUrl) host.setAttribute("search-url", searchUrl);
   const pills = held
     ? `<input type="hidden" name="device" value="${held}">`
     : noneLabel
@@ -318,5 +321,55 @@ describe("<search-select> a click into the focused box", () => {
     searchBox(host).focus();
     searchBox(host).click();
     expect(searchBox(host).getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("<search-select> remembers what it held", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    //: Never answers; the rows stay as × left them.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const searched = (options: MountOptions = {}) =>
+    mount({ ...options, searchUrl: "/api/devices/search" });
+
+  it("holds the rendered value after × dropped its row", () => {
+    const host = searched({ held: "1" });
+    clearButton(host).click();
+    expect(row(host, "1")).toBeNull();
+    expect(host.offers("1")).toBe(true);
+    expect(host.holdValue("1")).toBe(true);
+    expect(held(host)).toEqual({ values: ["1"], none: false, text: "Deck" });
+  });
+
+  it("holds a picked value after × dropped its row", () => {
+    const host = searched({ held: "1" });
+    row(host, "2").click();
+    clearButton(host).click();
+    expect(host.holdValue("2")).toBe(true);
+    expect(held(host)).toEqual({ values: ["2"], none: false, text: "Switch" });
+  });
+
+  it("remembers no value it never held", () => {
+    const host = searched({ held: "1" });
+    clearButton(host).click();
+    expect(host.offers("2")).toBe(false);
+    expect(host.holdValue("2")).toBe(false);
+    expect(held(host).none).toBe(true);
+  });
+
+  it("seeds nothing from a held none", () => {
+    const host = searched();
+    clearButton(host).click();
+    expect(host.offers("")).toBe(false);
+  });
+
+  it("forgets every held value when the options are replaced", () => {
+    const host = mount({ held: "1" });
+    host.setOptions([{ value: "2", label: "Switch", data: {} }]);
+    expect(host.offers("1")).toBe(false);
+    expect(host.holdValue("1")).toBe(false);
   });
 });
