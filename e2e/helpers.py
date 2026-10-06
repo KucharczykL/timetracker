@@ -1,6 +1,6 @@
 """Shared waits and steps for e2e tests."""
 
-from playwright.sync_api import Page
+from playwright.sync_api import Locator, Page
 
 TABLES_SETTLED = """
 () => [...document.querySelectorAll('responsive-table')].every(
@@ -43,3 +43,22 @@ def open_facet(page: Page, field: str) -> None:
     if not trigger.is_visible():
         page.locator("[data-quick-overflow] [data-toggle]").first.click()
     trigger.click()
+
+
+def pick_choice(page: Page, name: str, value: str) -> None:
+    """Pick a picker's row by value; empty picks none."""
+    picker = page.locator(f'search-select[name="{name}"]')
+    picker.locator("[data-search-select-search]").click()
+    row = (
+        picker.locator("[data-search-select-none-option]")
+        if value == ""
+        else picker.locator(f'[data-search-select-option][data-value="{value}"]')
+    )
+    row.click()
+
+
+def held_choice(page: Page, name: str) -> Locator:
+    """The hidden input a picker holds."""
+    return page.locator(
+        f'search-select[name="{name}"] [data-search-select-pills] input[type="hidden"]'
+    )

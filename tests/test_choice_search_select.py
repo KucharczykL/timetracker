@@ -6,7 +6,7 @@ import re
 import pytest
 from django import forms
 
-from common.components import FormFields
+from common.components import FormFields, SearchSelect
 from games.forms import (
     ChoiceSearchSelectWidget,
     apply_primitive_widget_classes,
@@ -246,3 +246,77 @@ def test_form_instances_hold_their_own_choices():
     copied = copy.deepcopy(widget)
     assert copied.choices == widget.choices
     assert copied.choices is not widget.choices
+
+
+def _host_tag(html: str) -> str:
+    start = html.index("<search-select")
+    return html[start : html.index(">", start)]
+
+
+def test_widget_data_attrs_reach_the_host():
+    field = _optional(LETTERS)
+    field.widget.attrs.update(
+        {"data-setting-key": "THEME", "data-live-setting-control": ""}
+    )
+    host = _host_tag(_render(field))
+    assert 'data-setting-key="THEME"' in host
+    assert "data-live-setting-control" in host
+
+
+def test_input_state_attrs_reach_the_search_box():
+    field = _optional(LETTERS)
+    field.widget.attrs.update({"aria-describedby": "help-id"})
+    field.disabled = True
+    box = _search_box(_render(field))
+    assert re.search(r'\sdisabled(=""|\s|$)', box)
+    assert 'aria-describedby="help-id"' in box
+
+
+def test_an_attr_with_no_home_is_refused():
+    field = _optional(LETTERS)
+    field.widget.attrs["readonly"] = True
+    with pytest.raises(ValueError, match="readonly"):
+        _render(field)
+
+
+def test_false_spelled_flags_stay_off():
+    widget = ChoiceSearchSelectWidget()
+    widget.choices = list(LETTERS)
+    html = widget.render(
+        "choice",
+        None,
+        {"id": "id_choice", "disabled": "false", "aria-invalid": "false"},
+    )
+    box = _search_box(html)
+    assert not re.search(r'\sdisabled(=""|\s|$)', box)
+    assert "aria-invalid" not in box
+
+
+def test_an_invalid_field_marks_its_search_box():
+    widget = ChoiceSearchSelectWidget()
+    widget.choices = list(LETTERS)
+    html = widget.render("choice", None, {"id": "id_choice", "aria-invalid": "true"})
+    assert 'aria-invalid="true"' in _search_box(html)
+
+
+def test_revert_on_leave_reaches_the_host():
+    assert 'revert-on-leave="true"' in _host_tag(
+        _render(_optional(LETTERS, revert_on_leave=True))
+    )
+    assert "revert-on-leave" not in _host_tag(_render(_optional(LETTERS)))
+
+
+@pytest.mark.parametrize(
+    "host_data",
+    [{"title": "x"}, {"data-toggle": ""}],
+    ids=["not data", "reserved"],
+)
+def test_host_data_is_refused(host_data):
+    with pytest.raises(ValueError):
+        SearchSelect(name="choice", host_data=host_data)
+
+
+@pytest.mark.parametrize("shape", [{"multi_select": True}, {"panel": True}])
+def test_revert_on_leave_is_single_select_and_field_hosted(shape):
+    with pytest.raises(ValueError, match="revert_on_leave"):
+        SearchSelect(name="choice", revert_on_leave=True, **shape)

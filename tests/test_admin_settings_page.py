@@ -88,6 +88,25 @@ def _opening_control_tag(html: str, field_name: str) -> str:
     return match.group(0)
 
 
+def _picker_host(html: str, field_name: str) -> str:
+    match = re.search(
+        rf"<search-select\b[^>]*\bname=\"{re.escape(field_name)}\"[^>]*>", html
+    )
+    assert match is not None, f"missing picker {field_name!r}"
+    return match.group(0)
+
+
+def _picker_box(html: str, field_name: str) -> str:
+    host = _picker_host(html, field_name)
+    start = html.index(host)
+    match = re.search(
+        r"<input\b[^>]*\bdata-search-select-search\b[^>]*>",
+        html[start : html.index("</search-select>", start)],
+    )
+    assert match is not None
+    return match.group(0)
+
+
 def _field_source_markup(html: str, key: str, field_name: str) -> str:
     badge_start = html.index(f'<setting-source-badge key="{key}" namespace="site">')
     control_start = html.index(f'name="{field_name}"', badge_start)
@@ -95,7 +114,7 @@ def _field_source_markup(html: str, key: str, field_name: str) -> str:
 
 
 def _is_disabled(control_tag: str) -> bool:
-    return re.search(r"\sdisabled(?:=\"disabled\")?(?=\s|>)", control_tag) is not None
+    return re.search(r"\sdisabled(?:=\"[^\"]*\")?(?=\s|>)", control_tag) is not None
 
 
 def _theme_toggle_markup(html: str) -> tuple[str, str]:
@@ -228,7 +247,7 @@ def test_admin_settings_page_disables_only_the_navbar_theme_switcher(
         in interaction_surface.group()
     )
     assert "disabled:opacity-50" in toggle_button
-    assert not _is_disabled(_opening_control_tag(html, "theme"))
+    assert not _is_disabled(_picker_box(html, "theme"))
 
 
 def test_admin_page_renders_exact_site_setting_slice_in_stable_order(
@@ -264,7 +283,7 @@ def test_admin_page_uses_generic_site_patch_for_theme_and_reload_controls(
         "date_format_locale",
         "datetime_format",
     ):
-        tag = _opening_control_tag(html, field_name)
+        tag = _picker_host(html, field_name)
         assert 'data-live-setting-control=""' in tag
         assert 'data-reload-after-save=""' in tag
 
@@ -316,7 +335,7 @@ def test_admin_page_lists_device_rows_and_select_options(
     # dormant_after_days, show_prerelease_play, theme, display_time_zone,
     # session_time_zone_display, date_format_locale, datetime_format, and
     # duration_format. Currency controls are text inputs.
-    assert html.count(">Use configured default</option>") == 10
+    assert html.count('none-label="Use configured default"') == 10
     for value, label in (
         *LANDING_PAGE_CHOICES,
         *THEME_CHOICES,
@@ -324,10 +343,10 @@ def test_admin_page_lists_device_rows_and_select_options(
         *DATETIME_FORMAT_CHOICES,
         ("Pacific/Kiritimati", "Pacific/Kiritimati"),
     ):
-        assert f'<option value="{value}"' in html
-        assert f">{label}</option>" in html
+        assert f'data-value="{value}"' in html
+        assert f'data-label="{label}"' in html
     for size in PAGE_SIZE_CHOICES:
-        assert f'<option value="{size}"' in html
+        assert f'data-value="{size}"' in html
 
 
 def test_admin_page_renders_database_and_default_values_with_source_badges(
@@ -344,9 +363,9 @@ def test_admin_page_renders_database_and_default_values_with_source_badges(
     assert 'data-setting-origin="database"' in _field_source_markup(
         html, "DEFAULT_PURCHASE_CURRENCY", "default_purchase_currency"
     )
-    page_size = _opening_control_tag(html, "default_page_size")
+    page_size = _picker_box(html, "default_page_size")
     assert not _is_disabled(page_size)
-    assert '<option value="25" selected>25</option>' in html
+    assert 'value="25"' in page_size
     assert 'data-setting-origin="default"' in _field_source_markup(
         html, "DEFAULT_PAGE_SIZE", "default_page_size"
     )
@@ -607,3 +626,22 @@ def test_export_downloads_ini_with_stored_settings(
 def test_admin_settings_page_shows_export_button(superuser_client):
     response = superuser_client.get(reverse("games:admin_settings"))
     assert reverse("games:export_admin_settings_ini") in response.content.decode()
+
+
+def test_a_locked_select_setting_disables_its_picker(
+    superuser_client,
+    clean_site_setting_sources,
+    monkeypatch,
+):
+    monkeypatch.setenv("DEFAULT_PAGE_SIZE", "50")
+    config_module.reset_caches()
+    settings_resolver.clear_cache()
+
+    html = superuser_client.get(reverse("games:admin_settings")).content.decode()
+
+    page_size = _picker_box(html, "default_page_size")
+    assert _is_disabled(page_size)
+    assert 'value="50"' in page_size
+    assert 'data-setting-key="DEFAULT_PAGE_SIZE"' in _picker_host(
+        html, "default_page_size"
+    )

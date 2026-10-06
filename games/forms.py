@@ -425,6 +425,17 @@ DEVICE_CREATE_URL = "/api/devices/"
 PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
+#: Attrs the adapter or its callers read.
+_SEARCH_SELECT_ATTRS: Final = frozenset(
+    {"id", "disabled", "aria-describedby", "aria-invalid", "required", "maxlength"}
+)
+
+
+def _attr_flag(value: object) -> bool:
+    """A boolean attr, as Django or a caller states it."""
+    return value not in (None, False, "false")
+
+
 class _SearchSelectAdapter(forms.Widget):
     """Django half every form `SearchSelect` shares."""
 
@@ -439,6 +450,7 @@ class _SearchSelectAdapter(forms.Widget):
         autofocus: bool,
         clearable: bool,
         dialog_create: DialogCreate | None = None,
+        revert_on_leave: bool = False,
         attrs=None,
     ):
         super().__init__(attrs)
@@ -446,9 +458,18 @@ class _SearchSelectAdapter(forms.Widget):
         self.autofocus = autofocus
         self.clearable = clearable
         self.dialog_create = dialog_create
+        self.revert_on_leave = revert_on_leave
 
     def _render(self, name, attrs, *, shape: ButtonShape, **component) -> str:
-        input_id = (attrs or {}).get("id", "")
+        merged = {**self.attrs, **(attrs or {})}
+        homeless = {
+            key
+            for key in merged
+            if not key.startswith("data-") and key not in _SEARCH_SELECT_ATTRS
+        }
+        if homeless:
+            raise ValueError(f"{name}: SearchSelect has no home for {sorted(homeless)}")
+        input_id = merged.get("id", "")
         # Widgets return safe strings, not nodes.
         return render(
             SearchSelect(
@@ -459,6 +480,15 @@ class _SearchSelectAdapter(forms.Widget):
                 clearable=self.clearable,
                 dialog_create=self.dialog_create,
                 clear_description_id=field_label_id(input_id) if input_id else None,
+                host_data={
+                    key: "" if value is True else str(value)
+                    for key, value in merged.items()
+                    if key.startswith("data-") and value not in (None, False)
+                },
+                disabled=_attr_flag(merged.get("disabled")),
+                described_by=merged.get("aria-describedby") or None,
+                invalid=_attr_flag(merged.get("aria-invalid")),
+                revert_on_leave=self.revert_on_leave,
                 shape=shape,
                 **component,
             )
@@ -651,6 +681,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
         clearable: bool = True,
         autofocus: bool = False,
         dialog_create: DialogCreate | None = None,
+        revert_on_leave: bool = False,
         attrs=None,
     ):
         super().__init__(
@@ -660,6 +691,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             autofocus=autofocus,
             clearable=clearable,
             dialog_create=dialog_create,
+            revert_on_leave=revert_on_leave,
             attrs=attrs,
         )
 

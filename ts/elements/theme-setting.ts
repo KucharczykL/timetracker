@@ -1,3 +1,4 @@
+import { settingControlOf, type SettingControl } from "../setting-control.js";
 import {
   isThemePreference,
   getThemeCoordinator,
@@ -5,47 +6,46 @@ import {
 } from "../theme-coordinator.js";
 
 class ThemeSettingElement extends HTMLElement {
-  private select: HTMLSelectElement | null = null;
+  private control: SettingControl | null = null;
   private unsubscribe: (() => void) | null = null;
 
   connectedCallback(): void {
-    this.select = this.querySelector<HTMLSelectElement>("select");
-    this.select?.addEventListener("change", this.onChange);
+    const element = this.querySelector("[data-setting-key]");
+    this.control = element ? settingControlOf(element) : null;
+    if (!this.control) console.error("theme-setting: no readable control");
+    this.control?.element.addEventListener(this.control.changeEvent, this.onChange);
     this.unsubscribe = getThemeCoordinator().subscribe(this.renderState);
   }
 
   disconnectedCallback(): void {
-    this.select?.removeEventListener("change", this.onChange);
+    this.control?.element.removeEventListener(this.control.changeEvent, this.onChange);
     this.unsubscribe?.();
     this.unsubscribe = null;
   }
 
   private readonly onChange = (event: Event): void => {
+    // The coordinator saves, not the generic element.
     event.stopPropagation();
-    if (!this.select) return;
-    const value = this.select.value;
-    if (value !== "" && !isThemePreference(value)) {
+    const value = this.control?.read();
+    if (value === undefined) return;
+    if (value !== null && (typeof value !== "string" || !isThemePreference(value))) {
+      console.error("theme-setting: not a theme preference", value);
       this.renderState(getThemeCoordinator().currentState());
       return;
     }
-    void getThemeCoordinator().requestPreferenceChange(value === "" ? null : value);
+    void getThemeCoordinator().requestPreferenceChange(value);
   };
 
   private readonly renderState = (state: ThemeCoordinatorState): void => {
-    if (!this.select) return;
+    const control = this.control;
+    if (!control) return;
     if (state.status === "unavailable") {
-      this.select.disabled = true;
+      control.setDisabled(true);
       return;
     }
-    this.select.value = state.status === "account"
-      ? state.personalPreference ?? ""
-      : state.preference;
-    this.select.disabled = state.saving;
-    if (state.saving) {
-      this.select.setAttribute("aria-busy", "true");
-    } else {
-      this.select.removeAttribute("aria-busy");
-    }
+    control.write(state.status === "account" ? state.personalPreference : state.preference);
+    control.setDisabled(state.saving);
+    control.setBusy(state.saving);
   };
 }
 

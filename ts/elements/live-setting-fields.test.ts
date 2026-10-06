@@ -2,13 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reloadAfterSettingSave } from "../settings-reload.js";
 import { SETTING_COMMITTED_EVENT } from "../settings-events.js";
-import { settingPayloadValue } from "./live-setting-fields.js";
 
 vi.mock("../settings-reload.js", () => ({
   reloadAfterSettingSave: vi.fn(),
 }));
 import "./live-setting-fields.js";
 import "./setting-source-badge.js";
+
+Element.prototype.scrollIntoView = () => {};
 
 function mountFields(): HTMLElement {
   document.body.innerHTML = `
@@ -74,34 +75,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-});
-
-describe("settingPayloadValue", () => {
-  it("serializes checkbox, select, number, and text setting controls", () => {
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = true;
-    expect(settingPayloadValue(checkbox)).toBe(true);
-
-    const select = document.createElement("select");
-    select.innerHTML = '<option value="">Unset</option><option value="x">X</option>';
-    expect(settingPayloadValue(select)).toBeNull();
-    select.value = "x";
-    expect(settingPayloadValue(select)).toBe("x");
-
-    const number = document.createElement("input");
-    number.type = "number";
-    number.value = "12";
-    expect(settingPayloadValue(number)).toBe(12);
-    number.value = "";
-    expect(settingPayloadValue(number)).toBeNull();
-
-    const text = document.createElement("input");
-    text.value = "hello";
-    expect(settingPayloadValue(text)).toBe("hello");
-    text.value = "";
-    expect(settingPayloadValue(text)).toBeNull();
-  });
 });
 
 describe("<live-setting-fields>", () => {
@@ -607,5 +580,172 @@ describe("<live-setting-fields>", () => {
       JSON.parse(String((call[1] as RequestInit).body)),
     );
     expect(bodies).toEqual([{ value: true }, { value: null }, { value: 25 }]);
+  });
+});
+
+const ZONE_NONE = "Use site default (UTC)";
+
+function mountPicker(): { host: HTMLElement; picker: HTMLElement; search: HTMLInputElement } {
+  document.body.innerHTML = `
+    <live-setting-fields patch-url-template="/api/settings/user/__key__"
+        csrf="token" namespace="user">
+      <drop-down behavior="inline-combobox"><search-select name="zone" multi="false"
+          none-label="${ZONE_NONE}" revert-on-leave="true"
+          data-setting-key="DISPLAY_TIME_ZONE" data-live-setting-control>
+        <div data-search-select-pills><input type="hidden" name="zone" value="Europe/Prague"></div>
+        <input data-search-select-search value="Europe/Prague">
+        <button type="button" data-search-select-clear>×</button>
+        <div data-search-select-options hidden>
+          <div data-search-select-none-option data-label="${ZONE_NONE}">${ZONE_NONE}</div>
+          <div data-search-select-option data-value="Europe/Prague" data-label="Europe/Prague">Europe/Prague</div>
+          <div data-search-select-option data-value="Asia/Tokyo" data-label="Asia/Tokyo">Asia/Tokyo</div>
+        </div>
+      </search-select></drop-down>
+    </live-setting-fields>`;
+  const host = document.querySelector<HTMLElement>("live-setting-fields")!;
+  const picker = host.querySelector<HTMLElement>("search-select")!;
+  return { host, picker, search: picker.querySelector("[data-search-select-search]")! };
+}
+
+const pickRow = (picker: HTMLElement, selector: string) => {
+  picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+  picker.querySelector<HTMLElement>(selector)!.click();
+};
+const zoneRow = (zone: string) => `[data-search-select-option][data-value="${zone}"]`;
+const sentValues = (fetchStub: ReturnType<typeof vi.fn>) =>
+  fetchStub.mock.calls.map(call => JSON.parse(String((call[1] as RequestInit).body)).value);
+const zoneAnswer = (value: string): Response =>
+  ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      key: "DISPLAY_TIME_ZONE",
+      value,
+      source: "user",
+      locked: false,
+      namespace: "user",
+    }),
+  }) as Response;
+
+describe("<live-setting-fields> over a <search-select>", () => {
+  it("saves a pick, then none as null and keeps the none label", async () => {
+    const fetchStub = vi
+      .fn()
+      .mockResolvedValueOnce(zoneAnswer("Asia/Tokyo"))
+      .mockResolvedValueOnce(zoneAnswer("UTC"));
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+
+    pickRow(picker, zoneRow("Asia/Tokyo"));
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+    pickRow(picker, "[data-search-select-none-option]");
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+
+    expect(sentValues(fetchStub)).toEqual(["Asia/Tokyo", null]);
+    expect(search.value).toBe(ZONE_NONE);
+    expect(reloadAfterSettingSave).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing for a keystroke, a blur, or a re-pick", async () => {
+    const fetchStub = vi.fn();
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+
+    search.focus();
+    search.value = "Asi";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    search.dispatchEvent(new Event("change", { bubbles: true }));
+    search.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+    pickRow(picker, zoneRow("Europe/Prague"));
+    await Promise.resolve();
+
+    expect(fetchStub).not.toHaveBeenCalled();
+    expect(search.value).toBe("Europe/Prague");
+  });
+
+  it("restores the held value and toasts on a failure", async () => {
+    window.fetchWithEvents = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { picker, search } = mountPicker();
+    const changes: Event[] = [];
+    picker.addEventListener("search-select:change", event => changes.push(event));
+
+    pickRow(picker, zoneRow("Asia/Tokyo"));
+
+    await vi.waitFor(() => expect(search.value).toBe("Europe/Prague"));
+    expect(window.toast).toHaveBeenCalledWith(
+      "Couldn't save your change — please try again.",
+      "error",
+    );
+    expect(changes).toHaveLength(1);
+  });
+
+  it("queues a return to the old value behind an in-flight pick", async () => {
+    const first = deferredResponse();
+    const fetchStub = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce(zoneAnswer("Europe/Prague"));
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+
+    pickRow(picker, zoneRow("Asia/Tokyo"));
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(1));
+    pickRow(picker, zoneRow("Europe/Prague"));
+    first.resolve(zoneAnswer("Asia/Tokyo"));
+
+    await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+    expect(sentValues(fetchStub)).toEqual(["Asia/Tokyo", "Europe/Prague"]);
+    expect(search.value).toBe("Europe/Prague");
+  });
+
+  it("shows the committed value after a failed save and a leave mid-edit", async () => {
+    const first = deferredResponse();
+    window.fetchWithEvents = vi.fn().mockImplementationOnce(() => first.promise);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { picker, search } = mountPicker();
+
+    pickRow(picker, zoneRow("Asia/Tokyo"));
+    search.value = "Eu";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    first.resolve({ ok: false, status: 500 } as Response);
+    await vi.waitFor(() => expect(window.toast).toHaveBeenCalled());
+    search.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+
+    expect(search.value).toBe("Europe/Prague");
+    expect(picker.querySelector<HTMLInputElement>('input[type="hidden"]')!.value).toBe(
+      "Europe/Prague"
+    );
+  });
+
+  it("saves null for × pressed mid-edit and does not revert on leave", async () => {
+    const fetchStub = vi.fn().mockResolvedValue(zoneAnswer("UTC"));
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+
+    search.focus();
+    search.value = "As";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    picker.querySelector<HTMLButtonElement>("[data-search-select-clear]")!.click();
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+    search.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+
+    expect(sentValues(fetchStub)).toEqual([null]);
+    expect(search.value).toBe(ZONE_NONE);
+  });
+
+  it("does not PATCH a disabled picker", async () => {
+    const fetchStub = vi.fn();
+    window.fetchWithEvents = fetchStub;
+    const { picker, search } = mountPicker();
+    search.disabled = true;
+
+    picker.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 });

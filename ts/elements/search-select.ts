@@ -92,8 +92,29 @@ interface SearchSelectContainer extends HTMLElement {
   _searchSelectSetSelected?: (value: string, label?: string) => void;
   _searchSelectRefetch?: () => void;
   _searchSelectClear?: () => void;
+  _searchSelectHoldValue?: (value: string) => boolean;
+  _searchSelectHoldNone?: () => void;
+  _searchSelectOffers?: (value: string) => boolean;
   _searchSelectSetOptions?: (options: SearchSelectOption[]) => void;
 }
+
+//: Held values and none.
+interface HeldState {
+  values: string[];
+  none: boolean;
+}
+
+//: A single-select's held value, or none.
+type DroppedHeld = { none: true } | { none: false; value: string; label: string };
+
+//: Container parts the public hold methods call.
+type HeldPart = "_searchSelectHoldValue" | "_searchSelectHoldNone" | "_searchSelectOffers";
+
+//: A label change alone is no change.
+const sameHeld = (left: HeldState, right: HeldState): boolean =>
+  left.none === right.none &&
+  left.values.length === right.values.length &&
+  left.values.every((value, index) => value === right.values[index]);
 
 interface OptionRow extends HTMLElement {
   _searchSelectOption?: SearchSelectOption;
@@ -325,6 +346,21 @@ const initWidget = (containerElement: Element): boolean => {
   //: Counts × presses; a create outlived by one selects nothing.
   let clears = 0;
 
+  //: What a first keystroke dropped.
+  let heldBeforeDrop: DroppedHeld | null = null;
+  const heldNow = (): HeldState => ({
+    values: Array.from(pills.querySelectorAll<HTMLInputElement>(HELD_VALUE_INPUTS)).map(
+      input => input.value
+    ),
+    none: pills.querySelector("input[data-search-select-none]") !== null,
+  });
+  const droppable = (): DroppedHeld | null => {
+    const { values, none } = heldNow();
+    if (none) return { none: true };
+    if (values.length !== 1) return null;
+    return { none: false, value: values[0], label: container._searchSelectLabel ?? "" };
+  };
+
   //: None held, and not yet edited.
   const holdsNone = (): boolean =>
     pills.querySelector("input[data-search-select-none]") !== null &&
@@ -338,7 +374,9 @@ const initWidget = (containerElement: Element): boolean => {
   };
   if (statusEl) {
     statusEl.id = `${listboxId}-status`;
-    search.setAttribute("aria-describedby", statusEl.id);
+    const described = (search.getAttribute("aria-describedby") ?? "").split(/\s+/);
+    const ids = described.filter(id => id && id !== statusEl.id);
+    search.setAttribute("aria-describedby", [...ids, statusEl.id].join(" "));
   }
 
   // Box text present with no committed hidden input = uncommitted: toggle the
@@ -975,6 +1013,11 @@ const initWidget = (containerElement: Element): boolean => {
         search.setSelectionRange(search.value.length, search.value.length);
       }
     }
+    openList();
+  };
+
+  //: Fill the list for the box text, then open.
+  const openList = () => {
     if (freeText) {
       rebuildFreeTextRow(currentQuery());
     } else if (searchUrl) {
@@ -995,6 +1038,11 @@ const initWidget = (containerElement: Element): boolean => {
     showPanel();
   };
   search.addEventListener("focus", runFocus);
+
+  // A click fires no focus while focused.
+  search.addEventListener("click", () => {
+    if (document.activeElement === search && !isPanelOpen() && !search.disabled) openList();
+  });
 
   // Focus via mouse click: Chromium collapses runFocus's search.select() to a
   // caret on the following mouseup, so click-then-type would append to the label
@@ -1022,12 +1070,13 @@ const initWidget = (containerElement: Element): boolean => {
   search.addEventListener("input", () => {
     clearHighlight();
     // First edit: the box text becomes the live query. If a pick was committed,
-    // editing abandons it — clear the value now, so only an explicit pick can
-    // commit one. With nothing committed there is no value to clear and no
-    // event fires.
+    // editing abandons it — clear the value now, so only an explicit pick
+    // commits one (revert-on-leave restores it on a leave). With nothing
+    // committed there is no value to clear and no event fires.
     if (!multi && !container._searchSelectDirty) {
       container._searchSelectDirty = true;
       if (container._searchSelectLabel) {
+        heldBeforeDrop = droppable();
         pills.innerHTML = "";
         container._searchSelectLabel = "";
         emitChange(null);
@@ -1253,8 +1302,11 @@ const initWidget = (containerElement: Element): boolean => {
   // `emit` lets a programmatic restore (setSelected) seed the selection WITHOUT
   // firing search-select:change — otherwise restoring a value after a re-render
   // would re-trigger the consumer's on-change logic (e.g. the leaf row's field
-  // reset), looping. User-driven picks pass emit=true (the default).
+  // reset), looping. User-driven picks pass emit=true (the default); form
+  // mode emits only when the held changes.
   const selectOption = (option: SearchSelectOption, emit = true) => {
+    const before = heldNow();
+    heldBeforeDrop = null;
     if (multi) {
       if (!pills.querySelector(`input[value="${cssEscape(option.value)}"]`)) {
         addPill(option);
@@ -1272,7 +1324,7 @@ const initWidget = (containerElement: Element): boolean => {
     }
     if (emit) soleDeclined = false;
     syncUncommitted();
-    if (emit) emitChange(option);
+    if (emit && (isFilter || !sameHeld(before, heldNow()))) emitChange(option);
   };
 
   // A + dialog's created row lands here.
@@ -1314,6 +1366,7 @@ const initWidget = (containerElement: Element): boolean => {
   // after handling the pick, so no lingering selection can pin a stale row
   // through renderRows' selected-value preservation (issue #297).
   container._searchSelectClear = () => {
+    heldBeforeDrop = null;
     pills.innerHTML = "";
     container._searchSelectLabel = "";
     container._searchSelectDirty = false;
@@ -1335,10 +1388,33 @@ const initWidget = (containerElement: Element): boolean => {
 
   //: A person picks none.
   const pickNone = () => {
+    const before = heldNow();
     holdNone();
     soleDeclined = false;
     hidePanel();
-    emitNone();
+    if (!sameHeld(before, heldNow())) emitNone();
+  };
+
+  const offeredRow = (value: string): HTMLElement | undefined =>
+    Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).find(
+      row => row.getAttribute("data-value") === value
+    );
+  container._searchSelectOffers = (value: string) => offeredRow(value) !== undefined;
+
+  //: Hold a row's value; unoffered holds none, or nothing.
+  container._searchSelectHoldValue = (value: string): boolean => {
+    const offered = offeredRow(value);
+    const alreadyHeld =
+      !container._searchSelectDirty && sameHeld(heldNow(), { values: [value], none: false });
+    if (offered && alreadyHeld) return true;
+    if (offered) selectOption(optionFromRow(offered), false);
+    else if (noneLabel) holdNone();
+    else container._searchSelectClear?.();
+    return offered !== undefined;
+  };
+  container._searchSelectHoldNone = () => {
+    // A rewrite would close an open panel.
+    if (!holdsNone()) holdNone();
   };
 
   // Public option swap: replace the pre-rendered (inline, no search-url) option
@@ -1526,8 +1602,13 @@ const initWidget = (containerElement: Element): boolean => {
     if (!container.contains(event.relatedTarget as Node)) {
       cancelPendingSearch();
       hidePanel(); // also clears the highlight
-      // Both modes keep their box text across tab-out/refocus: single-select
-      // commits only on an explicit pick, so blur touches neither value nor text.
+      const restore = heldBeforeDrop;
+      heldBeforeDrop = null;
+      if (props.revertOnLeave && restore && !pills.querySelector('input[type="hidden"]')) {
+        if (restore.none) holdNone();
+        else selectOption({ value: restore.value, label: restore.label, data: {} }, false);
+      }
+      // Otherwise blur keeps text and value.
     }
   });
 
@@ -1711,6 +1792,30 @@ export class SearchSelectElement extends HTMLElement {
    *  No-op without a search-url or until the widget has initialised. */
   refetchOptions(): void {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
+  }
+
+  /** Hold the row offering `value`, silently.
+   *  Unoffered holds none, else nothing; answers false. */
+  holdValue(value: string): boolean {
+    return this.initializedPart("_searchSelectHoldValue")(value);
+  }
+
+  /** Hold none, firing no change. */
+  holdNone(): void {
+    this.initializedPart("_searchSelectHoldNone")();
+  }
+
+  /** Whether a loaded row offers `value`. */
+  offers(value: string): boolean {
+    return this.initializedPart("_searchSelectOffers")(value);
+  }
+
+  private initializedPart<Part extends HeldPart>(
+    part: Part
+  ): NonNullable<SearchSelectContainer[Part]> {
+    const found = (this as SearchSelectContainer)[part];
+    if (!found) throw new Error(`search-select[${this.getAttribute("name")}]: not initialised`);
+    return found as NonNullable<SearchSelectContainer[Part]>;
   }
 
   /** Silently drop the committed selection (hidden inputs, label, query text)

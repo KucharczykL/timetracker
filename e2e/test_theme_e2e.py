@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, expect
 
+from e2e.helpers import held_choice, pick_choice
 from games.models import SiteSetting, UserPreferences
 from timetracker import settings_resolver
 
@@ -206,7 +207,7 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     page.get_by_role("button", name="Open account menu for settings-user").click()
-    theme = page.locator('select[name="theme"]')
+    theme = held_choice(page, "theme")
     toggle = page.locator("theme-toggle [data-pop-over-control]")
     tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
@@ -227,17 +228,20 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ):
-        theme.select_option("dark")
+        pick_choice(page, "theme", "dark")
     expect(page.locator("html")).to_have_class("dark")
+    # The pick's press closed the account menu.
+    page.get_by_role("button", name="Open account menu for settings-user").click()
     expect(toggle.locator('[data-theme-icon="dark"]')).to_be_visible()
     expect(toggle).to_be_disabled()
 
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ):
-        theme.select_option("system")
+        pick_choice(page, "theme", "system")
     expect(theme).to_have_value("system")
     expect(page.locator("html")).not_to_have_class("dark")
+    page.get_by_role("button", name="Open account menu for settings-user").click()
     expect(toggle.locator('[data-theme-icon="system"]')).to_be_visible()
     expect(toggle).to_be_disabled()
 
@@ -263,7 +267,7 @@ def test_second_browser_reconciles_account_theme_on_navigation(
         with first.expect_response(
             lambda response: "/api/settings/user/THEME" in response.url
         ):
-            first.locator('select[name="theme"]').select_option("dark")
+            pick_choice(first, "theme", "dark")
 
         expect(second.locator("html")).to_have_attribute(
             "data-theme-preference", "light"
@@ -287,12 +291,12 @@ def test_clearing_personal_theme_commits_the_inherited_value(
     settings_resolver.clear_cache()
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
-    theme = page.locator('select[name="theme"]')
+    theme = held_choice(page, "theme")
 
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ):
-        theme.select_option("")
+        pick_choice(page, "theme", "")
 
     expect(theme).to_have_value("")
     expect(page.locator("html")).to_have_attribute("data-theme-preference", "dark")
@@ -311,7 +315,7 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     _login(page, live_server, user.username)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     page.get_by_role("button", name="Open account menu for rollback-user").click()
-    theme = page.locator('select[name="theme"]')
+    theme = held_choice(page, "theme")
     toggle = page.locator("theme-toggle [data-pop-over-control]")
     tooltip_surface = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
@@ -326,12 +330,15 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
         lambda route: route.fulfill(status=500, body="save failed"),
     )
 
-    theme.select_option("light")
+    pick_choice(page, "theme", "light")
 
     expect(theme).to_have_value("")
-    expect(theme).to_be_enabled()
+    expect(
+        page.locator('search-select[name="theme"] [data-search-select-search]')
+    ).to_be_enabled()
     expect(page.locator("html")).to_have_class("dark")
     expect(page.locator("html")).to_have_attribute("data-theme-preference", "system")
+    page.get_by_role("button", name="Open account menu for rollback-user").click()
     expect(toggle.locator('[data-theme-icon="system"]')).to_be_visible()
     expect(tooltip).to_have_text("Theme switching is unavailable on settings pages.")
     expect(page.get_by_text("Couldn't save your theme", exact=False)).to_be_visible()
@@ -340,6 +347,6 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     with page.expect_response(
         lambda response: "/api/settings/user/THEME" in response.url
     ):
-        theme.select_option("light")
+        pick_choice(page, "theme", "light")
     expect(theme).to_have_value("light")
     expect(page.locator("html")).not_to_have_class("dark")
