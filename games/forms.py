@@ -779,11 +779,14 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             selected=[option for option in options if option["value"] == held],
             options=options,
             none_label=empty[0] if offers_none else None,
-            clearable=offers_none
-            if self.clear_rule == WITH_NONE_ROW
-            else self.clear_rule is True,
+            clearable=self._clears(offers_none),
             shape=shape,
         )
+
+    def _clears(self, offers_none: bool) -> bool:
+        if self.clear_rule == WITH_NONE_ROW:
+            return offers_none
+        return self.clear_rule is True
 
 
 def _choice_key(value: object) -> ChoiceValue:
