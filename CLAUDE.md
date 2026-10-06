@@ -817,8 +817,8 @@ worker, and Stop or Undo ends it at once. One Undo of a batch runs at a time
 (a partial unique constraint). The log names every row left alone. `Page()` embeds the library's
 batches; `ts/bulk-batch-status.ts` toasts them, polls `/api/bulk/batches`, and
 dispatches `page:stale` when one from this page ends; behind a modal,
-`<toast-stack>` posts a toast action as a dialog request and dispatches
-`page:stale`, on which the coordinator rereads `/api/bulk/batches` without
+`<toast-stack>` posts a toast action as a dialog request and, on `done` or
+`created`, dispatches `page:stale`, on which the coordinator rereads `/api/bulk/batches` without
 `tokens` (what `Page()` embeds) and takes that set, so an Undo pressed in a
 dialog shows its batch at once
 ([spec](docs/superpowers/specs/2026-10-06-issue-1512-undo-toast-in-dialog-design.md)). Tests drain chunks on
@@ -1629,7 +1629,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   (`games/form_dialog_middleware.py`) turns a redirect into `done` (a
   `READ_ONLY` target) or `continue`. After a write the element reloads a
   read-only host once no modal is open, or on `page:stale` (a batch from
-  this page ends, or a toast action answers `done`); messages and
+  this page ends, or a toast action answers `done` or `created`); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
   is an element (`<field-mirror>`).
   Content it inserts must wire on connect, unwire on disconnect, and look

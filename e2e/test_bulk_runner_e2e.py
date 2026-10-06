@@ -141,7 +141,7 @@ def test_a_page_refreshes_its_batch_while_it_runs(
 def test_an_undo_inside_a_dialog_shows_its_batch_at_once(
     live_server, page: Page, e2e_user, e2e_library, held_batches
 ):
-    """Its toast shows before the dialog closes."""
+    """The Undo batch's toast shows inside the open dialog."""
     _long_sessions(e2e_library, (5, 6))
     _login(page, live_server)
 

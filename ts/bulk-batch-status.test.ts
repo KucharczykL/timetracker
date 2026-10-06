@@ -8,6 +8,9 @@ import {
 import { PAGE_STALE } from "./elements/form-dialog/events.js";
 import fixtures from "./bulk-batch-status.fixtures.json";
 
+const reportClientError = vi.hoisted(() => vi.fn(() => "error-id"));
+vi.mock("./client-errors.js", () => ({ reportClientError }));
+
 const TOKEN = "01900000-0000-7000-8000-000000000001";
 const STOP = { label: "Stop", url: `/tracker/bulk/batch/${TOKEN}/stop/` };
 const UNDO = { label: "Undo", url: `/tracker/bulk/undo/${TOKEN}/` };
@@ -72,6 +75,7 @@ afterEach(() => {
   toast.mockReset();
   removeToast.mockReset();
   fetchMock.mockReset();
+  reportClientError.mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -317,9 +321,13 @@ describe("BulkBatchCoordinator on page:stale", () => {
   it("reads nothing for its own page:stale", async () => {
     configure([batch("running")]);
     fetchMock.mockResolvedValue(answer([batch("finished")]));
+    const fired = vi.fn();
+    document.addEventListener(PAGE_STALE, fired);
     start();
     await vi.advanceTimersByTimeAsync(2_000);
     await vi.advanceTimersByTimeAsync(4_000);
+    document.removeEventListener(PAGE_STALE, fired);
+    expect(fired).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalledWith("/api/bulk/batches", expect.anything());
   });
@@ -347,6 +355,7 @@ describe("BulkBatchCoordinator on page:stale", () => {
     first.resolve(answer([]));
     await vi.advanceTimersByTimeAsync(0);
     expect(removeToast).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith("Undo: queued.", "info", expect.anything());
   });
 
   it("starts no second poll while one is out", async () => {
@@ -363,14 +372,108 @@ describe("BulkBatchCoordinator on page:stale", () => {
     poll.resolve(answer([batch("running")]));
   });
 
-  it("says nothing when a reconcile fails", async () => {
+  it.each([
+    ["a server error", () => fetchMock.mockResolvedValue(answer(null, 500))],
+    ["a network error", () => fetchMock.mockRejectedValue(new TypeError("offline"))],
+    ["an answer that is no list", () => fetchMock.mockResolvedValue(answer({}))],
+  ])("says nothing on %s, and reports it", async (_case, failing) => {
     configure([]);
-    fetchMock.mockResolvedValue(answer(null, 500));
+    failing();
     start();
     for (let press = 0; press < 6; press += 1) stale();
     await vi.advanceTimersByTimeAsync(0);
     expect(toast).not.toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalled();
+    expect(reportClientError).toHaveBeenCalledWith(
+      "bulk-batch-status[reconcile]",
+      expect.any(String),
+      { toast: false },
+    );
+  });
+
+  it("counts a failed reconcile as no poll failure", async () => {
+    configure([batch("running")]);
+    fetchMock.mockResolvedValueOnce(answer(null, 500));
+    fetchMock.mockResolvedValue(answer([batch("running")]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `/api/bulk/batches?tokens=${TOKEN}`,
+      expect.anything(),
+    );
+  });
+
+  it("warns when the session is gone", async () => {
+    configure([]);
+    fetchMock.mockResolvedValue(answer(null, 403));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toast).toHaveBeenCalledWith(
+      expect.stringContaining("Could not check"),
+      "warning",
+      expect.objectContaining({ duration: null }),
+    );
+  });
+
+  it("takes the warning away once a reconcile is answered", async () => {
+    configure([]);
+    fetchMock.mockResolvedValueOnce(answer(null, 403));
+    fetchMock.mockResolvedValue(answer([]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(removeToast).toHaveBeenCalledWith("bulk-batch:poll");
+  });
+
+  it("keeps a short-lived end to its own timer", async () => {
+    const quiet = batch("finished");
+    quiet.toast = { ...quiet.toast, sticky: false, action: undefined };
+    configure([quiet]);
+    fetchMock.mockResolvedValue(answer([]));
+    start();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(removeToast).not.toHaveBeenCalled();
+  });
+
+  it("keeps a dismissed running batch hidden", async () => {
+    configure([batch("running")]);
+    fetchMock.mockResolvedValue(answer([batch("running", { toast: { ...batch("running").toast, message: "Remove 2 sessions: 1 of 2." } })]));
+    start();
+    dismiss();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets no late poll bring back what a reconcile forgot", async () => {
+    configure([batch("running")]);
+    const poll = deferred();
+    fetchMock.mockReturnValueOnce(poll.promise);
+    fetchMock.mockResolvedValueOnce(answer([]));
+    start();
+    await vi.advanceTimersByTimeAsync(2_000);
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(removeToast).toHaveBeenCalledWith(`bulk-batch:${TOKEN}`);
+    poll.resolve(answer([batch("finished")]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops listening once destroyed", async () => {
+    const removed = vi.spyOn(document, "removeEventListener");
+    configure([]);
+    const listening = start();
+    listening.destroy();
+    stale();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(removed).toHaveBeenCalledWith(PAGE_STALE, expect.any(Function));
   });
 
   it("listens to nothing without a route", async () => {

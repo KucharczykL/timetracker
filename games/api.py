@@ -2086,7 +2086,7 @@ bulk_router = Router()
 
 @bulk_router.get("/batches", response=list[BatchOut])
 def bulk_batches(request, tokens: str | None = None):
-    """Asked batches; none named, what pages carry."""
+    """Asked batches; tokens absent, what pages carry."""
     if tokens is None:
         return [batch_out(batch) for batch in visible_batches(request.user.library)]
     asked = []
