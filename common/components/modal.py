@@ -106,7 +106,7 @@ def ModalPanelHeader(
                 ("class", "text-type-section text-heading"),
             ],
         )[title],
-        close_button if close else None,
+        *([close_button] if close else []),
     ]
 
 

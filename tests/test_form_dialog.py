@@ -145,6 +145,7 @@ class ModalPanelHeaderTest(SimpleTestCase):
         self.assertIn('id="t"', html)
         self.assertNotIn("border-b", html)
         self.assertNotIn("data-modal-dismiss", html)
+        self.assertNotIn("None", html)
 
     def test_the_warning_wears_the_plain_header(self):
         html = str(FormDialogHost())
