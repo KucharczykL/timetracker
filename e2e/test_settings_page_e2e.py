@@ -10,7 +10,8 @@ from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page, expect
 
-from games.models import Device, Game, PlayerGame
+from e2e.helpers import held_choice, pick_choice
+from games.models import Device, Game, PlayerGame, UserPreferences
 
 
 @pytest.fixture
@@ -121,7 +122,7 @@ def _save_select(page: Page, key: str, name: str, value: str) -> None:
             and response.request.method == "PATCH"
         )
     ) as saved:
-        page.locator(f'select[name="{name}"]').select_option(value)
+        pick_choice(page, name, value)
     assert saved.value.status == 200
 
 
@@ -195,10 +196,8 @@ def test_personal_settings_persist_and_drive_consumers(
     page.reload()
     expect(purchase_currency).to_have_value("EUR")
     expect(display_currency).to_have_value("USD")
-    expect(page.locator('select[name="default_landing_page"]')).to_have_value(
-        "games:list_games"
-    )
-    expect(page.locator('select[name="default_page_size"]')).to_have_value("50")
+    expect(held_choice(page, "default_landing_page")).to_have_value("games:list_games")
+    expect(held_choice(page, "default_page_size")).to_have_value("50")
 
     page.goto(f"{live_server.url}{reverse('games:add_to_library')}")
     expect(page.locator('input[name="currency"]')).to_have_value("EUR")
@@ -219,7 +218,7 @@ def test_a_text_select_keeps_its_value_after_the_live_save(
     page, _preferred = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     _wait_for_live_settings(page)
-    select = page.locator('select[name="show_prerelease_play"]')
+    select = held_choice(page, "show_prerelease_play")
 
     _save_select(page, "SHOW_PRERELEASE_PLAY", "show_prerelease_play", "hide")
     expect(select).to_have_value("hide")
@@ -248,17 +247,13 @@ def test_presentation_preferences_reload_with_the_updated_contract(
             )
         ) as time_zone_saved,
     ):
-        page.locator('select[name="display_time_zone"]').select_option(
-            "Pacific/Kiritimati"
-        )
+        pick_choice(page, "display_time_zone", "Pacific/Kiritimati")
     assert time_zone_saved.value.status == 200
     _wait_for_live_settings(page)
     page.wait_for_function(
         "document.documentElement.dataset.dateTimePresentation.includes('Pacific/Kiritimati')"
     )
-    expect(page.locator('select[name="display_time_zone"]')).to_have_value(
-        "Pacific/Kiritimati"
-    )
+    expect(held_choice(page, "display_time_zone")).to_have_value("Pacific/Kiritimati")
 
     with (
         page.expect_navigation(wait_until="load"),
@@ -269,7 +264,7 @@ def test_presentation_preferences_reload_with_the_updated_contract(
             )
         ) as locale_saved,
     ):
-        page.locator('select[name="date_format_locale"]').select_option("cs")
+        pick_choice(page, "date_format_locale", "cs")
     assert locale_saved.value.status == 200
     _wait_for_live_settings(page)
     page.wait_for_function(
@@ -290,7 +285,7 @@ def test_presentation_preferences_reload_with_the_updated_contract(
             )
         ) as format_saved,
     ):
-        page.locator('select[name="datetime_format"]').select_option("mdy_12h")
+        pick_choice(page, "datetime_format", "mdy_12h")
     assert format_saved.value.status == 200
     _wait_for_live_settings(page)
     page.wait_for_function(
@@ -304,7 +299,7 @@ def test_presentation_preferences_reload_with_the_updated_contract(
         })()
         """
     )
-    expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")
+    expect(held_choice(page, "datetime_format")).to_have_value("mdy_12h")
 
     page.reload()
     _wait_for_live_settings(page)
@@ -313,4 +308,39 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     )
     assert contract["profile"]["segments"][0]["name"] == "month"
     assert contract["profile"]["hour_cycle"] == "h12"
-    expect(page.locator('select[name="datetime_format"]')).to_have_value("mdy_12h")
+    expect(held_choice(page, "datetime_format")).to_have_value("mdy_12h")
+
+
+def test_a_time_zone_picked_and_reset_in_its_picker(live_server, authenticated_page):
+    page, _preferred = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:settings')}")
+    _wait_for_live_settings(page)
+    picker = page.locator('search-select[name="display_time_zone"]')
+    search = picker.locator("[data-search-select-search]")
+
+    with (
+        page.expect_navigation(wait_until="load"),
+        page.expect_response(
+            lambda response: "/api/settings/user/DISPLAY_TIME_ZONE" in response.url
+        ) as picked,
+    ):
+        search.click()
+        search.fill("Kiriti")
+        picker.get_by_role("option", name="Pacific/Kiritimati").click()
+    assert picked.value.request.post_data_json == {"value": "Pacific/Kiritimati"}
+    _wait_for_live_settings(page)
+    expect(held_choice(page, "display_time_zone")).to_have_value("Pacific/Kiritimati")
+    expect(search).to_have_value("Pacific/Kiritimati")
+
+    with (
+        page.expect_navigation(wait_until="load"),
+        page.expect_response(
+            lambda response: "/api/settings/user/DISPLAY_TIME_ZONE" in response.url
+        ) as reset,
+    ):
+        picker.locator("[data-search-select-clear]").click()
+    assert reset.value.request.post_data_json == {"value": None}
+    _wait_for_live_settings(page)
+    expect(search).to_have_value(re.compile(r"^Use site default \(.+\)$"))
+    preferences = UserPreferences.objects.get(user__username="tester")
+    assert preferences.display_time_zone is None

@@ -7,6 +7,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import held_choice, pick_choice
 from timetracker import config as config_module
 from timetracker import settings_resolver
 
@@ -154,11 +155,11 @@ def test_text_select_and_clear_site_defaults(
     expect(currency_badge).to_have_text("Database")
     expect(currency_badge).to_have_class(re.compile(r"\bbg-brand-soft\b"))
 
-    page_size = page.get_by_label("Default rows per page", exact=True)
+    page_size = held_choice(page, "default_page_size")
     with page.expect_response(
         lambda response: _site_patch(response, "DEFAULT_PAGE_SIZE")
     ) as selected:
-        page_size.select_option("50")
+        pick_choice(page, "default_page_size", "50")
     assert selected.value.status == 200
     assert selected.value.json()["value"] == 50
     expect(page_size).to_have_value("50")
@@ -200,7 +201,7 @@ def test_display_time_zone_save_reloads_presentation_contract(
             lambda response: _site_patch(response, "DISPLAY_TIME_ZONE")
         ) as saved,
     ):
-        page.get_by_label("Time zone", exact=True).select_option("Pacific/Kiritimati")
+        pick_choice(page, "display_time_zone", "Pacific/Kiritimati")
     assert saved.value.status == 200
     _wait_for_live_settings(page)
 
@@ -208,9 +209,7 @@ def test_display_time_zone_save_reloads_presentation_contract(
         page.locator("html").get_attribute("data-date-time-presentation") or "{}"
     )
     assert contract["time_zone"] == "Pacific/Kiritimati"
-    expect(page.get_by_label("Time zone", exact=True)).to_have_value(
-        "Pacific/Kiritimati"
-    )
+    expect(held_choice(page, "display_time_zone")).to_have_value("Pacific/Kiritimati")
 
 
 def test_configuration_locked_field_shows_owner_and_explanation(
