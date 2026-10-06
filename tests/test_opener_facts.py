@@ -5,11 +5,12 @@ import uuid
 
 import pytest
 from django import forms
-from django.http import Http404, QueryDict
+from django.http import QueryDict
 from django.urls import reverse
 
 from common.components import FormFieldGroup, FormFields
-from common.opener_facts import OpenerFactsMixin, refusal_sentence
+from common.components.primitives import FIELD_BOX_SHAPE_CLASS, field_box_class
+from common.opener_facts import Fixed, OpenerFactsMixin, Refused, refusal_sentence
 from common.returns import action_url
 from games.models import Game
 
@@ -62,19 +63,18 @@ def test_a_stated_fact_is_fixed_and_stated(owner, game):
         library=owner.library, facts=_query(f"game={game.id}&kind=dlc")
     )
 
-    assert form.stated_facts == {"game": game, "kind": "dlc"}
-    assert form.statements == {"game": "Owned", "kind": "DLC"}
+    assert form.facts == {"game": Fixed(game, "Owned"), "kind": Fixed("dlc", "DLC")}
+    assert form.stated("game", Game) == game
     assert form.fields["game"].disabled
     assert form.fields["kind"].disabled
     assert form["kind"].initial == "dlc"
-    assert form.refused_facts == {}
 
 
 def test_no_facts_leave_the_form_alone(owner):
     form = GameFactsForm(library=owner.library)
 
-    assert form.stated_facts == {}
-    assert form.statements == {}
+    assert form.facts == {}
+    assert form.stated("game", Game) is None
     assert not form.fields["kind"].disabled
 
 
@@ -83,7 +83,7 @@ def test_an_undeclared_parameter_is_ignored(owner):
         library=owner.library, facts=_query("note=hello&origin=/tracker/")
     )
 
-    assert form.stated_facts == {}
+    assert form.facts == {}
     assert form["note"].initial is None
 
 
@@ -98,10 +98,9 @@ def test_a_malformed_choice_leaves_the_field_editable(
     with capture_games_logger() as caplog:
         form = GameFactsForm(library=owner.library, facts=_query(query))
 
-    assert "kind" not in form.stated_facts
     assert not form.fields["kind"].disabled
     assert form["kind"].initial == "main"
-    assert form.refused_facts == {"kind": refusal_sentence("Kind")}
+    assert form.facts == {"kind": Refused(refusal_sentence("Kind"))}
     assert len(_warnings(caplog)) == 1
 
 
@@ -114,9 +113,8 @@ def test_a_malformed_key_leaves_the_picker_editable(owner, capture_games_logger,
     with capture_games_logger() as caplog:
         form = GameFactsForm(library=owner.library, facts=_query(f"game={raw}"))
 
-    assert "game" not in form.stated_facts
     assert not form.fields["game"].disabled
-    assert "game" in form.refused_facts
+    assert form.facts == {"game": Refused(refusal_sentence("Game"))}
     assert len(_warnings(caplog)) == 1
 
 
@@ -135,12 +133,16 @@ def test_refusal_sentence_names_the_field():
 
 
 @pytest.mark.parametrize("which", ["unknown", "foreign"])
-def test_an_absent_row_on_get_is_404(owner, foreign_game, capture_games_logger, which):
+def test_an_absent_row_leaves_the_picker_editable(
+    owner, foreign_game, capture_games_logger, which
+):
     key = uuid.uuid7() if which == "unknown" else foreign_game.id
 
-    with capture_games_logger() as caplog, pytest.raises(Http404):
-        GameFactsForm(library=owner.library, facts=_query(f"game={key}"))
+    with capture_games_logger() as caplog:
+        form = GameFactsForm(library=owner.library, facts=_query(f"game={key}"))
 
+    assert not form.fields["game"].disabled
+    assert form.facts == {"game": Refused(refusal_sentence("Game"))}
     assert len(_warnings(caplog)) == 1
 
 
@@ -157,11 +159,11 @@ def test_an_absent_row_on_post_keeps_the_input(
         assert not form.is_valid()
 
     assert not form.fields["game"].disabled
-    assert "game" in form.refused_facts
+    assert isinstance(form.facts["game"], Refused)
     assert [error.code for error in form.errors.as_data()["game"]] == ["invalid_choice"]
     assert form.cleaned_data["note"] == "kept"
     assert form.cleaned_data["kind"] == "dlc"
-    assert _warnings(caplog) == []
+    assert len(_warnings(caplog)) == 1
 
 
 def test_a_tampered_post_cleans_to_the_fact(owner, game):
@@ -181,8 +183,7 @@ def test_an_implied_fact_has_no_statement(owner):
     form = GameFactsForm(library=owner.library)
     form.fix_field("kind", "main")
 
-    assert form.stated_facts == {"kind": "main"}
-    assert form.statements == {"kind": None}
+    assert form.facts == {"kind": Fixed("main", None)}
     assert form.fields["kind"].disabled
 
 
@@ -194,6 +195,25 @@ def test_stating_after_a_bound_field_is_read_raises(owner):
 
     with pytest.raises(RuntimeError):
         EagerForm(library=owner.library, facts=_query("kind=dlc"))
+
+
+def test_stating_twice_raises(owner):
+    form = GameFactsForm(library=owner.library)
+
+    with pytest.raises(RuntimeError):
+        form.state_opener_facts(_query("kind=dlc"))
+
+
+def test_a_stated_value_of_another_type_raises(owner, game):
+    form = GameFactsForm(library=owner.library, facts=_query(f"game={game.id}"))
+
+    with pytest.raises(TypeError):
+        form.stated("game", str)
+
+
+def test_a_fact_named_origin_is_refused(db):
+    with pytest.raises(ValueError):
+        action_url("games:add_game", origin=None, facts={"origin": "/x"})
 
 
 GAME_ID = "018f5e66-e800-7000-8000-000000000001"
@@ -232,7 +252,6 @@ def test_a_stated_fact_renders_a_row_in_place_of_its_control(owner, game):
     assert row, html
     assert "<dt" in row.group(0) and ">Kind</dt>" in row.group(0)
     assert "DLC</dd>" in row.group(0)
-    assert "border-dashed" in row.group(0)
     carrier = _carrier(html, "kind")
     assert 'type="hidden"' in carrier
     assert 'value="dlc"' in carrier
@@ -325,3 +344,23 @@ def test_errors_on_an_implied_field_join_the_form_errors(owner):
 
     assert "Kind refused." in html
     assert html.index("Kind refused.") < html.index('data-field-row="game"')
+
+
+def test_both_field_box_looks_share_their_size():
+    for look in ("editable", "fixed"):
+        assert field_box_class("full", look=look).startswith(FIELD_BOX_SHAPE_CLASS)
+
+
+def test_every_plus_states_what_its_form_takes():
+    """A literal a form does not declare does nothing."""
+    from django.urls import resolve
+
+    import games.forms as game_forms
+    from common.components.search_select import DialogCreate
+
+    forms_by_view = {"add_game": game_forms.GameForm}
+    for value in vars(game_forms).values():
+        if not isinstance(value, DialogCreate) or not value.literal_query():
+            continue
+        form = forms_by_view[resolve(str(value.url)).url_name]
+        assert set(value.literal_query()) <= set(form.opener_fields)

@@ -84,7 +84,7 @@ describe("<search-select> created row", () => {
 });
 
 /** A form whose + reads its name. */
-function mountInForm(name: string): { form: HTMLFormElement; host: HTMLElement; field: HTMLInputElement } {
+function mountInForm(name: string, href = "/game/add?kind=main"): { form: HTMLFormElement; host: HTMLElement; field: HTMLInputElement } {
   const form = document.createElement("form");
   form.innerHTML = `<input name="name" value="${name}" />`;
   const host = document.createElement("search-select");
@@ -94,7 +94,7 @@ function mountInForm(name: string): { form: HTMLFormElement; host: HTMLElement; 
   host.innerHTML = `
     <div data-search-select-pills></div>
     <input data-search-select-search value="" />
-    <a href="/game/add?kind=main" data-search-select-dialog-create="" data-form-dialog="">+</a>
+    <a href="${href}" data-search-select-dialog-create="" data-form-dialog="">+</a>
     <div data-search-select-options hidden>
       <div data-search-select-no-results class="hidden">No results</div>
     </div>
@@ -144,6 +144,18 @@ describe("<search-select> + query", () => {
     host.querySelector("[data-search-select-dialog-create]")!.setAttribute("href", "/x");
     type(other, "2012");
     expect(plusHref(host)).toBe("/x");
+  });
+
+  it("keeps an absolute href absolute", () => {
+    const { host } = mountInForm("Dawnguard", "http://example.test/game/add?kind=main");
+    expect(plusHref(host)).toBe("http://example.test/game/add?kind=main&addon=Dawnguard");
+  });
+
+  it("follows a change event too", () => {
+    const { host, field } = mountInForm("");
+    field.value = "Hearthfire";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(plusHref(host)).toBe("/game/add?kind=main&addon=Hearthfire");
   });
 
   it("states the value again when inserted anew", () => {

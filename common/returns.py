@@ -19,6 +19,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 type OriginUrl = str  # "/tracker/game/list?filter=%7B%22status%22%3A%5B%22p%22%5D%7D"
 type UrlName = str  # "games:edit_game"
+type LinkFacts = Mapping[str, str]  # {"game": "<uuid>"}
 
 ORIGIN_PARAM = "origin"
 
@@ -27,7 +28,7 @@ def action_url(
     viewname: UrlName,
     *args: Any,
     origin: OriginUrl | None,
-    facts: Mapping[str, str] | None = None,
+    facts: LinkFacts | None = None,
     **kwargs: Any,
 ) -> str:
     """Link to a mutating view, carrying the page it is launched from.
@@ -36,6 +37,8 @@ def action_url(
     by accident; pass ``None`` only where there is genuinely nowhere to return.
     ``facts`` names form fields the opener states.
     """
+    if facts and ORIGIN_PARAM in facts:
+        raise ValueError(f"A fact cannot be named {ORIGIN_PARAM!r}.")
     url = reverse(viewname, args=args, kwargs=kwargs)
     query = dict(facts or {})
     if origin:

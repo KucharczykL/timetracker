@@ -130,7 +130,9 @@ def add_to_library(request: HttpRequest) -> HttpResponse:
         title="Add to library",
         write=lambda: _record_copy(user, form),
         done="Added to your library.",
-        game=lambda: form.stated_game or getattr(form, "cleaned_data", {}).get("game"),
+        game=lambda: (
+            form.stated("game", Game) or getattr(form, "cleaned_data", {}).get("game")
+        ),
         groups=copy_groups(form),
         presentations=price_presentations(),
         submit_label="Add to library",

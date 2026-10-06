@@ -122,9 +122,11 @@ def test_the_add_page_seeds_digital_and_the_default_release(logged_in, graph):
 def test_an_invalid_add_renders_the_page_again(logged_in, graph):
     response = logged_in.post(_add_url(graph.game), _add_post(graph, access="lent"))
 
+    html = response.content.decode()
     assert response.status_code == 200
-    assert "<dd" in response.content.decode()
-    assert ">Tunic" in response.content.decode()
+    row = re.search(r'data-field-row="game"><dl>.*?</dd>', html, re.DOTALL)
+    assert row and "Tunic" in row.group(0)
+    assert re.search(r'<search-select[^>]*\bname="game"', html) is None
     assert not LibraryEntry.objects.exists()
 
 
@@ -140,11 +142,15 @@ def test_add_on_another_librarys_game_is_absent(client, graph, django_user_model
     stranger = django_user_model.objects.create_user(username="stranger")
     client.force_login(stranger)
 
-    assert client.get(_add_url(graph.game)).status_code == 404
-    response = client.post(_add_url(graph.game), _add_post(graph))
+    response = client.post(
+        _add_url(graph.game), _add_post(graph, note="kept", game=str(graph.game.pk))
+    )
 
-    #: Gone since opened; input kept.
+    html = response.content.decode()
     assert response.status_code == 200
+    assert "Select a valid choice" in html
+    assert "this form cannot use. Pick one." in html
+    assert "kept</textarea>" in html
     assert not LibraryEntry.objects.exists()
 
 

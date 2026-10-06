@@ -50,6 +50,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import Final, Literal, NamedTuple, NotRequired, TypedDict
 from urllib.parse import urlencode
 
@@ -279,6 +280,8 @@ type CreateRow = PostCreate | SelectTyped | EmitCreate
 
 
 type ControlLabel = str  # e.g. "New game"
+#: A link's query, parameter to value.
+type LinkQuery = dict[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,22 +295,28 @@ class DialogCreate:
     url: str | Promise
     label: ControlLabel
     #: Literals join the href; fields follow typing.
-    params: ParamSources | None = None
+    params: Mapping[str, LiteralParam | FieldParam] | None = None
 
-    def literal_query(self) -> dict[str, str]:
-        literal: dict[str, str] = {}
+    def __post_init__(self) -> None:
+        #: Shared constants hold it; freeze a copy.
+        if self.params is not None:
+            object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
+
+    def literal_query(self) -> LinkQuery:
+        query: LinkQuery = {}
         for key, source in (self.params or {}).items():
             match source:
                 case {"value": str(value)}:
-                    literal[key] = value
-        return literal
+                    query[key] = value
+        return query
 
     def field_sources(self) -> ParamSources:
-        return {
-            key: source
-            for key, source in (self.params or {}).items()
-            if "field" in source
-        }
+        sources: ParamSources = {}
+        for key, source in (self.params or {}).items():
+            match source:
+                case {"field": str()}:
+                    sources[key] = source
+        return sources
 
 
 @dataclass(frozen=True, slots=True)

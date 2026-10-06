@@ -75,7 +75,7 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.form_dialog import CreatedRedirect
 from common.layout import render_page
-from common.returns import OriginUrl, action_url
+from common.returns import LinkFacts, OriginUrl, action_url
 from common.temporal_presentation import (
     UNKNOWN_TEXT,
     TemporalText,
@@ -463,7 +463,9 @@ def add_game(request: HttpRequest) -> HttpResponse:
             fields=Fragment(
                 FormFields(form, groups=GAME_FORM_GROUPS),
                 #: Its element needs the kind select.
-                None if "kind" in form.stated_facts else GameAddon("kind", "parent"),
+                None
+                if form.stated("kind", str) is not None
+                else GameAddon("kind", "parent"),
                 FieldMirror("name", "sort_name"),
                 editions_area(graph),
                 references_area(references),
@@ -479,17 +481,16 @@ def add_game(request: HttpRequest) -> HttpResponse:
     )
 
 
-#: Game.name's length.
-_ADDON_TITLE_LENGTH = 255
+_ADDON_TITLE_LENGTH = Game._meta.get_field("name").max_length
 
 
 def _add_game_title(form: GameForm, addon: str) -> str:
-    """The title, naming any stated add-on."""
+    """The title, naming the link's add-on."""
     printable = "".join(
         character if character.isprintable() else " " for character in addon
     )
     named = " ".join(printable.split())
-    if form.stated_facts.get("kind") == GameKind.MAIN and named:
+    if form.stated("kind", str) == GameKind.MAIN and named:
         return f"Add the main game of {named[:_ADDON_TITLE_LENGTH]}"
     return "Add New Game"
 
@@ -614,6 +615,12 @@ _STAT_SVGS = {
 }
 
 
+def _game_fact(game: Game) -> LinkFacts | None:
+    """The game, for forms that take it."""
+    #: Session and run forms take owned games.
+    return None if game.library_id is None else {"game": str(game.id)}
+
+
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     """'Played N times' split button.
 
@@ -634,9 +641,7 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
 
     count_button = ControlButton(
         variant="outline",
-        href=action_url(
-            "games:add_playthrough", origin=origin, facts={"game": str(game.id)}
-        ),
+        href=action_url("games:add_playthrough", origin=origin, facts=_game_fact(game)),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex
         # layout drops whitespace-only text between items, so the space must
@@ -650,7 +655,7 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
         items=[
             DropdownLinkItem(
                 action_url(
-                    "games:add_playthrough", origin=origin, facts={"game": str(game.id)}
+                    "games:add_playthrough", origin=origin, facts=_game_fact(game)
                 ),
                 "Add playthrough\u2026",
             ),
@@ -739,7 +744,7 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
             [
                 {
                     "href": action_url(
-                        "games:add_session", origin=origin, facts={"game": str(game.id)}
+                        "games:add_session", origin=origin, facts=_game_fact(game)
                     ),
                     "slot": Span(class_="inline-flex items-center gap-1")[
                         Icon("play", size=ICON_BUTTON_SIZE_CLASS), "Log this game"

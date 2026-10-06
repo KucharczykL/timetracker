@@ -230,8 +230,8 @@ def add_playthrough(request: HttpRequest) -> HttpResponse:
         presentation=date_time_presentation_for_request(request),
         facts=request.GET,
     )
-    stated_game = form.stated_facts.get("game")
-    if isinstance(stated_game, Game) and not form.is_bound:
+    stated_game = form.stated("game", Game)
+    if stated_game is not None and not form.is_bound:
         form.initial.update(_seeded_run(library, stated_game)._asdict())
     #: The same tail renders an invalid form.
     refused_status = 200

@@ -340,10 +340,13 @@ def test_owned_game_removal_post_works(world):
     "url_name",
     ["games:add_session", "games:add_to_library", "games:add_playthrough"],
 )
-def test_a_foreign_game_stated_to_an_add_page_is_404(world, url_name):
+def test_a_foreign_game_stated_to_an_add_page_is_refused(world, url_name):
     response = world.client.get(f"{reverse(url_name)}?game={world.foreign_game.pk}")
 
-    assert response.status_code == 404
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "this form cannot use. Pick one." in html
+    assert world.foreign_game.name not in html
 
 
 def test_foreign_session_action_posts_return_404_without_mutation(world):

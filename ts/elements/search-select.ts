@@ -157,12 +157,12 @@ type ParamSource = LiteralParam | FieldParam;
 type ParamSources = Record<string, ParamSource>;
 
 /** The params attribute, which is JSON text: props are attributes. */
-const parseParams = (raw: string | null): ParamSources => {
+const parseParams = (raw: string | null, context = "search-select[params]"): ParamSources => {
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      reportClientError("search-select[params]", `not an object: ${raw}`, {
+      reportClientError(context, `not an object: ${raw}`, {
         toast: false,
       });
       return {};
@@ -181,7 +181,7 @@ const parseParams = (raw: string | null): ParamSources => {
         return;
       }
       reportClientError(
-        "search-select[params]",
+        context,
         `${key} states no one source: ${JSON.stringify(source)}`,
         { toast: false }
       );
@@ -190,7 +190,7 @@ const parseParams = (raw: string | null): ParamSources => {
   } catch (error) {
     // The widget searches without them rather than not at all.
     reportClientError(
-      "search-select[params]",
+      context,
       String((error as Error)?.message ?? error),
       { toast: false }
     );
@@ -238,12 +238,25 @@ const sourceFields = (params: ParamSources): string[] =>
     .filter((source): source is FieldParam => "field" in source)
     .map(source => source.field);
 
+const DIALOG_CREATE_CONTEXT = "search-select[dialog-create-params]";
+
 /** Set the + link's query from sources. */
 const rewriteDialogCreate = (container: Element, params: ParamSources): void => {
+  if (!container.isConnected) return;
   const link = container.querySelector("a[data-search-select-dialog-create]");
   const href = link?.getAttribute("href");
-  if (!link || !href || !container.isConnected) return;
-  const url = new URL(href, location.href);
+  if (!link || !href) {
+    reportClientError(DIALOG_CREATE_CONTEXT, "params set, no + link", { toast: false });
+    return;
+  }
+  let url: URL;
+  try {
+    url = new URL(href, location.href);
+  } catch (error) {
+    //: A bad href leaves the picker working.
+    reportClientError(DIALOG_CREATE_CONTEXT, String(error), { toast: false });
+    return;
+  }
   Object.keys(params).forEach(key => url.searchParams.delete(key));
   Object.entries(resolveParams(container, params)).forEach(([key, value]) =>
     url.searchParams.set(key, value),
@@ -1655,7 +1668,7 @@ const initWidget = (containerElement: Element): boolean => {
   }
 
   // The + follows its source fields.
-  const dialogCreateParams = parseParams(props.dialogCreateParams || null);
+  const dialogCreateParams = parseParams(props.dialogCreateParams || null, DIALOG_CREATE_CONTEXT);
   const dialogCreateFields = sourceFields(dialogCreateParams);
   if (dialogCreateFields.length) {
     const rewrite = (): void => rewriteDialogCreate(container, dialogCreateParams);

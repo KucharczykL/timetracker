@@ -1572,8 +1572,8 @@ class SessionForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
                 capture_default=captures_by_field[field_name],
             )
         self.state_opener_facts(facts)
-        stated_game = self.stated_facts.get("game")
-        if isinstance(stated_game, Game):
+        stated_game = self.stated("game", Game)
+        if stated_game is not None:
             #: Stated game: focus the device.
             self.fields["game"].widget.autofocus = False
             self.fields["device"].widget.autofocus = True
@@ -2161,8 +2161,8 @@ class GameForm(
         #: A field added after __init__ otherwise sinks to the bottom.
         self.order_fields(self.field_order)
         self.state_opener_facts(facts)
-        stated_kind = self.stated_facts.get("kind")
-        if stated_kind is not None and GameKind(str(stated_kind)) not in ADDON_KINDS:
+        stated_kind = self.stated("kind", str)
+        if stated_kind is not None and GameKind(stated_kind) not in ADDON_KINDS:
             self.fix_field("parent", None)
         #: They left Meta.fields, so model_to_dict misses them.
         if self.instance.pk is not None:
@@ -2421,9 +2421,7 @@ class PlaythroughForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
                 label=str(self.fields[field_name].label or field_name),
             )
         self.state_opener_facts(facts)
-        stated_game = self.stated_facts.get("game")
-        if isinstance(stated_game, Game):
-            offered_game = stated_game
+        offered_game = self.stated("game", Game) or offered_game
         #: The status decides the render. No game yet is
         #: the Add form before one is picked, which offers
         #: the box and asks again at clean time.

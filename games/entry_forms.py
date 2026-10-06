@@ -232,7 +232,7 @@ class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFie
         self.state_opener_facts(facts)
         params: ParamSources = {"game_id": {"field": self.add_prefix("game")}}
         create = True
-        game = self.stated_game
+        game = self.stated("game", Game)
         if game is not None:
             create = game.library_id == library.pk
             #: The default Release reads first.
@@ -256,11 +256,6 @@ class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFie
                 "note",
             ]
         )
-
-    @property
-    def stated_game(self) -> Game | None:
-        game = self.stated_facts.get("game")
-        return game if isinstance(game, Game) else None
 
     def clean_note(self) -> str:
         return normalised_note(self.cleaned_data["note"])

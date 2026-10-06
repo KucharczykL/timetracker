@@ -10,6 +10,7 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
+from common.opener_facts import Fixed
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.end_ways import EndWay
 from games.entry_forms import (
@@ -141,7 +142,7 @@ def test_add_on_a_game_states_it(owned_library, graph):
     form = _add(owned_library, graph, facts={"library-add-game": str(graph.game.pk)})
 
     assert form.fields["game"].disabled
-    assert form.statements["game"] == graph.game.search_label
+    assert form.facts["game"] == Fixed(graph.game, graph.game.search_label)
 
 
 def test_add_without_a_game_reads_the_prefixed_game_field(owned_library, graph):

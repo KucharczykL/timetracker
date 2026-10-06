@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 import pytest
 from django.urls import reverse
 
-from games.models import Game, GameKind
+from games.models import ADDON_KINDS, Game, GameKind
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -77,15 +77,35 @@ def test_the_addon_text_is_cut(logged_in):
 def test_otherwise_the_title_is_plain(logged_in, query):
     html = logged_in.get(_add_game(query)).content.decode()
 
-    assert _title(html).startswith("Add New Game")
-    assert escape("main game of") not in _title(html)
+    assert _title(html) == "Add New Game"
 
 
-def test_a_stated_addon_kind_keeps_the_parent_picker(logged_in):
-    html = logged_in.get(_add_game({"kind": "dlc"})).content.decode()
+@pytest.mark.parametrize("kind", sorted(ADDON_KINDS))
+def test_a_stated_addon_kind_keeps_the_parent_picker(logged_in, kind):
+    html = logged_in.get(_add_game({"kind": kind})).content.decode()
 
-    assert "DLC</dd>" in _row(html, "kind")
+    assert f"{GameKind(kind).label}</dd>" in _row(html, "kind")
     assert re.search(r'<search-select[^>]*\bname="parent"', html)
+
+
+def test_the_addon_name_is_escaped(logged_in):
+    html = logged_in.get(
+        _add_game({"kind": "main", "addon": "<b>Pass</b>"})
+    ).content.decode()
+
+    assert "<b>Pass</b>" not in html
+    assert escape("Add the main game of <b>Pass</b>") in html
+
+
+def test_a_refused_post_keeps_the_stated_row_and_title(logged_in, game_post):
+    response = logged_in.post(
+        _add_game({"kind": "main", "addon": "Dawnguard"}), data=game_post("")
+    )
+
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert "Main game</dd>" in _row(html, "kind")
+    assert _title(html) == "Add the main game of Dawnguard"
 
 
 def test_a_posted_kind_cannot_override_the_fact(logged_in, owned_user, game_post):
