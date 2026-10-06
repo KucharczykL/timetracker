@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from typing import Final, Literal, TypedDict
 
-from common.components.core import Attributes, Node
+from common.components.core import Attributes, Node, require_every_key
 from common.components.custom_elements import OVERLAY_SURFACE_CLASS
 from common.components.elements import Div, P, Template
 from common.components.modal import (
@@ -11,13 +11,14 @@ from common.components.modal import (
     ElementId,
     ModalDialog,
     ModalPanel,
-    require_every_key,
     titled_header,
 )
 from common.components.primitives import (
-    FORM_MAX_WIDTH_CLASS,
+    PAGE_WIDTH_CLASSES,
+    PAGE_WIDTHS,
     AttributeName,
     ControlButton,
+    PageWidth,
     custom_element_builder,
 )
 from common.notices import ToastPayload
@@ -38,6 +39,7 @@ class PageAnswer(TypedDict):
 
     kind: Literal["page"]
     title: DocumentTitle
+    width: PageWidth
     html: HtmlText
     modules: list[ModulePath]
     messages: list[ToastPayload]
@@ -143,7 +145,36 @@ _SURFACE_CLASS = (
     "max-h-[calc(100dvh-2rem-var(--modal-reserve,0px))] flex-col overflow-hidden rounded-base border "
     f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
-_PANEL_CLASS = f"flex w-[calc(100%-2rem)] {FORM_MAX_WIDTH_CLASS} {_SURFACE_CLASS}"
+#: The panel states its page's width here.
+PAGE_WIDTH_ATTRIBUTE: Final[FormDialogAttribute] = "data-page-width"
+#: Width until the page answers.
+_INITIAL_PANEL_WIDTH: Final[PageWidth] = "form"
+
+#: Literal for Tailwind's scanner; checked below.
+_PANEL_WIDTH_CLASSES: Mapping[PageWidth, str] = {
+    "form": "data-[page-width=form]:max-w-xl",
+    "wide": "data-[page-width=wide]:max-w-4xl",
+    "full": "data-[page-width=full]:max-w-7xl",
+}
+
+
+def _require_panel_widths_match() -> None:
+    """Refuses a panel cap unlike its page's."""
+    name = PAGE_WIDTH_ATTRIBUTE.removeprefix("data-")
+    expected = {
+        width: f"data-[{name}={width}]:{PAGE_WIDTH_CLASSES[width]}"
+        for width in PAGE_WIDTHS
+    }
+    if dict(_PANEL_WIDTH_CLASSES) != expected:
+        raise TypeError(f"_PANEL_WIDTH_CLASSES != {expected!r}")
+
+
+_require_panel_widths_match()
+
+_PANEL_CLASS = (
+    f"flex w-[calc(100%-2rem)] {' '.join(_PANEL_WIDTH_CLASSES.values())} "
+    f"{_SURFACE_CLASS}"
+)
 _WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm {_SURFACE_CLASS}"
 
 #: The link loading, or the body submitting.
@@ -211,7 +242,10 @@ def FormDialogHost() -> Node:
     return _FormDialog()[
         Template([(FORM_DIALOG_PARTS["template"], "")])[
             ModalDialog([titled.labelled_by])[
-                ModalPanel(class_=_PANEL_CLASS)[
+                ModalPanel(
+                    [(PAGE_WIDTH_ATTRIBUTE, _INITIAL_PANEL_WIDTH)],
+                    class_=_PANEL_CLASS,
+                )[
                     titled.header,
                     Div(
                         [(FORM_DIALOG_PARTS["body"], "")],

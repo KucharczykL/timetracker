@@ -223,7 +223,7 @@ def library(request: HttpRequest) -> HttpResponse:
         description="Your games, play history, purchases, and customizations belong to this library and stay together when it is backed up or restored.",
         navigation_label="Library sections",
     )
-    return render_page(request, content, title="Library")
+    return render_page(request, content, title="Library", width="full")
 
 
 __all__ = ["library"]

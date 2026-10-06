@@ -16,7 +16,7 @@ from common.components import (
     Cell,
     Column,
     ColumnKey,
-    ContentContainer,
+    Div,
     DropdownLinkItem,
     Duration,
     Fragment,
@@ -355,8 +355,8 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[PlaytimeTabs("historical"), quick_bar, table]
-    return render_page(request, content, title="Historical playtime")
+    content = Div()[PlaytimeTabs("historical"), quick_bar, table]
+    return render_page(request, content, title="Historical playtime", width="full")
 
 
 __all__ = ["list_historical_playtime"]

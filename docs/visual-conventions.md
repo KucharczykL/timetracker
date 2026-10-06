@@ -165,12 +165,14 @@ inputs, dropdown triggers, `YearPicker` — floors to **one shared height**:
 
 ## 4. Container widths — adopt as-is (already converged)
 
-The one sub-dimension that is already what an audit hopes to find: two constants,
+The one sub-dimension that is already what an audit hopes to find: one mapping,
 universally adopted, test-pinned —
 
-- `CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"` — every page body (`ContentContainer`), navbar row.
-- `FORM_MAX_WIDTH_CLASS = "max-w-xl"` — every form-shaped surface (FormContainer,
-  ConfirmPage, login).
+- `PAGE_WIDTH_CLASSES` — `render_page(width=...)` states one per page:
+  `form` `max-w-xl` (forms, confirmations, login), `wide` `max-w-4xl` (a bulk
+  confirmation with a control), `full` `max-w-7xl` (lists,
+  detail, stats, settings; the navbar row). A form dialog's panel takes the
+  same width.
 
 Popover widths are a coherent 3-step scale: `w-44` menus / `w-72` list-dialogs (an explicit
 knob) / `w-auto` intrinsic (calendar). **Call: adopt.**
@@ -186,7 +188,7 @@ name-column cap silently does nothing).
 The settings scaffold is the app's first `position: sticky` two-pane layout; it does not add
 scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate its contracts:
 
-- **Page frame:** a settings page is a normal `ContentContainer` child. The rail takes no
+- **Page frame:** a settings page is a normal `full`-width page body. The rail takes no
   z class: floating panels open in the top layer, and toasts sit at z-50. Since the navbar scrolls away, the sticky
   rail needs no navbar-height coupling. Put `sticky top-* self-start` on the direct grid-item
   host whose containing block spans the full settings content; a sticky child inside a
@@ -461,8 +463,8 @@ Surfaces `neutral-primary` (page) / `neutral-primary-medium` (card) /
 `border-default` (structural); text `text-heading` / `text-body` / `text-body-subtle`;
 accent `brand` family; callouts `brand-soft`; status `danger`/`success`/`warning` families.
 Radius `rounded-base`, chips `rounded`. Rhythm `px-3 py-2.5 text-sm`, compact tier via
-`@container` + `@md:`; parent `gap`, no baked margins. Widths `CONTENT_MAX_WIDTH_CLASS` /
-`FORM_MAX_WIDTH_CLASS` / `w-72` dialogs. Components: ControlButton, Badge(+tone), the
+`@container` + `@md:`; parent `gap`, no baked margins. Widths `PAGE_WIDTH_CLASSES` /
+`w-72` list popovers. Components: ControlButton, Badge(+tone), the
 mixin→FormFields→AddForm path, StyledTable for tabular lists, the overlay stack. New color
 pairings clear `scripts/contrast_audit.py` before landing.
 

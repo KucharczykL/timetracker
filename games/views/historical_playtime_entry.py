@@ -69,6 +69,7 @@ def _render_form(
         AddForm(form, request=request, submit_class="", fields=FormFields(form)),
         title=title,
         status=status,
+        width="form",
     )
 
 

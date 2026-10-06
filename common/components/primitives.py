@@ -22,6 +22,7 @@ from typing import (
     Protocol,
     TypedDict,
     assert_never,
+    get_args,
     runtime_checkable,
 )
 
@@ -47,6 +48,7 @@ from common.components.core import (
     as_attributes,
     as_children,
     randomid,
+    require_every_key,
 )
 from common.components.elements import (
     H1,
@@ -237,23 +239,25 @@ def filter_widget_attributes(
     ]
 
 
-# The single max-width every content container obeys — navbar, page bodies
-# (lists, detail, stats), and popovers. Only a cap: callers add
-# `w-full` to fill to it and `mx-auto`/`self-center` to centre. The `w-full`
-# matters inside #main-container's flex column, where bare self-center/mx-auto
-# turn off flex `stretch` and the box would otherwise shrink to content width.
-CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"
+#: A page's width, stated once in render_page.
+type PageWidth = Literal["form", "wide", "full"]
 
-# Horizontal page gutter: keeps content off the viewport edges below the
-# CONTENT_MAX_WIDTH_CLASS cap (everything is edge-to-edge under 1280px without
+#: Every width, in the type's order.
+PAGE_WIDTHS: Final[tuple[PageWidth, ...]] = get_args(PageWidth.__value__)
+
+#: Each width's cap; page, dialog and navbar.
+PAGE_WIDTH_CLASSES: Final[Mapping[PageWidth, str]] = {
+    "form": "max-w-xl",
+    "wide": "max-w-4xl",
+    "full": "max-w-7xl",
+}
+require_every_key(PageWidth, PAGE_WIDTH_CLASSES)
+
+# Horizontal page gutter: keeps content off the viewport edges below any
+# page width cap (everything is edge-to-edge below the cap without
 # it). Applied at the shell (#main-container) and the navbar row so every page
 # inherits it in one place. `sm:px-6` widens the gutter on larger screens.
 PAGE_GUTTER_CLASS = "px-4 sm:px-6"
-
-# Narrower cap for form-shaped containers (add/edit forms, confirm pages,
-# modals). Forms read better constrained; the wide CONTENT_MAX_WIDTH_CLASS cap
-# is for page bodies, lists, and the navbar.
-FORM_MAX_WIDTH_CLASS = "max-w-xl"
 
 # The one micro-label spelling — filter facet labels and search-select group
 # headers. Weight is `font-medium`; callers add a colour token (`text-body`).
@@ -348,8 +352,8 @@ type TextAttribute = tuple[str, str]
 CLOSED_POPOVER: tuple[TextAttribute, ...] = (("hidden", ""), ("popover", "manual"))
 
 _TOOLTIP_PANEL_CLASS = (
-    f"inline-block font-sans text-type-body text-heading bg-brand-soft "
-    f"border border-brand/30 rounded-base shadow-xs {CONTENT_MAX_WIDTH_CLASS}"
+    "inline-block font-sans text-type-body text-heading bg-brand-soft "
+    "border border-brand/30 rounded-base shadow-xs max-w-7xl"
 )
 
 
@@ -2340,7 +2344,6 @@ def AddForm(
     fields: Node | SafeText | str | None = None,
     additional_row: Node | SafeText | str = "",
     submit_class: str = "mt-3",
-    width_class: str = FORM_MAX_WIDTH_CLASS,
     submit_label: str = "Submit",
     cancel_url: str | None = None,
 ) -> Node:
@@ -2350,8 +2353,7 @@ def AddForm(
     session form, which lays out its fields manually). `additional_row` holds
     extra submit buttons rendered below the main Submit button. `submit_class`
     is applied to the main Submit button (the session form passes "" to match
-    its original markup). `width_class` widens the column for a form that holds
-    a grid of its own; every other page keeps the one-column default.
+    its original markup). The page's width is ``render_page``'s.
     `submit_label` names the act; `cancel_url` adds a Cancel link beside it.
     """
     field_markup = fields if fields is not None else FormFields(form)
@@ -2374,11 +2376,7 @@ def AddForm(
         Div(class_="flex flex-wrap gap-2")[additional_row],
     ]
 
-    return Div(id_="add-form", class_="max-width-container")[
-        Div(
-            class_=f"form-container w-full {width_class} mx-auto @container",
-        )[inner_form]
-    ]
+    return Div(id_="add-form", class_="w-full @container")[inner_form]
 
 
 def PageHeading(
@@ -2425,7 +2423,6 @@ def ConfirmPage(
     details: Children = None,
     choice: Children = None,
     refusal: Sequence[str] = (),
-    max_width: str = FORM_MAX_WIDTH_CLASS,
 ) -> Node:
     """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
     and a cancel link back to the origin — the one confirmation, reusable
@@ -2440,12 +2437,11 @@ def ConfirmPage(
     states a second way to draw a refusal. ``choice`` is a labelled control the
     page asks for before the press, left-aligned rather than centred like the
     prompt. ``details`` is block content after both (a list of the data a
-    removal would take with it). ``max_width`` widens the page for a table the
-    form width would crush.
+    removal would take with it). The page's width is ``render_page``'s.
     """
     refused = FieldErrors(refusal, form_wide=True)
     return Div(
-        class_=f"mx-auto w-full {max_width} p-5 @container",
+        class_="w-full p-5 @container",
     )[
         Form(method="post", action=post_url)[
             Safe(
@@ -3872,20 +3868,6 @@ def StyledTable(
     return Div(class_="shadow-md sm:rounded-base overflow-clip")[*inner_children]
 
 
-def ContentContainer(attrs: AttrsArg | None = None, **kwargs: object) -> Element:
-    """The page-body content container: fills #main-container's flex column
-    (``w-full``), caps at ``CONTENT_MAX_WIDTH_CLASS`` and centres itself
-    (``self-center``). Page bodies only — the navbar and popovers apply the
-    max-width constant with their own layout classes, and form/confirm pages
-    cap narrower via ``FORM_MAX_WIDTH_CLASS``/``AddForm``. Caller ``class``
-    accumulates onto the baked classes; children come via ``[]``.
-    """
-    baked: list[HTMLAttribute] = [
-        ("class", f"w-full {CONTENT_MAX_WIDTH_CLASS} self-center")
-    ]
-    return Div(baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs))
-
-
 def paginated_table_content(
     data: TableData,
     *,
@@ -3897,9 +3879,7 @@ def paginated_table_content(
     """The list-page table: a StyledTable (+ pagination) built from ``data``.
 
     `data` is the table dict with keys ``columns`` and ``rows`` (the same shape
-    every list view already builds). The page-width container is the caller's
-    job — list views wrap this, together with their filter tiers, in
-    :func:`ContentContainer` (issue #313).
+    every list view already builds). The page's width is ``render_page``'s.
 
     Pass ``page_size`` (the resolved ``FindFilter.per_page``) to render the
     rows-per-page picker above the table.

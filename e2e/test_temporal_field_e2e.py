@@ -64,6 +64,7 @@ def _render_form_page(
             ControlButton(type="submit")["Save"],
         ],
         title="Temporal harness",
+        width="full",
     )
 
 

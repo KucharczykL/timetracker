@@ -93,7 +93,7 @@ def test_a_foreign_extra_tags_value_does_not_take_the_page_down(
     messages.add_message(request_with_queue, constants.INFO, "shown", extra_tags="css")
 
     with capture_games_logger():
-        response = render_page(request_with_queue, Div()["x"])
+        response = render_page(request_with_queue, Div()["x"], width="form")
 
     assert response.status_code == 200
     assert '"message": "shown"' in response.content.decode()
@@ -115,6 +115,6 @@ def test_a_queued_action_reaches_the_page_script(request_with_queue):
         action=Undo("/session/x/restore"),
     )
 
-    html = render_page(request_with_queue, Div()["x"]).content.decode()
+    html = render_page(request_with_queue, Div()["x"], width="form").content.decode()
 
     assert '"action": {"label": "Undo", "url": "/session/x/restore"}' in html

@@ -469,3 +469,43 @@ def test_a_masked_field_works_inside(
     expect(duration).to_have_value("12:34:56")
     expect(dialog.locator("date-time-field").first).to_be_visible()
     assert errors == []
+
+
+def _panel_width(page: Page, live_server, url: str) -> float:
+    page.goto(f"{live_server.url}{reverse('games:list_devices')}")
+    page.evaluate(
+        """(url) => {
+            const link = document.createElement('a');
+            link.href = url;
+            link.textContent = 'Open here';
+            link.setAttribute('data-form-dialog', '');
+            document.getElementById('main-container').prepend(link);
+        }""",
+        url,
+    )
+    page.get_by_role("link", name="Open here").click()
+    panel = page.locator("dialog[data-modal][open] [data-modal-panel]")
+    expect(panel.locator("form").first).to_be_visible()
+    box = panel.bounding_box()
+    assert box is not None
+    return box["width"]
+
+
+@pytest.mark.parametrize(("viewport", "phone"), [(1280, False), (375, True)])
+def test_a_full_page_widens_its_dialog(
+    authenticated_page: Page, live_server, errors, viewport: int, phone: bool
+):
+    page = authenticated_page
+    page.set_viewport_size({"width": viewport, "height": 800})
+    form = _panel_width(page, live_server, reverse("games:add_device"))
+    full = _panel_width(page, live_server, reverse("games:list_games"))
+
+    if phone:
+        #: The viewport less the 1rem gutters.
+        assert form == pytest.approx(viewport - 32)
+        assert full == pytest.approx(viewport - 32)
+    else:
+        #: max-w-xl; max-w-7xl exceeds the viewport.
+        assert form == pytest.approx(576)
+        assert full == pytest.approx(viewport - 32)
+    assert errors == []

@@ -28,8 +28,8 @@ from common.components.core import Document, Safe
 from common.components.elements import Footer, LinkTag
 from common.components.form_dialog import PageAnswer
 from common.components.primitives import (
-    CONTENT_MAX_WIDTH_CLASS,
     PAGE_GUTTER_CLASS,
+    PAGE_WIDTH_CLASSES,
     Body,
     Div,
     Head,
@@ -37,6 +37,7 @@ from common.components.primitives import (
     Img,
     Meta,
     Nav,
+    PageWidth,
     Script,
     Title,
 )
@@ -235,7 +236,7 @@ def Navbar(
         ]
     return Nav(class_="bg-neutral-primary-soft border-b border-default py-4")[
         Div(
-            class_=f"w-full {CONTENT_MAX_WIDTH_CLASS} {PAGE_GUTTER_CLASS} "
+            class_=f"w-full {PAGE_WIDTH_CLASSES['full']} {PAGE_GUTTER_CLASS} "
             "flex items-center gap-x-3 mx-auto"
         )[brand, controls]
     ]
@@ -246,6 +247,7 @@ def TimetrackerDocument(
     *,
     request: HttpRequest,
     title: str = "",
+    width: PageWidth,
     is_settings_page: bool = False,
 ) -> Document:
     """Assemble a full HTML document around `content` (the fast_app equivalent).
@@ -444,7 +446,13 @@ def TimetrackerDocument(
                             data_read_only=read_only,
                             tabindex="-1",
                             class_=f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS}",
-                        )[content],
+                        )[
+                            # w-full: self-center drops flex stretch.
+                            Div(
+                                class_="flex w-full flex-col self-center "
+                                f"{PAGE_WIDTH_CLASSES[width]}"
+                            )[content]
+                        ],
                         version_footer_note,
                     ],
                     script_body,
@@ -463,7 +471,12 @@ def TimetrackerDocument(
 
 
 def _dialog_answer(
-    request: HttpRequest, content: Node | SafeText | str, *, title: str, status: int
+    request: HttpRequest,
+    content: Node | SafeText | str,
+    *,
+    title: str,
+    width: PageWidth,
+    status: int,
 ) -> HttpResponse:
     """The content alone, for the form dialog."""
     from common.components import Fragment, assert_unique_element_ids, collect_media
@@ -479,6 +492,7 @@ def _dialog_answer(
     answer = PageAnswer(
         kind="page",
         title=title,
+        width=width,
         html=str(fragment),
         modules=[static("js/" + name) for name in media.js],
         messages=toast_payloads(request),
@@ -493,18 +507,22 @@ def render_page(
     content: Node | SafeText | str,
     *,
     title: str = "",
+    width: PageWidth,
     is_settings_page: bool = False,
     status: int = 200,
 ) -> HttpResponse:
-    """The full page, or dialog content."""
+    """The full page, or dialog content, at ``width``."""
     if is_form_dialog(request):
-        response = _dialog_answer(request, content, title=title, status=status)
+        response = _dialog_answer(
+            request, content, title=title, width=width, status=status
+        )
     else:
         response = HttpResponse(
             TimetrackerDocument(
                 content,
                 request=request,
                 title=title,
+                width=width,
                 is_settings_page=is_settings_page,
             ),
             status=status,

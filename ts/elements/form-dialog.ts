@@ -7,6 +7,7 @@ import {
   FORM_DIALOG_PARTS,
   FORM_ERRORS_ATTRIBUTE,
   type FormDialogChrome,
+  PAGE_WIDTH_ATTRIBUTE,
   UNSAVED_WARNING_PARTS,
 } from "../generated/form-dialog.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
@@ -45,6 +46,8 @@ import {
 
 interface OpenDialog {
   readonly dialog: HTMLDialogElement;
+  /** Takes the page's width. */
+  readonly panel: HTMLElement;
   readonly body: HTMLElement;
   readonly chrome: FormDialogChrome;
   readonly openerKey: OpenerKey | null;
@@ -570,9 +573,10 @@ export class FormDialogElement extends HTMLElement {
     const chromeFragment = template.content.cloneNode(true) as DocumentFragment;
     prefixIds(chromeFragment, this.nextPrefix());
     const dialog = chromeFragment.querySelector("dialog");
+    const panel = dialog?.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.panel}]`);
     const body = dialog?.querySelector<HTMLElement>(`[${FORM_DIALOG_PARTS.body}]`);
-    if (!dialog || !body) {
-      report("the template has no dialog or body");
+    if (!dialog || !panel || !body) {
+      report("the template has no dialog, panel or body");
       return false;
     }
     if (chrome === "bare") {
@@ -586,6 +590,7 @@ export class FormDialogElement extends HTMLElement {
     });
     const entry: OpenDialog = {
       dialog,
+      panel,
       body,
       chrome,
       openerKey: openerKey(opener),
@@ -641,6 +646,7 @@ export class FormDialogElement extends HTMLElement {
     } else {
       entry.dialog.setAttribute("aria-label", page.title);
     }
+    entry.panel.setAttribute(PAGE_WIDTH_ATTRIBUTE, page.width);
     entry.body.replaceChildren(page.content);
     entry.url = url;
     // A trail above may name it.

@@ -1,9 +1,15 @@
 """The dialog every modal on the modal layer wears."""
 
-from collections.abc import Collection, Mapping
-from typing import Literal, NamedTuple, TypeAliasType, get_args
+from collections.abc import Mapping
+from typing import Literal, NamedTuple
 
-from common.components.core import Attributes, Child, Element, HTMLAttribute
+from common.components.core import (
+    Attributes,
+    Child,
+    Element,
+    HTMLAttribute,
+    require_every_key,
+)
 from common.components.elements import Dialog, Div, P, PlainH2, Span
 from common.components.primitives import ControlButton
 
@@ -68,13 +74,6 @@ _MODAL_PANEL_CLASS = (
     "motion-safe:transition-[transform,translate,filter] "
     "motion-safe:duration-200 motion-safe:ease-out"
 )
-
-
-def require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
-    """Refuses a table missing a Literal member."""
-    members = set(get_args(alias.__value__))
-    if set(table) != members:
-        raise TypeError(f"{alias.__name__} table keys {set(table)} != {members}")
 
 
 require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)

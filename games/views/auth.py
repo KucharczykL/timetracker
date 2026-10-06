@@ -5,7 +5,6 @@ from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
 
 from common.components import (
-    FORM_MAX_WIDTH_CLASS,
     ControlButton,
     CsrfInput,
     Div,
@@ -24,7 +23,7 @@ def _login_content(form, request) -> Node:
         PageHeading(["Please log in to continue"]),
         Form(
             method="post",
-            class_=f"flex flex-col gap-3 w-full {FORM_MAX_WIDTH_CLASS} @container",
+            class_="flex flex-col gap-3 w-full @container",
         )[
             CsrfInput(request),
             FormFields(form),
@@ -53,6 +52,7 @@ class LoginView(auth_views.LoginView):
             self.request,
             _login_content(context["form"], self.request),
             title="Login",
+            width="form",
         )
         if prefill_credentials():
             # Credentials are visible in the page HTML; keep the prefilled login

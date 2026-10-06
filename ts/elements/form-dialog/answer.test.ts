@@ -39,6 +39,7 @@ describe("readAnswer", () => {
         {
           kind: "page",
           title: "Add device",
+          width: "wide",
           html: '<h1>Add device</h1><form><input name="name"></form>',
           modules: ["/static/js/dist/elements/drop-down.js"],
           messages: [{ message: "Refused", type: "error" }],
@@ -50,6 +51,7 @@ describe("readAnswer", () => {
     if (answer.kind !== "page") throw new Error(answer.kind);
     expect(answer.url.href).toBe(FETCHED.href);
     expect(answer.page.title).toBe("Add device");
+    expect(answer.page.width).toBe("wide");
     expect(answer.page.content.querySelector("input")?.name).toBe("name");
     expect(answer.page.modules).toEqual(["http://x.test/static/js/dist/elements/drop-down.js"]);
     expect(answer.page.messages).toEqual([{ message: "Refused", type: "error" }]);
@@ -59,7 +61,7 @@ describe("readAnswer", () => {
     const html =
       '<script type="application/json" id="props">{}</script><template id="row"><p>row</p></template><form></form>';
     const answer = await readAnswer(
-      jsonResponse({ kind: "page", title: "", html, modules: [], messages: [] }),
+      jsonResponse({ kind: "page", title: "", width: "form", html, modules: [], messages: [] }),
       FETCHED,
     );
     if (answer.kind !== "page") throw new Error(answer.kind);
@@ -73,6 +75,7 @@ describe("readAnswer", () => {
       jsonResponse({
         kind: "page",
         title: "",
+        width: "form",
         html: "<form></form><script>window.ran = true</script>",
         modules: [],
         messages: [],
@@ -82,6 +85,20 @@ describe("readAnswer", () => {
     if (answer.kind !== "page") throw new Error(answer.kind);
     expect(answer.page.content.querySelector("script")).toBeNull();
     expect(report).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a width it does not know, naming it", async () => {
+    const report = vi.spyOn(clientErrors, "reportClientError").mockReturnValue("id");
+    const answer = await readAnswer(
+      jsonResponse({ kind: "page", title: "", width: "huge", html: "", modules: [], messages: [] }),
+      FETCHED,
+    );
+    expect(answer.kind).toBe("none");
+    expect(report).toHaveBeenCalledWith(
+      "form-dialog[answer]",
+      'page answer with an unknown width: "huge"',
+      { toast: false },
+    );
   });
 
   it("reads done and continue", async () => {

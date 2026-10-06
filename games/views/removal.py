@@ -82,6 +82,7 @@ def confirm_and_apply(
             ),
             title=title,
             status=status,
+            width="form",
         )
 
     if request.method != "POST":

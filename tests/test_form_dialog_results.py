@@ -162,7 +162,7 @@ def test_dialog_content_repeating_an_id_is_refused(settings):
     content = Fragment(Div(id="twice"), Div(id="twice"))
 
     with pytest.raises(ValueError, match="twice"):
-        render_page(request, content, title="T")
+        render_page(request, content, title="T", width="form")
 
 
 def test_dialog_content_is_unchecked_outside_debug():
@@ -170,7 +170,7 @@ def test_dialog_content_is_unchecked_outside_debug():
     request.user = AnonymousUser()
     content = Fragment(Div(id="twice"), Div(id="twice"))
 
-    assert render_page(request, content, title="T").status_code == 200
+    assert render_page(request, content, title="T", width="form").status_code == 200
 
 
 @pytest.mark.django_db

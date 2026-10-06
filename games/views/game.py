@@ -23,7 +23,6 @@ from common.components import (
     Cell,
     Chip,
     Column,
-    ContentContainer,
     ControlButton,
     Div,
     Duration,
@@ -389,11 +388,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[GamesTabs("games"), quick_bar, content]
+    content = Div()[GamesTabs("games"), quick_bar, content]
     return render_page(
         request,
         content,
         title="Manage games",
+        width="full",
     )
 
 
@@ -470,7 +470,6 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 editions_area(graph),
                 references_area(references),
             ),
-            width_class="max-w-xl md:max-w-4xl",
             additional_row=ControlButton(
                 color="gray",
                 type="submit",
@@ -478,6 +477,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             )["Submit & Add to library"],
         ),
         title=_add_game_title(form, request.GET.get("addon", "")),
+        width="form",
     )
 
 
@@ -597,9 +597,9 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
                 editions_area(graph),
                 references_area(references),
             ),
-            width_class="max-w-xl md:max-w-4xl",
         ),
         title="Edit Game",
+        width="form",
         #: The same tail renders an invalid form.
         status=refused_status,
     )
@@ -1436,7 +1436,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         referenced.append(entry.edition)
         referenced.extend(entry.releases)
     references = references_for(referenced)
-    content = ContentContainer(class_="dark:text-white")[
+    content = Div(class_="dark:text-white")[
         _game_header(
             game,
             request,
@@ -1477,6 +1477,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         request,
         content,
         title=f"Game Overview - {game.name}",
+        width="full",
     )
 
 

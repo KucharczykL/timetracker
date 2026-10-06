@@ -71,7 +71,7 @@ targets and the corrections from adversarial review:
 - **Save feedback:** toast middleware (`X-Events`→`show-toast`,
   [games/toast_middleware.py](games/toast_middleware.py)); confirmed it fires for Ninja PATCH
   (API already uses `django.contrib.messages`, [games/api.py:112](games/api.py)).
-- **Page shell / width:** `render_page()` + `ContentContainer` ([common/layout.py](common/layout.py)).
+- **Page shell / width:** `render_page(width="full")` ([common/layout.py](common/layout.py)).
 - **Per-user store + API shape:** copy `FilterPreset` + its preset router
   ([games/api.py:382](games/api.py)) — `request.user` scoping, `NinjaAPI(auth=django_auth)` CSRF.
 - **Responsive section navigation:** the kit uses one same-DOM link list. At narrow scaffold
@@ -172,7 +172,7 @@ duplicate").
 - **Responsive section-nav scaffold** (net-new): mobile = stacked labeled sections + a full-width,
   self-explanatory trigger opening a native-dialog bottom sheet; desktop = sticky section-nav rail
   beside content. Container-query driven, with the same semantic link list moved—not cloned—between
-  both sizes. Reuse `ContentContainer` and the generic dropdown trigger/panel shell, but do not apply
+  both sizes. Reuse the `full` page width and the generic dropdown trigger/panel shell, but do not apply
   anchored-menu positioning or ARIA-menu keyboard semantics to the sheet.
 - **Field grouping**: extend `FormFields` to render grouped fieldsets (not a new renderer).
 - **Setting widgets**: via the Django-form + `FormFields`/`PrimitiveWidgetsMixin` path (checkbox /

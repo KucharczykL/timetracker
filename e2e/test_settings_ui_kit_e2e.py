@@ -143,6 +143,7 @@ def settings_kit_view(request: HttpRequest) -> HttpResponse:
             ],
         ],
         title="Settings kit test",
+        width="full",
     )
 
 
