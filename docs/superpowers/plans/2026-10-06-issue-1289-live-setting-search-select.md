@@ -21,6 +21,13 @@ Spec: `docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-d
   → none where offered, else clear), `_searchSelectHoldNone()` (= `holdNone`).
   Public `holdValue(value)`, `holdNone()` on `SearchSelectElement`.
 - Init appends the status id to an existing `aria-describedby`.
+- Emit only on change: `selectOption` and `pickNone` compare held values and
+  none before/after (form mode only); a no-op emits nothing.
+- `revert-on-leave` prop (`SearchSelectProps`, regenerate types): remember
+  the held state at the first-keystroke drop; on a `focusout` leaving the
+  container with nothing picked, hold it again silently.
+- Python: `SearchSelect(revert_on_leave=...)`,
+  `ChoiceSearchSelectWidget(revert_on_leave=...)`.
 - vitest beside existing `search-select.*.test.ts`.
 
 ## Task 3 — `ts/setting-control.ts`
@@ -37,15 +44,14 @@ Spec: `docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-d
 ## Task 4 — live-setting-fields over the reader
 
 - Maps keyed by `HTMLElement` (`control.element`); listens on `change` and
-  `search-select:change`; `focusout` abandoned-edit restore; desired-snapshot
-  guard; `PendingSave` keeps its `attempt`.
+  `search-select:change`; skips `read() === undefined`.
 - Keep `settingPayloadValue` export path working (re-export or update test
   import).
 - vitest cases from the spec.
 
 ## Task 5 — settings forms build the picker
 
-- `games/settings_forms.py` `_build_field` SELECT: `widget=ChoiceSearchSelectWidget()`
+- `games/settings_forms.py` `_build_field` SELECT: `widget=ChoiceSearchSelectWidget(revert_on_leave=True)`
   on both `TypedChoiceField` and `ChoiceField`.
 - Update `tests/test_settings_page.py`, `tests/test_admin_settings_page.py`.
 - New pytest: none row label per page; locked admin field → disabled input.
@@ -53,8 +59,7 @@ Spec: `docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-d
 ## Task 6 — theme-setting over the reader
 
 - `ts/elements/theme-setting.ts`: `settingControlOf(querySelector("[data-setting-key]"))`;
-  listen `control.changeEvent`, stopPropagation, equality skip, focusout
-  rerender. `theme-setting.test.ts` over a SearchSelect.
+  listen `control.changeEvent`, stopPropagation, skip `undefined`. `theme-setting.test.ts` over a SearchSelect.
 
 ## Task 7 — e2e
 

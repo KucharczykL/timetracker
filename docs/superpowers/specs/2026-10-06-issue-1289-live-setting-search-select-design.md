@@ -83,23 +83,36 @@ target is the box, which carries no marker, so it is ignored. The
 - Failure → `restore` the last committed snapshot, silently, and toast as
   today. The coalescing and the in-flight queue are unchanged.
 
-The element names one snapshot the **desired** state of a control: the
-queued attempt's state, else the in-flight attempt's, else the committed
-one.
+## Two SearchSelect rules
 
-- **An unchanged pick saves nothing.** A `<search-select>` emits on a pick
-  of the option it already holds, and on the none row while none is held; a
-  native select fires no `change` then. The element compares the new
-  snapshot with the desired one and skips an equal one. Comparing with the
-  committed snapshot would be wrong: pick A (in flight), then back to O,
-  must queue O. Without the guard, a re-pick on a `reload_after_save`
-  setting reloads the page.
-- **An abandoned edit returns.** Keystrokes then a blur with no pick leave
-  nothing picked while the server keeps the old value. On a `focusout` of a
-  `<search-select>` whose `relatedTarget` is outside it (Tab to the × stays
-  inside), a control whose `read()` is `undefined` is restored to the desired
-  snapshot. In flight, that is the attempt's state, so the settle path's
-  reconcile still matches it.
+Both live in `search-select.ts`, so no consumer repeats them.
+
+- **A pick that changes nothing emits nothing.** A native select fires no
+  `change` when the value stays. A form-mode `<search-select>` now does the
+  same: a pick of the held option, a pick of a pill already held, and the
+  none row while none is held emit no `search-select:change`. Filter-mode
+  pills keep their own events. Audit of every listener: the preset panel
+  clears its selection after each pick, so a re-pick is never of a held
+  row; the filter builder's field picker, the comparison operands, the time
+  zone row and the dependency refetch all treat a same-value event as a
+  no-op or are better without it. Without this rule, a re-pick on a
+  `reload_after_save` setting reloads the page and a theme re-pick starts a
+  save that disables the focused box.
+- **`revert_on_leave`, opt-in.** A first keystroke drops a held value or
+  none to nothing picked (#1288). With the prop, when focus leaves the
+  `<search-select>` (`relatedTarget` outside it, so Tab to the × stays) and
+  nothing is picked, the element holds again what it held before the drop,
+  silently. The drop's event was not a commit, so no consumer acted on it;
+  the revert returns to the state consumers last acted on. Without the prop
+  (every ordinary form), typed text stays until a pick or a submit, as
+  today. `SearchSelect(revert_on_leave=True)`, carried by
+  `ChoiceSearchSelectWidget(revert_on_leave=True)`; every settings SELECT
+  field sets it.
+
+With the first rule, the in-flight case needs no extra logic: pick A (in
+flight), then back to O, is a change and queues O. With the second, an
+abandoned edit during a save reverts to A, which the settle path's
+reconcile still matches.
 
 `<search-select>` gains two public silent methods beside `setSelected`:
 `holdValue(value)`, which finds the option row's label itself (a value no row
@@ -122,11 +135,8 @@ search stays a later choice.
 `control.changeEvent`, stops it from reaching `<live-setting-fields>` as
 today, ignores `undefined`, and sends `value` or `null` to the coordinator.
 Its render writes the coordinator's state with `write`, `setDisabled` and
-`setBusy`. It skips a value equal to the coordinator's (`personalPreference
-?? null` in account mode, `preference` in browser mode), so a re-pick does
-not start a save that disables the focused box. An abandoned edit
-(`focusout` leaving the picker with `read()` `undefined`) renders the
-coordinator's current state again. The theme control carries no
+`setBusy`. Re-picks and abandoned edits need nothing here: the picker handles both.
+The theme control carries no
 `data-live-setting-control`, so `<live-setting-fields>` never sees it.
 
 ## Tests
@@ -141,8 +151,12 @@ coordinator's current state again. The theme control carries no
   `aria-describedby` to the input; settings pages render a `<search-select>`
   per SELECT setting with its none row; a locked admin field renders a
   disabled search input.
-- vitest: an unchanged pick and an abandoned edit send no PATCH; the
-  abandoned edit restores the label. `aria-describedby` keeps the rendered
+- vitest (search-select): a re-pick of the held option, of a held pill and
+  of the none row while none is held emit nothing; `revert_on_leave`
+  restores a value and none on a leave, silently; Tab to the × does not
+  revert; without the prop the text stays.
+- vitest (live-setting-fields): a re-pick sends no PATCH; pick A in flight
+  then O queues O. `aria-describedby` keeps the rendered
   id beside the status id.
 - Existing tests that pin native markup move to the picker:
   `tests/test_settings_page.py` (`<select name=…>`, `<option … selected>`,
