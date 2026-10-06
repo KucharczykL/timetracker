@@ -9,7 +9,7 @@ The parameter is ``origin`` rather than ``next`` because Django's auth views own
 view has no way to tell that apart from "where to go after this mutation".
 """
 
-from collections.abc import Container
+from collections.abc import Container, Mapping
 from typing import Any
 from urllib.parse import urlencode, urlparse, urlunparse
 
@@ -24,18 +24,26 @@ ORIGIN_PARAM = "origin"
 
 
 def action_url(
-    viewname: UrlName, *args: Any, origin: OriginUrl | None, **kwargs: Any
+    viewname: UrlName,
+    *args: Any,
+    origin: OriginUrl | None,
+    facts: Mapping[str, str] | None = None,
+    **kwargs: Any,
 ) -> str:
     """Link to a mutating view, carrying the page it is launched from.
 
     ``origin`` is keyword-only and has no default so a call site cannot drop it
     by accident; pass ``None`` only where there is genuinely nowhere to return.
+    ``facts`` names form fields the opener states.
     """
     url = reverse(viewname, args=args, kwargs=kwargs)
-    if not origin:
+    query = dict(facts or {})
+    if origin:
+        query[ORIGIN_PARAM] = origin
+    if not query:
         return url
     # reverse() never yields a query string, so "?" is unconditional.
-    return f"{url}?{urlencode({ORIGIN_PARAM: origin})}"
+    return f"{url}?{urlencode(query)}"
 
 
 def parse_origin(
