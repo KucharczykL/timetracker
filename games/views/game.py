@@ -477,7 +477,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             )["Submit & Add to library"],
         ),
         title=_add_game_title(form, request.GET.get("addon", "")),
-        width="wide",
+        width="form",
     )
 
 
@@ -599,7 +599,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             ),
         ),
         title="Edit Game",
-        width="wide",
+        width="form",
         #: The same tail renders an invalid form.
         status=refused_status,
     )

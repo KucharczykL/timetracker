@@ -169,8 +169,8 @@ The one sub-dimension that is already what an audit hopes to find: one mapping,
 universally adopted, test-pinned —
 
 - `PAGE_WIDTH_CLASSES` — `render_page(width=...)` states one per page:
-  `form` `max-w-xl` (forms, confirmations, login), `wide` `max-w-4xl` (the
-  game form, a bulk confirmation with a control), `full` `max-w-7xl` (lists,
+  `form` `max-w-xl` (forms, confirmations, login), `wide` `max-w-4xl` (a bulk
+  confirmation with a control), `full` `max-w-7xl` (lists,
   detail, stats, settings; the navbar row). A form dialog's panel takes the
   same width.
 

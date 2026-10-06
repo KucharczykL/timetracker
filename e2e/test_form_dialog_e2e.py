@@ -492,20 +492,20 @@ def _panel_width(page: Page, live_server, url: str) -> float:
 
 
 @pytest.mark.parametrize(("viewport", "phone"), [(1280, False), (375, True)])
-def test_a_wide_page_widens_its_dialog(
+def test_a_full_page_widens_its_dialog(
     authenticated_page: Page, live_server, errors, viewport: int, phone: bool
 ):
     page = authenticated_page
     page.set_viewport_size({"width": viewport, "height": 800})
     form = _panel_width(page, live_server, reverse("games:add_device"))
-    wide = _panel_width(page, live_server, reverse("games:add_game"))
+    full = _panel_width(page, live_server, reverse("games:list_games"))
 
     if phone:
         #: The viewport less the 1rem gutters.
         assert form == pytest.approx(viewport - 32)
-        assert wide == pytest.approx(viewport - 32)
+        assert full == pytest.approx(viewport - 32)
     else:
-        #: max-w-xl and max-w-4xl.
+        #: max-w-xl; max-w-7xl exceeds the viewport.
         assert form == pytest.approx(576)
-        assert wide == pytest.approx(896)
+        assert full == pytest.approx(viewport - 32)
     assert errors == []

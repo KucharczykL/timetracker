@@ -319,8 +319,8 @@ class PageWidthTest(TestCase):
             ("games:add_playthrough", [], "form"),
             ("games:add_session", [], "form"),
             ("games:remove_game", [game.pk], "form"),
-            ("games:add_game", [], "wide"),
-            ("games:edit_game", [game.pk], "wide"),
+            ("games:add_game", [], "form"),
+            ("games:edit_game", [game.pk], "form"),
             ("games:list_games", [], "full"),
             ("games:stats_alltime", [], "full"),
         ]
