@@ -1,6 +1,7 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { clearStack, markStack, stopWatchingStack } from "./modal-stack.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -143,6 +144,16 @@ function markBackdrops(): void {
     entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.covered, index !== shown.length - 1);
     entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.over, index > 0);
   });
+}
+
+function markShown(): void {
+  markBackdrops();
+  markStack(shown, refreshModalStack);
+}
+
+/** Measures the stack again; safe when empty. */
+export function refreshModalStack(): void {
+  markStack(shown, refreshModalStack);
 }
 
 function captureStyles<Names extends readonly LockedStyle[]>(
@@ -298,9 +309,11 @@ function finish(entry: Entry): void {
   removeSurface(entry.surface);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
-  markBackdrops();
+  clearStack(entry.dialog);
+  markShown();
   if (shown.length === 0) {
     stopWatchingRemovals();
+    stopWatchingStack();
     unlockDocumentScroll();
   }
   returnFocus(entry);
@@ -353,7 +366,7 @@ function open(entry: Entry, opener: HTMLElement | undefined): boolean {
   shown.push(entry);
   watchRemovals();
   pushSurface(entry.surface);
-  markBackdrops();
+  markShown();
   entry.focusInitial();
   notifyChange();
   return true;
@@ -370,7 +383,7 @@ function close(entry: Entry): void {
   entry.state = "leaving";
   // Inner panels close before the leave.
   removeSurface(entry.surface);
-  markBackdrops();
+  markShown();
   notifyChange();
   const leave = entry.options.leave;
   if (!entry.surface.host.isConnected || !leave) {
@@ -506,8 +519,12 @@ export function resetModalLayerForTests(): void {
     clearLeaveLimit(entry);
     removeSurface(entry.surface);
     if (entry.dialog.open) entry.dialog.close();
+    entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
+    entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
+    clearStack(entry.dialog);
   }
   shown.length = 0;
+  stopWatchingStack();
   lastTop = null;
   stopWatchingRemovals();
   unlockDocumentScroll();

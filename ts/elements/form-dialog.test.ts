@@ -585,6 +585,22 @@ describe("submit", () => {
     expect(toasts.at(-1)).toEqual([{ message: "Refused", type: "error" }]);
   });
 
+  it("renames itself in the trail of a modal above", async () => {
+    await openPage();
+    replies.push(reply(page("<form method=\"post\"></form>", { title: "Device refused" }), EDIT, 409));
+    submit();
+    const above = document.createElement("dialog");
+    above.setAttribute("data-modal", "");
+    above.innerHTML = `<div data-modal-panel><div data-modal-header>
+      <p data-modal-trail hidden></p></div></div>`;
+    document.body.append(above);
+    attachModal(above).open();
+    const trail = above.querySelector("[data-modal-trail]")!;
+    expect(trail.textContent).toBe("Edit device");
+    await settle();
+    expect(trail.textContent).toBe("Device refused");
+  });
+
   it("fetches a continue answer into the same dialog", async () => {
     const dialog = await openPage();
     replies.push(reply(next(`${ORIGIN}/entry/add?game=1`)));

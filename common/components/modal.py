@@ -4,12 +4,20 @@ from collections.abc import Collection, Mapping
 from typing import Literal, NamedTuple, TypeAliasType, get_args
 
 from common.components.core import Attributes, Child, Element, HTMLAttribute
-from common.components.elements import Dialog, Div, PlainH2, Span
+from common.components.elements import Dialog, Div, P, PlainH2, Span
 from common.components.primitives import ControlButton
 
 type ModalAlign = Literal["center", "end"]
 type ModalAttributeRole = Literal[
-    "modal", "dismiss", "initial_focus", "covered", "over"
+    "modal",
+    "dismiss",
+    "initial_focus",
+    "covered",
+    "over",
+    "panel",
+    "header",
+    "trail",
+    "depth",
 ]
 type ModalAttribute = str  # e.g. "data-modal-covered"
 type ElementId = str  # e.g. "form-dialog-title"
@@ -21,6 +29,10 @@ MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
     "initial_focus": "data-modal-initial-focus",
     "covered": "data-modal-covered",
     "over": "data-modal-over",
+    "panel": "data-modal-panel",
+    "header": "data-modal-header",
+    "trail": "data-modal-trail",
+    "depth": "data-modal-depth",
 }
 
 #: Transparent hit area; the child panel shows.
@@ -42,7 +54,18 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 }
 
 
-_DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay py-3"
+_HEADER_CLASS = "flex shrink-0 items-center justify-between gap-4 py-1.5 pl-4 pr-1.5"
+_DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay"
+
+#: The layer writes the properties; px only.
+#: Arbitrary transform: the sheet's slide owns translate.
+_MODAL_PANEL_CLASS = (
+    "mt-[var(--modal-reserve,0px)] origin-top "
+    "data-modal-depth:[transform:translateY(var(--modal-shift))_scale(calc(1-var(--modal-depth)*.05))] "
+    "data-modal-depth:opacity-[max(.35,calc(.95-var(--modal-depth)*.2))] "
+    "motion-safe:transition-[transform,translate,opacity] "
+    "motion-safe:duration-200 motion-safe:ease-out"
+)
 
 
 def require_every_key(alias: TypeAliasType, table: Collection[str]) -> None:
@@ -66,6 +89,14 @@ def ModalDialog(
     return Dialog(
         [(MODAL_ATTRIBUTES["modal"], ""), *attributes],
         class_=f"{_MODAL_DIALOG_CLASS} {_MODAL_ALIGN_CLASS[align]} {class_}".strip(),
+    )
+
+
+def ModalPanel(attributes: Attributes = (), *, class_: str = "") -> Element:
+    """A modal's visible panel; steps back when covered."""
+    return Div(
+        [(MODAL_ATTRIBUTES["panel"], ""), *attributes],
+        class_=f"{_MODAL_PANEL_CLASS} {class_}".strip(),
     )
 
 
@@ -93,22 +124,26 @@ def ModalPanelHeader(
                 ("class", "shrink-0 focus:ring-inset"),
             ],
             variant="ghost",
+            size="compact",
         )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
     )
     return Div(
-        attributes,
-        class_=(
-            "flex shrink-0 items-center justify-between gap-4 px-4 "
-            f"{_DIVIDED_HEADER_CLASS if divided else 'pt-4'}"
-        ),
+        [(MODAL_ATTRIBUTES["header"], ""), *attributes],
+        class_=f"{_HEADER_CLASS} {_DIVIDED_HEADER_CLASS if divided else ''}".strip(),
     )[
-        PlainH2(
-            [
-                ("id", title_id),
-                *title_attributes,
-                ("class", "text-type-section text-heading"),
-            ],
-        )[title],
+        Div(class_="flex min-w-0 flex-col")[
+            P(
+                [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", True)],
+                class_="text-type-micro text-body",
+            ),
+            PlainH2(
+                [
+                    ("id", title_id),
+                    *title_attributes,
+                    ("class", "text-type-section text-heading"),
+                ],
+            )[title],
+        ],
         close_button,
     ]
 
