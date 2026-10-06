@@ -228,7 +228,7 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
                 revert_on_leave=True, attrs=field.widget.attrs
             )
             host_choices(field, picker)
-            # A native select without a none row cannot be emptied.
+            # No none row, nothing to clear.
             picker.clearable = picker.offers_none(name)
             continue
         if isinstance(field, forms.BooleanField):

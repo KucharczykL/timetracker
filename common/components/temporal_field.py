@@ -1,4 +1,4 @@
-"""TemporalField: controls for a date at any precision.
+"""TemporalField: a date at any precision.
 
 A person states a shape, the parts they know, and whether the date is
 approximate or uncertain. The controls are a shape, then four number
