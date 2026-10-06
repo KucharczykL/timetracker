@@ -1417,7 +1417,7 @@ const initWidget = (containerElement: Element): boolean => {
   };
   container._searchSelectOffers = (value: string) => offeredOption(value) !== undefined;
 
-  //: Hold an offered value; else none, or nothing.
+  //: Hold an offered value; else drop it.
   container._searchSelectHoldValue = (value: string): boolean => {
     const option = offeredOption(value);
     const alreadyHeld =
@@ -1811,8 +1811,7 @@ export class SearchSelectElement extends HTMLElement {
     (this as SearchSelectContainer)._searchSelectRefetch?.();
   }
 
-  /** Hold an offered `value`, silently.
-   *  Unoffered holds none, else nothing; answers false. */
+  /** Hold an offered `value`; answers whether offered. */
   holdValue(value: string): boolean {
     return this.initializedPart("_searchSelectHoldValue")(value);
   }
@@ -1822,7 +1821,7 @@ export class SearchSelectElement extends HTMLElement {
     this.initializedPart("_searchSelectHoldNone")();
   }
 
-  /** Whether a row or a held option offers `value`. */
+  /** Whether a row or memory offers `value`. */
   offers(value: string): boolean {
     return this.initializedPart("_searchSelectOffers")(value);
   }

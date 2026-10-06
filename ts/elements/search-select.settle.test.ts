@@ -327,7 +327,7 @@ describe("<search-select> a click into the focused box", () => {
 describe("<search-select> remembers what it held", () => {
   beforeEach(() => {
     document.body.replaceChildren();
-    //: Never answers; the rows stay as × left them.
+    //: Never answers; × leaves the rows.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
   });
   afterEach(() => vi.unstubAllGlobals());
