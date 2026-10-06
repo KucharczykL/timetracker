@@ -356,7 +356,10 @@ def test_a_new_game_states_two_editions_at_once(
 
 
 def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
-    """Narrow, each control keeps a label; wide, one header stands over them."""
+    """Narrow, each control keeps a label; wide, one header stands over them.
+
+    The form width never reaches the grid, so the cap is lifted.
+    """
     page = signed_in
     page.set_viewport_size({"width": 390, "height": 900})
     open_form(page, live_server, game)
@@ -372,6 +375,9 @@ def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
     expect(released).to_be_visible()
 
     page.set_viewport_size({"width": 1200, "height": 900})
+    page.locator("#add-form").evaluate(
+        "form => { form.parentElement.style.maxWidth = 'none'; }"
+    )
 
     expect(headings).to_be_visible()
     expect(card.get_by_label("Platform", exact=True)).to_be_visible()
