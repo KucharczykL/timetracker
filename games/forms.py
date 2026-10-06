@@ -1,5 +1,6 @@
 import copy
 import datetime
+import logging
 import uuid
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -86,7 +87,7 @@ from games.dev_login import prefill_credentials
 from games.end_ways import END_WAY_LABELS, EndWay, ended_hint
 from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
-from games.ids import PlatformId
+from games.ids import DeviceId, PlatformId, ReleaseId
 from games.models import (
     ADDON_KINDS,
     DEVICE_WAYS,
@@ -128,6 +129,7 @@ from timetracker.uuidv7 import parse_uuidv7
 if TYPE_CHECKING:
     from django.utils.choices import _Choices
 
+logger = logging.getLogger("games")
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -362,9 +364,10 @@ def _parent_options(values, *, library: UserLibrary) -> list[SearchSelectOption]
 
 def device_option(device: Device) -> SearchSelectOption:
     """One device as a picker row."""
+    removed_suffix = " (removed)" if device.removed_at is not None else ""
     option: SearchSelectOption = {
         "value": str(device.id),
-        "label": device.name,
+        "label": device.name + removed_suffix,
         "data": {},
     }
     if device.access_end_way:
@@ -1549,7 +1552,7 @@ def _run_choices(library: UserLibrary, game: Game | None) -> list[LabeledChoice]
 
 
 def release_field(
-    form: forms.Form, *, library: UserLibrary, held: uuid.UUID | None
+    form: forms.Form, *, library: UserLibrary, held: ReleaseId | None
 ) -> None:
     """Held Releases; the row's own stays."""
     field = cast(forms.ModelChoiceField, form.fields["release"])
@@ -1560,15 +1563,26 @@ def release_field(
     field.widget.options_resolver = partial(held_release_options, library=library)
 
 
+#: Posted device absent from the offered set.
+DEVICE_GONE: Final[str] = "That device is not offered; it may have been removed."
+
+
 def device_field(
-    form: forms.Form, *, library: UserLibrary, held: uuid.UUID | None
+    form: forms.Form, *, library: UserLibrary, held: DeviceId | None
 ) -> None:
     """Live devices; the row's own stays."""
     devices = Device.objects.for_library(library)
     if held is not None:
-        devices = devices | Device.objects.filter(library=library, pk=held)
+        held_device = Device.objects.filter(library=library, pk=held)
+        if not held_device.exists():
+            #: Drift: a save would clear it.
+            logger.error(
+                "Library %s holds no device %s that a row names.", library.pk, held
+            )
+        devices = devices | held_device
     field = cast(forms.ModelChoiceField, form.fields["device"])
     field.queryset = devices.order_by("name")
+    field.error_messages = {**field.error_messages, "invalid_choice": DEVICE_GONE}
     field.widget.options_resolver = partial(_named_device_options, devices=devices)
 
 
@@ -1728,7 +1742,7 @@ class SessionForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
         ),
     )
     device = forms.ModelChoiceField(
-        queryset=Device.objects.order_by("name"),
+        queryset=Device.objects.none(),
         required=False,
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
