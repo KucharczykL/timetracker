@@ -65,7 +65,6 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone
 from games.reads.player_sessions import (
-    game_sessions,
     library_sessions,
     listed_sessions,
 )
@@ -85,6 +84,7 @@ from games.views.session_menu import session_row_menu
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import (
+    ResumedDevice,
     SessionDraft,
     clone_session,
     end_session,
@@ -462,18 +462,28 @@ def resume_session(request: HttpRequest, game_id: UUID) -> HttpResponse:
     """Start a session now at the game, as its last session was played."""
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
-    last = game_sessions(library, game).order_by("-sort_instant", "-id").first()
     try:
-        clone_session(
-            cast(User, request.user),
-            game,
-            device_id=None if last is None else last.device_id,
-            emulated=False if last is None else last.emulated,
-            correlation_id=new_correlation_id(),
+        resumed = clone_session(
+            cast(User, request.user), game, correlation_id=new_correlation_id()
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)
+    else:
+        notice = device_swap_notice(resumed.device)
+        if notice is not None:
+            messages.info(request, notice)
     return redirect(return_url(request, fallback="games:list_sessions"))
+
+
+def device_swap_notice(resumed: ResumedDevice) -> str | None:
+    """Why Resume chose another device."""
+    if resumed.dropped is None:
+        return None
+    if resumed.device is None:
+        started = "with no device"
+    else:
+        started = f"on {resumed.device.name}"
+    return f"Resumed {started}; {resumed.dropped.name} is no longer held."
 
 
 def _posted_browser_zone(request: HttpRequest) -> str | None:

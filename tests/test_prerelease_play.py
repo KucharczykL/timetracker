@@ -66,7 +66,7 @@ from games.reads.session_figures import longest_session, session_count
 from games.reads.session_organization import organization_counts
 from games.views.general import model_counts
 from games.views.stats_data import compute_stats
-from games.writes.playersession import reclassify_session
+from games.writes.playersession import clone_session, reclassify_session
 from timetracker import settings_resolver
 from timetracker.settings_commands import change_site_setting
 
@@ -461,3 +461,18 @@ def test_a_reclassified_hidden_session_stays_hidden(owned_library, graph, demo, 
         timedelta(0), timedelta(0)
     )
     assert HistoricalPlaytime.objects.get().release == demo
+
+
+@pytest.mark.django_db(transaction=True)
+def test_resume_reads_hidden_prerelease_play(
+    owned_user, owned_library, demo, run, hide
+):
+    device = create_device(owned_library, "Deck")
+    a_session(run, demo, device=device)
+    hide()
+
+    resumed = clone_session(
+        owned_user, run.player_game.game, correlation_id=uuid.uuid7()
+    )
+
+    assert resumed.device.device == device

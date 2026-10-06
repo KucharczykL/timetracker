@@ -112,6 +112,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone, calendar_sentence
+from games.reads.devices import held_devices
 from games.reads.entries import readable_entries
 from games.reads.historical_playtime_records import readable_records
 from games.reads.player_sessions import readable_sessions
@@ -611,9 +612,7 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
 @device_router.get("/search", response=list[PickerOption])
 def search_devices(request, q: str = "", limit: int = 10, held: bool = False):
     library = cast(User, request.user).library
-    devices = Device.objects.for_library(library)
-    if held:
-        devices = devices.filter(access_end_recorded_at__isnull=True)
+    devices = held_devices(library) if held else Device.objects.for_library(library)
     #: Held first; ended ones serve past sessions.
     devices = devices.annotate(
         ended=Case(When(access_end_recorded_at__isnull=True, then=0), default=1)

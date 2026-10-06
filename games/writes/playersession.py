@@ -3,6 +3,7 @@
 An actor goes in here, not a request.
 """
 
+import logging
 import uuid
 from datetime import datetime
 from typing import NamedTuple
@@ -33,15 +34,20 @@ from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandRejected, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_RELEASE_CHANGED, ZoneName
-from games.models import Game, PlayerSession, Playthrough, UserLibrary
+from games.ids import PlayerSessionId
+from games.models import Device, Game, PlayerSession, Playthrough, UserLibrary
 from games.reads.calendar import calendar_day_zone
+from games.reads.devices import held_devices
 from games.reads.events import created_aggregate_id, dispatched_events
+from games.reads.player_sessions import game_sessions
 from games.reads.playthrough_runs import (
     library_runs,
     live_ordinary_runs,
     tracked_game,
 )
 from games.writes.answers import answered
+
+logger = logging.getLogger("games")
 
 
 class SessionDraft(NamedTuple):
@@ -465,18 +471,55 @@ def latest_ordinary_run(library: UserLibrary, game: Game) -> Playthrough | None:
     return live_ordinary_runs(library, tracked).order_by("-created_at", "-pk").first()
 
 
-def clone_session(
-    actor: User,
-    game: Game,
-    *,
-    device_id: uuid.UUID | None,
-    emulated: bool,
-    correlation_id: uuid.UUID,
-) -> uuid.UUID:
-    """Start a session now on the game's latest live ordinary run.
+class ResumedDevice(NamedTuple):
+    """The device and flag Resume states.
 
-    The device and the emulated flag are the resumed session's; the
-    note is empty, and the day is counted in the library's calendar.
+    The flag carries only with the last session's own device.
+    """
+
+    device: Device | None
+    emulated: bool
+    #: This library's device Resume did not carry.
+    dropped: Device | None
+
+
+class ResumedSession(NamedTuple):
+    """The started session and its device."""
+
+    session_id: PlayerSessionId
+    device: ResumedDevice
+
+
+def resumed_device(library: UserLibrary, last: PlayerSession | None) -> ResumedDevice:
+    """Held or no device kept; else default."""
+    dropped = None
+    if last is not None:
+        if last.device_id is None:
+            return ResumedDevice(device=None, emulated=last.emulated, dropped=None)
+        held = held_devices(library).filter(pk=last.device_id).first()
+        if held is not None:
+            return ResumedDevice(device=held, emulated=last.emulated, dropped=None)
+        dropped = Device.objects.filter(library=library, pk=last.device_id).first()
+        if dropped is None:
+            #: Drift: another library's device.
+            logger.error(
+                "Library %s holds no device %s that session %s at game %s names.",
+                library.pk,
+                last.device_id,
+                last.pk,
+                last.playthrough.player_game.game_id,
+            )
+    return ResumedDevice(
+        device=library.preferences.default_device, emulated=False, dropped=dropped
+    )
+
+
+def clone_session(
+    actor: User, game: Game, *, correlation_id: uuid.UUID
+) -> ResumedSession:
+    """Start a Timed session on the latest run.
+
+    Device and flag follow `resumed_device`; note empty.
     """
     with answered("session"):
         run = latest_ordinary_run(actor.library, game)
@@ -486,6 +529,13 @@ def clone_session(
                 f"{game.pk} to resume on.",
                 sentence="This game has no playthrough to record a session on.",
             )
+        last = (
+            game_sessions(actor.library, game)
+            .select_related("playthrough__player_game")
+            .order_by("-sort_instant", "-id")
+            .first()
+        )
+        resumed = resumed_device(actor.library, last)
         result = _dispatch(
             CreateSession(
                 playthrough_id=run.pk,
@@ -493,12 +543,12 @@ def clone_session(
                     started_at=timezone.now(),
                     day_zone=calendar_day_zone(actor.library).key,
                 ),
-                device_id=device_id,
+                device_id=None if resumed.device is None else resumed.device.pk,
                 note="",
-                emulated=emulated,
+                emulated=resumed.emulated,
             ),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
         )
-    return created_aggregate_id(result)
+    return ResumedSession(session_id=created_aggregate_id(result), device=resumed)
