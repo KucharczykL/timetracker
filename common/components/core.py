@@ -16,7 +16,7 @@ Nodes are *lazy*: they hold structure and render to HTML only when asked
 import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from functools import lru_cache
-from typing import Self
+from typing import Literal, Self
 
 from django.utils.html import escape
 from django.utils.safestring import SafeText, mark_safe
@@ -149,23 +149,31 @@ class Node:
 # sequence is a covariant ``Sequence`` so ``list[Element]`` / ``list[Node]`` are
 # accepted (a plain ``list[str]`` would be invariant and reject them). A single
 # bare ``Node`` is accepted only by ``Element`` itself (which wraps it); the
-# higher-level builders take ``Children``.
+# higher-level builders take ``Children``. A ``None`` or ``False`` child is
+# dropped, as a ``None``/``False`` attribute is omitted, so
+# ``Div()[a, b if shown else None]`` renders ``a`` alone.
 Child = Node | str
-Children = Sequence[Child] | Node | str | None
+AbsentChild = Literal[False] | None
+Children = Sequence[Child | AbsentChild] | Node | str | None
+
+
+def _present[T](children: Iterable[T | AbsentChild]) -> list[T]:
+    return [child for child in children if child is not None and child is not False]
 
 
 def as_children(children: Children) -> list[Child]:
     """Normalise a builder's ``children`` argument to a flat list.
 
     Accepts ``None`` (→ empty), a single node/string (→ one-element list), or a
-    sequence of them. Lets builders drop the ``children if isinstance(children,
-    list) else [children]`` dance and get a properly typed ``list[Child]``.
+    sequence of them, whose ``None``/``False`` members it drops. Lets builders
+    drop the ``children if isinstance(children, list) else [children]`` dance
+    and get a properly typed ``list[Child]``.
     """
-    if children is None:
+    if children is None or children is False:
         return []
     if isinstance(children, (str, Node)):
         return [children]
-    return list(children)
+    return _present(children)
 
 
 def as_attributes(attributes: Attributes | None) -> list[HTMLAttribute]:
@@ -331,11 +339,7 @@ class Element(Node):
             raise ValueError("tag_name is required.")
         self.tag_name = tag_name
         self.attributes = normalize_attributes(attributes) if attributes else []
-        if children is None:
-            children = []
-        elif isinstance(children, (str, Node)):
-            children = [children]
-        self.children = children
+        self.children = as_children(children)
 
     def __getitem__(self, children: Children | Node) -> Element:
         """htpy-style children: ``Div(class_="x")[child1, child2]``.
@@ -389,7 +393,7 @@ class Fragment(Node):
     """
 
     def __init__(self, *children: object, separator: str = "") -> None:
-        self.children = [c for c in children if c is not None and c != ""]
+        self.children = [child for child in _present(children) if child != ""]
         self.separator = separator
 
     def collect_media(self) -> Media:

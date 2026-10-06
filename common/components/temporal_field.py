@@ -162,7 +162,7 @@ def TemporalField(
             aria_live="polite",
             class_="sr-only",
         ),
-        *([_copy_button(copy_source)] if copy_source else []),
+        _copy_button(copy_source) if copy_source else None,
     ]
     if not _segments_can_hold(data):
         return group

@@ -210,7 +210,7 @@ def SummaryRow(
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
             #: In a group, the group names it.
-            *([P(class_="text-type-subheading text-heading")[label]] if label else []),
+            P(class_="text-type-subheading text-heading")[label] if label else None,
             Div(
                 class_="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-type-body text-body"
             )[subtitle],

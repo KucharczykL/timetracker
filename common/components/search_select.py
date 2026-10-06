@@ -564,8 +564,8 @@ def _combobox_children(
     box = Div(data_search_select_box="", class_=box_class)[
         pills,
         search,
-        *([_clear_button(clear)] if clear else []),
-        *([_dialog_create_link(dialog_create)] if dialog_create else []),
+        _clear_button(clear) if clear else None,
+        _dialog_create_link(dialog_create) if dialog_create else None,
         *(marker or []),
     ]
     return [box, options_panel, *(templates or [])]
