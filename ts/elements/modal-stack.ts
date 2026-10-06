@@ -193,11 +193,10 @@ function layersOf(open: readonly StackedModal[]): Layer[] {
   });
 }
 
-function markTrails(shown: readonly StackedModal[], open: readonly StackedModal[]): void {
+/** A leaving modal keeps what it shows. */
+function markTrails(open: readonly StackedModal[]): void {
   const top = open.at(-1);
-  for (const entry of shown) {
-    // A leaving modal keeps what it shows.
-    if (entry.state !== "open") continue;
+  for (const entry of open) {
     const { trail } = partsOf(entry.dialog);
     if (entry !== top || !trail) {
       hideTrail(entry.dialog, trail);
@@ -214,7 +213,7 @@ export function markStack(shown: readonly StackedModal[]): void {
   if (shown.length === 0) return;
   watch();
   const open = shown.filter((entry) => entry.state === "open");
-  markTrails(shown, open);
+  markTrails(open);
   const layers = layersOf(open);
   let reserve: Pixels = 0;
   for (const layer of layers) {

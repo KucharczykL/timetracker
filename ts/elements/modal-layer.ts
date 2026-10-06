@@ -146,21 +146,23 @@ function markBackdrops(): void {
   });
 }
 
+type StepName = string; // e.g. "markStack"
+
 /** Cosmetic; a throw must not unsettle the layer. */
-function markDepth(): void {
+function cosmetic(name: StepName, step: () => void): void {
   try {
-    markStack(shown);
+    step();
   } catch (error) {
-    report(`markStack threw: ${String(error)}`);
+    report(`${name} threw: ${String(error)}`);
   }
 }
 
+function markDepth(): void {
+  cosmetic("markStack", () => markStack(shown));
+}
+
 function unmarkDepth(dialog: HTMLDialogElement): void {
-  try {
-    clearStack(dialog);
-  } catch (error) {
-    report(`clearStack threw: ${String(error)}`);
-  }
+  cosmetic("clearStack", () => clearStack(dialog));
 }
 
 function markShown(): void {
