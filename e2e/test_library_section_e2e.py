@@ -5,6 +5,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
+from e2e.helpers import pick_choice
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Game, LibraryEntry, Platform, Release, UserLibrary
 
@@ -108,7 +109,7 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     expect(rows).to_have_count(1)
 
     _row_act(page, "Tunic (Switch) actions", "I no longer have it", "With details…")
-    page.select_option("select[name='way']", "sold")
+    pick_choice(page, "way", "sold")
     _submit(page)
 
     expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()

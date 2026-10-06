@@ -5,6 +5,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
+from e2e.helpers import pick_choice
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
@@ -157,7 +158,7 @@ def test_two_copies_end_and_the_undo_holds_them_again(
     expect(
         page.get_by_role("heading", name="I no longer have these 2 copies")
     ).to_be_visible()
-    page.select_option("select[name='choice-way']", "sold")
+    pick_choice(page, "choice-way", "sold")
     page.get_by_role("button", name="Save", exact=True).click()
 
     page.wait_for_url(listed)
@@ -184,7 +185,7 @@ def test_the_row_menu_opens_the_details_page_and_returns_to_the_tab(
 
     entry = copies[0]
     page.wait_for_url(f"**{reverse('games:end_library_entry', args=[entry.pk])}*")
-    page.select_option("select[name='way']", "sold")
+    pick_choice(page, "way", "sold")
     with page.expect_navigation():
         page.get_by_role("button", name="Save", exact=True).click()
 

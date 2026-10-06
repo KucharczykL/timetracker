@@ -15,6 +15,7 @@ from django.urls import reverse
 from entries import record_entry
 from playwright.sync_api import Locator, Page, expect
 
+from e2e.helpers import held_choice, pick_choice
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
@@ -594,10 +595,9 @@ def test_the_parent_row_follows_the_kind(signed_in, live_server, game):
     page = signed_in
     open_add_form(page, live_server)
     parent_row = page.locator("[data-field-row='parent']")
-    kind = page.locator("select[name='kind']")
     expect(parent_row).to_be_hidden()
 
-    kind.select_option("dlc")
+    pick_choice(page, "kind", "dlc")
     expect(parent_row).to_be_visible()
     picker = page.locator("search-select[name='parent']")
     picker.locator("[data-search-select-search]").click()
@@ -606,7 +606,7 @@ def test_the_parent_row_follows_the_kind(signed_in, live_server, game):
         str(game.pk)
     )
 
-    kind.select_option("main")
+    pick_choice(page, "kind", "main")
     expect(parent_row).to_be_hidden()
     expect(parent_row.locator("input[type=hidden][name='parent']")).to_have_count(0)
 
@@ -617,7 +617,7 @@ def test_the_parent_picker_offers_no_addons(signed_in, live_server, e2e_library,
     page = signed_in
     open_add_form(page, live_server)
 
-    page.locator("select[name='kind']").select_option("dlc")
+    pick_choice(page, "kind", "dlc")
     picker = page.locator("search-select[name='parent']")
     picker.locator("[data-search-select-search]").fill("Elite")
 
@@ -633,7 +633,7 @@ def test_a_cloned_edition_saves_its_kind(signed_in, live_server, game):
 
     page.click("[data-catalog-add='edition']")
     page.locator("input[name='edition-1-name']").fill("Demo")
-    page.locator("select[name='edition-1-kind']").select_option("prerelease")
+    pick_choice(page, "edition-1-kind", "prerelease")
     saved(page, live_server)
 
     added = Edition.objects.alive().get(game=game, name="Demo")
@@ -645,7 +645,7 @@ def test_a_new_dlc_names_its_parent(signed_in, live_server, e2e_library, game):
     open_add_form(page, live_server)
 
     page.fill("input[name='name']", "Elite Expansion")
-    page.locator("select[name='kind']").select_option("dlc")
+    pick_choice(page, "kind", "dlc")
     picker = page.locator("search-select[name='parent']")
     picker.locator("[data-search-select-search]").click()
     picker.get_by_role("option", name="Elite").first.click()
@@ -656,3 +656,79 @@ def test_a_new_dlc_names_its_parent(signed_in, live_server, e2e_library, game):
     page.goto(f"{live_server.url}{written.get_absolute_url()}")
     parent_link = page.get_by_role("link", name="Elite", exact=True)
     expect(parent_link).to_have_attribute("href", game.get_absolute_url())
+
+
+def test_two_cloned_editions_keep_their_own_kind(signed_in, live_server, game):
+    """Each clone's picker owns its own list."""
+    page = signed_in
+    open_form(page, live_server, game)
+
+    page.click("[data-catalog-add='edition']")
+    page.click("[data-catalog-add='edition']")
+    page.locator("input[name='edition-1-name']").fill("Demo")
+    page.locator("input[name='edition-2-name']").fill("Remaster")
+    boxes = [
+        page.locator(
+            f"search-select[name='edition-{index}-kind'] [data-search-select-search]"
+        )
+        for index in (1, 2)
+    ]
+    first, second = (box.get_attribute("aria-controls") for box in boxes)
+    assert first and second and first != second
+    pick_choice(page, "edition-1-kind", "prerelease")
+    pick_choice(page, "edition-2-kind", "full")
+    saved(page, live_server)
+
+    kinds = dict(
+        Edition.objects.alive()
+        .filter(game=game, name__in=["Demo", "Remaster"])
+        .values_list("name", "kind")
+    )
+    assert kinds == {"Demo": "prerelease", "Remaster": "full"}
+
+
+def test_a_keystroke_in_kind_keeps_the_parent(signed_in, live_server, game):
+    """Typing drops the value; leaving puts it back."""
+    page = signed_in
+    open_add_form(page, live_server)
+    pick_choice(page, "kind", "dlc")
+    picker = page.locator("search-select[name='parent']")
+    picker.locator("[data-search-select-search]").click()
+    picker.get_by_role("option", name="Elite").first.click()
+
+    kind_box = page.locator("search-select[name='kind'] [data-search-select-search]")
+    kind_box.click()
+    page.keyboard.type("m")
+    page.locator("input[name='name']").click()
+
+    expect(held_choice(page, "kind")).to_have_value("dlc")
+    expect(page.locator("[data-field-row='parent']")).to_be_visible()
+    expect(held_choice(page, "parent")).to_have_value(str(game.pk))
+
+
+def test_a_refused_date_offers_its_shape_as_a_picker(
+    signed_in, live_server, e2e_library
+):
+    """Text no segment holds renders the bare controls."""
+    page = signed_in
+    open_add_form(page, live_server)
+    page.fill("input[name='name']", "Shapeless")
+    #: Five digits: wider than the year segment.
+    for posted, value in (("kind", "date"), ("year", "12345")):
+        page.locator(f"input[name='original_release_date-{posted}']").evaluate(
+            f"input => {{ input.value = '{value}'; }}"
+        )
+    #: Skips the browser's own range check.
+    page.locator(SUBMIT).first.evaluate("button => { button.form.noValidate = true; }")
+    page.click(SUBMIT)
+
+    expect(
+        page.locator("search-select[name='original_release_date-kind']")
+    ).to_be_visible()
+    pick_choice(page, "original_release_date-kind", "range")
+    page.fill("input[name='original_release_date-year']", "1990")
+    page.fill("input[name='original_release_date-end-year']", "1995")
+    saved(page, live_server)
+
+    written = Game.objects.get(library=e2e_library, name="Shapeless")
+    assert written.original_release_date.canonical == "1990/1995"

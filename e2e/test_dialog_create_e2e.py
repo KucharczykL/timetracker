@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import pick_choice
 from games.models import Game, Playthrough
 
 LOGIN = ("tester", "secret123")
@@ -82,7 +83,7 @@ def test_an_addon_adds_its_main_game_in_a_stacked_dialog(
     ).click()
     outer = page.locator("dialog[data-modal][open]").first
     outer.locator('input[name="name"]').press_sequentially("Hollow Knight DLC")
-    outer.locator('select[name="kind"]').select_option("dlc")
+    pick_choice(outer, "kind", "dlc")
     outer.locator('search-select[name="parent"]').get_by_role(
         "link", name="New main game"
     ).click()
@@ -91,7 +92,7 @@ def test_an_addon_adds_its_main_game_in_a_stacked_dialog(
     expect(inner.locator("[data-form-dialog-title]")).to_have_text(
         "Add the main game of Hollow Knight DLC"
     )
-    expect(inner.locator('select[name="kind"]')).to_have_count(0)
+    expect(inner.locator('search-select[name="kind"]')).to_have_count(0)
     expect(inner.locator('[data-field-row="kind"] dd')).to_have_text("Main game")
     _make_game(inner, "Hollow Knight")
 
