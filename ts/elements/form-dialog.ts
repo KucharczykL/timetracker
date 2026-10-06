@@ -171,7 +171,7 @@ function submitMethod(form: HTMLFormElement, submitter: HTMLElement | null): str
   ).toLowerCase();
 }
 
-function isSubmitButton(element: Element): element is HTMLButtonElement | HTMLInputElement {
+function isSubmitButton(element: Element): element is SavingButton {
   if (element instanceof HTMLButtonElement) return element.type === "submit";
   return element instanceof HTMLInputElement && (element.type === "submit" || element.type === "image");
 }
@@ -363,9 +363,8 @@ export class FormDialogElement extends HTMLElement {
 
   /** Broken: discard. Already asking or busy: return. */
   private askAbout(entry: OpenDialog, forms: readonly HTMLFormElement[]): Promise<UnsavedChoice> {
-    if (this.asking) return Promise.resolve(RETURN);
-    // Another modal still leaving: ask again later.
-    if (isModalLeaving()) return Promise.resolve(RETURN);
+    // Already asking, or a modal leaving.
+    if (this.asking || isModalLeaving()) return Promise.resolve(RETURN);
     const template = this.querySelector<HTMLTemplateElement>(
       `template[${UNSAVED_WARNING_PARTS.template}]`,
     );
