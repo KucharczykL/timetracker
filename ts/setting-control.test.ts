@@ -37,17 +37,11 @@ function resolved(value: ResolvedSetting["value"]): ResolvedSetting {
 const readOf = (element: HTMLElement) => settingControlOf(element)!.read();
 
 describe("a native control's payload", () => {
-  it("serializes checkbox, select, number, and text setting controls", () => {
+  it("serializes checkbox, number, and text setting controls", () => {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = true;
     expect(readOf(checkbox)).toBe(true);
-
-    const select = document.createElement("select");
-    select.innerHTML = '<option value="">Unset</option><option value="x">X</option>';
-    expect(readOf(select)).toBeNull();
-    select.value = "x";
-    expect(readOf(select)).toBe("x");
 
     const number = document.createElement("input");
     number.type = "number";
@@ -69,33 +63,33 @@ describe("settingControlOf a native control", () => {
     document.body.innerHTML = `
       <input type="checkbox" data-live-setting-control>
       <input type="number" value="10">
-      <select><option value="">Default</option><option value="a">A</option></select>
       <input type="text" value="" readonly>
+      <select><option value="a">A</option></select>
       <div></div>`;
   });
 
   it("reads each kind as before", () => {
-    const [checkbox, number, select, text] = Array.from(
-      document.querySelectorAll<HTMLElement>("input, select")
+    const [checkbox, number, text] = Array.from(
+      document.querySelectorAll<HTMLElement>("input")
     ).map(element => settingControlOf(element)!);
     expect(checkbox.read()).toBe(false);
     expect(number.read()).toBe(10);
-    expect(select.read()).toBeNull();
     expect(text.read()).toBeNull();
     expect(text.editable()).toBe(false);
-    expect(select.changeEvent).toBe("change");
+    expect(text.changeEvent).toBe("change");
   });
 
-  it("is none for anything else", () => {
+  it("is none for anything else, a native select included", () => {
     expect(settingControlOf(document.querySelector("div")!)).toBeNull();
+    expect(settingControlOf(document.querySelector("select")!)).toBeNull();
   });
 
   it("writes and restores", () => {
-    const select = settingControlOf(document.querySelector("select")!)!;
-    select.write("a");
-    expect(select.read()).toBe("a");
-    select.restore({ kind: "native", value: "" });
-    expect(select.read()).toBeNull();
+    const text = settingControlOf(document.querySelector<HTMLElement>("input[readonly]")!)!;
+    text.write("a");
+    expect(text.read()).toBe("a");
+    text.restore({ kind: "native", value: "" });
+    expect(text.read()).toBeNull();
   });
 });
 

@@ -11,15 +11,53 @@ import "./setting-source-badge.js";
 
 Element.prototype.scrollIntoView = () => {};
 
+const NONE = "Use site default";
+
+/** A setting picker holding none. */
+function pickerMarkup(
+  key: string,
+  name: string,
+  options: Record<string, string>,
+  reload = false,
+): string {
+  const rows = Object.entries(options)
+    .map(([value, label]) =>
+      `<div data-search-select-option data-value="${value}" data-label="${label}">${label}</div>`)
+    .join("");
+  return `
+    <drop-down behavior="inline-combobox"><search-select name="${name}" multi="false"
+        none-label="${NONE}" data-setting-key="${key}" data-live-setting-control
+        ${reload ? "data-reload-after-save" : ""}>
+      <div data-search-select-pills>
+        <input type="hidden" name="${name}" value="" data-search-select-none></div>
+      <input data-search-select-search value="${NONE}">
+      <button type="button" data-search-select-clear>×</button>
+      <div data-search-select-options hidden>
+        <div data-search-select-none-option data-label="${NONE}">${NONE}</div>${rows}
+      </div>
+    </search-select></drop-down>`;
+}
+
+/** Picks `value` in the picker posting `name`; "" picks none. */
+function choose(host: HTMLElement, name: string, value: string): void {
+  const picker = host.querySelector<HTMLElement>(`search-select[name="${name}"]`)!;
+  picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+  picker.querySelector<HTMLElement>(
+    value === ""
+      ? "[data-search-select-none-option]"
+      : `[data-search-select-option][data-value="${value}"]`,
+  )!.click();
+}
+
 function mountFields(): HTMLElement {
   document.body.innerHTML = `
     <live-setting-fields patch-url-template="/api/settings/user/__key__"
         csrf="token" namespace="user">
       <input data-setting-key="ENABLED" data-live-setting-control name="enabled" type="checkbox">
-      <select data-setting-key="DESTINATION" data-live-setting-control name="destination">
-        <option value="">Unset</option><option value="stats">Statistics</option>
-        <option value="sessions">Sessions</option>
-      </select>
+      ${pickerMarkup("DESTINATION", "destination", {
+        stats: "Statistics",
+        sessions: "Sessions",
+      })}
       <setting-source-badge key="DESTINATION" namespace="user"><pop-over>
         <button data-pop-over-trigger aria-label="Default source">
           <span data-setting-origin="default"
@@ -37,16 +75,13 @@ function mountFields(): HTMLElement {
       </pop-over></setting-source-badge>
       <input data-setting-key="LIMIT" data-live-setting-control name="limit" type="number" value="10">
       <input data-setting-key="NAME" data-live-setting-control name="name" type="text" value="Before">
-      <select data-setting-key="DISPLAY_TIME_ZONE" data-live-setting-control
-          data-reload-after-save name="display-time-zone">
-        <option value="">Use site default</option>
-        <option value="Pacific/Kiritimati">Pacific/Kiritimati</option>
-      </select>
-      <select data-setting-key="DATETIME_FORMAT" data-live-setting-control
-          data-reload-after-save name="datetime-format">
-        <option value="">Use site default</option>
-        <option value="mdy_12h">MM/DD/YYYY, 12-hour</option>
-      </select>
+      ${pickerMarkup(
+        "DISPLAY_TIME_ZONE",
+        "display-time-zone",
+        { "Pacific/Kiritimati": "Pacific/Kiritimati" },
+        true,
+      )}
+      ${pickerMarkup("DATETIME_FORMAT", "datetime-format", { mdy_12h: "MM/DD/YYYY, 12-hour" }, true)}
       <input data-setting-key="IDENTITY_ONLY" name="identity-only" value="Not owned">
       <input data-setting-key="LOCKED" data-live-setting-control name="locked" value="Pinned" disabled>
     </live-setting-fields>`;
@@ -209,7 +244,6 @@ describe("<live-setting-fields>", () => {
       } as Response);
     window.fetchWithEvents = fetchStub;
     const host = mountFields();
-    const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
     const badge = host.querySelector<HTMLElement>("[data-setting-origin]")!;
     const label = badge.querySelector<HTMLElement>("[data-setting-source-label]")!;
     const trigger = badge.closest("pop-over")!.querySelector("[data-pop-over-trigger]")!;
@@ -222,8 +256,7 @@ describe("<live-setting-fields>", () => {
     expect(badge.classList.contains("bg-brand-soft")).toBe(false);
     expect(status.hidden).toBe(true);
 
-    select.value = "stats";
-    change(select);
+    choose(host, "destination", "stats");
     await vi.waitFor(() => expect(label.textContent).toBe("Personal"));
     expect(badge.dataset.settingOrigin).toBe("user");
     expect(badge.classList.contains("bg-brand-soft")).toBe(true);
@@ -234,8 +267,7 @@ describe("<live-setting-fields>", () => {
     );
     expect(status.hidden).toBe(false);
 
-    select.value = "";
-    change(select);
+    choose(host, "destination", "");
     await vi.waitFor(() => expect(label.textContent).toBe("Database"));
     expect(badge.dataset.settingOrigin).toBe("database");
     expect(trigger.getAttribute("aria-label")).toBe("Database source");
@@ -243,8 +275,7 @@ describe("<live-setting-fields>", () => {
       "Saved in the application database as the current site-wide value.",
     );
 
-    select.value = "stats";
-    change(select);
+    choose(host, "destination", "stats");
     await vi.waitFor(() => expect(label.textContent).toBe("Default"));
     expect(badge.dataset.settingOrigin).toBe("default");
     expect(trigger.getAttribute("aria-label")).toBe("Default source");
@@ -298,7 +329,7 @@ describe("<live-setting-fields>", () => {
     expect(input.value).toBe("CZK");
   });
 
-  it("keeps a cleared select on its use-default sentinel", async () => {
+  it("keeps a picker cleared to none on none", async () => {
     window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -311,13 +342,20 @@ describe("<live-setting-fields>", () => {
       }),
     } as Response);
     const host = mountFields();
-    const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
+    const picker = host.querySelector<HTMLElement>('search-select[name="destination"]')!;
+    const search = picker.querySelector<HTMLInputElement>("[data-search-select-search]")!;
+    choose(host, "destination", "stats");
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
 
-    select.value = "";
-    change(select);
+    choose(host, "destination", "");
 
-    await vi.waitFor(() => expect(select.hasAttribute("aria-busy")).toBe(false));
-    expect(select.value).toBe("");
+    await vi.waitFor(() => expect(search.hasAttribute("aria-busy")).toBe(false));
+    const sent = vi.mocked(window.fetchWithEvents).mock.calls.map(
+      (call) => JSON.parse(String((call[1] as RequestInit).body)).value,
+    );
+    expect(sent).toEqual(["stats", null]);
+    expect(picker.querySelector("input[data-search-select-none]")).not.toBeNull();
+    expect(search.value).toBe(NONE);
   });
 
   it("reloads after a successful presentation setting save", async () => {
@@ -333,12 +371,8 @@ describe("<live-setting-fields>", () => {
       }),
     } as Response);
     const host = mountFields();
-    const select = host.querySelector<HTMLSelectElement>(
-      '[name="display-time-zone"]',
-    )!;
 
-    select.value = "Pacific/Kiritimati";
-    change(select);
+    choose(host, "display-time-zone", "Pacific/Kiritimati");
 
     await vi.waitFor(() => expect(reloadAfterSettingSave).toHaveBeenCalledOnce());
   });
@@ -356,12 +390,8 @@ describe("<live-setting-fields>", () => {
       }),
     } as Response);
     const host = mountFields();
-    const select = host.querySelector<HTMLSelectElement>(
-      '[name="datetime-format"]',
-    )!;
 
-    select.value = "mdy_12h";
-    change(select);
+    choose(host, "datetime-format", "mdy_12h");
 
     await vi.waitFor(() => expect(reloadAfterSettingSave).toHaveBeenCalledOnce());
   });
@@ -378,12 +408,8 @@ describe("<live-setting-fields>", () => {
     } as Response);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const host = mountFields();
-    const select = host.querySelector<HTMLSelectElement>(
-      '[name="datetime-format"]',
-    )!;
 
-    select.value = "mdy_12h";
-    change(select);
+    choose(host, "datetime-format", "mdy_12h");
 
     await vi.waitFor(() =>
       expect(window.toast).toHaveBeenCalledWith(
@@ -554,7 +580,7 @@ describe("<live-setting-fields>", () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  it("sends native boolean, null, and numeric JSON values", async () => {
+  it("sends native boolean, string, and numeric JSON values", async () => {
     const fetchStub = vi.fn((url: string, options: RequestInit) => {
       const key = url.split("/").pop()!;
       const value = JSON.parse(String(options.body)).value;
@@ -567,20 +593,18 @@ describe("<live-setting-fields>", () => {
     window.fetchWithEvents = fetchStub;
     const host = mountFields();
     const checkbox = host.querySelector<HTMLInputElement>('[name="enabled"]')!;
-    const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
     const number = host.querySelector<HTMLInputElement>('[name="limit"]')!;
     checkbox.checked = true;
-    select.value = "";
     number.value = "25";
     change(checkbox);
-    change(select);
+    choose(host, "destination", "sessions");
     change(number);
 
     await vi.waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(3));
     const bodies = fetchStub.mock.calls.map((call) =>
       JSON.parse(String((call[1] as RequestInit).body)),
     );
-    expect(bodies).toEqual([{ value: true }, { value: null }, { value: 25 }]);
+    expect(bodies).toEqual([{ value: true }, { value: "sessions" }, { value: 25 }]);
   });
 });
 
