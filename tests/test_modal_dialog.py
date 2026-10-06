@@ -49,7 +49,7 @@ class ModalDialogTest(SimpleTestCase):
         self.assertNotIn("open:items-center", tag)
 
     def test_the_dim_classes_name_the_stamped_attributes(self):
-        """Tailwind needs literals; they must match the layer."""
+        """Literals for Tailwind; must match the layer."""
         for role in ("covered", "over"):
             self.assertIn(f"{MODAL_ATTRIBUTES[role]}:", _MODAL_DIALOG_CLASS)
 
@@ -100,7 +100,7 @@ class ModalPanelTest(SimpleTestCase):
         self.assertIn("origin-top", html)
 
     def test_the_step_names_the_stamp_and_the_properties(self):
-        """Tailwind needs literals; they must match the layer."""
+        """Literals for Tailwind; must match the layer."""
         self.assertIn(f"{MODAL_ATTRIBUTES['depth']}:", _MODAL_PANEL_CLASS)
         for name in ("--modal-shift", "--modal-reserve", "--modal-depth"):
             self.assertIn(name, _MODAL_PANEL_CLASS)

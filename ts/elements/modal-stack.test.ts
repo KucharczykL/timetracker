@@ -143,7 +143,7 @@ describe("geometry", () => {
     lower.modal.open();
     top.modal.open();
     expect(property(top.panel, "--modal-shift")).toBe("0px");
-    // Target 100 - 38 = 62; from 200 that is -138.
+    // 100 - 38 = 62; 62 - 200 = -138.
     expect(property(lower.panel, "--modal-shift")).toBe("-138px");
   });
 
@@ -153,7 +153,7 @@ describe("geometry", () => {
     const top = mountStacked("Top", { top: 100, header: 40 });
     for (const stacked of [lower, middle, top]) stacked.modal.open();
     expect(property(middle.panel, "--modal-shift")).toBe("0px");
-    // Middle lands at 20; lower targets 20 - 36.
+    // Middle lands at 20; lower aims 16.
     expect(property(lower.panel, "--modal-shift")).toBe("-316px");
   });
 
