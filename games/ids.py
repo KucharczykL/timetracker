@@ -9,6 +9,7 @@ type PlayerGameId = uuid.UUID
 type PlaythroughId = uuid.UUID
 type HistoricalPlaytimeId = uuid.UUID
 type PlayerSessionId = uuid.UUID
+type EditionId = uuid.UUID
 type ReleaseId = uuid.UUID
 #: A device's key.
 type DeviceId = uuid.UUID

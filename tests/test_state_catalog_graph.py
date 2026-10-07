@@ -6,6 +6,8 @@ anything is written, and carries the caller's own name for the row.
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from games.catalog_writes import (
     DUPLICATE_EDITION_NAME,
@@ -769,3 +771,114 @@ def test_a_statement_wide_refusal_names_no_row(owned_library, game):
 
     assert REMOVED_GAME in refused.value.messages
     assert refused.value.key is None
+
+
+def test_a_removed_standing_edition_passes_the_mark_to_a_live_sibling(
+    owned_library, game
+):
+    sibling = Edition.objects.create(game=game.game, name="Sibling")
+
+    state(
+        game.game,
+        owned_library,
+        EditionState(key="edition-0", edition=game.edition, removed=True),
+    )
+
+    sibling.refresh_from_db()
+    assert sibling.is_default is True
+
+
+def test_a_removed_standing_release_passes_the_mark_to_a_live_sibling(
+    owned_library, game
+):
+    sibling = Release.objects.create(edition=game.edition, is_default=False)
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0", release=game.release, removed=True
+                ),
+            ),
+        ),
+    )
+
+    sibling.refresh_from_db()
+    assert sibling.is_default is True
+
+
+def _platformed_graph(game, library, platform, size):
+    """`size` Editions of `size` Releases each."""
+    return state(
+        game,
+        library,
+        *(
+            EditionState(
+                key=f"edition-{index}",
+                name=f"Edition {index}",
+                is_default=index == 0,
+                releases=tuple(
+                    ReleaseState(
+                        key=f"edition-{index}-release-{row}",
+                        platform=platform,
+                        is_default=row == 0,
+                    )
+                    for row in range(size)
+                ),
+            )
+            for index in range(size)
+        ),
+    )
+
+
+def _restated(written, platform):
+    """Every row restated on `platform`."""
+    return [
+        EditionState(
+            key=entry.key,
+            edition=entry.edition,
+            name=entry.edition.name,
+            is_default=entry.edition.is_default,
+            releases=tuple(
+                ReleaseState(
+                    key=key,
+                    release=release,
+                    platform=platform,
+                    is_default=release.is_default,
+                )
+                for key, release in entry.releases
+            ),
+        )
+        for entry in written.editions
+    ]
+
+
+def _selects(captured) -> int:
+    return sum(
+        1 for query in captured.captured_queries if query["sql"].startswith("SELECT")
+    )
+
+
+@pytest.mark.parametrize("size", [1, 3])
+@pytest.mark.parametrize(("new_platform", "reads"), [(False, 3), (True, 4)])
+def test_statement_size_does_not_change_the_reads(
+    owned_library, size, new_platform, reads
+):
+    """Game lock, Editions, Releases, new Platforms."""
+    stored_platform = Platform.objects.create(library=owned_library, name="Stored")
+    stated_platform = (
+        Platform.objects.create(library=owned_library, name="Stated")
+        if new_platform
+        else stored_platform
+    )
+    game = Game.objects.create(library=owned_library, name="Counted")
+    written = _platformed_graph(game, owned_library, stored_platform, size)
+    statement = _restated(written, stated_platform)
+
+    with CaptureQueriesContext(connection) as captured:
+        state_catalog_graph(game=game, library=owned_library, editions=statement)
+
+    assert _selects(captured) == reads

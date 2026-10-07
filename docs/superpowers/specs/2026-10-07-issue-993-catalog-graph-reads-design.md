@@ -1,99 +1,63 @@
 # The catalog graph reads its rows once
 
-Issue: #993. Contract it serves: [Catalog](../../catalog.md).
+Issue: #993. Contract: [Catalog](../../catalog.md).
 
-## Problem
+## Rule
 
-`state_catalog_graph()` locks the Game, then reads row by row:
+`state_catalog_graph()` reads a fixed number of rows under the Game's lock.
+The number does not grow with the statement. A statement without removals
+runs three `SELECT`s: the Game lock, the Editions, the Releases. A statement
+that names a new Platform runs a fourth: the Platform lock.
 
-- `_resolved_edition()` and `_resolved_release()` each run one `SELECT`;
-- the standing default Release, one `SELECT` per stated stored Edition;
-- `_refuse_platform()`, one locking `SELECT` per Release that names a new
-  Platform;
-- `Release.save()` calls `clean()`, which lazy-loads what the row was read
-  without: `edition` and `edition.game` on a stated stored Release, those and
-  `platform` on the row the mark falls to;
-- the kept checks and fallbacks of the mark choice, one per level.
+## The reads
 
-The Release default clear writes one `UPDATE` per stated stored Edition. The
-round trips grow with the statement, all inside the Game's lock.
+`GraphRows` holds the stored graph of one Game:
 
-## Design
+- every Edition of the Game, removed ones included, keyed by pk;
+- every Release of those Editions, removed ones included, keyed by pk, with
+  its Platform.
 
-The verb reads the Game's graph once, after it takes the Game lock, into a
-`GraphRows` value:
+Each Edition holds the locked Game as `game`. Each Release holds its map
+Edition as `edition`. Thus `Release.clean()` reads no row.
 
-- one `SELECT` of every Edition of the Game, removed ones included, keyed by
-  pk; each gets `game = owner`;
-- one `SELECT` of every Release of those Editions, removed ones included,
-  `select_related("platform")`, keyed by pk; each gets `edition` set to the
-  map's own Edition instance;
-- one locking `SELECT` (`select_for_update(no_key=True)`, ordered by pk) of the
-  Platforms the statement newly names. "Newly" is today's rule, exactly: a
-  Release row not stated removed, under an Edition not stated removed, whose
-  platform is not `None`, is this library's or shared, and either has no
-  stored row or differs from that row's own stored `platform_id`. A foreign Platform is never locked.
+The verb reads removed rows too. `REMOVED_EDITION` and `REMOVED_RELEASE` read
+their mark. A live-only read would answer `FOREIGN_ROW`.
 
-Every resolve, refusal, default read and mark choice reads `GraphRows`.
+## Resolve
 
-- A stated Edition whose pk the map lacks is `FOREIGN_ROW`: a row of another
-  Game and a row that does not exist both fail the lookup.
-- A stated Release under a new Edition is `FOREIGN_ROW`, as today. Otherwise
-  it is `FOREIGN_ROW` unless the map holds it and its `edition_id` is the
-  stated parent's pk.
-- Refusals keep their order and keys. Resolves run every Edition, then every
-  Release, then `REPEATED_ROW`, then `_refuse_the_set`. The platform refusal
-  stays inside `_refuse_the_set`'s per-Edition loop, after that Edition's
-  `TWO_DEFAULT_RELEASES`; only the locking read moves earlier, ahead of
-  every set refusal. A refusal rolls back, so the earlier locks go with it.
-  The read filters `removed_at__isnull=True`; a Platform it does not return
-  is `REMOVED_PLATFORM`.
-- `untouched` is the map's live Editions the statement does not name; a
-  removed Edition's name claims no slot.
-- The standing defaults are map instances that are live and `is_default`,
-  taken before step 1. `remove()` sets `removed_at` on the instance it
-  stamps, and every stated stored row is a map instance, so the kept check
-  `removed_at is None` sees each removal step 2 makes.
-- The fallback "first live row by pk" is the minimum pk among the map's live
-  rows of that parent. It runs only when nothing was written at that level,
-  so no new row is missing from the map. Python's `UUID` order matches
-  PostgreSQL's.
-- The Release default clear is one `UPDATE` over every stated surviving
-  stored Edition.
+- A stated Edition that the map does not hold is `FOREIGN_ROW`.
+- A stated Release is `FOREIGN_ROW` when its parent is new, when the map does
+  not hold it, or when its Edition is not the stated parent.
+- The refusals keep their order and their keys.
 
-A queryset `UPDATE` leaves map instances stale (step 1 clears, step 3 names).
-That is harmless: every stated surviving row is rewritten by `save()`, `is_default` is
-read only before step 1, and a stale unmentioned default is re-saved `True`
-only when it wins.
+## Platforms
 
-## Decisions
+One read locks the live Platforms that the statement newly names, in pk order.
+A Platform is newly named when its row is not stated removed, its Edition is
+not stated removed, it is shared or of this library, and the row has no
+stored Platform of that pk. A foreign Platform is not locked. The platform
+refusal stays in the per-Edition loop of `_refuse_the_set`.
 
-- **Read removed rows too.** `REMOVED_EDITION` and `REMOVED_RELEASE` need the
-  mark; a live-only map would answer `FOREIGN_ROW`.
-- **Batch the Platform lock, ordered by pk.** Same round-trip shape in the
-  same lock. Two writers on different Games then lock shared Platforms in one
-  order. That order is not tested; a two-connection deadlock test costs more
-  than it proves.
-- **Writes stay per row.** A bulk write skips `save()` and `clean()`.
-- **`remove()` keeps its own read.** It reads the previous mark per row; a
-  statement that removes rows still pays one `SELECT` each.
-- **Returned rows hold the mark.** A stated standing default is now the same
-  instance the `WrittenGraph` returns, so it reads `is_default=True` in
-  memory. No caller reads it.
+The pk order gives two writers on different Games one lock order. A refusal
+rolls back the transaction and releases the locks.
+
+## The mark
+
+The standing defaults are map rows, read before the defaults step down.
+`remove()` writes `removed_at` on the instance it stamps, and every stated
+stored row is a map instance. Thus the kept check reads `removed_at` on the
+instance. The fallback is the live map row of the lowest pk. It runs only
+when nothing was written at that level.
+
+## What stays per row
+
+- A write stays one statement per row: `Release.save()` calls `clean()`, and a
+  bulk write skips it.
+- `remove()` reads the previous mark of each row it stamps.
 
 ## Tests
 
-- Statement size does not change the number of `SELECT`s: one Edition with
-  one platformed Release against three Editions with three platformed Releases
-  each, on stored graphs, no removals. Count `SELECT`s only, and assert the
-  exact number: Game lock, Editions, Releases, and the Platform lock when a
-  Release names a new Platform.
-- A standing default Release the statement removes, with no stated mark and a
-  live unmentioned sibling: the sibling takes the mark. The same at the
-  Edition level.
-- The refusal tests in `tests/test_state_catalog_graph.py` pin keys and
-  sentences, and run unchanged.
-
-## Follow-up issues to file
-
-None.
+`tests/test_state_catalog_graph.py` counts the `SELECT`s of a restatement of
+one Edition with one Release and of three Editions with three Releases each.
+Two more tests remove a standing default with no stated mark: a live sibling
+takes the mark, for an Edition and for a Release.
