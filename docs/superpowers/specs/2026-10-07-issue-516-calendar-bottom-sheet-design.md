@@ -9,13 +9,13 @@ Settled with the user (UI) and the modal epic organizer (shape), 2026-10-07.
 1. **The switch is a `<drop-down>` opt-in, not a behavior.** Scope, from
    the user: every calendar and every quick-bar facet. A builder that
    passes a sheet title renders two extra children inside the `<drop-down>`
-   host: a sheet dialog and a wide sentinel. A dropdown without one renders
+   host: a sheet dialog and a narrow sentinel. A dropdown without one renders
    neither and behaves as today.
 2. **Breakpoint: below `sm` (640 px).** The sentinel is
-   `Span(data_dropdown_wide="", class_="hidden sm:block")`. JavaScript reads
-   `getClientRects().length > 0` and never repeats the breakpoint. No rect
-   means the sheet, a hidden ancestor included; every open today needs a
-   visible toggle.
+   `Span(data_dropdown_narrow="", class_="hidden max-sm:block")`. JavaScript
+   reads `getClientRects().length > 0` and never repeats the breakpoint. A
+   rect means the sheet. A stylesheet without the rule keeps the anchored
+   panel, today's presentation.
 3. **One panel node, two hosts.** The `[data-menu]` panel stays one node.
    An open while the sentinel is hidden records the panel's parent and next
    sibling, moves the panel into the sheet body, calls
@@ -105,13 +105,13 @@ work: the search box and the keyboard.
   layout and no facet width the bar measures. `sheet_dialog` stays in `custom_elements.py`, the module
   `tests/test_modal_dialog.py` admits for `ModalDialog(`.
 - **Attribute names are generated.** `DROPDOWN_SHEET_ATTRIBUTES` in
-  `custom_elements.py` names `data-dropdown-sheet`, `data-dropdown-wide`,
+  `custom_elements.py` names `data-dropdown-sheet`, `data-dropdown-narrow`,
   `data-dropdown-host` and `data-sheet-body`; `make gen-element-types`
   writes `ts/generated/dropdown-sheet-attributes.ts`, as it writes the modal
   attributes.
 - **TypeScript.** `DropdownElement.connectedCallback` builds the behavior's
   controller as today. When it finds an own `[data-dropdown-sheet]` and an
-  own `[data-dropdown-wide]`, it wraps the controller with
+  own `[data-dropdown-narrow]`, it wraps the controller with
   `attachNarrowSheet` (`ts/elements/narrow-sheet.ts`), which answers the
   same `MenuController`. A behavior with `createController` and a sheet is
   a defect, reported with `reportClientError`. `DropdownElement` gains

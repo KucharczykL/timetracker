@@ -5,7 +5,7 @@ import "./drop-down.js";
 import { resetModalLayerForTests } from "./modal-layer.js";
 import { resetSurfacesForTests } from "./surface-stack.js";
 
-let wide = false;
+let narrow = true;
 
 function fixture(behavior = "menu"): string {
   return `
@@ -18,7 +18,7 @@ function fixture(behavior = "menu"): string {
           <div data-sheet-body></div>
         </div>
       </dialog>
-      <span data-dropdown-wide></span>
+      <span data-dropdown-narrow></span>
     </drop-down>`;
 }
 
@@ -30,9 +30,9 @@ function mount(behavior = "menu"): {
 } {
   document.body.innerHTML = fixture(behavior);
   const host = document.querySelector("drop-down")!;
-  const sentinel = host.querySelector<HTMLElement>("[data-dropdown-wide]")!;
+  const sentinel = host.querySelector<HTMLElement>("[data-dropdown-narrow]")!;
   sentinel.getClientRects = () =>
-    (wide ? [new DOMRect(0, 0, 1, 1)] : []) as unknown as DOMRectList;
+    (narrow ? [new DOMRect(0, 0, 0, 0)] : []) as unknown as DOMRectList;
   return {
     host,
     toggle: host.querySelector<HTMLButtonElement>("[data-toggle]")!,
@@ -51,7 +51,7 @@ function resize(): void {
 }
 
 beforeEach(() => {
-  wide = false;
+  narrow = true;
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout"] });
   // Reduced motion: a close finishes at once.
   vi.stubGlobal(
@@ -74,7 +74,7 @@ afterEach(() => {
 
 describe("a dropdown with a narrow sheet", () => {
   it("opens anchored when wide", () => {
-    wide = true;
+    narrow = false;
     const { host, toggle, panel, dialog } = mount();
     mouseClick(toggle);
     expect(host.isOpen()).toBe(true);
@@ -135,14 +135,14 @@ describe("a dropdown with a narrow sheet", () => {
     mouseClick(toggle);
     expect(dialog.open).toBe(true);
 
-    wide = true;
+    narrow = false;
     resize();
     expect(dialog.open).toBe(false);
     expect(host.isOpen()).toBe(true);
     expect(panel.parentElement).toBe(host);
     expect(panel.hidden).toBe(false);
 
-    wide = false;
+    narrow = true;
     resize();
     expect(dialog.open).toBe(true);
     expect(panel.parentElement).toBe(dialog.querySelector("[data-sheet-body]"));
@@ -152,7 +152,7 @@ describe("a dropdown with a narrow sheet", () => {
     const { host, toggle, dialog } = mount();
     mouseClick(toggle);
     host.close();
-    wide = true;
+    narrow = false;
     resize();
     expect(host.isOpen()).toBe(false);
     expect(dialog.open).toBe(false);

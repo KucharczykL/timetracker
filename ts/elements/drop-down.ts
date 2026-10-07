@@ -51,7 +51,7 @@ export class DropdownElement extends HTMLElement {
       );
     }
     const sheet = ownChild(this, `[${DROPDOWN_SHEET_ATTRIBUTES.sheet}]`);
-    const sentinel = ownChild(this, `[${DROPDOWN_SHEET_ATTRIBUTES.wide}]`);
+    const sentinel = ownChild(this, `[${DROPDOWN_SHEET_ATTRIBUTES.narrow}]`);
     const narrow = sheet instanceof HTMLDialogElement && sentinel ? { sheet, sentinel } : null;
     let controller: MenuController;
     if (behavior?.createController) {

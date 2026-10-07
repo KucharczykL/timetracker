@@ -1,8 +1,8 @@
 /** A dropdown panel opens as a sheet when narrow.
  *
  * One panel node: the sheet borrows it on open and
- * returns it before `dropdown:hide`. The sentinel's CSS
- * holds the breakpoint, so JavaScript never repeats it.
+ * returns it before `dropdown:hide`. The sentinel shows
+ * only when narrow; CSS alone holds the breakpoint.
  */
 import { DROPDOWN_SHEET_ATTRIBUTES } from "../generated/dropdown-sheet-attributes.js";
 import type { MenuController } from "./menu-behavior.js";
@@ -55,7 +55,7 @@ export function attachNarrowSheet(
   let watching = false;
   let frame: FrameHandle | null = null;
 
-  const isWide = (): boolean => sentinel.getClientRects().length > 0;
+  const isNarrow = (): boolean => sentinel.getClientRects().length > 0;
 
   const returnPanel = (): void => {
     if (!place) return;
@@ -91,8 +91,8 @@ export function attachNarrowSheet(
   };
 
   const present = (): void => {
-    if (isWide()) anchored.open(opener);
-    else openSheet(opener);
+    if (isNarrow()) openSheet(opener);
+    else anchored.open(opener);
   };
 
   const isOpen = (): boolean => anchored.isOpen() || sheet.isOpen();
@@ -109,7 +109,7 @@ export function attachNarrowSheet(
     frame = null;
     if (pendingMove || !isOpen()) return;
     const inSheet = sheet.isOpen();
-    if (isWide() !== inSheet) return;
+    if (isNarrow() === inSheet) return;
     pendingMove = true;
     if (inSheet) sheet.close();
     else anchored.close();

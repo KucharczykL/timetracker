@@ -1209,13 +1209,13 @@ def DropdownDivider() -> Node:
     )
 
 
-type DropdownSheetRole = Literal["sheet", "wide", "host", "body", "title"]
+type DropdownSheetRole = Literal["sheet", "narrow", "host", "body", "title"]
 type DropdownSheetAttribute = str  # e.g. "data-dropdown-sheet"
 
 #: The attributes ts/elements/narrow-sheet.ts reads and stamps.
 DROPDOWN_SHEET_ATTRIBUTES: Mapping[DropdownSheetRole, DropdownSheetAttribute] = {
     "sheet": "data-dropdown-sheet",
-    "wide": "data-dropdown-wide",
+    "narrow": "data-dropdown-narrow",
     "host": "data-dropdown-host",
     "body": "data-sheet-body",
     "title": "data-dropdown-sheet-title",
@@ -1408,10 +1408,11 @@ def dropdown_sheet(title: Child) -> Fragment:
             header=header,
             height_class=_DROPDOWN_SHEET_HEIGHT_CLASS,
         ),
+        # Missing CSS keeps the anchored panel.
         Span(
-            [(DROPDOWN_SHEET_ATTRIBUTES["wide"], "")],
+            [(DROPDOWN_SHEET_ATTRIBUTES["narrow"], "")],
             aria_hidden="true",
-            class_="pointer-events-none absolute size-0 hidden sm:block",
+            class_="pointer-events-none absolute size-0 hidden max-sm:block",
         ),
     )
 

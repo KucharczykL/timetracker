@@ -23,7 +23,7 @@ PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
 SHEET = re.compile(r"<dialog[^>]*data-dropdown-sheet[^>]*>")
-SENTINEL = re.compile(r"<span[^>]*data-dropdown-wide[^>]*>")
+SENTINEL = re.compile(r"<span[^>]*data-dropdown-narrow[^>]*>")
 
 
 def sheets(html: str) -> list[str]:
@@ -61,7 +61,7 @@ def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
     assert "aria-labelledby" not in dialog
     assert sheet_title(html) == "Day"
     assert ' id="' not in re.search(r"<h2[^>]*>", html).group(0)  # type: ignore[union-attr]
-    assert "sm:block" in SENTINEL.search(html).group(0)  # type: ignore[union-attr]
+    assert "hidden max-sm:block" in SENTINEL.search(html).group(0)  # type: ignore[union-attr]
 
 
 def test_the_section_sheet_keeps_its_own_shape():
