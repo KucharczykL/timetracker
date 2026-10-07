@@ -16,8 +16,10 @@ export function fieldValue(value: FormDataEntryValue): string {
   return `file:${value.name}:${value.size}:${value.lastModified}`;
 }
 
+/** A nested dialog's forms are its own. */
 function formsOf(body: ParentNode): HTMLFormElement[] {
-  return [...body.querySelectorAll("form")];
+  const owner = body instanceof Element ? body.closest("dialog") : null;
+  return [...body.querySelectorAll("form")].filter((form) => form.closest("dialog") === owner);
 }
 
 function readForm(form: HTMLFormElement): FormValues {

@@ -59,24 +59,39 @@ function navigateTo(pending: PendingNavigation): void {
   pending.focusTarget.focus({ preventScroll: true });
 }
 
-export function attachSheet(
+/** The sheet's hooks around a close. */
+export interface SheetCoreOptions {
+  initialFocus?: () => HTMLElement | null;
+  /** Runs before `dropdown:show`. */
+  beforeShow?: () => void;
+  /** Runs before `dropdown:hide`. */
+  beforeHide?: () => void;
+  /** Runs after `dropdown:hide`. */
+  afterHide?: () => void;
+}
+
+export interface SheetCore {
+  /** False when the modal layer refused. */
+  open: (opener?: HTMLElement) => boolean;
+  close: () => void;
+  isOpen: () => boolean;
+  focusFirst: () => void;
+}
+
+/** A sheet with no toggle of its own. */
+export function attachSheetCore(
   host: HTMLElement,
-  toggle: HTMLElement,
-  target: HTMLElement,
-): MenuController {
-  if (!(target instanceof HTMLDialogElement)) {
-    throw new TypeError('drop-down behavior="sheet" requires a <dialog> target.');
-  }
-  const dialog = target;
+  dialog: HTMLDialogElement,
+  options: SheetCoreOptions = {},
+): SheetCore {
   const panel = dialog.querySelector<HTMLElement>("[data-sheet-panel]");
   if (!panel) {
-    throw new TypeError('drop-down behavior="sheet" requires [data-sheet-panel].');
+    throw new TypeError("A bottom sheet requires [data-sheet-panel].");
   }
 
   let entered = false;
   let openFrame: FrameHandle | null = null;
   let pendingLeave: PendingLeave | null = null;
-  let pendingNavigation: PendingNavigation | null = null;
 
   const sheetState = (): SheetState => {
     switch (modal.state()) {
@@ -106,9 +121,8 @@ export function attachSheet(
 
   const modal = attachModal(dialog, {
     host,
-    // Native steps would focus the close button.
     initialFocus: () =>
-      dialog.querySelector<HTMLElement>("nav a[href]") ??
+      options.initialFocus?.() ??
       dialog.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.dismiss}]`),
     leave: (finish) => {
       if (prefersReducedMotion()) {
@@ -120,24 +134,19 @@ export function attachSheet(
       render();
     },
     onClosed: () => {
-      const navigation = pendingNavigation;
-      pendingNavigation = null;
       clearMotion();
-      toggle.setAttribute("aria-expanded", "false");
+      options.beforeHide?.();
       render();
       host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
-      if (navigation) navigateTo(navigation);
+      options.afterHide?.();
     },
   });
   render();
 
-  const open = (): void => {
-    if (modal.state() !== "closed") return;
-    // A hidden trigger: the sheet is unavailable.
-    if (!isReachable(toggle)) return;
-    // Safari does not focus a clicked button.
-    if (!modal.open(toggle)) return;
-    toggle.setAttribute("aria-expanded", "true");
+  const open = (opener?: HTMLElement): boolean => {
+    if (modal.state() !== "closed") return false;
+    if (!modal.open(opener)) return false;
+    options.beforeShow?.();
     render();
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
     openFrame = window.requestAnimationFrame(() => {
@@ -145,12 +154,60 @@ export function attachSheet(
       entered = true;
       render();
     });
+    return true;
   };
 
-  const close = (): void => modal.close();
-  const isOpen = (): boolean => modal.isOpen();
+  panel.addEventListener("transitionend", (event) => {
+    // Tailwind's translate-y animates translate.
+    if (event.target === panel && event.propertyName === "translate") {
+      pendingLeave?.finish();
+    }
+  });
 
-  toggle.addEventListener("click", () => (isOpen() ? close() : open()));
+  return {
+    open,
+    close: () => modal.close(),
+    isOpen: () => modal.isOpen(),
+    focusFirst: () => modal.focusInitial(),
+  };
+}
+
+export function attachSheet(
+  host: HTMLElement,
+  toggle: HTMLElement,
+  target: HTMLElement,
+): MenuController {
+  if (!(target instanceof HTMLDialogElement)) {
+    throw new TypeError('drop-down behavior="sheet" requires a <dialog> target.');
+  }
+  const dialog = target;
+  if (!dialog.querySelector("[data-sheet-panel]")) {
+    throw new TypeError('drop-down behavior="sheet" requires [data-sheet-panel].');
+  }
+
+  let pendingNavigation: PendingNavigation | null = null;
+
+  const sheet = attachSheetCore(host, dialog, {
+    // Native steps would focus the close button.
+    initialFocus: () => dialog.querySelector<HTMLElement>("nav a[href]"),
+    beforeShow: () => toggle.setAttribute("aria-expanded", "true"),
+    beforeHide: () => toggle.setAttribute("aria-expanded", "false"),
+    afterHide: () => {
+      const navigation = pendingNavigation;
+      pendingNavigation = null;
+      if (navigation) navigateTo(navigation);
+    },
+  });
+
+  const open = (): void => {
+    if (sheet.isOpen()) return;
+    // A hidden trigger: the sheet is unavailable.
+    if (!isReachable(toggle)) return;
+    // Safari does not focus a clicked button.
+    sheet.open(toggle);
+  };
+
+  toggle.addEventListener("click", () => (sheet.isOpen() ? sheet.close() : open()));
   dialog.addEventListener("click", (event) => {
     const clicked = event.target as Element;
     if (clicked.closest("dialog") !== dialog) return;
@@ -160,14 +217,8 @@ export function attachSheet(
     if (!navigation) return;
     event.preventDefault();
     pendingNavigation = navigation;
-    close();
-  });
-  panel.addEventListener("transitionend", (event) => {
-    // Tailwind's translate-y animates translate.
-    if (event.target === panel && event.propertyName === "translate") {
-      pendingLeave?.finish();
-    }
+    sheet.close();
   });
 
-  return { open, close, isOpen, focusFirst: () => modal.focusInitial() };
+  return { open, close: sheet.close, isOpen: sheet.isOpen, focusFirst: sheet.focusFirst };
 }

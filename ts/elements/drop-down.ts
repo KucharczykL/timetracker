@@ -1,7 +1,9 @@
 import { reportClientError } from "../client-errors.js";
 import { readDropdownProps } from "../generated/props.js";
 import { getBehavior } from "./dropdown-behaviors.js";
-import { attachMenu, MenuController, MenuPlacement } from "./menu-behavior.js";
+import { DROPDOWN_SHEET_ATTRIBUTES } from "../generated/dropdown-sheet-attributes.js";
+import { attachMenu, MenuController, MenuOptions, MenuPlacement } from "./menu-behavior.js";
+import { attachNarrowSheet } from "./narrow-sheet.js";
 import { ownChild } from "./own-child.js";
 // Side-effect imports register the built-in behaviors before connectedCallback.
 import "./behaviors/menu.js";
@@ -15,8 +17,9 @@ import "./behaviors/sheet.js";
 
 // The one generic dropdown element. A registered behavior may provide its own
 // controller (the modal sheet does); otherwise attachMenu owns the usual
-// open/close/position/keyboard behavior. The element reads no type-specific
-// attribute.
+// open/close/position/keyboard behavior. An own dropdown sheet and sentinel
+// make the panel a sheet on narrow viewports. The element reads no
+// type-specific attribute.
 export class DropdownElement extends HTMLElement {
   private controller?: MenuController;
 
@@ -47,13 +50,39 @@ export class DropdownElement extends HTMLElement {
         { toast: false },
       );
     }
-    const controller = behavior?.createController
-      ? behavior.createController(this, toggle, menu)
-      : attachMenu(this, toggle, menu, {
-          placement: props.placement as MenuPlacement,
-          submenu: props.submenu,
-          ...(behavior?.menuOptions?.(this) ?? {}),
-        });
+    const sheet = ownChild(this, `[${DROPDOWN_SHEET_ATTRIBUTES.sheet}]`);
+    const sentinel = ownChild(this, `[${DROPDOWN_SHEET_ATTRIBUTES.wide}]`);
+    const narrow = sheet instanceof HTMLDialogElement && sentinel ? { sheet, sentinel } : null;
+    let controller: MenuController;
+    if (behavior?.createController) {
+      controller = behavior.createController(this, toggle, menu);
+      if (narrow) {
+        reportClientError(
+          "drop-down",
+          `behavior "${props.behavior}" brings its own controller; its sheet stays unused`,
+          { toast: false },
+        );
+      }
+    } else {
+      const menuOptions: MenuOptions = {
+        placement: props.placement as MenuPlacement,
+        submenu: props.submenu,
+        ...(behavior?.menuOptions?.(this) ?? {}),
+      };
+      const anchored = attachMenu(this, toggle, menu, {
+        ...menuOptions,
+        // The toggle opens whichever host fits.
+        presenter: () => this.controller ?? anchored,
+      });
+      controller = narrow
+        ? attachNarrowSheet(this, menu, anchored, {
+            dialog: narrow.sheet,
+            sentinel: narrow.sentinel,
+            expandedToggle: menuOptions.inlineTrigger ? null : toggle,
+            sheetFocus: behavior?.sheetFocus ? () => behavior.sheetFocus!(menu) : undefined,
+          })
+        : anchored;
+    }
     this.controller = controller;
     // wire()'s cleanup return is intentionally discarded. Every behavior binds
     // only to subtree-local nodes (toggle/menu/search input), so a real removal
@@ -65,8 +94,12 @@ export class DropdownElement extends HTMLElement {
   }
 
   /** Opens without a toggle click; idempotent. */
-  open(): void {
-    this.controller?.open();
+  open(opener?: HTMLElement): void {
+    this.controller?.open(opener);
+  }
+
+  isOpen(): boolean {
+    return this.controller?.isOpen() ?? false;
   }
 
   /** Closes without a toggle click; idempotent. */

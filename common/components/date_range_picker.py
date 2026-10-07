@@ -21,8 +21,10 @@ from typing import Literal
 from common.components.core import Node
 from common.components.custom_elements import (
     OVERLAY_SURFACE_CLASS,
+    SHEET_HOSTED_PANEL_CLASS,
     _DateRangePicker,
     _Dropdown,
+    dropdown_sheet,
 )
 from common.components.primitives import (
     CLOSED_POPOVER,
@@ -81,7 +83,10 @@ _PRESET_OPTIONS: list[tuple[str, str]] = [
 #
 # w-11 (44px) rather than a narrower cell: ControlButton bakes px-3 (12px a
 # side), so a 2-digit label needs ~40px before the box starts clipping.
-_DAY_CELL_GEOMETRY_CLASS = "w-11 shrink-0"
+#: In a sheet, cells fill their tracks.
+_DAY_CELL_GEOMETRY_CLASS = (
+    "w-11 shrink-0 group-data-[dropdown-host=sheet]/dropdown:w-auto"
+)
 _NAV_BUTTON_GEOMETRY_CLASS = "w-11 shrink-0"
 
 # The day-cell variants, composed from ControlButton so the calendar cannot
@@ -378,13 +383,16 @@ def _preset_button(preset_value: str, preset_label: str) -> Node:
         [("data-date-range-preset", preset_value)],
         variant="ghost",
         align="start",
-        class_="w-full whitespace-nowrap",
+        class_="w-full whitespace-nowrap group-data-[dropdown-host=sheet]/dropdown:w-auto",
     )[preset_label]
 
 
 # Frosted too: it looks like the popup.
 _STATIC_CALENDAR_CLASS = (
-    f"mt-2 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}"
+    f"mt-2 flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS} "
+    "group-data-[dropdown-host=sheet]/dropdown:mt-0 group-data-[dropdown-host=sheet]/dropdown:flex-col "
+    "group-data-[dropdown-host=sheet]/dropdown:rounded-none group-data-[dropdown-host=sheet]/dropdown:border-0 "
+    "group-data-[dropdown-host=sheet]/dropdown:bg-transparent group-data-[dropdown-host=sheet]/dropdown:backdrop-blur-none!"
 )
 
 
@@ -414,7 +422,11 @@ def date_calendar_shell(
         ]
         children.append(
             Div(
-                class_="flex flex-col gap-0.5 p-2 border-e border-default-medium",
+                class_=(
+                    "flex flex-col gap-0.5 p-2 border-e border-default-medium "
+                    "group-data-[dropdown-host=sheet]/dropdown:flex-row group-data-[dropdown-host=sheet]/dropdown:flex-wrap "
+                    "group-data-[dropdown-host=sheet]/dropdown:border-e-0 group-data-[dropdown-host=sheet]/dropdown:border-b"
+                ),
                 data_date_range_presets="",
             )[*preset_buttons]
         )
@@ -436,7 +448,7 @@ def date_calendar_shell(
             # tracks and visually overlap. An explicit width removes the
             # ambiguity outright, in every browser.
             Div(
-                class_="grid grid-cols-7 gap-y-0.5 mt-1 w-77",
+                class_="grid grid-cols-7 gap-y-0.5 mt-1 w-77 group-data-[dropdown-host=sheet]/dropdown:w-full",
                 data_date_range_grid="",
             ),
             # The day cell the client clones 42x per month, rendered HERE so
@@ -459,7 +471,10 @@ def date_calendar_shell(
         [] if static else [("data-menu", ""), *CLOSED_POPOVER],
         class_=_STATIC_CALENDAR_CLASS
         if static
-        else f"flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS}",
+        else (
+            f"flex rounded-base border border-default-medium {OVERLAY_SURFACE_CLASS} "
+            f"{SHEET_HOSTED_PANEL_CLASS} data-[dropdown-host=sheet]:flex-col"
+        ),
         data_date_range_calendar="",
         data_input_name_prefix=input_name_prefix,
     )[*children]
@@ -529,7 +544,7 @@ def DateRangePicker(
         placement="bottom-start",
         submenu="false",
         behavior="date-calendar",
-    )[picker]
+    )[picker, dropdown_sheet(label)]
 
 
 def DateRangePanel(

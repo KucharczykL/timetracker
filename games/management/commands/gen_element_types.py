@@ -9,7 +9,12 @@ from django.core.management.base import BaseCommand
 # Importing the components package triggers element registration at import time.
 import common.components
 import common.criteria
-from common.components.custom_elements import TypedDictClass, render_props_module
+from common.components.custom_elements import (
+    DROPDOWN_SHEET_ATTRIBUTES,
+    DropdownSheetRole,
+    TypedDictClass,
+    render_props_module,
+)
 from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
@@ -206,6 +211,17 @@ class Command(BaseCommand):
                         "MODAL_ATTRIBUTES",
                         dict[ModalAttributeRole, str],
                         dict(MODAL_ATTRIBUTES),
+                    ),
+                ],
+            ),
+            # The narrow-viewport sheet reads and stamps these.
+            output_dir / "dropdown-sheet-attributes.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant(
+                        "DROPDOWN_SHEET_ATTRIBUTES",
+                        dict[DropdownSheetRole, str],
+                        dict(DROPDOWN_SHEET_ATTRIBUTES),
                     ),
                 ],
             ),

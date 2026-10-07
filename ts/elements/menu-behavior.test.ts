@@ -389,3 +389,63 @@ describe("attachMenu pointer follow", () => {
     expect(document.activeElement).toBe(items[0]);
   });
 });
+
+describe("attachMenu open state and opener", () => {
+  it("stays closed while another host shows its panel", () => {
+    const { menu, controller } = mount();
+    menu.removeAttribute("popover");
+    menu.hidden = false;
+    expect(controller.isOpen()).toBe(false);
+  });
+
+  it("returns focus to the opener on Escape", () => {
+    const { menu, controller } = mount();
+    const opener = document.querySelector<HTMLElement>("#outside") as HTMLElement;
+    controller.open(opener);
+    const inside = menu.querySelector<HTMLElement>("[data-inside]") as HTMLElement;
+    inside.focus();
+    inside.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    expect(controller.isOpen()).toBe(false);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("drives the presenter from its toggle", () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button data-toggle type="button">Open</button>
+        <div data-menu popover="manual" hidden></div>
+      </div>`;
+    const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
+    let presenterOpen = false;
+    const openedBy: (HTMLElement | undefined)[] = [];
+    const presenter: MenuController = {
+      open: (opener) => {
+        presenterOpen = true;
+        openedBy.push(opener);
+      },
+      close: () => {
+        presenterOpen = false;
+      },
+      isOpen: () => presenterOpen,
+      focusFirst: vi.fn(),
+    };
+    const controller = attachMenu(host, toggle, menu, { presenter: () => presenter });
+    const mouseClick = (): boolean =>
+      toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    mouseClick();
+    expect(presenterOpen).toBe(true);
+    expect(openedBy).toEqual([toggle]);
+    expect(controller.isOpen()).toBe(false);
+    mouseClick();
+    expect(presenterOpen).toBe(false);
+    toggle.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+    expect(presenterOpen).toBe(true);
+    expect(presenter.focusFirst).toHaveBeenCalledOnce();
+  });
+});

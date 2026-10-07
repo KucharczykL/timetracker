@@ -461,6 +461,7 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
+            sheet=True,
         )
 
     def _group_content(self, filter_cls: type, group: QuickFacetGroup) -> Node:

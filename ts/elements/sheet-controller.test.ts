@@ -4,6 +4,7 @@ import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
 import { MODAL_CHANGE } from "./modal-layer.js";
 import { openSurfaces } from "./surface-stack.js";
+import { attachSheetCore } from "./sheet-controller.js";
 
 let reducedMotion = true;
 const CLOSE_FALLBACK_MS = 250;
@@ -475,5 +476,51 @@ describe('drop-down behavior="sheet"', () => {
       "closed",
       "closed",
     ]);
+  });
+});
+
+describe("attachSheetCore", () => {
+  function mountCore(): { host: HTMLElement; trigger: HTMLButtonElement; dialog: HTMLDialogElement } {
+    document.body.innerHTML = `
+      <div id="host">
+        <div data-toggle>field <button id="trigger" type="button">Open</button></div>
+        <dialog data-modal>
+          <div data-sheet-panel><button data-modal-dismiss>Close</button></div>
+        </dialog>
+      </div>`;
+    return {
+      host: document.querySelector<HTMLElement>("#host")!,
+      trigger: document.querySelector<HTMLButtonElement>("#trigger")!,
+      dialog: document.querySelector<HTMLDialogElement>("dialog")!,
+    };
+  }
+
+  it("binds no toggle and runs its hooks around each event", () => {
+    const { host, trigger, dialog } = mountCore();
+    const steps: string[] = [];
+    host.addEventListener("dropdown:show", () => steps.push("show"));
+    host.addEventListener("dropdown:hide", () => steps.push("hide"));
+    const sheet = attachSheetCore(host, dialog, {
+      beforeShow: () => steps.push("beforeShow"),
+      beforeHide: () => steps.push("beforeHide"),
+      afterHide: () => steps.push("afterHide"),
+    });
+    host.querySelector<HTMLElement>("[data-toggle]")!.click();
+    expect(sheet.isOpen()).toBe(false);
+
+    expect(sheet.open(trigger)).toBe(true);
+    expect(dialog.open).toBe(true);
+    sheet.close();
+    expect(dialog.open).toBe(false);
+    expect(steps).toEqual(["beforeShow", "show", "beforeHide", "hide", "afterHide"]);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("answers false when the dialog is detached", () => {
+    const { host, dialog } = mountCore();
+    const sheet = attachSheetCore(host, dialog);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    dialog.remove();
+    expect(sheet.open()).toBe(false);
   });
 });

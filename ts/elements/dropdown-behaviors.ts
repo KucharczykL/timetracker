@@ -18,6 +18,8 @@ export interface DropdownBehavior {
     menu: HTMLElement,
   ) => MenuController;
   wire?: (ctx: BehaviorCtx) => (() => void) | void;
+  /** First focus when the panel is a sheet. */
+  sheetFocus?: (menu: HTMLElement) => HTMLElement | null;
 }
 
 const BEHAVIORS = new Map<string, DropdownBehavior>();

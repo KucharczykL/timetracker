@@ -104,7 +104,7 @@ def ModalPanel(attributes: Attributes = (), *, class_: str = "") -> Element:
 def ModalPanelHeader(
     title: Child,
     *,
-    title_id: ElementId,
+    title_id: ElementId | None,
     close_label: str | None = "Close dialog",
     attributes: Attributes = (),
     title_attributes: Attributes = (),
@@ -112,7 +112,8 @@ def ModalPanelHeader(
 ) -> Element:
     """A modal panel's title row; no label, no ×.
 
-    `title_id` beats an id in `title_attributes`.
+    `title_id` beats an id in `title_attributes`;
+    `None` leaves the id to the client.
     `divided`: a line over a scrolling body.
     """
     close_button = (
@@ -139,7 +140,7 @@ def ModalPanelHeader(
             ),
             PlainH2(
                 [
-                    ("id", title_id),
+                    *([] if title_id is None else [("id", title_id)]),
                     *title_attributes,
                     ("class", "text-type-section text-heading"),
                 ],

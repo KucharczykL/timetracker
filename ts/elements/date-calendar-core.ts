@@ -24,6 +24,7 @@ import {
 } from "../generated/calendar-classes.js";
 import { calendarWeekdayLabels, formatCalendarMonthYear } from "../date-time-presentation.js";
 import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
+import type { DropdownElement } from "./drop-down.js";
 // Defines the host a calendar opens.
 import "./drop-down.js";
 
@@ -182,7 +183,7 @@ export function bindCalendarPopupHost(options: {
   beforeOpen: () => void;
   render: () => void;
 }): CalendarPopupHost {
-  const dropdownHost = options.staticAlways
+  const dropdownHost: DropdownElement | null = options.staticAlways
     ? null
     : options.picker.closest("drop-down");
 
@@ -193,8 +194,7 @@ export function bindCalendarPopupHost(options: {
   }
 
   const isOpen = (): boolean =>
-    Boolean(options.staticAlways) ||
-    (dropdownHost ? !options.popup.hasAttribute("hidden") : false);
+    Boolean(options.staticAlways) || (dropdownHost?.isOpen() ?? false);
 
   const syncExpanded = (): void => {
     options.toggleButton?.setAttribute("aria-expanded", isOpen() ? "true" : "false");
@@ -205,7 +205,8 @@ export function bindCalendarPopupHost(options: {
     // Render before opening: attachMenu unhides then measures scrollHeight
     // for its flip decision, so stale (or empty) grid content must never be it.
     options.render();
-    dropdownHost?.open();
+    // Safari does not focus a tapped button.
+    dropdownHost?.open(options.toggleButton ?? undefined);
     syncExpanded();
   };
 
@@ -219,7 +220,9 @@ export function bindCalendarPopupHost(options: {
     else open();
   });
 
+  // A move between hosts fires both.
   dropdownHost?.addEventListener("dropdown:hide", syncExpanded);
+  dropdownHost?.addEventListener("dropdown:show", syncExpanded);
 
   return { isOpen, open, close };
 }

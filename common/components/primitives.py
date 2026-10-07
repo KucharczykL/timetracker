@@ -1775,7 +1775,9 @@ _YearPicker = custom_element_builder("year-picker")
 # Every year cell is a ControlButton with a fixed width so the four columns stay
 # aligned regardless of the label. The complete state classes are generated to
 # TypeScript because the client clones the template twelve times.
-_YEAR_CELL_GEOMETRY_CLASS = "w-14 shrink-0"
+_YEAR_CELL_GEOMETRY_CLASS = (
+    "w-14 shrink-0 group-data-[dropdown-host=sheet]/dropdown:w-auto"
+)
 YEAR_PICKER_CLASSES: dict[str, str] = {
     "default": f"{control_button_class(variant='ghost')} {_YEAR_CELL_GEOMETRY_CLASS}",
     "selected": (
@@ -1816,7 +1818,12 @@ def YearPicker(
     """
     # custom_elements imports this module, so the dropdown builder and its
     # shared overlay surface are imported lazily after module initialization.
-    from common.components.custom_elements import OVERLAY_SURFACE_CLASS, _Dropdown
+    from common.components.custom_elements import (
+        OVERLAY_SURFACE_CLASS,
+        SHEET_HOSTED_PANEL_CLASS,
+        _Dropdown,
+        dropdown_sheet,
+    )
 
     label = str(year) if year is not None else "Choose a year"
     selected = str(year) if year is not None else ""
@@ -1825,7 +1832,8 @@ def YearPicker(
     period_id = "year-picker-period"
     popup_class = (
         "flex w-auto overflow-x-hidden overflow-y-auto rounded-base "
-        f"{OVERLAY_SURFACE_CLASS} shadow-sm border border-default-medium"
+        f"{OVERLAY_SURFACE_CLASS} shadow-sm border border-default-medium "
+        f"{SHEET_HOSTED_PANEL_CLASS}"
     )
     picker = _YearPicker(
         [
@@ -1879,7 +1887,7 @@ def YearPicker(
                     )[Icon("arrowright", decorative=True)],
                 ],
                 Div(
-                    class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56",
+                    class_="grid grid-cols-4 gap-y-0.5 mt-1 w-56 group-data-[dropdown-host=sheet]/dropdown:w-full",
                     data_year_picker_grid="",
                 ),
                 Template(data_year_picker_template="year")[
@@ -1897,7 +1905,7 @@ def YearPicker(
         placement="bottom-end",
         submenu="false",
         behavior="date-calendar",
-    )[picker]
+    )[picker, dropdown_sheet("Year")]
 
 
 # Form-field rendering. The element classes (label/error/checkbox-row + the

@@ -30,4 +30,8 @@ registerBehavior("date-calendar", {
     keepOpenOnTab: true,
     gap: 4,
   }),
+  // The picked day, else today.
+  sheetFocus: (menu) =>
+    menu.querySelector<HTMLElement>('[data-date][aria-selected="true"]') ??
+    menu.querySelector<HTMLElement>('[data-date][aria-current="date"]'),
 });

@@ -18,7 +18,11 @@ import re
 from typing import NamedTuple
 
 from common.components.core import Node
-from common.components.custom_elements import _DateTimeField, _Dropdown
+from common.components.custom_elements import (
+    _DateTimeField,
+    _Dropdown,
+    dropdown_sheet,
+)
 from common.components.date_range_picker import (
     FIELD_CONTAINER_CLASS,
     date_calendar_shell,
@@ -227,4 +231,4 @@ def DateTimePicker(
         placement="bottom-start",
         submenu="false",
         behavior="date-calendar",
-    )[field]
+    )[field, dropdown_sheet(label)]
