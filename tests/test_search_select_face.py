@@ -193,3 +193,9 @@ def test_a_picker_sheet_keeps_its_height():
     assert STEADY in str(SearchSelect(name="game", search_url="/x"))
     member = presets_member(api_url="/api/presets/", mode="games", id="presets")
     assert STEADY in str(member["opens"](Button(type="button")["Presets"]))
+
+
+def test_a_panel_listbox_yields_its_height_to_the_sheet():
+    html = str(SearchSelect(name="zone", search_url="/x", panel=True))
+    [listbox] = tag_with(html, 'role="listbox"')
+    assert "group-data-[dropdown-host=sheet]/dropdown:max-h-none!" in listbox

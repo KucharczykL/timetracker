@@ -657,8 +657,9 @@ def _combobox_children(
     ]
     if multi_select:
         listbox_attributes.append(("aria-multiselectable", "true"))
+    #: Either home may sit in a sheet.
+    listbox_attributes.append(("class", _LENT_LISTBOX_CLASS))
     if home == "drop_down":
-        listbox_attributes.append(("class", _LENT_LISTBOX_CLASS))
         box_class = f"{box_class} {_LENT_BOX_CLASS}"
     options_panel: Node
     if home == "dialog":
