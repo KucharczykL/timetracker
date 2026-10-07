@@ -75,6 +75,7 @@ from common.components.custom_elements import (
     _Dropdown,
     _PresetPanelElement,
     _SearchSelect,
+    dropdown_sheet,
 )
 from common.components.form_dialog import CreatedOption, form_dialog_link
 from common.components.modal import ElementId
@@ -147,7 +148,8 @@ class OptionGroup(NamedTuple):
 
 
 _BOX_CLASS = field_box_class("full")
-_CONTAINER_CLASS = "block"
+#: Below sm the face stands in, unless lent.
+_CONTAINER_CLASS = "block max-sm:not-data-[dropdown-host=sheet]:hidden"
 _PILLS_CLASS = "contents"
 # Under 16px text, iOS zooms on focus.
 _SEARCH_CLASS = (
@@ -183,6 +185,22 @@ _DIVIDER_CLASS = (
     "mx-1 hidden h-5 shrink-0 border-l border-default-medium "
     "[[data-search-select-clear]:not([hidden])+&]:peer-enabled:block"
 )
+#: A lent box's + would stack dialogs.
+_HIDDEN_WHEN_LENT_CLASS = "in-data-[dropdown-host=sheet]:hidden!"
+#: The sheet scrolls; the box stays.
+_LENT_BOX_CLASS = (
+    "in-data-[dropdown-host=sheet]:sticky in-data-[dropdown-host=sheet]:top-0"
+)
+#: The sheet, not the rows, caps the list.
+_LENT_LISTBOX_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-none!"
+#: The phone's stand-in for the box.
+_FACE_CLASS = "hidden max-sm:flex items-center gap-1"
+_FACE_OPEN_CLASS = "peer flex-1 min-w-0 justify-between"
+_FACE_VALUE_CLASS = "truncate data-[placeholder]:text-body data-[placeholder]:italic"
+#: Prefixes an excluded value on the face.
+FACE_EXCLUDED_PREFIX = "not "
+#: Joins a multi value on the face.
+FACE_SEPARATOR = ", "
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
 #: Picker rows wear the menu item look.
@@ -344,24 +362,89 @@ def _clear_button(clear: ClearControl) -> Node:
     )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
 
-def _dialog_create_link(create: DialogCreate) -> Node:
-    """The divider and the +."""
+def _dialog_create_button(create: DialogCreate, attributes: Attributes) -> Node:
     href = str(create.url)
     if literal := create.literal_query():
         href = f"{href}?{urlencode(literal)}"
+    return ControlButton(
+        [*form_dialog_link(), *attributes],
+        href=href,
+        data_search_select_dialog_create="",
+        variant="ghost",
+        size="compact",
+        aria_label=create.label,
+        title=create.label,
+    )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])]
+
+
+def _dialog_create_link(create: DialogCreate) -> Node:
+    """The divider and the +."""
     return Fragment(
-        Span(aria_hidden="true", class_=_DIVIDER_CLASS),
+        Span(aria_hidden="true", class_=f"{_DIVIDER_CLASS} {_HIDDEN_WHEN_LENT_CLASS}"),
+        _dialog_create_button(
+            create, [("class", f"{_DIALOG_CREATE_CLASS} {_HIDDEN_WHEN_LENT_CLASS}")]
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FaceValue:
+    """What the face shows before upgrade."""
+
+    text: str
+    #: The text is the placeholder.
+    placeholder: bool = False
+
+
+def _search_select_face(
+    value: FaceValue,
+    *,
+    clear: ClearControl | None = None,
+    dialog_create: DialogCreate | None = None,
+    shape: ButtonShape = "full",
+) -> Node:
+    """The phone's face: value, ×, +.
+
+    The widget names, mirrors and opens it.
+    """
+    return Div(data_search_select_face="", class_=_FACE_CLASS)[
         ControlButton(
-            form_dialog_link(),
-            href=href,
-            data_search_select_dialog_create="",
+            data_search_select_face_open="",
+            variant="outline",
+            align="start",
+            shape=shape,
+            aria_haspopup="dialog",
+            aria_expanded="false",
+            class_=_FACE_OPEN_CLASS,
+        )[
+            #: The widget writes the field's name.
+            Span(data_search_select_face_name="", class_="sr-only"),
+            Span(
+                data_search_select_face_value="",
+                data_placeholder="" if value.placeholder else None,
+                class_=_FACE_VALUE_CLASS,
+            )[value.text],
+            Icon("arrowdown"),
+        ],
+        ControlButton(
+            data_search_select_face_clear="",
             variant="ghost",
             size="compact",
-            aria_label=create.label,
-            title=create.label,
-            class_=_DIALOG_CREATE_CLASS,
-        )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])],
-    )
+            aria_label="Clear",
+            title="Clear",
+            aria_describedby=clear.described_by,
+            hidden=not clear.shown,
+            class_="peer-disabled:hidden",
+        )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
+        if clear
+        else None,
+        _dialog_create_button(
+            dialog_create,
+            [("data-search-select-face-create", ""), ("class", "peer-disabled:hidden")],
+        )
+        if dialog_create
+        else None,
+    ]
 
 
 class _CreateProps(TypedDict, total=False):
@@ -551,6 +634,9 @@ def _combobox_children(
     ]
     if multi_select:
         listbox_attributes.append(("aria-multiselectable", "true"))
+    if home == "drop_down":
+        listbox_attributes.append(("class", _LENT_LISTBOX_CLASS))
+        box_class = f"{box_class} {_LENT_BOX_CLASS}"
     options_panel: Node
     if home == "dialog":
         options_panel = Div(listbox_attributes, class_=_DIALOG_LISTBOX_CLASS)[
@@ -851,18 +937,39 @@ def SearchSelect(
         revert_on_leave="true" if revert_on_leave else None,
         class_=_CONTAINER_CLASSES[home],
     )[*children]
-    return _inline_combobox_host(widget) if home == "drop_down" else widget
+    if home == "dialog":
+        return widget
+    labels = [option["label"] for option in selected]
+    if not multi_select and not labels and none_label:
+        labels = [none_label]
+    face = _search_select_face(
+        _face_value(labels, placeholder),
+        clear=clear,
+        dialog_create=dialog_create,
+        shape=shape,
+    )
+    return _inline_combobox_host(widget, face)
 
 
-def _inline_combobox_host(widget: Node) -> Node:
-    """The drop-down a hosted combobox lives in."""
+def _face_value(labels: Sequence[str], placeholder: str) -> FaceValue:
+    if labels:
+        return FaceValue(FACE_SEPARATOR.join(labels))
+    return FaceValue(placeholder, placeholder=True)
+
+
+def _inline_combobox_host(widget: Node, face: Node) -> Node:
+    """The drop-down a hosted combobox lives in.
+
+    Below sm the face shows; a tap lends
+    the widget to the sheet.
+    """
     # block keeps the field's full column width.
     return _Dropdown(
         class_="block",
         placement="bottom-start",
         submenu="false",
         behavior="inline-combobox",
-    )[widget]
+    )[face, widget, dropdown_sheet("")]
 
 
 def _filter_value_pill(
@@ -1105,7 +1212,16 @@ def FilterSelect(
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
-    return _inline_combobox_host(widget) if home == "drop_down" else widget
+    if home == "dialog":
+        return widget
+    labels = [
+        *([active_modifier_label] if active_modifier_label else []),
+        *(option["label"] for option in normalized_included),
+        *(f"{FACE_EXCLUDED_PREFIX}{option['label']}" for option in normalized_excluded),
+    ]
+    return _inline_combobox_host(
+        widget, _search_select_face(_face_value(labels, placeholder))
+    )
 
 
 # ── Panel personality styling ───────────────────────────
@@ -1271,6 +1387,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
             id=id,
             placement="bottom-end",
             behavior="combobox",
+            sheet_title=PRESETS_LABEL,
         )
 
     return {

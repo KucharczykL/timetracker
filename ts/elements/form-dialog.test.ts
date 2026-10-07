@@ -1016,6 +1016,24 @@ describe("created", () => {
     expect(reloads).toBe(1);
   });
 
+  it("tells the person when a picker's face declines", async () => {
+    const main = document.getElementById("main-container")!;
+    main.insertAdjacentHTML(
+      "beforeend",
+      `<drop-down><div data-search-select-face><a href="/game/add" data-form-dialog="">+</a></div>` +
+        `<search-select></search-select></drop-down>`,
+    );
+    replies.push(reply(EDIT_FORM));
+    click(main.querySelector("a")!);
+    await settle();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(toasts.flat()).toContainEqual(
+      expect.objectContaining({ type: "error", message: expect.stringContaining("Pick it") }),
+    );
+  });
+
   it("closes only the top dialog when a nested opener declines", async () => {
     const lower = await openPage(page(`<a href="/game/add" data-form-dialog="">New game</a>`));
     replies.push(reply(EDIT_FORM, `${ORIGIN}/game/add`));

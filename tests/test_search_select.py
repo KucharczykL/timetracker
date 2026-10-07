@@ -1107,6 +1107,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         # attachMenu hosting hooks are excluded: the field layout carries them on
         # its own inline-combobox drop-down, while the panel layout's live on the
         # ComboboxDropdown that wraps it a level up — orthogonal to the serializer.
+        # The face and the sheet sit beside the widget, outside what it reads.
         host_hooks = {
             "data-toggle",
             "data-menu",
@@ -1116,7 +1117,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         data_attribute = re.compile(r"\s(data-[a-z-]+)=")
         field_hooks = sorted(
             hook
-            for hook in data_attribute.findall(self._html("field"))
+            for hook in data_attribute.findall(_own_element(self._html("field")))
             if hook not in host_hooks
         )
         panel_hooks = sorted(data_attribute.findall(self._html("panel")))
@@ -1128,6 +1129,12 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
                 html = self._html(layout)
                 pill_tag = _tag_around(html, 'data-search-select-type="include"')
                 self.assertIn("max-w-full", pill_tag)
+
+
+def _own_element(html: str) -> str:
+    """The ``<search-select>`` alone, host siblings dropped."""
+    start = html.index("<search-select")
+    return html[start : html.rindex("</search-select>")]
 
 
 def test_panel_personality_is_always_visible_with_the_panel_classes():
@@ -1587,7 +1594,7 @@ class DialogCreateTest(unittest.TestCase):
         self.assertNotIn("data-form-dialog=", str(SearchSelect(name="device")))
 
     def test_follows_the_clear_and_precedes_the_marker(self):
-        html = str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        html = _own_element(str(SearchSelect(name="device", dialog_create=NEW_DEVICE)))
         link = html.index("data-form-dialog=")
         self.assertLess(html.index("data-search-select-clear"), link)
         self.assertLess(link, html.index("data-search-select-marker"))
@@ -1604,7 +1611,7 @@ class DialogCreateTest(unittest.TestCase):
             SearchSelect(name="device", panel=True, dialog_create=NEW_DEVICE)
 
     def test_the_divider_sits_between_clear_and_plus(self):
-        html = str(SearchSelect(name="device", dialog_create=NEW_DEVICE))
+        html = _own_element(str(SearchSelect(name="device", dialog_create=NEW_DEVICE)))
         divider = html.index('aria-hidden="true" class="mx-1')
         self.assertLess(html.index("data-search-select-clear"), divider)
         self.assertLess(divider, html.index("data-form-dialog="))

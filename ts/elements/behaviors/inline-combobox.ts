@@ -1,4 +1,5 @@
 import { registerBehavior } from "../dropdown-behaviors.js";
+import { ownChild } from "../own-child.js";
 
 // Inline-combobox dropdown (issue #348): unlike the `combobox` behavior — which
 // hosts a <search-select> behind a SEPARATE ghost toggle button opened on click
@@ -20,6 +21,9 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   <form> (the widget's own Enter-pick handling has already run by the time
 //   this listener fires).
 //
+// Below sm the whole widget is lent to the sheet, so its focus and
+// containment checks hold; the face's open button takes focus back.
+//
 // attachMenu and the stack do the rest.
 
 registerBehavior("inline-combobox", {
@@ -28,6 +32,10 @@ registerBehavior("inline-combobox", {
     inlineTrigger: true,
     matchToggleWidth: true,
   }),
+  sheetLent: (_host, toggle) => toggle,
+  sheetOpener: (host) => ownChild(host, "[data-search-select-face-open]"),
+  sheetFocus: (menu) =>
+    menu.closest("drop-down")?.querySelector<HTMLElement>("[data-search-select-search]") ?? null,
   wire: ({ menu }) => {
     const searchInput = menu
       .closest("drop-down")

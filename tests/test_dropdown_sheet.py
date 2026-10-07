@@ -1,6 +1,7 @@
 """The narrow-viewport sheet a dropdown may carry."""
 
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -117,9 +118,33 @@ def test_the_year_picker_carries_a_sheet():
 @pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
 def test_every_quick_facet_carries_a_sheet(mode):
     html = str(QuickFilterBar(mode=mode, presentation=PRESENTATION))
-    facets = re.findall(r"<drop-down[^>]*data-quick-facet", html)
+    own = OwnSheets()
+    own.feed(html)
+    facets = [count for is_facet, count in own.hosts if is_facet]
     assert facets
-    assert len(sheets(html)) == len(facets)
+    assert facets == [1] * len(facets)
+
+
+class OwnSheets(HTMLParser):
+    """Each ``<drop-down>``'s own sheet count."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        #: Open hosts: facet flag, own sheets.
+        self.stack: list[list] = []
+        self.hosts: list[tuple[bool, int]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        names = {name for name, _ in attrs}
+        if tag == "drop-down":
+            self.stack.append(["data-quick-facet" in names, 0])
+        elif tag == "dialog" and SHEET_ATTRIBUTES["sheet"] in names:
+            self.stack[-1][1] += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "drop-down":
+            is_facet, count = self.stack.pop()
+            self.hosts.append((is_facet, count))
 
 
 @pytest.mark.parametrize(

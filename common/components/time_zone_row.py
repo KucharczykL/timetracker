@@ -45,6 +45,7 @@ def TimeZoneRow(
             content=picker,
             id=f"{field_name}-dropdown",
             ghost=True,
+            sheet=True,
         )
     ]
     element = _TimeZoneRow(
