@@ -548,7 +548,7 @@ def test_mobile_sheet_scrolls_in_a_short_viewport(live_server, page: Page):
     page.goto(f"{live_server.url}/settings-kit-test/")
 
     page.locator("[data-section-nav-trigger]").click()
-    body = page.locator("[data-sheet-body]")
+    body = page.locator("dialog[data-bottom-sheet] [data-sheet-body]")
     assert body.evaluate("element => element.scrollHeight > element.clientHeight")
     body.evaluate("element => { element.scrollTop = element.scrollHeight; }")
     assert body.evaluate("element => element.scrollTop") > 0
@@ -595,7 +595,9 @@ def test_mobile_sheet_slides_up_from_below_the_viewport(live_server, page: Page)
     # And it settles flush against the bottom of the dialog.
     _wait_for_sheet_entrance(page)
     dialog_box = page.locator("dialog[data-bottom-sheet]").bounding_box()
-    panel_box = page.locator("[data-sheet-panel]").bounding_box()
+    panel_box = page.locator(
+        "dialog[data-bottom-sheet] [data-sheet-panel]"
+    ).bounding_box()
     assert dialog_box and panel_box
     assert abs(panel_box["y"] + panel_box["height"] - dialog_box["height"]) < 2
 

@@ -34,6 +34,7 @@ from common.components.custom_elements import (
     DropdownFieldset,
     DropdownPanel,
     FilterMode,
+    SheetSpec,
     _QuickFilterBarElement,
     list_url_for,
 )
@@ -450,10 +451,12 @@ class QuickFilterBar(BaseComponent):
             content: Node = self._group_content(filter_cls, facet)
             panel_width = "w-72"
             own_footer = False
+            searchable = False
         else:
             label = _facet_label(filter_cls, facet)
             content = self._widget(filter_cls, facet)
             kind = _field_meta(filter_cls, facet.field)["kind"]
+            searchable = kind == "set"
             # Calendars size themselves; lists keep w-72.
             panel_width = "w-auto" if kind == "date" else "w-72"
             own_footer = kind == "date"
@@ -474,7 +477,8 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
-            sheet=True,
+            # A FilterSelect searches.
+            sheet=SheetSpec(label, searchable=searchable),
         )
 
     def _group_content(self, filter_cls: type, group: QuickFacetGroup) -> Node:

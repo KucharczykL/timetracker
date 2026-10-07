@@ -93,8 +93,9 @@ def test_an_addon_adds_its_main_game_in_a_stacked_dialog(
         "Add the main game of Hollow Knight DLC"
     )
     # The covered dialog steps back; the top names it.
-    expect(inner.locator("[data-modal-trail]")).to_have_text("Add New Game")
-    expect(outer.locator("[data-modal-panel]")).to_have_attribute(
+    #: Picker sheets in the form carry their own.
+    expect(inner.locator("[data-modal-trail]").first).to_have_text("Add New Game")
+    expect(outer.locator("[data-modal-panel]").first).to_have_attribute(
         "data-modal-depth", "1"
     )
     expect(inner.locator('search-select[name="kind"]')).to_have_count(0)

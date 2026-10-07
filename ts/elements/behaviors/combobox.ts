@@ -14,7 +14,8 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   server-fresh with zero bespoke fetch code here,
 // - keeps Enter inside the search input from implicitly submitting an ancestor
 //   <form> (the filter bar renders its action row inside one); the widget's own
-//   Enter-pick handling has already run by the time this listener fires.
+//   Enter-pick handling has already run by the time this listener fires,
+// - closes on a person's single-select pick, changed or not.
 //
 // The widget methods are duck-typed so this module never imports search-select
 // (keeps drop-down.js's transitive graph lean; the element upgrades on its own).
@@ -32,7 +33,7 @@ registerBehavior("combobox", {
   sheetFocus: (menu) =>
     menu.querySelector(PANEL_PICKER)?.querySelector<HTMLElement>("[data-search-select-search]") ??
     null,
-  wire: ({ host, menu }) => {
+  wire: ({ host, menu, controller }) => {
     // Only the panel's own picker; nested ones stay shut.
     const widget = menu.querySelector<ComboboxWidget>(PANEL_PICKER);
     const searchInput =
@@ -46,10 +47,16 @@ registerBehavior("combobox", {
     const onSearchKeydown = (event: KeyboardEvent) => {
       if (event.key === "Enter") event.preventDefault();
     };
+    //: Only a person's single-select pick sends it.
+    const onPick = (event: HTMLElementEventMap["search-select:pick"]) => {
+      if (widget && event.target === widget) controller.close();
+    };
     host.addEventListener("dropdown:show", onShow);
+    host.addEventListener("search-select:pick", onPick);
     searchInput?.addEventListener("keydown", onSearchKeydown);
     return () => {
       host.removeEventListener("dropdown:show", onShow);
+      host.removeEventListener("search-select:pick", onPick);
       searchInput?.removeEventListener("keydown", onSearchKeydown);
     };
   },

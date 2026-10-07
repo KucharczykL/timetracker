@@ -78,15 +78,19 @@ export class DropdownElement extends HTMLElement {
       });
       controller = anchored;
       if (narrow) {
+        const sheetOpener = behavior?.sheetOpener;
         try {
           controller = attachNarrowSheet(this, menu, anchored, {
             dialog: narrow.sheet,
             sentinel: narrow.sentinel,
             expandedToggle: menuOptions.inlineTrigger ? undefined : toggle,
             sheetFocus: behavior?.sheetFocus,
+            lent: behavior?.sheetLent?.(this, toggle, menu),
+            defaultOpener: sheetOpener ? () => sheetOpener(this) : undefined,
           });
         } catch (error) {
           // The behavior still wires below.
+          this.setAttribute(SHEET_ATTRIBUTES.sheetless, "");
           reportClientError("drop-down", `its sheet is unusable: ${String(error)}`, {
             toast: false,
           });
@@ -110,6 +114,7 @@ export class DropdownElement extends HTMLElement {
     if (!sheet && !sentinel) return null;
     if (sheet instanceof HTMLDialogElement && sentinel) return { sheet, sentinel };
     // A half-built sheet stays anchored.
+    this.setAttribute(SHEET_ATTRIBUTES.sheetless, "");
     reportClientError(
       "drop-down",
       "a sheet needs a <dialog> and its narrow sentinel; it stays anchored",

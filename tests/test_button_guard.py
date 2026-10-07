@@ -24,6 +24,8 @@ ALLOWED = {
     ("common/components/temporal_field.py", "_disclosure"),
     #: A field that opens a grid, not a box button.
     ("common/components/icon_picker.py", "IconPicker"),
+    #: A field's text area, opening a sheet.
+    ("common/components/search_select.py", "_search_select_face"),
 }
 
 

@@ -1,6 +1,9 @@
 """Shared waits and steps for e2e tests."""
 
-from playwright.sync_api import Locator, Page
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from playwright.sync_api import Locator, Page, expect
 
 TABLES_SETTLED = """
 () => [...document.querySelectorAll('responsive-table')].every(
@@ -45,16 +48,48 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
+@contextmanager
+def picker_opened(picker: Locator) -> Iterator[None]:
+    """Open a picker; on a clean exit, its sheet has closed.
+
+    Below sm, the face opens a sheet; a leaving
+    sheet still holds the page inert.
+    """
+    host = picker.locator("xpath=ancestor::drop-down[1]")
+    face = host.locator(
+        ":scope > [data-search-select-face] [data-search-select-face-open]"
+    )
+    if not face.is_visible():
+        picker.locator("[data-search-select-search]").click()
+        yield
+        return
+    # The widget leaves its host; pin the dialog.
+    sheet = picker.page.locator(
+        f"#{_stamped_id(host.locator(':scope > dialog[data-dropdown-sheet]'))}"
+    )
+    face.click()
+    yield
+    # A page the pick reloads has none.
+    expect(sheet.and_(picker.page.locator("dialog[open]"))).to_have_count(0)
+
+
+def _stamped_id(element: Locator) -> str:
+    """The element's id; stamps one, kept for the page."""
+    return element.evaluate(
+        "dialog => dialog.id || (dialog.id = `picker-sheet-${crypto.randomUUID()}`)"
+    )
+
+
 def pick_choice(scope: Page | Locator, name: str, value: str) -> None:
     """Pick a picker's row by value; empty picks none."""
     picker = scope.locator(f'search-select[name="{name}"]')
-    picker.locator("[data-search-select-search]").click()
-    row = (
-        picker.locator("[data-search-select-none-option]")
-        if value == ""
-        else picker.locator(f'[data-search-select-option][data-value="{value}"]')
-    )
-    row.click()
+    with picker_opened(picker):
+        row = (
+            picker.locator("[data-search-select-none-option]")
+            if value == ""
+            else picker.locator(f'[data-search-select-option][data-value="{value}"]')
+        )
+        row.click()
 
 
 def held_choice(scope: Page | Locator, name: str) -> Locator:

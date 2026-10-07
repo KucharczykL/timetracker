@@ -157,3 +157,44 @@ def test_clearing_the_picker_submits_the_display_zone(
     tokyo_page.click('button[type="submit"]:has-text("Submit")')
     tokyo_page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}**")
     assert PlayerSession.objects.get().started_at_zone is None
+
+
+def test_a_zone_pick_closes_the_picker(matched_zone_page, live_server, e2e_library):
+    Game.objects.create(library=e2e_library, name="Hades")
+    matched_zone_page.goto(f"{live_server.url}{reverse('games:add_session')}")
+    start_row = matched_zone_page.locator('time-zone-row[field-name="started_at_zone"]')
+    start_row.locator('button[aria-haspopup="dialog"]').click()
+    picker = start_row.locator("search-select")
+    picker.locator("[data-search-select-search]").fill("Asia/Tokyo")
+    picker.locator('[data-search-select-option][data-value="Asia/Tokyo"]').click()
+
+    expect(picker.locator("[data-search-select-search]")).to_be_hidden()
+    expect(start_row.locator('button[aria-haspopup="dialog"]')).to_contain_text(
+        "Asia/Tokyo"
+    )
+
+
+def test_a_zone_sheet_fills_and_closes_on_a_phone(
+    matched_zone_page, live_server, e2e_library
+):
+    Game.objects.create(library=e2e_library, name="Hades")
+    page = matched_zone_page
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(f"{live_server.url}{reverse('games:add_session')}")
+    start_row = page.locator('time-zone-row[field-name="started_at_zone"]')
+    trigger = start_row.locator('button[aria-haspopup="dialog"]')
+    trigger.click()
+    sheet = page.locator("dialog[data-dropdown-sheet][open]")
+    listbox = sheet.locator('[role="listbox"]')
+    expect(listbox.locator("[data-search-select-option]").nth(20)).to_be_attached()
+    assert listbox.evaluate("list => list.scrollHeight > list.clientHeight")
+
+    sheet.locator('[data-search-select-option][data-value="Africa/Accra"]').click()
+    expect(page.locator("dialog[data-dropdown-sheet][open]")).to_have_count(0)
+    expect(trigger).to_be_focused()
+    expect(trigger).to_contain_text("Africa/Accra")
+
+    #: A re-pick of the held zone closes too.
+    trigger.click()
+    sheet.locator('[data-search-select-option][data-value="Africa/Accra"]').click()
+    expect(page.locator("dialog[data-dropdown-sheet][open]")).to_have_count(0)

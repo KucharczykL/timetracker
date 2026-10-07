@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
+    Final,
     Literal,
     NamedTuple,
     TypedDict,
@@ -1207,7 +1208,9 @@ def DropdownDivider() -> Node:
     )
 
 
-type SheetRole = Literal["sheet", "narrow", "host", "panel", "body", "title"]
+type SheetRole = Literal[
+    "sheet", "narrow", "host", "panel", "body", "title", "sheetless"
+]
 type SheetAttribute = str  # e.g. "data-dropdown-sheet"
 
 #: The attributes ts/elements/narrow-sheet.ts reads and stamps.
@@ -1218,6 +1221,8 @@ SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "panel": "data-sheet-panel",
     "body": "data-sheet-body",
     "title": "data-dropdown-sheet-title",
+    #: Its sheet failed; it stays anchored.
+    "sheetless": "data-dropdown-sheetless",
 }
 #: The ``host`` value of a panel lent to a sheet.
 SHEET_HOST_VALUE = "sheet"
@@ -1248,15 +1253,15 @@ def _assemble(
     wrapper_class: str,
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
-    sheet_title: Child | None = None,
+    sheet: SheetSpec | None = None,
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url).
-    ``sheet_title``: a bottom sheet on narrow viewports."""
+    ``sheet``: a bottom sheet on narrow viewports."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
-    if sheet_title is not None and behavior == "sheet":
+    if sheet is not None and behavior == "sheet":
         raise ValueError("The sheet behavior brings its own sheet.")
     config_attributes = [
         (key.replace("_", "-"), value) for key, value in (config or {}).items()
@@ -1271,7 +1276,7 @@ def _assemble(
         Fragment(
             _stamp_trigger_contract(trigger, id),
             _stamp_target_contract(target, id, initially_hidden=behavior != "sheet"),
-            None if sheet_title is None else dropdown_sheet(sheet_title),
+            None if sheet is None else dropdown_sheet(sheet),
         )
     ]
 
@@ -1285,7 +1290,7 @@ def Dropdown(
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
     full_width: bool = False,
-    sheet_title: Child | None = None,
+    sheet: SheetSpec | None = None,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
     stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
@@ -1305,7 +1310,7 @@ def Dropdown(
         wrapper_class="relative flex w-full" if full_width else "relative inline-flex",
         behavior=behavior,
         config=config,
-        sheet_title=sheet_title,
+        sheet=sheet,
     )
 
 
@@ -1325,15 +1330,23 @@ _SHEET_PANEL_MOTION_CLASS = (
 
 
 #: Section sheet cap; calendars need more.
-_SECTION_SHEET_HEIGHT_CLASS = "max-h-[min(80dvh,32rem)]"
-_DROPDOWN_SHEET_HEIGHT_CLASS = "max-h-[90dvh]"
+_SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
+#: Lifted over, and capped beside, the keyboard.
+_DROPDOWN_SHEET_SIZE_CLASS = (
+    "mb-[var(--sheet-keyboard-inset,0px)] "
+    "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+)
+#: Filtering shrinks the list, not the sheet.
+_SEARCHABLE_SHEET_HEIGHT_CLASS = (
+    "h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+)
 
 
 def _sheet_dialog(
     dialog_attributes: Attributes,
     *,
     header: Element,
-    height_class: str,
+    size_class: str,
     children: Children = None,
 ) -> Element:
     """The sheet's dialog, panel and scrolling body."""
@@ -1345,8 +1358,8 @@ def _sheet_dialog(
         ModalPanel(
             [(SHEET_ATTRIBUTES["panel"], "")],
             class_=(
-                f"flex w-full {height_class} flex-col "
-                "overflow-hidden rounded-t-base border border-default-medium "
+                f"flex w-full {size_class} flex-col "
+                "overflow-hidden rounded-t-base border border-b-0 border-default-medium "
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
         )[
@@ -1381,7 +1394,7 @@ def BottomSheet(
     target = _sheet_dialog(
         [("data-bottom-sheet", ""), titled.labelled_by],
         header=titled.header,
-        height_class=_SECTION_SHEET_HEIGHT_CLASS,
+        size_class=_SECTION_SHEET_SIZE_CLASS,
         children=children,
     )
     return _assemble(
@@ -1395,13 +1408,35 @@ def BottomSheet(
     )
 
 
-def dropdown_sheet(title: Child) -> Fragment:
+#: The widget writes it on connect.
+_NAMED_ON_CONNECT: Final = Fragment()
+
+
+@dataclass(frozen=True, slots=True)
+class SheetSpec:
+    """A dropdown's narrow-viewport sheet."""
+
+    title: Child
+    #: It holds a search; its height stays.
+    searchable: bool = False
+
+    def __post_init__(self) -> None:
+        if self.title is None or self.title == "":
+            raise ValueError("a sheet needs a title; pass no sheet for none")
+
+    @classmethod
+    def named_on_connect(cls, *, searchable: bool = False) -> SheetSpec:
+        """Its widget writes the title."""
+        return cls(_NAMED_ON_CONNECT, searchable=searchable)
+
+
+def dropdown_sheet(sheet: SheetSpec) -> Fragment:
     """A dropdown's narrow-viewport sheet and sentinel.
 
     Ids are stamped on connect: templates clone.
     """
     header = ModalPanelHeader(
-        title,
+        sheet.title,
         title_id=None,
         title_attributes=[(SHEET_ATTRIBUTES["title"], "")],
     )
@@ -1409,7 +1444,9 @@ def dropdown_sheet(title: Child) -> Fragment:
         _sheet_dialog(
             [(SHEET_ATTRIBUTES["sheet"], "")],
             header=header,
-            height_class=_DROPDOWN_SHEET_HEIGHT_CLASS,
+            size_class=f"{_DROPDOWN_SHEET_SIZE_CLASS} {_SEARCHABLE_SHEET_HEIGHT_CLASS}"
+            if sheet.searchable
+            else _DROPDOWN_SHEET_SIZE_CLASS,
         ),
         # Missing CSS keeps the anchored panel.
         Span(

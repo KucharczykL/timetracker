@@ -19,6 +19,7 @@ from typing import NamedTuple
 
 from common.components.core import Node
 from common.components.custom_elements import (
+    SheetSpec,
     _DateTimeField,
     _Dropdown,
     dropdown_sheet,
@@ -233,4 +234,4 @@ def DateTimePicker(
         placement="bottom-start",
         submenu="false",
         behavior="date-calendar",
-    )[field, dropdown_sheet(label)]
+    )[field, dropdown_sheet(SheetSpec(label))]

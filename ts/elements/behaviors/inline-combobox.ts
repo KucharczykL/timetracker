@@ -1,4 +1,6 @@
+import { reportClientError } from "../../client-errors.js";
 import { registerBehavior } from "../dropdown-behaviors.js";
+import { ownChild } from "../own-child.js";
 
 // Inline-combobox dropdown (issue #348): unlike the `combobox` behavior — which
 // hosts a <search-select> behind a SEPARATE ghost toggle button opened on click
@@ -20,6 +22,8 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   <form> (the widget's own Enter-pick handling has already run by the time
 //   this listener fires).
 //
+// Below sm the whole widget moves to the sheet.
+//
 // attachMenu and the stack do the rest.
 
 registerBehavior("inline-combobox", {
@@ -28,6 +32,15 @@ registerBehavior("inline-combobox", {
     inlineTrigger: true,
     matchToggleWidth: true,
   }),
+  sheetLent: (_host, toggle) => toggle,
+  sheetOpener: (host) => ownChild(host, "[data-search-select-face-open]"),
+  sheetFocus: (menu) => {
+    const host = menu.closest<HTMLElement>("drop-down");
+    const search = host ? ownChild(host, "[data-search-select-search]") : null;
+    //: Else no phone keyboard rises.
+    if (!search) reportClientError("inline-combobox", "no search box to focus", { toast: false });
+    return search;
+  },
   wire: ({ menu }) => {
     const searchInput = menu
       .closest("drop-down")

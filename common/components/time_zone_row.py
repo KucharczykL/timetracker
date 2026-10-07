@@ -12,11 +12,12 @@ on unsaved records and emphasises the trigger when the zones disagree.
 """
 
 from common.components.core import Media, Node
-from common.components.custom_elements import _TimeZoneRow
+from common.components.custom_elements import SheetSpec, _TimeZoneRow
 from common.components.primitives import Div, Input
 from common.components.search_select import ComboboxDropdown, SearchSelect
 
 TIMEZONE_SEARCH_API_URL = "/api/timezones/search"
+TIMEZONE_PREFETCH = 25
 
 
 def TimeZoneRow(
@@ -36,6 +37,8 @@ def TimeZoneRow(
             else None
         ),
         search_url=TIMEZONE_SEARCH_API_URL,
+        # A phone sheet's worth, and a few.
+        prefetch=TIMEZONE_PREFETCH,
         placeholder="Search time zones…",
         panel=True,
     )
@@ -45,6 +48,8 @@ def TimeZoneRow(
             content=picker,
             id=f"{field_name}-dropdown",
             ghost=True,
+            # The value changes; the name does not.
+            sheet=SheetSpec(label, searchable=True),
         )
     ]
     element = _TimeZoneRow(

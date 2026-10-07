@@ -11,6 +11,7 @@ import {
   UNSAVED_WARNING_PARTS,
 } from "../generated/form-dialog.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { ownChild } from "./own-child.js";
 import {
   handOffMessages,
   handOffOpener,
@@ -100,6 +101,8 @@ interface FormRequest {
 
 /** An element that takes created rows. */
 const PICKER = "search-select";
+//: A picker's face sits beside it.
+const PICKER_FACE = "[data-search-select-face]";
 
 /** Past this, a load gives up. */
 const LOAD_TIMEOUT_MS = 15_000;
@@ -800,7 +803,14 @@ export class FormDialogElement extends HTMLElement {
   /** True when the opener took the row. */
   private handOver(entry: OpenDialog, option: FormDialogCreatedDetail): boolean {
     const link = entry.opener;
-    const picker = link.closest(PICKER);
+    const face = link.closest(PICKER_FACE);
+    //: The face's parent is the picker's host.
+    const host = face?.parentElement;
+    const picker = link.closest(PICKER) ?? (host ? ownChild(host, PICKER) : null);
+    if (face && !picker) {
+      this.declined("its face names no picker", option);
+      return false;
+    }
     if (!link.isConnected) {
       if (picker) this.declined("its picker left the page", option);
       return false;

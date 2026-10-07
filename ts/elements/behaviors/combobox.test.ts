@@ -12,27 +12,35 @@ import { choicePickerHtml } from "../../test-setup/choice-picker.js";
 
 Element.prototype.scrollIntoView = () => {};
 
-function mountComboboxDropdown(): DropdownElement {
-  vi.stubGlobal("fetch", () =>
-    Promise.resolve({ json: () => Promise.resolve([]) }),
-  );
+/** A combobox host whose dialog holds `panel`. */
+function mountHost(label: string, panel: string): DropdownElement {
   const host = document.createElement("drop-down");
   host.setAttribute("behavior", "combobox");
   host.setAttribute("placement", "bottom-start");
   host.setAttribute("submenu", "false");
   host.innerHTML = `
-    <button data-toggle aria-expanded="false" type="button">Load preset</button>
-    <div data-menu popover="manual" hidden role="dialog" aria-label="Load preset">
-      <search-select name="preset" multi="false" always-visible="true"
-                     search-url="/api/presets/?mode=games" prefetch="100">
-        <div data-search-select-pills></div>
-        <input data-search-select-search />
-        <div data-search-select-options role="listbox"></div>
-      </search-select>
+    <button data-toggle aria-expanded="false" type="button">${label}</button>
+    <div data-menu popover="manual" hidden role="dialog" aria-label="${label}">
+      ${panel}
     </div>
   `;
   document.body.appendChild(host);
   return host;
+}
+
+function mountComboboxDropdown(): DropdownElement {
+  vi.stubGlobal("fetch", () =>
+    Promise.resolve({ json: () => Promise.resolve([]) }),
+  );
+  return mountHost(
+    "Load preset",
+    `<search-select name="preset" multi="false" always-visible="true"
+                     search-url="/api/presets/?mode=games" prefetch="100">
+        <div data-search-select-pills></div>
+        <input data-search-select-search />
+        <div data-search-select-options role="listbox"></div>
+      </search-select>`,
+  );
 }
 
 const toggleOf = (host: HTMLElement): HTMLButtonElement =>
@@ -130,5 +138,82 @@ describe("combobox dropdown behavior (#297)", () => {
     const nested = host.querySelector<HTMLElement>("search-select")!;
     expect(document.activeElement).not.toBe(inputOf(host));
     expect(nested.querySelector<HTMLElement>("[data-search-select-panel]")!.hidden).toBe(true);
+  });
+
+  it("closes on a pick event, not on a change alone", () => {
+    const host = mountComboboxDropdown();
+    toggleOf(host).click();
+    const widget = host.querySelector("search-select")!;
+    widget.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "preset", values: ["1"], last: { value: "1", label: "A", data: {} }, none: false },
+      }),
+    );
+    expect(host.isOpen()).toBe(true);
+    widget.dispatchEvent(
+      new CustomEvent("search-select:pick", { bubbles: true, detail: { name: "preset" } }),
+    );
+    expect(host.isOpen()).toBe(false);
+  });
+
+  it("closes on a real row pick, not on a nested picker's", () => {
+    const host = mountHost(
+      "Zone",
+      `<search-select name="zone" multi="false" always-visible="true">
+          <div data-search-select-pills></div>
+          <input data-search-select-search />
+          <div data-search-select-options role="listbox">
+            <div data-search-select-option data-value="UTC" data-label="UTC" role="option">UTC</div>
+          </div>
+        </search-select>
+        <div data-nested></div>`,
+    );
+    toggleOf(host).click();
+
+    const nested = host.querySelector("[data-nested]")!;
+    nested.dispatchEvent(
+      new CustomEvent("search-select:pick", { bubbles: true, detail: { name: "other" } }),
+    );
+    expect(host.isOpen()).toBe(true);
+
+    host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
+    expect(host.isOpen()).toBe(false);
+  });
+
+  it("closes on a re-pick of the held row", () => {
+    const host = mountHost(
+      "Zone",
+      `<search-select name="zone" multi="false" always-visible="true">
+          <div data-search-select-pills><input type="hidden" name="zone" value="UTC"></div>
+          <input data-search-select-search value="UTC" />
+          <div data-search-select-options role="listbox">
+            <div data-search-select-option data-value="UTC" data-label="UTC" role="option">UTC</div>
+          </div>
+        </search-select>`,
+    );
+    const changed = vi.fn();
+    host.addEventListener("search-select:change", changed);
+    toggleOf(host).click();
+    host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
+    expect(changed).not.toHaveBeenCalled();
+    expect(host.isOpen()).toBe(false);
+  });
+
+  it("stays open over a multi-select pick", () => {
+    const host = mountHost(
+      "Tags",
+      `<search-select name="tags" multi="true" always-visible="true">
+          <div data-search-select-pills></div>
+          <input data-search-select-search />
+          <div data-search-select-options role="listbox">
+            <div data-search-select-option data-value="1" data-label="A" role="option">A</div>
+          </div>
+          <template data-search-select-template="pill"><span data-pill><span data-search-select-label></span></span></template>
+        </search-select>`,
+    );
+    toggleOf(host).click();
+    host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
+    expect(host.isOpen()).toBe(true);
   });
 });

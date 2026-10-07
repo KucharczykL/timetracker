@@ -1,6 +1,7 @@
 """The narrow-viewport sheet a dropdown may carry."""
 
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,7 @@ from common.components.custom_elements import (
     SHEET_ATTRIBUTES,
     SHEET_HOST_VALUE,
     BottomSheet,
+    SheetSpec,
 )
 from common.components.primitives import Button, Div, YearPicker
 from common.components.quick_filter import QUICK_FACETS, QuickFilterBar
@@ -59,7 +61,7 @@ def test_a_dropdown_without_a_title_carries_no_sheet():
 
 
 def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
-    html = dropdown(sheet_title="Day")
+    html = dropdown(sheet=SheetSpec("Day"))
     [dialog] = sheets(html)
     assert "data-menu" not in dialog
     assert "data-bottom-sheet" not in dialog
@@ -67,6 +69,20 @@ def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
     assert sheet_title(html) == "Day"
     assert ' id="' not in re.search(r"<h2[^>]*>", html).group(0)  # type: ignore[union-attr]
     assert "hidden max-sm:block" in SENTINEL.search(html).group(0)  # type: ignore[union-attr]
+
+
+def test_a_dropdown_sheet_rises_above_the_keyboard():
+    html = dropdown(sheet=SheetSpec("Day"))
+    assert "mb-[var(--sheet-keyboard-inset,0px)]" in html
+    assert "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]" in html
+
+
+STEADY = " h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+
+
+def test_only_a_searchable_sheet_keeps_its_height():
+    assert STEADY not in dropdown(sheet=SheetSpec("Day"))
+    assert STEADY in dropdown(sheet=SheetSpec("Game", searchable=True))
 
 
 def test_the_section_sheet_keeps_its_own_shape():
@@ -107,13 +123,81 @@ def test_the_year_picker_carries_a_sheet():
     assert sheet_title(html) == "Year"
 
 
+class FacetSheets(HTMLParser):
+    """Per facet: searches, and its own sheet steady."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[dict] = []
+        self.facets: list[tuple[bool, bool]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        named = dict(attrs)
+        if tag == "drop-down":
+            self.stack.append(
+                {
+                    "facet": "data-quick-facet" in named,
+                    "searches": False,
+                    "steady": False,
+                }
+            )
+        elif tag == "search-select" and named.get("filter-mode") == "true":
+            if named.get("always-visible") == "true":
+                self.stack[-1]["searches"] = True
+        elif tag == "div" and "data-sheet-panel" in named:
+            self.stack[-1]["steady"] = STEADY in f" {named.get('class', '')}"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "drop-down":
+            frame = self.stack.pop()
+            if frame["facet"]:
+                self.facets.append((frame["searches"], frame["steady"]))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
+def test_only_a_set_facet_sheet_keeps_its_height(mode):
+    parser = FacetSheets()
+    parser.feed(str(QuickFilterBar(mode=mode, presentation=PRESENTATION)))
+    assert parser.facets
+    for searches, steady in parser.facets:
+        assert searches == steady
+    if mode == "games":
+        #: Platform is a set facet.
+        assert any(steady for _, steady in parser.facets)
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
 def test_every_quick_facet_carries_a_sheet(mode):
     html = str(QuickFilterBar(mode=mode, presentation=PRESENTATION))
-    facets = re.findall(r"<drop-down[^>]*data-quick-facet", html)
+    own = OwnSheets()
+    own.feed(html)
+    facets = [count for is_facet, count in own.hosts if is_facet]
     assert facets
-    assert len(sheets(html)) == len(facets)
+    assert facets == [1] * len(facets)
+
+
+class OwnSheets(HTMLParser):
+    """Each ``<drop-down>``'s own sheet count."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        #: Open hosts: facet flag, own sheets.
+        self.stack: list[list] = []
+        self.hosts: list[tuple[bool, int]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        names = {name for name, _ in attrs}
+        if tag == "drop-down":
+            self.stack.append(["data-quick-facet" in names, 0])
+        elif tag == "dialog" and SHEET_ATTRIBUTES["sheet"] in names:
+            self.stack[-1][1] += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "drop-down":
+            is_facet, count = self.stack.pop()
+            self.hosts.append((is_facet, count))
 
 
 @pytest.mark.parametrize(
@@ -162,7 +246,7 @@ def test_every_quick_facet_applies_the_bar(mode):
 
 def test_the_sheet_behavior_refuses_a_second_sheet():
     with pytest.raises(ValueError):
-        dropdown(behavior="sheet", sheet_title="Sections")
+        dropdown(behavior="sheet", sheet=SheetSpec("Sections"))
 
 
 def test_every_sheet_variant_names_the_generated_host():
@@ -178,3 +262,9 @@ def test_every_sheet_variant_names_the_generated_host():
         if "host" in match.group(1)
     }
     assert named == {stated}
+
+
+@pytest.mark.parametrize("title", ["", None])
+def test_a_sheet_needs_a_title(title):
+    with pytest.raises(ValueError):
+        SheetSpec(title)

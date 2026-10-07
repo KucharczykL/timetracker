@@ -46,7 +46,7 @@ def _box(page: Page, selector: str) -> FloatRect:
 @override_settings(ROOT_URLCONF="e2e.test_compact_button_e2e")
 def test_row_actions_and_clear_fit_their_control(live_server, page: Page):
     page.goto(f"{live_server.url}/compact/")
-    clear = _box(page, "[data-search-select-clear]")
+    clear = _box(page, "search-select [data-search-select-clear]")
     field = _box(page, "search-select[name=device] [data-search-select-box]")
     assert clear["height"] == 32 and clear["width"] == 32
     assert field["height"] == 42

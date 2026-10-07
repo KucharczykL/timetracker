@@ -35,7 +35,14 @@
 import { isPresenceModifier } from "./filter-tokens.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
+import {
+  FACE_EXCLUDED_PREFIX,
+  FACE_NAME_SUFFIX,
+  FACE_SEPARATOR,
+} from "../generated/search-select-face.js";
+import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import { followPointer } from "../pointer-follow.js";
+import { ownChild } from "./own-child.js";
 // Defines the host a delegated widget opens.
 import "./drop-down.js";
 import { FORM_DIALOG_CREATED, type FormDialogCreatedDetail } from "./form-dialog/events.js";
@@ -69,9 +76,15 @@ export type SearchSelectChangeDetail =
   | { name: string; values: string[]; last: SearchSelectOption | null; none: false }
   | { name: string; values: []; last: null; none: true };
 
+//: A person's single-select pick, changed or not.
+export interface SearchSelectPickDetail {
+  name: string;
+}
+
 declare global {
   interface HTMLElementEventMap {
     "search-select:change": CustomEvent<SearchSelectChangeDetail>;
+    "search-select:pick": CustomEvent<SearchSelectPickDetail>;
   }
 }
 
@@ -278,10 +291,29 @@ const DIALOG_CREATE_CONTEXT = "search-select[dialog-create-params]";
 /** Set the + link's query from sources. */
 const rewriteDialogCreate = (container: Element, params: ParamSources): void => {
   if (!container.isConnected) return;
-  const link = container.querySelector("a[data-search-select-dialog-create]");
-  const href = link?.getAttribute("href");
-  if (!link || !href) {
+  //: The face's + sits beside it.
+  const scope = container.hasAttribute("data-toggle")
+    ? (container.closest("drop-down") ?? container)
+    : container;
+  //: A nested picker's + is its own.
+  const links = Array.from(
+    scope.querySelectorAll("a[data-search-select-dialog-create]"),
+  ).filter(link =>
+    scope === container
+      ? link.closest("search-select") === container
+      : link.closest("drop-down") === scope,
+  );
+  if (!links.length) {
     reportClientError(DIALOG_CREATE_CONTEXT, "params set, no + link", { toast: false });
+    return;
+  }
+  links.forEach(link => rewriteDialogCreateLink(container, link, params));
+};
+
+const rewriteDialogCreateLink = (container: Element, link: Element, params: ParamSources): void => {
+  const href = link.getAttribute("href");
+  if (!href) {
+    reportClientError(DIALOG_CREATE_CONTEXT, "a + link has no href", { toast: false });
     return;
   }
   let url: URL;
@@ -361,6 +393,16 @@ const initWidget = (containerElement: Element): boolean => {
     ? container.closest("drop-down")
     : null;
   const delegated = dropdownHost !== null;
+  //: Below sm it stands in for the box.
+  const face = dropdownHost ? ownChild(dropdownHost, "[data-search-select-face]") : null;
+  const facePart = <Part extends HTMLElement>(hook: string): Part | null =>
+    face?.querySelector<Part>(`[data-search-select-face-${hook}]`) ?? null;
+  const faceOpen = facePart<HTMLButtonElement>("open");
+  const faceName = facePart<HTMLElement>("name");
+  const faceValue = facePart<HTMLElement>("value");
+  const faceClear = facePart<HTMLButtonElement>("clear");
+  //: In the sheet, the sheet owns leaving.
+  const lent = (): boolean => container.getAttribute(SHEET_ATTRIBUTES.host) === SHEET_HOST_VALUE;
   if (!delegated && !alwaysVisible) {
     reportClientError("search-select", `${name}: no <drop-down> host; the list never opens`, {
       toast: false,
@@ -439,11 +481,49 @@ const initWidget = (containerElement: Element): boolean => {
     pills.querySelector("input[data-search-select-none]") !== null &&
     !container._searchSelectDirty;
 
+  let reportedBlankPill = false;
+  const pillLabel = (pill: Element): string => {
+    const label =
+      pill.querySelector("[data-search-select-label]")?.textContent ??
+      pill.getAttribute("data-label") ??
+      "";
+    if (!label && !reportedBlankPill) {
+      reportedBlankPill = true;
+      reportClientError("search-select", `${name}: a pill has no label`, { toast: false });
+    }
+    return pill.getAttribute("data-search-select-type") === "exclude"
+      ? `${FACE_EXCLUDED_PREFIX}${label}`
+      : label;
+  };
+  const faceText = (): string => {
+    if (multi || isFilter) {
+      return Array.from(pills.querySelectorAll("[data-pill]"), pillLabel)
+        .filter(Boolean)
+        .join(FACE_SEPARATOR);
+    }
+    if (pills.querySelector("input[data-search-select-none]")) return noneLabel;
+    return pills.querySelector(HELD_VALUE_INPUTS) ? (container._searchSelectLabel ?? "") : "";
+  };
+  const syncFace = () => {
+    const held = faceText();
+    //: Typed, not picked: shown as a draft.
+    const draft = held || multi || isFilter ? "" : search.value.trim();
+    if (faceValue) {
+      faceValue.textContent = held || draft || search.placeholder;
+      faceValue.toggleAttribute("data-placeholder", !held && !draft);
+      faceValue.toggleAttribute("data-draft", draft !== "");
+    }
+    if (faceClear && clearButton) faceClear.hidden = clearButton.hidden;
+  };
+
+  //: Also syncs the face.
   const syncClearButton = () => {
-    if (!clearButton) return;
-    clearButton.hidden =
-      holdsNone() ||
-      !(pills.querySelector(HELD_VALUE_INPUTS + ", [data-pill]") || search.value.trim());
+    if (clearButton) {
+      clearButton.hidden =
+        holdsNone() ||
+        !(pills.querySelector(HELD_VALUE_INPUTS + ", [data-pill]") || search.value.trim());
+    }
+    syncFace();
   };
   if (statusEl) {
     statusEl.id = `${listboxId}-status`;
@@ -476,6 +556,7 @@ const initWidget = (containerElement: Element): boolean => {
 
   const syncExpanded = () => {
     search.setAttribute("aria-expanded", isPanelOpen() ? "true" : "false");
+    faceOpen?.setAttribute("aria-expanded", String(lent() && isPanelOpen()));
   };
 
   const hasVisibleContent = () => {
@@ -520,8 +601,21 @@ const initWidget = (containerElement: Element): boolean => {
     // always-visible panels, which stay open, still lose their phantom active
     // option after a commit). clearHighlight also removes aria-activedescendant.
     clearHighlight();
-    if (!alwaysVisible) dropdownHost?.close();
+    //: Lent: only a person's pick closes.
+    if (!alwaysVisible && !lent()) dropdownHost?.close();
     syncExpanded();
+  };
+
+  //: A person's pick ends a single-select sheet.
+  const personPicked = () => {
+    if (multi || isFilter) return;
+    container.dispatchEvent(
+      new CustomEvent<SearchSelectPickDetail>("search-select:pick", {
+        bubbles: true,
+        detail: { name },
+      }),
+    );
+    if (lent()) dropdownHost?.close();
   };
 
   //: One node says both "nothing matched" and "fill that in first",
@@ -541,11 +635,27 @@ const initWidget = (containerElement: Element): boolean => {
   // ── Highlight tracking (filter mode) ──
   let highlightedRow: HTMLElement | null = null;
 
+  //: Lent since the last hide.
+  let wasLent = false;
+  dropdownHost?.addEventListener("dropdown:show", (event) => {
+    if (event.target !== dropdownHost) return;
+    if (lent()) wasLent = true;
+    //: Also when no box takes focus.
+    syncExpanded();
+  });
+
   // A host close resets the ARIA state.
   dropdownHost?.addEventListener("dropdown:hide", (event) => {
     if (event.target !== dropdownHost) return;
     clearHighlight();
     syncExpanded();
+    if (!wasLent) return;
+    wasLent = false;
+    //: A host change is no leave.
+    if (event.detail.moving) return;
+    //: The leave focusout skipped.
+    cancelPendingSearch();
+    revertDrop();
   });
 
   // Hover never scrolls; keyboard steps do.
@@ -862,6 +972,7 @@ const initWidget = (containerElement: Element): boolean => {
       createRow.hidden = true;
       selectOption(option);
       hidePanel();
+      personPicked();
       return;
     }
     if (create === "event") {
@@ -914,6 +1025,7 @@ const initWidget = (containerElement: Element): boolean => {
         if (clears !== clearsAtStart) return;
         selectOption(option);
         hidePanel();
+        personPicked();
       })
       .catch(error => {
         //: Nothing else reports here: the row would un-dim on a POST
@@ -1225,6 +1337,7 @@ const initWidget = (containerElement: Element): boolean => {
           search.value = "";
         } else {
           selectOption(option);
+          personPicked();
         }
         hidePanel(); // also clears the highlight
       }
@@ -1307,6 +1420,7 @@ const initWidget = (containerElement: Element): boolean => {
       addFilterPill(optionFromRow(row), "include");
     } else {
       selectOption(optionFromRow(row));
+      personPicked();
     }
   });
 
@@ -1419,14 +1533,16 @@ const initWidget = (containerElement: Element): boolean => {
   };
 
   // A + dialog's created row lands here.
-  container.addEventListener(FORM_DIALOG_CREATED, (event) => {
+  const takeCreated = (event: CustomEvent<FormDialogCreatedDetail>) => {
     if (search.disabled) return;
     upsertOption(event.detail);
     selectOption(event.detail);
     // Taken only once it landed.
     event.preventDefault();
     event.stopPropagation();
-  });
+  };
+  container.addEventListener(FORM_DIALOG_CREATED, takeCreated);
+  face?.addEventListener(FORM_DIALOG_CREATED, takeCreated);
 
   // Commit a value from code, firing no change.
   container._searchSelectSetSelected = (value: string, label?: string) => {
@@ -1482,6 +1598,7 @@ const initWidget = (containerElement: Element): boolean => {
     soleDeclined = false;
     hidePanel();
     if (!sameHeld(before, heldNow())) emitNone();
+    personPicked();
   };
 
   const offeredRow = (value: string): HTMLElement | undefined =>
@@ -1693,23 +1810,90 @@ const initWidget = (containerElement: Element): boolean => {
     });
   }
 
+  //: Restores what a first keystroke dropped.
+  const revertDrop = (): void => {
+    const restore = heldBeforeDrop;
+    heldBeforeDrop = null;
+    if (props.revertOnLeave && restore && !pills.querySelector('input[type="hidden"]')) {
+      if (restore.none) holdNone();
+      else selectOption({ value: restore.value, label: restore.label, data: {} }, false);
+    }
+    // Otherwise blur keeps text and value.
+  };
   // ── Close panel when focus leaves the widget (e.g. Tab away) ──
   // focusout bubbles, so the container catches the input losing focus in every
   // mode. Option mousedown preventDefault keeps the input focused during a
   // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
+    //: Sheet moves blur; dropdown:hide does the leave.
+    if (lent()) return;
     if (!container.contains(event.relatedTarget as Node)) {
       cancelPendingSearch();
       hidePanel(); // also clears the highlight
-      const restore = heldBeforeDrop;
-      heldBeforeDrop = null;
-      if (props.revertOnLeave && restore && !pills.querySelector('input[type="hidden"]')) {
-        if (restore.none) holdNone();
-        else selectOption({ value: restore.value, label: restore.label, data: {} }, false);
-      }
-      // Otherwise blur keeps text and value.
+      revertDrop();
     }
   });
+
+  // ── The face ──
+  //: Below sm, these breaks leave no way in.
+  if (face && !faceOpen) {
+    reportClientError("search-select", `${name}: its face has no open button`, { toast: false });
+  }
+  if (faceClear && !clearButton) {
+    reportClientError("search-select", `${name}: its face has a × the box lacks`, {
+      toast: false,
+    });
+  }
+  if (face && faceOpen) {
+    const fieldName =
+      search.labels?.[0]?.textContent?.trim() ||
+      search.getAttribute("aria-label")?.trim() ||
+      search.placeholder.trim();
+    if (!fieldName) {
+      reportClientError("search-select", `${name}: no label names its sheet`, { toast: false });
+    }
+    if (faceName && fieldName) faceName.textContent = `${fieldName}${FACE_NAME_SUFFIX}`;
+    const sheetTitle = dropdownHost
+      ? ownChild(dropdownHost, `[${SHEET_ATTRIBUTES.title}]`)
+      : null;
+    if (sheetTitle && !sheetTitle.textContent?.trim()) sheetTitle.textContent = fieldName;
+
+    //: Code writes the box's state directly.
+    const mirrorBox = () => {
+      faceOpen.disabled = search.disabled;
+      for (const attribute of ["aria-invalid", "aria-describedby"]) {
+        const value = search.getAttribute(attribute);
+        if (value === null) faceOpen.removeAttribute(attribute);
+        else faceOpen.setAttribute(attribute, value);
+      }
+    };
+    mirrorBox();
+    new MutationObserver(mirrorBox).observe(search, {
+      attributes: true,
+      attributeFilter: ["disabled", "aria-invalid", "aria-describedby"],
+    });
+
+    const openSheet = () => {
+      if (!faceOpen.disabled) dropdownHost?.open(faceOpen);
+    };
+    faceOpen.addEventListener("click", openSheet);
+    //: The label's box is hidden below sm.
+    for (const label of Array.from(search.labels ?? [])) {
+      label.addEventListener("click", (event) => {
+        if (face.getClientRects().length === 0) return;
+        event.preventDefault();
+        openSheet();
+      });
+    }
+    //: A press keeps focus, as the box's ×.
+    faceClear?.addEventListener("mousedown", event => event.preventDefault());
+    faceClear?.addEventListener("click", () => {
+      const fromFocus = document.activeElement === faceClear;
+      clearButton?.click();
+      //: The × hides; focus needs a home.
+      if (fromFocus) faceOpen.focus();
+    });
+  }
 
   // Typed text is the value; submitting commits the draft.
   if (create === "select") {

@@ -44,15 +44,10 @@ function mount(
     });
   }
   if (answersLoad) host.addEventListener(PRESET_LOAD_EVENT, (event) => event.preventDefault());
-  // An un-upgraded stand-in; the test gives it the one method used.
-  const dropDown = host.querySelector("drop-down") as unknown as HTMLElement & {
-    close: ReturnType<typeof vi.fn>;
-  };
-  dropDown.close = vi.fn();
   const widget = host.querySelector("search-select") as WidgetStub;
   widget.refetchOptions = vi.fn();
   widget.clearSelection = vi.fn();
-  return { host, dropDown, widget };
+  return { host, widget };
 }
 
 // The widget's create row, as an event-committed search-select emits it.
@@ -89,8 +84,8 @@ afterEach(() => {
 });
 
 describe("<preset-panel>", () => {
-  it("a pick announces the preset, clears the pick and closes", () => {
-    const { host, dropDown, widget } = mount();
+  it("a pick announces the preset and clears the pick", () => {
+    const { host, widget } = mount();
     const loaded = vi.fn();
     host.addEventListener(PRESET_LOAD_EVENT, (event) =>
       loaded((event as CustomEvent<PresetState>).detail),
@@ -98,7 +93,6 @@ describe("<preset-panel>", () => {
     pick(widget, { filter: '{"a": 1}', sort: "name", per_page: "50" });
     expect(loaded).toHaveBeenCalledWith({ filter: { a: 1 }, sort: "name", perPage: "50" });
     expect(widget.clearSelection).toHaveBeenCalledOnce();
-    expect(dropDown.close).toHaveBeenCalledOnce();
   });
 
   it("a pick with no sort or per_page announces them empty", () => {
@@ -111,8 +105,8 @@ describe("<preset-panel>", () => {
     expect(loaded).toHaveBeenCalledWith({ filter: {}, sort: "", perPage: "" });
   });
 
-  it("bad preset JSON toasts, logs the crash-guard line and still closes", () => {
-    const { host, dropDown, widget } = mount();
+  it("bad preset JSON toasts and logs the crash-guard line", () => {
+    const { host, widget } = mount();
     const loaded = vi.fn();
     host.addEventListener(PRESET_LOAD_EVENT, loaded);
     vi.stubGlobal("toast", vi.fn());
@@ -123,7 +117,6 @@ describe("<preset-panel>", () => {
     expect(
       consoleError.mock.calls.some((call) => String(call[0]).includes("preset load failed")),
     ).toBe(true);
-    expect(dropDown.close).toHaveBeenCalledOnce();
   });
 
   it("a create posts the host's state under the typed name", () => {
