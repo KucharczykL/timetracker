@@ -31,6 +31,7 @@ from games.writes.answers import (
     TIMED_OUT_STATUS,
     CommandFailed,
     WriteAnswer,
+    absent_as_404,
     answer_for,
     answered,
 )
@@ -192,18 +193,24 @@ def test_a_row_not_held_is_no_rejection():
     assert not issubclass(RowNotHeld, CommandRejected)
 
 
-def test_a_row_the_library_does_not_hold_is_absent():
+#: Both answer an absence alike.
+ABSENCE_ANSWERS = pytest.mark.parametrize("answer", [answered, absent_as_404])
+
+
+@ABSENCE_ANSWERS
+def test_a_row_the_library_does_not_hold_is_absent(answer):
     """No sentence: one library learns nothing of another's rows."""
-    with pytest.raises(Http404), answered("session"):
+    with pytest.raises(Http404, match="No such session."), answer("session"):
         raise RowNotHeld(_FOR_A_DEVELOPER)
 
 
-def test_a_row_the_library_does_not_hold_is_recorded(capture_games_logger):
+@ABSENCE_ANSWERS
+def test_a_row_the_library_does_not_hold_is_recorded(capture_games_logger, answer):
     """An invisible 404 is how a client retries a request that landed."""
     with (
         capture_games_logger() as caplog,
         pytest.raises(Http404),
-        answered("session"),
+        answer("session"),
     ):
         raise RowNotHeld(_FOR_A_DEVELOPER)
 

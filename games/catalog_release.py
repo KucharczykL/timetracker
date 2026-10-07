@@ -14,7 +14,9 @@ from django.http import Http404
 from games.api_creation import RowRefused
 from games.catalog_compat import write_and_mirror
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
+from games.events.dispatch import RowNotHeld
 from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.writes.answers import absent_as_404
 
 SHARED_GAME_RELEASE = "Record this game as your own game to add a release to it."
 
@@ -116,14 +118,18 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
         written = state_catalog_graph(game=game, library=library, editions=[statement])
         return PlatformRelease(written.editions[0].releases[0].release, created=True)
 
-    try:
-        with transaction.atomic():
-            reached = write_and_mirror(game, state)
-    except ValidationError as error:
-        raise RowRefused(" ".join(error.messages)) from error
-    return PlatformRelease(
-        Release.objects.select_related("edition", "platform").get(
-            pk=reached.release.pk
-        ),
-        created=reached.created,
-    )
+    #: A Release goes only with its Game.
+    with absent_as_404("game"):
+        try:
+            with transaction.atomic():
+                reached = write_and_mirror(game, state)
+        except ValidationError as error:
+            raise RowRefused(" ".join(error.messages)) from error
+        release = (
+            Release.objects.select_related("edition", "platform")
+            .filter(pk=reached.release.pk)
+            .first()
+        )
+        if release is None:
+            raise RowNotHeld(f"Release {reached.release.pk} is gone with its Game.")
+    return PlatformRelease(release, created=reached.created)

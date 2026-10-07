@@ -169,10 +169,23 @@ def answer_for(conflict: type[CommandConflict]) -> ConflictAnswer | None:
 
 
 @contextmanager
+def absent_as_404(subject: SubjectNoun) -> Iterator[None]:
+    """Answer a row not held with 404."""
+    try:
+        yield
+    except RowNotHeld as error:
+        #: No traceback: the program is right, the id wrong.
+        #: Recorded: an invisible 404 invites a second write.
+        logger.warning("[answers]: a %s this library does not hold: %s", subject, error)
+        raise Http404(f"No such {subject}.") from error
+
+
+@contextmanager
 def answered(subject: SubjectNoun) -> Iterator[None]:
     """Turn a refused command into an answer."""
     try:
-        yield
+        with absent_as_404(subject):
+            yield
     except CommandNotPermitted as error:
         #: Absent, not forbidden: a refusal discloses nothing.
         #: The layering cost #905 weighed and accepted.
@@ -185,11 +198,6 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
         raise CommandFailed(
             answer.sentence.format(subject=subject), answer.status_code
         ) from error
-    except RowNotHeld as error:
-        #: No traceback: the program is right, the id wrong.
-        #: Recorded: an invisible 404 invites a second write.
-        logger.warning("[answers]: a %s this library does not hold: %s", subject, error)
-        raise Http404(f"No such {subject}.") from error
     except RowUnreadable as error:
         #: The argument in the message, so one line names the row.
         logger.error(

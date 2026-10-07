@@ -1,6 +1,7 @@
 """The Release picker's search and its create row."""
 
 import pytest
+from django.http import Http404
 
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN
 from games.catalog_release import SHARED_GAME_RELEASE, release_on
@@ -229,3 +230,12 @@ def test_release_on_reuses_a_live_release_and_states_a_new_one(
     assert made.created
     assert made.release.edition == graph.edition
     assert again == (made.release, False)
+
+
+@pytest.mark.untracked_games
+def test_release_on_a_game_gone_since_the_fetch_answers_404(owned_library, ps5):
+    fetched = Game.objects.create(library=owned_library, name="Gone")
+    Game.objects.filter(pk=fetched.pk).delete()
+
+    with pytest.raises(Http404, match="No such game."):
+        release_on(owned_library, fetched, ps5)

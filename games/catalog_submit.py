@@ -17,6 +17,7 @@ from games.catalog_writes import DUPLICATE_EDITION_NAME
 from games.external_references import mirror_game_wikidata
 from games.models import Game
 from games.reference_form import ReferenceSetForm
+from games.writes.answers import absent_as_404
 
 if TYPE_CHECKING:
     from games.forms import GameForm
@@ -171,20 +172,21 @@ def submitted_game_or_form_error(
     `IntegrityError` is caught out here: inside the transaction the
     connection is unusable, thus the answer follows the rollback.
     """
-    try:
-        return save_game_and_graph(form, graph, references)
-    except IntegrityError as collision:
-        answer = answered_constraint(collision)
-        if answer is None:
+    with absent_as_404("game"):
+        try:
+            return save_game_and_graph(form, graph, references)
+        except IntegrityError as collision:
+            answer = answered_constraint(collision)
+            if answer is None:
+                raise
+            form.add_error(answer.field, answer.sentence)
+            return None
+        except ValidationError as refusal:
+            if references.answer(refusal):
+                return None
+            if _game_form_refusal(form, refusal):
+                return None
+            if graph.answer(refusal):
+                return None
+            #: The two column guards are programming errors.
             raise
-        form.add_error(answer.field, answer.sentence)
-        return None
-    except ValidationError as refusal:
-        if references.answer(refusal):
-            return None
-        if _game_form_refusal(form, refusal):
-            return None
-        if graph.answer(refusal):
-            return None
-        #: The two column guards are programming errors.
-        raise

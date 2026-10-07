@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from django.http import Http404
 from django.urls import reverse
 
 from common.date_time_presentation import (
@@ -32,6 +33,7 @@ from games.models import (
     Edition,
     ExternalReference,
     Game,
+    GameKind,
     Platform,
     PlayerGameStatus,
     Release,
@@ -460,6 +462,36 @@ def test_a_game_removed_while_it_was_being_edited_answers_the_form(
 
     assert submitted_game_or_form_error(form, graph, references) is None
     assert REMOVED_SINCE_READ in form.non_field_errors()
+
+
+@pytest.mark.untracked_games
+@pytest.mark.parametrize("addon", [False, True])
+def test_a_game_gone_while_it_was_being_edited_answers_404(
+    owned_library, game_post, addon
+):
+    """Gone, not refused: Edit Game answers 404."""
+    parent = Game.objects.create(library=owned_library, name="Elite")
+    game = Game.objects.create(library=owned_library, name="Frontier")
+    addon_fields = {"kind": GameKind.DLC, "parent": str(parent.pk)} if addon else {}
+    form = game_form(
+        library=owned_library, instance=game, name="Frontier II", **addon_fields
+    )
+    graph = CatalogGraphForm(
+        game_post("Frontier II"),
+        game=game,
+        library=owned_library,
+        presentation=PRESENTATION,
+    )
+    references = ReferenceSetForm(
+        {"reference_wikidata": ""}, target=game, library=owned_library
+    )
+    assert form.is_valid(), form.errors
+    assert graph.is_valid(), graph.form_errors
+    assert references.is_valid(), references.errors
+    Game.objects.filter(pk=game.pk).delete()
+
+    with pytest.raises(Http404):
+        submitted_game_or_form_error(form, graph, references)
 
 
 def test_a_private_game_needs_a_library_owner(owned_library):
