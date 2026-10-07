@@ -15,7 +15,7 @@ from django.urls import reverse
 from entries import record_entry
 from playwright.sync_api import Locator, Page, expect
 
-from e2e.helpers import held_choice, pick_choice
+from e2e.helpers import held_choice, open_picker, pick_choice
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
@@ -126,9 +126,8 @@ def platform_picker(card: Locator) -> Locator:
 def choose_platform(card: Locator, name: str) -> None:
     """Search the row's picker; pick by label."""
     picker = platform_picker(card)
-    search = picker.locator("[data-search-select-search]")
-    search.click()
-    search.fill(name)
+    open_picker(picker)
+    picker.locator("[data-search-select-search]").fill(name)
     picker.locator(f'[data-search-select-option][data-label="{name}"]').click()
 
 
@@ -429,7 +428,9 @@ def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
     released = card.get_by_role("group", name="Released")
 
     expect(headings).to_be_hidden()
-    expect(card.get_by_label("Platform", exact=True)).to_be_visible()
+    expect(
+        card.get_by_role("button", name="Platform, Amiga", exact=True)
+    ).to_be_visible()
     expect(released).to_be_visible()
 
     page.set_viewport_size({"width": 1200, "height": 900})
@@ -438,7 +439,7 @@ def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
     )
 
     expect(headings).to_be_visible()
-    expect(card.get_by_label("Platform", exact=True)).to_be_visible()
+    expect(card.get_by_role("combobox", name="Platform", exact=True)).to_be_visible()
     expect(released).to_be_visible()
 
 

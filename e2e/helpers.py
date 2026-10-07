@@ -45,10 +45,21 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
+def open_picker(picker: Locator) -> None:
+    """Below sm, tap the face; else the box."""
+    face = picker.locator("xpath=..").locator(
+        ":scope > [data-search-select-face] [data-search-select-face-open]"
+    )
+    if face.is_visible():
+        face.click()
+    else:
+        picker.locator("[data-search-select-search]").click()
+
+
 def pick_choice(scope: Page | Locator, name: str, value: str) -> None:
     """Pick a picker's row by value; empty picks none."""
     picker = scope.locator(f'search-select[name="{name}"]')
-    picker.locator("[data-search-select-search]").click()
+    open_picker(picker)
     row = (
         picker.locator("[data-search-select-none-option]")
         if value == ""
