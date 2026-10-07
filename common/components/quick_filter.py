@@ -314,15 +314,12 @@ _QUICK_PILL_CLASS = (
 )
 
 
-def _sheet_apply() -> Node:
-    """Apply, shown only in a facet sheet."""
+def _facet_apply() -> Node:
+    """A facet panel's Apply."""
     #: Submits the bar's form, as its Apply does.
-    return Div(
-        class_=(
-            "hidden justify-end mt-2 pt-2 border-t border-default-medium "
-            "group-data-[dropdown-host=sheet]/dropdown:flex"
-        ),
-    )[ControlButton(type="submit", color="blue", data_quick_sheet_apply="")["Apply"]]
+    return Div(class_="flex justify-end mt-2 pt-2 border-t border-default-medium")[
+        ControlButton(type="submit", color="blue", data_quick_facet_apply="")["Apply"]
+    ]
 
 
 class QuickFilterBar(BaseComponent):
@@ -467,7 +464,7 @@ class QuickFilterBar(BaseComponent):
         return ComboboxDropdown(
             label=label,
             # A calendar's footer holds its own Apply.
-            content=content if own_footer else Fragment(content, _sheet_apply()),
+            content=content if own_footer else Fragment(content, _facet_apply()),
             id=f"quick-{facet.key}-dropdown",
             ghost=True,
             panel_width=panel_width,
