@@ -1,12 +1,13 @@
 # A dropdown panel becomes a bottom sheet on narrow viewports (#516)
 
-Part of #1485. #1537 reuses the switch for the picker panels.
+Part of #1485. #1537 reuses the switch for the form pickers.
 
 ## Decisions
 
 Settled with the user (UI) and the modal epic organizer (shape), 2026-10-07.
 
-1. **The switch is a `<drop-down>` opt-in, not a behavior.** A builder that
+1. **The switch is a `<drop-down>` opt-in, not a behavior.** Scope, from
+   the user: every calendar and every quick-bar facet. A builder that
    passes a sheet title renders two extra children inside the `<drop-down>`
    host: a sheet dialog and a wide sentinel. A dropdown without one renders
    neither and behaves as today.
@@ -62,12 +63,27 @@ Settled with the user (UI) and the modal epic organizer (shape), 2026-10-07.
 
 ## What the switch catches
 
-The switch wraps the controller `DropdownElement` holds, so it decides
-every open that goes through `DropdownElement.open()`. An `attachMenu`
-without `inlineTrigger` also opens itself from its toggle's click and arrow
-keys, and those opens bypass the wrapper. The three calendars set
-`inlineTrigger`. #1537 routes those internal opens through the switch for the
-behaviors that bind their toggle.
+Every open. `DropdownElement` builds the wrapper and passes it to
+`attachMenu` as `presenter`, a getter for the controller the toggle drives.
+`attachMenu`'s own toggle click and ArrowDown/ArrowUp open, close and focus
+through `presenter()`, which defaults to `attachMenu`'s own controller. When
+the panel sits in the sheet and the behavior binds its toggle (no
+`inlineTrigger`), the wrapper writes the toggle's `aria-expanded`, which
+`attachMenu` writes for the anchored panel. #1537 is left with the picker
+work: the search box and the keyboard.
+
+## Users
+
+- `DatePicker`, `DateTimePicker`, `DateRangePicker` and `YearPicker` pass
+  their label. `YearPicker`'s grid is 224 px wide and fits a phone, but
+  every calendar opens the same way.
+- Every quick-bar facet passes its label through `ComboboxDropdown`'s
+  `sheet_title`. The date facet's `DateRangePanel` is about 440 px wide and
+  overflows a 375 px phone; the set, number, string and bool facets follow
+  for one presentation per bar. A facet in the "⋯" overflow opens its sheet
+  above that menu: the sheet is inside the menu's DOM, so neither focus nor
+  a press in the sheet closes the menu. The time zone row's
+  `ComboboxDropdown` passes nothing; #1537 decides it.
 
 ## Shape
 
@@ -83,10 +99,10 @@ behaviors that bind their toggle.
   dropdown sheet uses it: the switch stamps a counter id on the title and
   the dialog's `aria-labelledby` at connect, so the filter builder's cloned
   templates never share one. `DatePicker`, `DateTimePicker` and
-  `DateRangePicker` call `_Dropdown(...)[picker, dropdown_sheet(label)]`,
-  the sheet after the picker. `DateRangePanel` and `YearPicker` pass
-  nothing: one lives inside the quick bar's own dropdown, the other is
-  224 px wide. `sheet_dialog` stays in `custom_elements.py`, the module
+  `DateRangePicker` and `YearPicker` call
+  `_Dropdown(...)[picker, dropdown_sheet(label)]`, the sheet after the
+  picker. The sentinel is `absolute` and zero-sized, so it changes no
+  layout and no facet width the bar measures. `sheet_dialog` stays in `custom_elements.py`, the module
   `tests/test_modal_dialog.py` admits for `ModalDialog(`.
 - **Attribute names are generated.** `DROPDOWN_SHEET_ATTRIBUTES` in
   `custom_elements.py` names `data-dropdown-sheet`, `data-dropdown-wide`,
@@ -113,7 +129,12 @@ behaviors that bind their toggle.
 - **Form dialog baseline.** `formsOf` in `form-dialog/unsaved.ts` counts only
   forms whose nearest dialog is the form dialog. A toast moves into the top
   modal, and a sheet inside the page form would otherwise add its Undo form.
-- **Calendar look in the sheet.** The shell drops its border, corners,
+- **Panel look in the sheet.** Every `[data-menu]` panel the switch moves
+  carries `group/dropdown`. `DropdownPanel` drops its border, shadow,
+  surface, blur and width (`w-full`) under `data-[dropdown-host=sheet]:`.
+  Content inside keys on `group-data-[dropdown-host=sheet]/dropdown:`.
+- **Calendar look in the sheet.** The popup shell and the static calendar
+  inside a facet drop their surfaces the same way. The shell drops its border, corners,
   surface and blur, and stacks its children in a column. The grid takes
   `w-full`, a definite width, so Firefox does not shrink its tracks. The
   weekday header and day cells take `w-auto` and fill seven equal tracks.
@@ -126,14 +147,16 @@ behaviors that bind their toggle.
 
 ## Out of scope
 
-- A picker panel in a sheet (search box at the sheet top, closing on an
-  item pick, internal opens, `visualViewport` sizing): #1537.
+- The form pickers (`SearchSelect`, fixed-choice pickers), the time zone
+  row, the search box at the sheet top, closing on an item pick, and
+  `visualViewport` sizing: #1537.
 - Touch-friendly time entry.
 
 ## Tests
 
-- Python: the three pickers each render one `[data-dropdown-sheet]` titled
-  by the label and one sentinel; `Dropdown` and `YearPicker` render neither;
+- Python: the four calendars and every quick-bar facet render one
+  `[data-dropdown-sheet]` titled by the label and one sentinel; `Dropdown`
+  without `sheet_title` renders neither;
   `BottomSheet` markup is unchanged.
 - Vitest: `attachNarrowSheet` opens anchored or in the sheet by the
   sentinel; the panel moves and returns with its attributes; a refused open
@@ -145,7 +168,9 @@ behaviors that bind their toggle.
   a day pick commits and closes; focus returns to the calendar button; the
   range sheet shows its footer; a date field in a form dialog stacks a
   sheet over the dialog; a resize keeps an open calendar open. Locators
-  scope by `drop-down`, not by the picker. The 390 px touch-target test now
+  scope by `drop-down`, not by the picker. A quick-bar date facet and a
+  set facet open as sheets on the phone, and a facet from the "⋯"
+  overflow opens its sheet over the menu; Apply still reads their values. The 390 px touch-target test now
   measures the sheet.
 
 ## Follow-up issues to file

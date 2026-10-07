@@ -90,6 +90,21 @@ Files: new `ts/elements/narrow-sheet.ts` + `narrow-sheet.test.ts`;
   resize move both directions, close drops pending move, distinct ids for
   two instances.
 
+## Task 5b — presenter: attachMenu's own opens route through the switch
+
+Files: `ts/elements/menu-behavior.ts`, `drop-down.ts`, `narrow-sheet.ts`.
+
+- `MenuOptions.presenter?: () => MenuController` — toggle click and
+  ArrowDown/ArrowUp call `presenter().isOpen/open(toggle)/close/focusFirst`.
+  Submenus keep their own path (they never get a sheet).
+- `DropdownElement` passes `presenter: () => this.controller ?? anchored`.
+- Wrapper writes toggle `aria-expanded` in sheet mode unless the behavior's
+  menuOptions set `inlineTrigger` (pass `writesExpanded` into the wrapper).
+- `sheetFocus` for `combobox`: the panel's search input, else the first
+  focusable.
+- Tests: toggle click at narrow width opens the sheet; ArrowDown opens and
+  focuses first; aria-expanded true/false on the toggle.
+
 ## Task 6 — calendar host wiring
 
 Files: `ts/elements/date-calendar-core.ts` (+ tests in
@@ -115,6 +130,20 @@ Files: `common/components/date_range_picker.py`, `date_picker.py`,
 - Tests: each picker renders one sheet titled by label + sentinel;
   YearPicker none. `tests/test_node_tree.py` media tuple unchanged.
 
+## Task 7b — facets, YearPicker, DropdownPanel look
+
+Files: `common/components/search_select.py` (`ComboboxDropdown(sheet_title=)`),
+`common/components/quick_filter.py` (pass label), `primitives.py`
+(`YearPicker` + its grid/cell sheet variants), `custom_elements.py`
+(`DropdownPanel` `group/dropdown` + sheet variants), `date_range_picker.py`
+(`_STATIC_CALENDAR_CLASS` sheet variants).
+
+- Rename the group to `/dropdown` everywhere (calendar shell carries
+  `group/dropdown` too).
+- Tests: every quick-bar facet renders one sheet; time zone row none;
+  YearPicker one; DropdownPanel markup pins (grep tests for its class).
+- Check quick-bar priority-plus e2e still measures the same widths.
+
 ## Task 8 — form-dialog baseline
 
 File: `ts/elements/form-dialog/unsaved.ts` (+ test).
@@ -131,6 +160,9 @@ File: new `e2e/test_calendar_sheet_e2e.py`.
   on calendar button. Range picker in filter builder → footer visible.
   Date field inside a form dialog → two open modals, sheet on top.
   Resize 375 → 1024 with calendar open → anchored panel visible.
+- Quick bar at 375: date facet and a set facet open sheets; a facet in "⋯"
+  opens its sheet over the menu; Apply after a pick navigates with the
+  criterion. YearPicker on stats at 375 opens a sheet.
 - Desktop: popup anchored, no sheet open.
 - Run `test_touch_targets_e2e.py`, all date e2e files, modal/top-layer e2e.
 
