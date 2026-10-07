@@ -152,7 +152,7 @@ function contentOf(html: string): DocumentFragment {
 
 async function fieldsOf(response: Response): Promise<Fields | null> {
   if (!(response.headers.get("content-type") ?? "").includes("application/json")) {
-    // A 404 is an answer: the server logged it.
+    // A 404 is an answer, logged server-side.
     if (response.status !== 404) report(`not a dialog answer (status ${response.status})`);
     return null;
   }

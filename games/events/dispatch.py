@@ -235,7 +235,7 @@ class RowUnreadable(Exception):
 class RowNotHeld(Exception):
     """A row this library does not hold; an absence.
 
-    Also a row gone since the caller read it.
+    Also a row gone since its read.
 
     A sibling of `CommandRejected`, not a subclass: the boundary
     answers 404 and nothing more, so no sentence, and no handler
