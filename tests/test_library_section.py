@@ -181,7 +181,7 @@ def test_the_query_count_holds_over_more_copies(
     client, owned_user, owned_library, graph
 ):
     record_entry(owned_library, graph.release)
-    #: The first ended copy adds its count's query.
+    #: The first ended copy adds one query.
     end_entry_access(record_entry(owned_library, graph.release))
     client.force_login(owned_user)
     _page(client, graph.game)

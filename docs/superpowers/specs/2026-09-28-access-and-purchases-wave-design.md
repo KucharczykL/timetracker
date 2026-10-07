@@ -1184,11 +1184,14 @@ runs on it.
   wrong game after a move: batch Undo reads `run_game_at_batch`.
 - #1463, the purchase amount shows one price again, the original in a
   popover
-- #1468, a refunded purchase shows on neither copy screen: Game detail's
-  copy cards and the Library tab's Purchases column read `held_purchases`,
-  unrefunded only, and the previous copies sit behind a note; every live
-  purchase of a copy, refunded struck through, and the note a disclosure
-  (filed 2026-10-03 from the review; pairs with #1463)
+- #1468, a refunded purchase shows on neither copy screen: the cards stay
+  held copies and unrefunded purchases; the note counts ended copies, their
+  purchases and held copies' refunds, each a link whose filter is its
+  count (`games/reads/previous_copies.py`); the Library tab prints every
+  live purchase unmarked. Ruled 2026-10-07: no struck-through line and no
+  disclosure; an ended copy's purchases read "(with N purchases)", not a
+  second "more" count
+  ([spec](2026-10-07-issue-1468-refunded-purchase-copy-screens-design.md))
 - #1443, remove the one-time Conversion review rows after P5c, keeping
   `conversion_review` and `Category`
 - #1448, remove the conversion pass and its gates at the squash: done.

@@ -719,8 +719,10 @@ docs/           — Additional documentation
   click (`refund_purchase_now`, through `refund_purchase`); its Undo is `UndoPurchaseRefund`,
   refused under the lock once a later refund act overtook it.
   Game detail lists each held copy's live, unrefunded purchases
-  (`held_purchases`), and the copy's menu carries their acts
-  (`games/views/purchase_menu.py`). Contract is
+  (`copy_purchases`, then `unrefunded`), and the copy's menu carries their
+  acts (`games/views/purchase_menu.py`); one sentence counts and links the
+  ended copies, their purchases and held copies' refunds
+  ([#1468](docs/superpowers/specs/2026-10-07-issue-1468-refunded-purchase-copy-screens-design.md)). Contract is
   [Every purchase write](docs/superpowers/specs/2026-10-01-issue-724-purchase-writes-design.md)
   #1266 (P5b2): the Purchases list is selectable; `purchase.edit`
   (kind, price with Keep, day, note; `games/bulk_purchase_edit.py`) and
@@ -731,8 +733,8 @@ docs/           — Additional documentation
   field on `PurchaseFilter` and `LibraryEntryFilter` over `Category`
   (`games/conversion_review.py`), reads the conversion's tags from
   events; it is the one way to the converted population, so its words
-  stay stable (#1443 took the Library page's review). The Library tab's Purchases column prints each held
-  purchase's price. Contract is
+  stay stable (#1443 took the Library page's review). The Library tab's Purchases column prints every
+  live purchase's price, refunded included. Contract is
   [Purchases selectable, conversion reviewed](docs/superpowers/specs/2026-10-02-issue-1266-purchases-selectable-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
