@@ -13,6 +13,7 @@ from games.catalog_addons import (
     AddonRefused,
     state_addon,
 )
+from games.events.dispatch import RowNotHeld
 from games.models import Game, GameKind
 from games.removal import remove
 
@@ -205,3 +206,27 @@ def test_it_refuses_to_run_outside_a_transaction(library):
     assert not transaction.get_connection().in_atomic_block
     with pytest.raises(RuntimeError):
         state_addon(game, kind=GameKind.MAIN, parent=None, library=library)
+
+
+@pytest.mark.untracked_games
+@pytest.mark.parametrize("kind", [GameKind.MAIN, GameKind.DLC])
+def test_a_game_gone_since_the_fetch_is_not_held(library, kind):
+    parent = _game(library, "Parent")
+    fetched = _game(library, "Gone")
+    Game.objects.filter(pk=fetched.pk).delete()
+    stated_parent = None if kind == GameKind.MAIN else parent
+
+    with pytest.raises(RowNotHeld, match=str(fetched.pk)), transaction.atomic():
+        state_addon(fetched, kind=kind, parent=stated_parent, library=library)
+
+
+@pytest.mark.untracked_games
+@pytest.mark.parametrize("persisted", [False, True])
+def test_a_parent_gone_since_the_clean_is_not_held(library, persisted):
+    """Add Game reaches this too: the parent is in the body."""
+    parent = _game(library, "Parent")
+    game = _game(library, "Add-on") if persisted else Game(library=library, name="New")
+    Game.objects.filter(pk=parent.pk).delete()
+
+    with pytest.raises(RowNotHeld, match=str(parent.pk)), transaction.atomic():
+        state_addon(game, kind=GameKind.DLC, parent=parent, library=library)

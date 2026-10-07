@@ -5,7 +5,7 @@ from typing import Final, Literal
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from games.events.dispatch import RowUnreadable
+from games.events.dispatch import RowNotHeld, RowUnreadable
 from games.models import Game, GameKind, UserLibrary
 
 type AddonField = Literal["kind", "parent"]
@@ -55,6 +55,12 @@ def state_addon(
         for row in Game.objects.select_for_update().filter(pk__in=keys).order_by("pk")
     }
     stored = locked.get(game.pk) if persisted else None
+    #: The edited Game, or its parent.
+    missing = keys - locked.keys()
+    if missing:
+        raise RowNotHeld(
+            f"Games {missing} are gone before library {library.pk}'s lock."
+        )
 
     if kind == GameKind.MAIN:
         if parent is not None:

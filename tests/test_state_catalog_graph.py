@@ -26,6 +26,7 @@ from games.catalog_writes import (
     ReleaseState,
     state_catalog_graph,
 )
+from games.events.dispatch import RowNotHeld
 from games.models import Edition, Game, Platform, Release
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -70,6 +71,21 @@ def test_another_library_s_game_is_refused(other_library, game):
         state(game.game, other_library, one())
 
     assert FOREIGN_GAME in refused.value.messages
+
+
+@pytest.mark.untracked_games
+def test_a_game_gone_since_the_fetch_is_not_held(owned_library):
+    """Absent, not refused: the row is gone."""
+    fetched = Game.objects.create(library=owned_library, name="Gone")
+    Game.objects.filter(pk=fetched.pk).delete()
+
+    with pytest.raises(RowNotHeld, match=str(fetched.pk)):
+        state(fetched, owned_library, one())
+
+
+def test_an_unsaved_game_is_a_defect(owned_library):
+    with pytest.raises(ValueError, match="saved Game"):
+        state(Game(library=owned_library, name="Unsaved"), owned_library, one())
 
 
 def test_a_removed_game_goes_back_first(owned_library, game):

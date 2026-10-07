@@ -648,6 +648,30 @@ describe("submit", () => {
     expect(handedOff("messages")).toEqual(SAVED);
   });
 
+  it("answers a 404 as gone, and reloads on close", async () => {
+    const dialog = await openPage();
+    body().querySelector("form")!.append(Object.assign(document.createElement("input"), { name: "x" }));
+    replies.push(errorPage(404));
+    submit();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("This no longer exists.");
+    expect(clientErrors.reportClientError).not.toHaveBeenCalled();
+    expect(topModal()).toBe(dialog);
+    click(dialog.querySelector("[data-modal-dismiss]")!);
+    await settle();
+    expect(topModal()).toBeNull();
+    expect(reloads).toBe(1);
+  });
+
+  it("keeps the error id on any other refusal", async () => {
+    await openPage();
+    replies.push(errorPage(500));
+    submit();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain("save failed: the server answered 500");
+    expect(JSON.stringify(toasts.at(-1))).toContain("error id-1");
+  });
+
   it("calls a write whose next answer has no kind unconfirmed", async () => {
     await openPage();
     replies.push(reply(next(`${ORIGIN}/entry/add`)));

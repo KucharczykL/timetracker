@@ -1,9 +1,13 @@
 """The Release picker's search and its create row."""
 
+import uuid
+from unittest.mock import patch
+
 import pytest
+from django.http import Http404
 
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN
-from games.catalog_release import SHARED_GAME_RELEASE, release_on
+from games.catalog_release import SHARED_GAME_RELEASE, PlatformRelease, release_on
 from games.catalog_writes import EditionState, state_catalog_graph
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue
@@ -229,3 +233,33 @@ def test_release_on_reuses_a_live_release_and_states_a_new_one(
     assert made.created
     assert made.release.edition == graph.edition
     assert again == (made.release, False)
+
+
+@pytest.mark.untracked_games
+def test_release_on_a_game_gone_since_the_fetch_answers_404(owned_library, ps5):
+    fetched = Game.objects.create(library=owned_library, name="Gone")
+    Game.objects.filter(pk=fetched.pk).delete()
+
+    with pytest.raises(Http404, match="No such game."):
+        release_on(owned_library, fetched, ps5)
+
+
+@pytest.mark.untracked_games
+def test_release_on_a_game_gone_with_its_releases_answers_404(
+    owned_library, graph, ps5
+):
+    """The standing Release went with the Game."""
+    Game.objects.filter(pk=graph.game.pk).delete()
+
+    with pytest.raises(Http404, match="No such game."):
+        release_on(owned_library, graph.game, ps5)
+
+
+def test_a_release_gone_at_the_read_back_answers_404(owned_library, graph, ps5):
+    gone = PlatformRelease(Release(pk=uuid.uuid7()), created=True)
+
+    with (
+        patch("games.catalog_release.write_and_mirror", return_value=gone),
+        pytest.raises(Http404, match="No such game."),
+    ):
+        release_on(owned_library, graph.game, ps5)

@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Model, QuerySet
 
 from common.naming import NameKey, name_key
+from games.events.dispatch import RowNotHeld
 from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -136,7 +137,9 @@ def _refuse_platform(
 
 def _writable_game(game_id, library: UserLibrary) -> Game:
     """The Game this library may write, locked."""
-    game = Game.objects.select_for_update().get(pk=game_id)
+    game = Game.objects.select_for_update().filter(pk=game_id).first()
+    if game is None:
+        raise RowNotHeld(f"Game {game_id} is gone before library {library.pk}'s lock.")
     #: `GraphRefused` with no key: the sentence belongs to the whole
     #: statement, and a caller shows it rather than raising a page.
     if game.library_id is None:
@@ -349,6 +352,8 @@ def state_catalog_graph(
     stated by `removed`, thus one partial writer cannot take a
     catalog somebody built by hand.
     """
+    if game._state.adding:
+        raise ValueError(f"state_catalog_graph takes a saved Game; {game} is unsaved.")
     owner = _writable_game(game.pk, library)
     stored_editions: StoredEditions = {
         state.key: _resolved_edition(owner, state) for state in editions

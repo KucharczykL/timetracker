@@ -14,7 +14,9 @@ from django.http import Http404
 from games.api_creation import RowRefused
 from games.catalog_compat import write_and_mirror
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
+from games.events.dispatch import RowNotHeld
 from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.writes.answers import absent_as_404
 
 SHARED_GAME_RELEASE = "Record this game as your own game to add a release to it."
 
@@ -101,7 +103,10 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
 
     def state() -> PlatformRelease:
         #: Concurrent creates make one Release.
-        Game.objects.select_for_update().filter(pk=game.pk).first()
+        if Game.objects.select_for_update().filter(pk=game.pk).first() is None:
+            raise RowNotHeld(
+                f"Game {game.pk} is gone before library {library.pk}'s lock."
+            )
         edition = _default_edition(game)
         standing = _standing(edition, platform)
         if standing is not None:
@@ -116,14 +121,21 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
         written = state_catalog_graph(game=game, library=library, editions=[statement])
         return PlatformRelease(written.editions[0].releases[0].release, created=True)
 
-    try:
-        with transaction.atomic():
-            reached = write_and_mirror(game, state)
-    except ValidationError as error:
-        raise RowRefused(" ".join(error.messages)) from error
-    return PlatformRelease(
-        Release.objects.select_related("edition", "platform").get(
-            pk=reached.release.pk
-        ),
-        created=reached.created,
-    )
+    with absent_as_404("game"):
+        try:
+            with transaction.atomic():
+                reached = write_and_mirror(game, state)
+        except ValidationError as error:
+            raise RowRefused(" ".join(error.messages)) from error
+        release = (
+            Release.objects.select_related("edition", "platform")
+            .filter(pk=reached.release.pk)
+            .first()
+        )
+        #: A Release goes only with its Game.
+        if release is None:
+            raise RowNotHeld(
+                f"Release {reached.release.pk} of Game {game.pk} is gone; "
+                f"library {library.pk} stated it."
+            )
+    return PlatformRelease(release, created=reached.created)
