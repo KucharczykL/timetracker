@@ -218,7 +218,7 @@ def test_a_stored_release_may_not_move_onto_a_removed_platform(owned_library, ga
 
 
 def test_a_release_keeps_the_removed_platform_it_stores(owned_library, game):
-    """An unrelated edit stays possible while the platform is out."""
+    """An unrelated edit stays possible."""
     kept = Platform.objects.create(library=owned_library, name="Kept")
     state(game.game, owned_library, restated_release(game, kept))
     remove(kept)
@@ -246,7 +246,7 @@ def test_a_release_keeps_the_removed_platform_it_stores(owned_library, game):
 
 
 def test_a_platform_removed_after_it_was_read_is_refused(owned_library, game):
-    """The caller's instance predates the stamp; storage decides."""
+    """The caller's instance predates the stamp."""
     platform = Platform.objects.create(library=owned_library, name="Stale")
     remove(Platform.objects.get(pk=platform.pk))
     assert platform.removed_at is None

@@ -112,13 +112,13 @@ class WrittenGraph:
 
 
 def _refuse_platform(library_id, row: ReleaseState, stored: Release | None) -> None:
-    """A Platform is shared or this library's, and live when newly stated."""
+    """Shared or own; live when newly stated."""
     platform = row.platform
     if platform is None:
         return
     if platform.library_id not in (None, library_id):
         raise GraphRefused(FOREIGN_PLATFORM, key=row.key)
-    #: A row keeping its own removed Platform stays editable.
+    #: A stored removed Platform stays editable.
     if stored is not None and stored.platform_id == platform.pk:
         return
     #: The caller's instance may predate the removal.
