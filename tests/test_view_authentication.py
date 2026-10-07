@@ -56,7 +56,7 @@ def world(owned_library):
         #: The redirect to login comes before any read.
         "entry_id": uuid.uuid7(),
         "sequence": 1,
-        "statement": uuid.uuid7(),
+        "statement_id": uuid.uuid7(),
         "stated": 0,
         "preset_id": FilterPreset.objects.create(
             library=owned_library, name="Mine", mode="games"

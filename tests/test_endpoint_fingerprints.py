@@ -96,7 +96,7 @@ COMMANDS: dict[str, Command] = {
     "undo_completion": UndoPlaythroughCompletion(playthrough_id=RUN, batch_id=BATCH),
     "void_completion": VoidPlaythroughCompletion(playthrough_id=RUN),
     "state_count": StatePlaythroughCount(game_id=GAME, count=5),
-    "undo_count": UndoPlaythroughCount(game_id=GAME, statement=BATCH, stated=5),
+    "undo_count": UndoPlaythroughCount(game_id=GAME, statement_id=BATCH, stated=5),
     #: Moved when CreateDevice gained access_end.
     "create_device": CreateDevice(name="Deck", type="Handheld"),
     "create": CreatePlaythrough(
@@ -212,7 +212,7 @@ COMMANDS: dict[str, Command] = {
 
 RECORDED: dict[str, str] = {
     "state_count": ("f5b0c9bae9623db5a7848f833178258cc1f900f7f44c73512a6c9616f11f3458"),
-    "undo_count": ("383d172cd88738ae08c029494ca7f27c812f4a55183dc658fb56cfcf86282907"),
+    "undo_count": ("28cba79a1ddc6f885ee0ec1623eac53dc00b4621011e6963e904426b7f0ae074"),
     "undo_start": "715a5cd5243ea9764650abd999034f81fd3655453654412b5488e606da058297",
     "undo_completion": (
         "0a385c044a7d71957c9a8b4ca565350f77b793a0567492ed0cc86e1a67f82296"

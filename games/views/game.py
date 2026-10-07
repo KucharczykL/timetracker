@@ -629,7 +629,7 @@ def _game_fact(game: Game) -> LinkFacts | None:
 
 
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
-    """'Played N times' split button; completed runs."""
+    """'Played N times' split button; counts completed runs."""
     from common.components import (
         ControlButton,
         DropdownLinkItem,
@@ -646,25 +646,23 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
         # live inside a single inline context.
         Span()[Span(data_count="")[str(played)], " times"]
     ]
-    items = [
-        DropdownLinkItem(
-            action_url("games:add_playthrough", origin=origin, facts=_game_fact(game)),
-            "Add playthrough\u2026",
-        )
-    ]
-    if game.tracked_status is not None:
-        items.append(
-            DropdownLinkItem(
-                action_url("games:state_times_played", game.pk, origin=origin),
-                "Set times played\u2026",
-                attributes=form_dialog_link(),
-            )
-        )
     dropdown = SplitButtonDropdown(
         primary=count_button,
         id=f"played-{game.id}",
         aria_label="Playthrough actions",
-        items=items,
+        items=[
+            DropdownLinkItem(
+                action_url(
+                    "games:add_playthrough", origin=origin, facts=_game_fact(game)
+                ),
+                "Add playthrough\u2026",
+            ),
+            DropdownLinkItem(
+                action_url("games:state_times_played", game.pk, origin=origin),
+                "Set times played\u2026",
+                attributes=form_dialog_link(),
+            ),
+        ],
     )
     return Div(class_="flex gap-2 items-center")[
         Span(class_="uppercase")["Played"], dropdown

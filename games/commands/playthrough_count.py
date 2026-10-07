@@ -20,6 +20,7 @@ from games.events.dispatch import (
     RowNotHeld,
     RowUnreadable,
 )
+from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_STATUS_CHANGED
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
@@ -37,14 +38,18 @@ from games.events.playthrough import (
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
+from games.ids import CorrelationId, GameId
 from games.models import LibraryEvent, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.events import aggregate_events, batch_events
 from games.reads.playergame_facts import status_change
 from games.reads.playthrough_count import bare_runs, dateless_runs, unnamed_runs
 from games.reads.playthrough_runs import completed_run_count, live_ordinary_runs
 
-#: A raise appends three events a run.
-MAX_TIMES_PLAYED = 100
+#: Completed live ordinary runs.
+type TimesPlayedCount = int
+
+#: Caps one raise near 300 events.
+MAX_TIMES_PLAYED: TimesPlayedCount = 100
 
 CHANGED_SINCE = (
     "These playthroughs have changed since. Edit them in the Playthroughs "
@@ -52,7 +57,12 @@ CHANGED_SINCE = (
 )
 
 
-def _tracked(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
+def count_statement_key(statement_id: CorrelationId) -> IdempotencyKey:
+    """Every event of one count carries it."""
+    return f"times-played-{statement_id}"
+
+
+def _tracked(context: CommandContext, game_id: GameId) -> PlayerGame:
     """The tracked row, refused when absent or removed."""
     tracked = library_row(
         context,
@@ -95,8 +105,8 @@ class StatePlaythroughCount(Command):
     """State how many runs were completed."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_STATE_COUNT
-    game_id: uuid.UUID
-    count: int
+    game_id: GameId
+    count: TimesPlayedCount
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked(context, self.game_id)
@@ -127,7 +137,7 @@ class StatePlaythroughCount(Command):
             events += _played_through(runs[0].pk)
             added -= 1
         for _ in range(added):
-            #: The build reads no new row.
+            #: A repeat replays; no fresh id escapes.
             run_id = uuid.uuid7()
             events.append(playthrough_created(tracked.pk, playthrough_id=run_id))
             events += _played_through(run_id)
@@ -169,15 +179,14 @@ class UndoPlaythroughCount(Command):
     """Take one count statement back whole."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_UNDO_COUNT
-    game_id: uuid.UUID
-    #: The statement's correlation id.
-    statement: uuid.UUID
-    #: The total the statement left.
-    stated: int
+    game_id: GameId
+    statement_id: CorrelationId
+    #: The client's total; only ever compared.
+    stated: TimesPlayedCount
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = _tracked(context, self.game_id)
-        events = list(batch_events(context.library, self.statement))
+        events = list(batch_events(context.library, self.statement_id))
         run_ids = list(
             dict.fromkeys(
                 event.aggregate_id
@@ -190,7 +199,7 @@ class UndoPlaythroughCount(Command):
         if completed_run_count(context.library, tracked) != self.stated:
             raise CommandRejected(
                 f"Game {self.game_id} no longer counts the {self.stated} runs "
-                f"statement {self.statement} left.",
+                f"statement {self.statement_id} left.",
                 sentence=CHANGED_SINCE,
             )
         created = [
@@ -214,7 +223,8 @@ class UndoPlaythroughCount(Command):
         events: list[LibraryEvent],
         run_ids: list[uuid.UUID],
     ) -> None:
-        """A statement of this game, or absent."""
+        """Refuse, as absent, any other act."""
+        key = count_statement_key(self.statement_id)
         held = Playthrough.objects.filter(
             library=context.library, player_game=tracked, pk__in=run_ids
         ).count()
@@ -223,9 +233,10 @@ class UndoPlaythroughCount(Command):
             for event in events
             if event.event_type == PLAYERGAME_STATUS_CHANGED.event_type
         } - {tracked.pk}
-        if not events or held != len(run_ids) or foreign:
+        not_a_count = any(event.idempotency_key != key for event in events)
+        if not events or not_a_count or held != len(run_ids) or foreign:
             raise RowNotHeld(
-                f"Statement {self.statement} is no count this library stated "
+                f"Statement {self.statement_id} is no count this library stated "
                 f"for game {self.game_id}."
             )
 
@@ -246,7 +257,7 @@ class UndoPlaythroughCount(Command):
             ):
                 raise CommandRejected(
                     f"Playthrough {run_id} states an event after statement "
-                    f"{self.statement}.",
+                    f"{self.statement_id}.",
                     sentence=CHANGED_SINCE,
                 )
 
@@ -256,7 +267,7 @@ class UndoPlaythroughCount(Command):
         runs = Playthrough.objects.filter(library=context.library, pk__in=created)
         if unnamed_runs(runs).count() != len(created):
             raise CommandRejected(
-                f"A row names a run statement {self.statement} created.",
+                f"A row names a run statement {self.statement_id} created.",
                 sentence=CHANGED_SINCE,
             )
         for run in runs:
@@ -266,7 +277,7 @@ class UndoPlaythroughCount(Command):
         self, context: CommandContext, tracked: PlayerGame
     ) -> NewEvent | None:
         """The word before, while still latest."""
-        change = status_change(context.library, tracked.pk, self.statement)
+        change = status_change(context.library, tracked.pk, self.statement_id)
         if change is None:
             return None
         latest = (
@@ -274,13 +285,13 @@ class UndoPlaythroughCount(Command):
             .filter(event_type=PLAYERGAME_STATUS_CHANGED.event_type)
             .last()
         )
-        if latest is None or latest.correlation_id != self.statement:
+        if latest is None or latest.correlation_id != self.statement_id:
             return None
         return status_change_event(context, tracked.pk, change.before)
 
 
 def _inverse(event: LibraryEvent, created: list[uuid.UUID]) -> NewEvent | None:
-    """One event's inverse; None where removal covers."""
+    """One event's inverse, or None."""
     run_id = event.aggregate_id
     match event.event_type:
         case PLAYTHROUGH_CREATED.event_type:
@@ -288,6 +299,7 @@ def _inverse(event: LibraryEvent, created: list[uuid.UUID]) -> NewEvent | None:
         case PLAYTHROUGH_STARTED.event_type | PLAYTHROUGH_COMPLETED.event_type if (
             run_id in created
         ):
+            #: The run's removal covers it.
             return None
         case PLAYTHROUGH_STARTED.event_type:
             return playthrough_start_voided(run_id)
@@ -300,6 +312,7 @@ def _inverse(event: LibraryEvent, created: list[uuid.UUID]) -> NewEvent | None:
         case PLAYTHROUGH_COMPLETION_VOIDED.event_type:
             return playthrough_completed(run_id, when=None, note="")
         case PLAYERGAME_STATUS_CHANGED.event_type:
+            #: `_status_back` decides it.
             return None
     raise RowUnreadable(
         f"Event {event.pk} ({event.event_type}) of library {event.library_id} "

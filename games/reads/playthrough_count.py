@@ -23,7 +23,7 @@ def _blank(runs: QuerySet[Playthrough]) -> QuerySet[Playthrough]:
 
 
 def bare_runs(library: UserLibrary, player_game: PlayerGame) -> QuerySet[Playthrough]:
-    """Live ordinary runs stating nothing at all."""
+    """Unnamed live ordinary runs stating nothing."""
     return unnamed_runs(
         _blank(live_ordinary_runs(library, player_game)).filter(
             start_recorded_at__isnull=True, completion_recorded_at__isnull=True
@@ -34,7 +34,7 @@ def bare_runs(library: UserLibrary, player_game: PlayerGame) -> QuerySet[Playthr
 def dateless_runs(
     library: UserLibrary, player_game: PlayerGame
 ) -> QuerySet[Playthrough]:
-    """Played-through runs stating nothing else, newest first."""
+    """Unnamed runs, both acts, no day; newest first."""
     return unnamed_runs(
         _blank(live_ordinary_runs(library, player_game)).filter(
             start_recorded_at__isnull=False,

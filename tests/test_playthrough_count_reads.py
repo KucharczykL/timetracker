@@ -137,11 +137,26 @@ def test_a_described_run_is_not_bare(owned_library, tracked, run, columns):
     assert list(bare_runs(owned_library, tracked)) == []
 
 
+@pytest.mark.parametrize("removed", [False, True], ids=["live", "removed"])
 @pytest.mark.django_db(transaction=True)
-def test_a_run_a_session_names_is_not_bare(owned_library, tracked, run):
-    timed_row(run, timezone.now(), None)
+def test_a_run_a_session_names_is_not_bare(owned_library, tracked, run, removed):
+    session = timed_row(run, timezone.now(), None)
+    if removed:
+        type(session).objects.filter(pk=session.pk).update(removed_at=timezone.now())
 
     assert list(bare_runs(owned_library, tracked)) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_foreign_row_leaves_the_run_for_the_command(
+    owned_library, tracked, run, django_user_model
+):
+    """The command refuses it as a defect."""
+    _played_through(run)
+    stranger = django_user_model.objects.create_user(username="stranger")
+    timed_row(run, timezone.now(), None, library=stranger.library)
+
+    assert _dateless(owned_library, tracked) == [run]
 
 
 @pytest.mark.django_db(transaction=True)

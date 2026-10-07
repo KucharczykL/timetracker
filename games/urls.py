@@ -207,7 +207,7 @@ urlpatterns = [
         name="state_times_played",
     ),
     path(
-        "game/<uuidv7:game_id>/times-played/undo/<uuidv7:statement>/<int:stated>",
+        "game/<uuidv7:game_id>/times-played/undo/<uuidv7:statement_id>/<int:stated>",
         times_played.undo_times_played_view,
         name="undo_times_played",
     ),

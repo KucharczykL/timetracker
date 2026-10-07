@@ -325,10 +325,12 @@ docs/           — Additional documentation
   runs whose completion is stated, which is the number the legacy row meant; the
   section badge counts every row it renders. #1024's "Set times played…"
   states that number: `StatePlaythroughCount` adds runs stating both acts
-  and no day (filling a sole bare run first, then Completed) or removes
-  dateless runs newest first (`games/reads/playthrough_count.py`), refused
-  whole where too few; `UndoPlaythroughCount` inverts one statement's
-  events, keyed by its correlation id
+  and no day (filling a sole bare run first) and states Completed, or
+  removes dateless runs newest first (`games/reads/playthrough_count.py`),
+  refused whole where too few; taking every run keeps the oldest, its acts
+  voided. `UndoPlaythroughCount` inverts one statement's events, named by
+  its correlation id; any event not keyed `count_statement_key` is
+  `RowNotHeld`
   ([spec](docs/superpowers/specs/2026-10-07-issue-1024-times-played-design.md)).
   #1013 gives the list page same
   rows: it reads projection, and so do filter (`PlaythroughFilter` over twelve
