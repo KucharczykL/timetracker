@@ -11,14 +11,15 @@ that names a new Platform runs a fourth: the Platform lock.
 
 ## The reads
 
-`GraphRows` holds the stored graph of one Game:
+`GraphRows.of()` reads the stored graph of one Game:
 
 - every Edition of the Game, removed ones included, keyed by pk;
 - every Release of those Editions, removed ones included, keyed by pk, with
-  its Platform.
+  its Platform. The save of a Release that keeps the mark validates it.
 
 Each Edition holds the locked Game as `game`. Each Release holds its map
-Edition as `edition`. Thus `Release.clean()` reads no row.
+Edition as `edition`. Thus `Release.clean()` reads no row. The write stamps
+and saves these same instances.
 
 The verb reads removed rows too. `REMOVED_EDITION` and `REMOVED_RELEASE` read
 their mark. A live-only read would answer `FOREIGN_ROW`.
@@ -34,9 +35,13 @@ their mark. A live-only read would answer `FOREIGN_ROW`.
 
 One read locks the live Platforms that the statement newly names, in pk order.
 A Platform is newly named when its row is not stated removed, its Edition is
-not stated removed, it is shared or of this library, and the row has no
-stored Platform of that pk. A foreign Platform is not locked. The platform
-refusal stays in the per-Edition loop of `_refuse_the_set`.
+not stated removed, it is saved, and the stored Release of the row does not
+already name it. The read locks only the shared Platforms and the Platforms of
+this library. `PlatformLocks` keeps the Platforms the statement named and the
+Platforms the read locked. A refusal asks it about a named Platform only; any
+other Platform is a defect, and `holds()` raises. The platform refusal stays in
+the per-Edition loop of `_refuse_the_set`. An unsaved Platform is
+`REMOVED_PLATFORM`.
 
 The pk order gives two writers on different Games one lock order. A refusal
 rolls back the transaction and releases the locks.
@@ -58,6 +63,8 @@ when nothing was written at that level.
 ## Tests
 
 `tests/test_state_catalog_graph.py` counts the `SELECT`s of a restatement of
-one Edition with one Release and of three Editions with three Releases each.
-Two more tests remove a standing default with no stated mark: a live sibling
-takes the mark, for an Edition and for a Release.
+one Edition with one Release and of three Editions with three Releases each,
+on the stored Platform (three reads) and on a new Platform (four reads), and
+checks what the restatement wrote. Other tests remove a standing default with
+no stated mark. The live sibling of the lowest pk takes the mark. A removed
+row and a row of another Edition never take it.

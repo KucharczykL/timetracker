@@ -882,3 +882,223 @@ def test_statement_size_does_not_change_the_reads(
         state_catalog_graph(game=game, library=owned_library, editions=statement)
 
     assert _selects(captured) == reads
+    releases = Release.objects.filter(edition__game=game)
+    assert {release.platform_id for release in releases} == {stated_platform.pk}
+    assert Edition.objects.filter(game=game, is_default=True).count() == 1
+    assert releases.filter(is_default=True).count() == size
+
+
+def test_the_fallback_skips_a_removed_edition_of_a_lower_key(owned_library, game):
+    decoy = Edition.objects.create(game=game.game, name="Decoy")
+    remove(decoy)
+    sibling = Edition.objects.create(game=game.game, name="Sibling")
+
+    state(
+        game.game,
+        owned_library,
+        EditionState(key="edition-0", edition=game.edition, removed=True),
+    )
+
+    decoy.refresh_from_db()
+    sibling.refresh_from_db()
+    assert (decoy.is_default, sibling.is_default) == (False, True)
+
+
+def test_the_fallback_skips_a_removed_release_of_a_lower_key(owned_library, game):
+    decoy = Release.objects.create(edition=game.edition, is_default=False)
+    remove(decoy)
+    sibling = Release.objects.create(edition=game.edition, is_default=False)
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0", release=game.release, removed=True
+                ),
+            ),
+        ),
+    )
+
+    decoy.refresh_from_db()
+    sibling.refresh_from_db()
+    assert (decoy.is_default, sibling.is_default) == (False, True)
+
+
+def test_the_fallback_stays_inside_its_edition(owned_library, game):
+    other = Edition.objects.create(game=game.game, name="Other")
+    decoy = Release.objects.create(edition=other, is_default=False)
+    sibling = Release.objects.create(edition=game.edition, is_default=False)
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0", release=game.release, removed=True
+                ),
+            ),
+        ),
+    )
+
+    decoy.refresh_from_db()
+    sibling.refresh_from_db()
+    assert (decoy.is_default, sibling.is_default) == (False, True)
+
+
+def test_the_edition_fallback_takes_the_lowest_key(owned_library, game):
+    first = Edition.objects.create(game=game.game, name="First")
+    second = Edition.objects.create(game=game.game, name="Second")
+
+    state(
+        game.game,
+        owned_library,
+        EditionState(key="edition-0", edition=game.edition, removed=True),
+    )
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert (first.is_default, second.is_default) == (True, False)
+
+
+def test_the_release_fallback_takes_the_lowest_key(owned_library, game):
+    first = Release.objects.create(edition=game.edition, is_default=False)
+    second = Release.objects.create(edition=game.edition, is_default=False)
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0", release=game.release, removed=True
+                ),
+            ),
+        ),
+    )
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert (first.is_default, second.is_default) == (True, False)
+
+
+def test_a_kept_standing_mark_is_handed_back_marked(owned_library, game):
+    written = state(
+        game.game,
+        owned_library,
+        EditionState(
+            key="edition-0",
+            edition=game.edition,
+            releases=(ReleaseState(key="edition-0-release-0", release=game.release),),
+        ),
+    )
+
+    entry = written.editions[0]
+    assert entry.edition.is_default is True
+    assert entry.releases[0].release.is_default is True
+
+
+def test_a_removed_platform_beside_a_live_one_names_its_own_row(owned_library, game):
+    live = Platform.objects.create(library=owned_library, name="Live")
+    gone = Platform.objects.create(library=owned_library, name="Gone")
+    remove(gone)
+    before = Release.objects.count()
+
+    with pytest.raises(GraphRefused) as refused:
+        state(
+            game.game,
+            owned_library,
+            one(
+                edition=game.edition,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0",
+                        release=game.release,
+                        platform=live,
+                        is_default=True,
+                    ),
+                    ReleaseState(key="edition-0-release-1", platform=gone),
+                ),
+            ),
+        )
+
+    assert REMOVED_PLATFORM in refused.value.messages
+    assert refused.value.key == "edition-0-release-1"
+    assert Release.objects.count() == before
+
+
+def test_a_removed_platform_on_a_row_being_removed_is_not_refused(owned_library, game):
+    gone = Platform.objects.create(library=owned_library, name="Gone")
+    remove(gone)
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0",
+                    release=game.release,
+                    platform=gone,
+                    removed=True,
+                ),
+                ReleaseState(key="edition-0-release-1", is_default=True),
+            ),
+        ),
+    )
+
+    game.release.refresh_from_db()
+    assert game.release.removed_at is not None
+
+
+def test_an_unsaved_platform_is_refused(owned_library, game):
+    unsaved = Platform(library=owned_library, name="Unsaved")
+
+    with pytest.raises(GraphRefused) as refused:
+        state(
+            game.game,
+            owned_library,
+            one(
+                edition=game.edition,
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0",
+                        release=game.release,
+                        platform=unsaved,
+                        is_default=True,
+                    ),
+                ),
+            ),
+        )
+
+    assert REMOVED_PLATFORM in refused.value.messages
+    assert refused.value.key == "edition-0-release-0"
+
+
+def test_a_live_shared_platform_is_accepted(owned_library, game):
+    shared = Platform.objects.create(library=None, name="Shared")
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0",
+                    release=game.release,
+                    platform=shared,
+                    is_default=True,
+                ),
+            ),
+        ),
+    )
+
+    game.release.refresh_from_db()
+    assert game.release.platform_id == shared.pk

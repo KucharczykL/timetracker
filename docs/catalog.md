@@ -251,8 +251,9 @@ caller passes is identity only: after `select_for_update()` the verb reads the
 Game's Editions and Releases once, removed ones included, resolves each stated
 row from that read, and refuses one that is removed, or that hangs from
 another Game or Edition. The Platforms a statement newly names are locked in
-one read, in pk order. The reads do not grow with the statement. Every caller reads its rows before the lock, so no
-caller can act on a stale one.
+one read, in pk order. Without removals, the reads do not grow with the
+statement; each removal reads the previous mark of its row. Every caller reads
+its rows before the lock, so no caller can act on a stale one.
 
 ## What a constraint says
 
