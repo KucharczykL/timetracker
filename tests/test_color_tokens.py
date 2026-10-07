@@ -83,16 +83,16 @@ def test_marker_admits_only_the_colours_it_names():
 def test_walker_finds_both_halves():
     # An empty half would pass vacuously.
     files = list(guarded_files())
-    assert any(f.suffix == ".py" for f in files)
-    assert any(f.suffix == ".ts" for f in files)
-    assert all(not f.name.endswith(".test.ts") for f in ts_files())
+    assert any(path.suffix == ".py" for path in files)
+    assert any(path.suffix == ".ts" for path in files)
+    assert all(not path.name.endswith(".test.ts") for path in ts_files())
 
 
 def test_no_raw_palette_colors():
     offenders = [
-        f"{f.relative_to(REPO)}:{i}: {line.strip()}"
-        for f in guarded_files()
-        for i, line in enumerate(f.read_text().splitlines(), 1)
+        f"{path.relative_to(REPO)}:{line_number}: {line.strip()}"
+        for path in guarded_files()
+        for line_number, line in enumerate(path.read_text().splitlines(), 1)
         if unadmitted(line)
     ]
     assert not offenders, (
