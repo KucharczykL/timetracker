@@ -26,6 +26,7 @@ REMOVED_GAME = "This game is removed. Put it back before you change it."
 REMOVED_EDITION = "This edition is removed. Put it back before you change it."
 REMOVED_RELEASE = "This release is removed. Put it back before you change it."
 FOREIGN_PLATFORM = "Platform belongs to another library."
+REMOVED_PLATFORM = "This platform is removed. Put it back, or choose another one."
 DUPLICATE_EDITION_NAME = "Another edition of this game already has that name."
 LAST_EDITION = "A game keeps one edition. Add another one before you remove this."
 TWO_DEFAULT_EDITIONS = "A game keeps one default edition, and this states two."
@@ -110,12 +111,19 @@ class WrittenGraph:
     editions: tuple[WrittenEdition, ...]
 
 
-def _refuse_foreign_platform(
-    library_id, platform: Platform | None, key: RowKey | None
-) -> None:
-    """A Platform is shared or this library's."""
-    if platform is not None and platform.library_id not in (None, library_id):
-        raise GraphRefused(FOREIGN_PLATFORM, key=key)
+def _refuse_platform(library_id, row: ReleaseState, stored: Release | None) -> None:
+    """A Platform is shared or this library's, and live when newly stated."""
+    platform = row.platform
+    if platform is None:
+        return
+    if platform.library_id not in (None, library_id):
+        raise GraphRefused(FOREIGN_PLATFORM, key=row.key)
+    #: A row keeping its own removed Platform stays editable.
+    if stored is not None and stored.platform_id == platform.pk:
+        return
+    #: The caller's instance may predate the removal.
+    if Platform.objects.filter(pk=platform.pk, removed_at__isnull=False).exists():
+        raise GraphRefused(REMOVED_PLATFORM, key=row.key)
 
 
 def _writable_game(game_id, library: UserLibrary) -> Game:
@@ -211,6 +219,7 @@ def _refuse_the_set(
     library: UserLibrary,
     editions: Sequence[EditionState],
     stored_editions: StoredEditions,
+    stored_releases: StoredReleases,
 ) -> None:
     """Everything the statement can be wrong about."""
     surviving = [state for state in editions if not state.removed]
@@ -231,7 +240,7 @@ def _refuse_the_set(
         if len(marked_rows) > 1:
             raise GraphRefused(TWO_DEFAULT_RELEASES, key=marked_rows[1].key)
         for row in rows:
-            _refuse_foreign_platform(library.pk, row.platform, row.key)
+            _refuse_platform(library.pk, row, stored_releases[row.key])
 
 
 def _written_release(
@@ -343,7 +352,7 @@ def state_catalog_graph(
     }
     _refuse_repeated_rows(stored_editions)
     _refuse_repeated_rows(stored_releases)
-    _refuse_the_set(owner, library, editions, stored_editions)
+    _refuse_the_set(owner, library, editions, stored_editions, stored_releases)
 
     surviving = [state for state in editions if not state.removed]
     standing_edition = _live_editions(owner.pk).filter(is_default=True).first()

@@ -15,6 +15,7 @@ from games.catalog_writes import (
     LAST_EDITION,
     REMOVED_EDITION,
     REMOVED_GAME,
+    REMOVED_PLATFORM,
     REMOVED_RELEASE,
     REPEATED_ROW,
     SHARED_GAME,
@@ -165,6 +166,95 @@ def test_another_library_s_platform_is_refused(owned_library, other_library, gam
 
     assert FOREIGN_PLATFORM in refused.value.messages
     assert refused.value.key == "edition-0-release-0"
+
+
+def restated_release(game, platform) -> EditionState:
+    """The fixture's one Release, now on `platform`."""
+    return one(
+        edition=game.edition,
+        releases=(
+            ReleaseState(
+                key="edition-0-release-0",
+                release=game.release,
+                platform=platform,
+                is_default=True,
+            ),
+        ),
+    )
+
+
+def test_a_new_release_on_a_removed_platform_is_refused(owned_library, game):
+    removed = Platform.objects.create(library=owned_library, name="Gone")
+    remove(removed)
+
+    with pytest.raises(GraphRefused) as refused:
+        state(
+            game.game,
+            owned_library,
+            one(
+                releases=(
+                    ReleaseState(
+                        key="edition-0-release-0", platform=removed, is_default=True
+                    ),
+                )
+            ),
+        )
+
+    assert REMOVED_PLATFORM in refused.value.messages
+    assert refused.value.key == "edition-0-release-0"
+
+
+def test_a_stored_release_may_not_move_onto_a_removed_platform(owned_library, game):
+    removed = Platform.objects.create(library=owned_library, name="Gone")
+    remove(removed)
+
+    with pytest.raises(GraphRefused) as refused:
+        state(game.game, owned_library, restated_release(game, removed))
+
+    assert REMOVED_PLATFORM in refused.value.messages
+    assert refused.value.key == "edition-0-release-0"
+    game.release.refresh_from_db()
+    assert game.release.platform_id != removed.pk
+
+
+def test_a_release_keeps_the_removed_platform_it_stores(owned_library, game):
+    """An unrelated edit stays possible while the platform is out."""
+    kept = Platform.objects.create(library=owned_library, name="Kept")
+    state(game.game, owned_library, restated_release(game, kept))
+    remove(kept)
+
+    state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(
+                    key="edition-0-release-0",
+                    release=game.release,
+                    platform=kept,
+                    release_date=TemporalValue.from_year(1999),
+                    is_default=True,
+                ),
+            ),
+        ),
+    )
+
+    game.release.refresh_from_db()
+    assert game.release.platform_id == kept.pk
+    assert game.release.release_date == TemporalValue.from_year(1999)
+
+
+def test_a_platform_removed_after_it_was_read_is_refused(owned_library, game):
+    """The caller's instance predates the stamp; storage decides."""
+    platform = Platform.objects.create(library=owned_library, name="Stale")
+    remove(Platform.objects.get(pk=platform.pk))
+    assert platform.removed_at is None
+
+    with pytest.raises(GraphRefused) as refused:
+        state(game.game, owned_library, restated_release(game, platform))
+
+    assert REMOVED_PLATFORM in refused.value.messages
 
 
 def test_two_surviving_editions_may_not_state_one_name(owned_library, game):
