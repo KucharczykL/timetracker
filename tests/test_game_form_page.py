@@ -950,6 +950,11 @@ def test_add_game_states_the_exclusion(logged_in, owned_library, fact):
     assert getattr(PlayerGame.objects.get(game=game), fact) is True
 
 
+def _refused_post(edition, release) -> dict[str, str]:
+    """One release, refused for its blank name."""
+    return _one_release_post(edition, release, "") | {"name": "", "sort_name": ""}
+
+
 def test_a_live_row_hides_the_line_a_bin_leaves(logged_in, plain_game):
     body = page(logged_in, plain_game)
 
@@ -974,19 +979,9 @@ def test_a_refused_page_shows_the_line_of_a_binned_row(logged_in, plain_game):
 
     response = logged_in.post(
         edit_url(plain_game),
-        {
-            "name": "",
-            "sort_name": "",
-            "status": "played",
-            "reference_wikidata": "",
-            "editions-count": "1",
-            "edition-0-edition_id": str(edition.pk),
-            "edition-0-name": "",
-            "edition-0-releases-count": "1",
-            "edition-0-release-0-release_id": str(release.pk),
-            "edition-0-release-0-platform": "",
+        _refused_post(edition, release)
+        | {
             "edition-0-release-0-removed": "on",
-            "in_library": "edition-0-release-0",
             "catalog-chosen-mark": "edition-0-release-0",
         },
     )
@@ -1005,22 +1000,7 @@ def test_a_post_without_a_chosen_mark_keeps_the_posted_one(logged_in, plain_game
     edition = Edition.objects.get(game=plain_game, is_default=True)
     release = Release.objects.get(edition=edition)
 
-    response = logged_in.post(
-        edit_url(plain_game),
-        {
-            "name": "",
-            "sort_name": "",
-            "status": "played",
-            "reference_wikidata": "",
-            "editions-count": "1",
-            "edition-0-edition_id": str(edition.pk),
-            "edition-0-name": "",
-            "edition-0-releases-count": "1",
-            "edition-0-release-0-release_id": str(release.pk),
-            "edition-0-release-0-platform": "",
-            "in_library": "edition-0-release-0",
-        },
-    )
+    response = logged_in.post(edit_url(plain_game), _refused_post(edition, release))
 
     assert response.status_code == 200
     assert chosen(live(response.content.decode())) == "edition-0-release-0"

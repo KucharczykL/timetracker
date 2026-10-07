@@ -183,20 +183,18 @@ def _row_hooks(
 def _binned_stub(form: BaseForm, value: str, names: _BinNames) -> Node:
     """A binned row's line and its Undo.
 
-    A sibling, since a hidden row hides its children. Shown while
-    the row states removal, in sight or not.
+    A sibling: a hidden row hides its children. Shown
+    while the row states removal, in sight or not.
     """
-    going, undo = names.going, names.undo
-    undo_name = undo.text(value)
     return Div([] if removal_stated(form) else _OUT_OF_SIGHT, data_catalog_binned="")[
         FixedBox("delete")[
-            Span(going.hooks())[going.text(value)],
+            Span(names.going.hooks())[names.going.text(value)],
             ControlButton(
-                undo.hooks(),
+                names.undo.hooks(),
                 variant="ghost",
                 type="button",
                 class_="ms-auto",
-                aria_label=undo_name,
+                aria_label=names.undo.text(value),
                 data_catalog_restore="",
             )["Undo"],
         ]

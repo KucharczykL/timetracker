@@ -399,26 +399,30 @@ describe("undo", () => {
     });
   });
 
-  it("gives a chosen mark back across a refused page", () => {
-    // Server echoes the pick; posted mark fell.
-    document.body.innerHTML = PAGE.replace(
-      '<div data-catalog-release="0">',
-      '<div data-catalog-release="0" hidden style="display:none">',
-    )
+  /** A refused page: release 0 going, the mark fallen to 1. */
+  function refusedPage(page: string): string {
+    return page
       .replace(
         '<input type="hidden" name="edition-0-release-0-removed">',
         '<input type="hidden" name="edition-0-release-0-removed" value="on">',
       )
-      .replace(
-        'value="edition-0-release-0" checked>',
-        'value="edition-0-release-0">',
-      )
+      .replace('value="edition-0-release-0" checked>', 'value="edition-0-release-0">')
       .replace(
         '<button type="button" data-catalog-add="release">Add release</button>',
         '<div data-catalog-release="1">' +
           '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1" checked>' +
           "</div>",
       );
+  }
+
+  it("gives a chosen mark back across a refused page", () => {
+    // Server echoes the pick; posted mark fell.
+    document.body.innerHTML = refusedPage(
+      PAGE.replace(
+        '<div data-catalog-release="0">',
+        '<div data-catalog-release="0" hidden style="display:none">',
+      ),
+    );
     expect(marked()).toBe("edition-0-release-1");
 
     undo('[data-catalog-release="0"]');
@@ -427,17 +431,7 @@ describe("undo", () => {
   });
 
   it("keeps the mark off a going row the server left in sight", () => {
-    document.body.innerHTML = PAGE.replace(
-      '<input type="hidden" name="edition-0-release-0-removed">',
-      '<input type="hidden" name="edition-0-release-0-removed" value="on">',
-    )
-      .replace('value="edition-0-release-0" checked>', 'value="edition-0-release-0">')
-      .replace(
-        '<button type="button" data-catalog-add="release">Add release</button>',
-        '<div data-catalog-release="1">' +
-          '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1" checked>' +
-          "</div>",
-      );
+    document.body.innerHTML = refusedPage(PAGE);
 
     expect(marked()).toBe("edition-0-release-1");
   });

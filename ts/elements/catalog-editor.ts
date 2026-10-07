@@ -81,8 +81,7 @@ function stubOf(row: Element): HTMLElement | null {
 
 /** Hidden by attribute and inline display, as the server draws. */
 function setOutOfSight(element: HTMLElement, out: boolean): void {
-  // `hidden` says what this is; the inline display says it in the one
-  // place a Tailwind grid/flex utility on the row cannot outrank.
+  // Inline display outranks a Tailwind display utility.
   element.hidden = out;
   element.style.display = out ? "none" : "";
 }
@@ -289,11 +288,11 @@ class CatalogEditorElement extends HTMLElement {
     setOutOfSight(row, true);
     const stub = stubOf(row);
     const restore = stub?.querySelector<HTMLElement>("[data-catalog-restore]");
-    if (!stub || !restore) {
-      console.error("<catalog-editor> binned row has no Undo", row);
-    } else {
+    if (stub && restore) {
       setOutOfSight(stub, false);
       restore.focus();
+    } else {
+      console.error("<catalog-editor> binned row has no Undo", row);
     }
     this.restateMark();
   }
@@ -303,10 +302,7 @@ class CatalogEditorElement extends HTMLElement {
     const stub = button.closest<HTMLElement>(STUB);
     // Previous sibling: `closest` would find the Edition.
     const row = stub?.previousElementSibling;
-    const removed =
-      row instanceof HTMLElement
-        ? row.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT)
-        : null;
+    const removed = row?.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT);
     if (!stub || !(row instanceof HTMLElement) || !removed) {
       console.error("<catalog-editor> Undo has no binned row", button);
       return;

@@ -113,8 +113,7 @@ def release_count_field(edition_index: RowIndex) -> str:
 class RemovalInput(forms.HiddenInput):
     """States removal as ``on`` or nothing.
 
-    The browser reads exactly ``on``; a refused page echoes
-    whatever was posted, which `BooleanField` reads more widely.
+    The browser reads only ``on``; an echoed post may differ.
     """
 
     def format_value(self, value: object) -> str:
