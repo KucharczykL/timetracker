@@ -6,7 +6,7 @@ from urllib.parse import unquote
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page, ViewportSize, expect
+from playwright.sync_api import Locator, Page, ViewportSize, expect
 
 from games.views.filtering import builder_url_for
 
@@ -48,6 +48,15 @@ def phone(live_server, page: Page, e2e_user, errors) -> Page:
 def _open_started(page: Page, live_server) -> None:
     page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
     page.locator(f"{STARTED} [data-date-picker-calendar-toggle]").click()
+
+
+def _open_overflow_facet(page: Page, label: str) -> Locator:
+    page.locator("[data-quick-overflow-trigger]").click()
+    facet = page.locator("drop-down[data-quick-facet]").filter(
+        has=page.get_by_role("button", name=label, exact=True)
+    )
+    facet.get_by_role("button", name=label, exact=True).click()
+    return facet
 
 
 def test_a_date_field_opens_a_sheet_and_a_pick_closes_it(
@@ -149,11 +158,7 @@ def test_a_date_field_in_a_form_dialog_stacks_a_sheet(phone: Page, live_server, 
 def test_a_quick_facet_applies_from_its_sheet(phone: Page, live_server, errors):
     page = phone
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-    page.locator("[data-quick-overflow-trigger]").click()
-    facet = page.locator("drop-down[data-quick-facet]").filter(
-        has=page.get_by_role("button", name="Timing", exact=True)
-    )
-    facet.get_by_role("button", name="Timing", exact=True).click()
+    _open_overflow_facet(page, "Timing")
     sheet = page.locator(SHEET)
     expect(sheet).to_be_visible()
     sheet.locator('[data-search-select-option][data-label="Duration only"]').click()
@@ -187,7 +192,7 @@ def test_a_range_calendar_selects_and_cancels_in_its_sheet(
     toggle = picker.locator("[data-date-range-calendar-toggle]")
     sheet = page.locator(SHEET)
 
-    def day(number: int):
+    def day(number: int) -> Locator:
         return (
             sheet.locator("[data-date-range-grid] button[data-date]")
             .filter(has_text=re.compile(rf"^{number}$"))
@@ -211,15 +216,6 @@ def test_a_range_calendar_selects_and_cancels_in_its_sheet(
         re.compile(r"-12$")
     )
     assert errors == []
-
-
-def _open_overflow_facet(page: Page, label: str):
-    page.locator("[data-quick-overflow-trigger]").click()
-    facet = page.locator("drop-down[data-quick-facet]").filter(
-        has=page.get_by_role("button", name=label, exact=True)
-    )
-    facet.get_by_role("button", name=label, exact=True).click()
-    return facet
 
 
 def test_a_date_facet_applies_from_its_calendar_footer(

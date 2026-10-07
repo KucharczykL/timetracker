@@ -497,17 +497,19 @@ def DateRangeCalendar(*, input_name_prefix: str, static: bool = False) -> Node:
     ``static=True`` is the panel variant (:func:`DateRangePanel`): the
     calendar flows statically, always visible, and the footer is Clear and
     a submitting Apply; the hosting dropdown owns open/close."""
-    footer_buttons: list[Node] = []
-    if not static:
-        footer_buttons.append(footer_button("cancel", "Cancel"))
-    footer_buttons.append(footer_button("clear", "Clear"))
-    if not static:
-        footer_buttons.append(footer_button("select", "Select", color="blue"))
+    footer_buttons: list[Node]
+    if static:
+        footer_buttons = [
+            footer_button("clear", "Clear"),
+            # The quick bar's form hosts the panel.
+            footer_button("apply", "Apply", color="blue", submit=True),
+        ]
     else:
-        # The quick bar's form hosts the panel.
-        footer_buttons.append(
-            footer_button("apply", "Apply", color="blue", submit=True)
-        )
+        footer_buttons = [
+            footer_button("cancel", "Cancel"),
+            footer_button("clear", "Clear"),
+            footer_button("select", "Select", color="blue"),
+        ]
     return date_calendar_shell(
         input_name_prefix=input_name_prefix,
         presets=_PRESET_OPTIONS,

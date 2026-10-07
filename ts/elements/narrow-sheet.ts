@@ -3,8 +3,8 @@
  * One panel node moves between hosts.
  * CSS alone holds the breakpoint.
  */
-import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import { reportClientError } from "../client-errors.js";
+import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import type { MenuController } from "./menu-behavior.js";
 import { attachSheetCore, type FrameHandle } from "./sheet-controller.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
@@ -119,8 +119,9 @@ export function attachNarrowSheet(
 
   /** True when a host opened. */
   const present = (opener: HTMLElement | undefined): boolean => {
-    if (isNarrow()) openSheet(opener);
-    else {
+    if (isNarrow()) {
+      openSheet(opener);
+    } else {
       anchored.open(opener);
       state = anchored.isOpen() ? { kind: "anchored", opener } : { kind: "closed" };
     }

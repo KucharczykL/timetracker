@@ -1,7 +1,7 @@
 import { reportClientError } from "../client-errors.js";
 import { readDropdownProps } from "../generated/props.js";
-import { getBehavior } from "./dropdown-behaviors.js";
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
+import { getBehavior } from "./dropdown-behaviors.js";
 import { attachMenu, MenuController, MenuOptions, MenuPlacement } from "./menu-behavior.js";
 import { attachNarrowSheet } from "./narrow-sheet.js";
 import { ownChild } from "./own-child.js";
