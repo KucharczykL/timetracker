@@ -18,8 +18,9 @@ from games.filters import (
 from games.models import Game, Platform
 from games.reads.previous_copies import (
     previous_copies_filter,
-    previous_purchase_count,
-    previous_purchases_filter,
+    previous_copy_purchases_filter,
+    purchase_count,
+    refunded_held_purchases_filter,
 )
 from games.reads.purchases import copy_purchases, unrefunded
 from timetracker.temporal import TemporalValue
@@ -103,26 +104,27 @@ def test_copy_purchases_keeps_purchase_order(owned_library, graph):
     assert [purchase.pk for purchase in purchases] == [earlier.pk, later.pk]
 
 
-def test_the_purchase_count_takes_refunds_and_ended_copies(
-    owned_library, graph, history
-):
-    assert previous_purchase_count(owned_library, graph.game) == 2
-
-
 def _keys(html: str, prefix: str) -> set[str]:
     return set(re.findall(rf'id="{prefix}-([0-9a-f-]{{36}})"', html))
 
 
-def test_the_purchase_link_lists_what_it_counts(
-    client, owned_user, owned_library, graph, history
+@pytest.mark.parametrize(
+    ("build", "expected"),
+    [
+        (previous_copy_purchases_filter, "sold"),
+        (refunded_held_purchases_filter, "refunded_addon"),
+    ],
+)
+def test_each_purchase_link_lists_what_it_counts(
+    client, owned_user, owned_library, graph, history, build, expected
 ):
     client.force_login(owned_user)
 
-    html = client.get(filter_url(previous_purchases_filter(graph.game))).content
-    listed = _keys(html.decode(), "purchase-menu")
+    html = client.get(filter_url(build(graph.game))).content.decode()
+    listed = _keys(html, "purchase-menu")
 
-    assert listed == {str(history.refunded_addon.pk), str(history.sold.pk)}
-    assert len(listed) == previous_purchase_count(owned_library, graph.game)
+    assert listed == {str(getattr(history, expected).pk)}
+    assert purchase_count(owned_library, build(graph.game)) == 1
 
 
 def test_the_copy_link_lists_the_ended_copies(client, owned_user, graph, history):
@@ -135,10 +137,10 @@ def test_the_copy_link_lists_the_ended_copies(client, owned_user, graph, history
 
 def test_both_filters_round_trip(graph):
     copies = previous_copies_filter(graph.game)
-    purchases = previous_purchases_filter(graph.game)
-
     assert parse_entry_filter(json.dumps(copies.to_json())) == copies
-    assert parse_purchase_filter(json.dumps(purchases.to_json())) == purchases
+    for build in (previous_copy_purchases_filter, refunded_held_purchases_filter):
+        purchases = build(graph.game)
+        assert parse_purchase_filter(json.dumps(purchases.to_json())) == purchases
 
 
 def test_the_copy_link_targets_the_library_tab(graph):

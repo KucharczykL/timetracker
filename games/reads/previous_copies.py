@@ -10,20 +10,19 @@ def previous_copies_filter(game: Game) -> LibraryEntryFilter:
     return LibraryEntryFilter.where(game=[game.pk], is_ended=True)
 
 
-def previous_purchases_filter(game: Game) -> PurchaseFilter:
-    """The game's purchases no card shows."""
+def previous_copy_purchases_filter(game: Game) -> PurchaseFilter:
+    """Purchases of copies no longer had."""
     purchases = PurchaseFilter.where(game=[game.pk])
-    #: Nested: a node's OR follows its criteria.
-    purchases.AND = [
-        PurchaseFilter(
-            OR=[
-                PurchaseFilter.where(is_refunded=True),
-                PurchaseFilter(entry_filter=LibraryEntryFilter.where(is_ended=True)),
-            ]
-        )
-    ]
+    purchases.entry_filter = LibraryEntryFilter.where(is_ended=True)
     return purchases
 
 
-def previous_purchase_count(library: UserLibrary, game: Game) -> int:
-    return purchases_matching(library, previous_purchases_filter(game)).count()
+def refunded_held_purchases_filter(game: Game) -> PurchaseFilter:
+    """Refunded purchases of copies had now."""
+    purchases = PurchaseFilter.where(game=[game.pk], is_refunded=True)
+    purchases.entry_filter = LibraryEntryFilter.where(is_ended=False)
+    return purchases
+
+
+def purchase_count(library: UserLibrary, purchase_filter: PurchaseFilter) -> int:
+    return purchases_matching(library, purchase_filter).count()

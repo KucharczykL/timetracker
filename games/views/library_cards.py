@@ -30,7 +30,11 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.entries import copy_end, game_entries
-from games.reads.previous_copies import previous_purchase_count
+from games.reads.previous_copies import (
+    previous_copy_purchases_filter,
+    purchase_count,
+    refunded_held_purchases_filter,
+)
 from games.reads.purchases import copy_purchases, unrefunded
 from games.reads.releases import edition_words, game_releases, platform_words
 from games.views.entry_menu import entry_row_menu
@@ -101,8 +105,10 @@ class CopyRows(NamedTuple):
     #: Copies, not rows: a group holds several.
     held: int
     ended: int
-    #: Purchases no card shows.
-    previous_purchases: int
+    #: Purchases of the ended copies.
+    ended_purchases: int
+    #: Refunded purchases of held copies.
+    refunded_purchases: int
 
 
 def copy_rows(
@@ -147,9 +153,13 @@ def copy_rows(
         )
         for copies in by_version.values()
     )
-    #: No live copy, no live purchase.
-    previous = previous_purchase_count(library, game) if held or ended else 0
-    return CopyRows(rows, held, ended, previous)
+    ended_purchases = (
+        purchase_count(library, previous_copy_purchases_filter(game)) if ended else 0
+    )
+    refunded = (
+        purchase_count(library, refunded_held_purchases_filter(game)) if held else 0
+    )
+    return CopyRows(rows, held, ended, ended_purchases, refunded)
 
 
 def library_add_control(

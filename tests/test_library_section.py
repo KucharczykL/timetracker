@@ -30,7 +30,8 @@ from games.models import (
 )
 from games.reads.previous_copies import (
     previous_copies_filter,
-    previous_purchases_filter,
+    previous_copy_purchases_filter,
+    refunded_held_purchases_filter,
 )
 from timetracker.temporal import TemporalValue
 
@@ -180,6 +181,8 @@ def test_the_query_count_holds_over_more_copies(
     client, owned_user, owned_library, graph
 ):
     record_entry(owned_library, graph.release)
+    #: The first ended copy adds its count's query.
+    end_entry_access(record_entry(owned_library, graph.release))
     client.force_login(owned_user)
     _page(client, graph.game)
     one = _count_queries(client, graph.game)
@@ -231,13 +234,11 @@ def test_a_copy_lists_its_live_unrefunded_purchases(
     assert "Removed one" not in html
     assert str(refunded.pk) not in html
     assert _note(html) == "There is 1 more purchase previously in your library."
-    purchases = filter_url(previous_purchases_filter(graph.game))
+    purchases = filter_url(refunded_held_purchases_filter(graph.game))
     assert f'href="{purchases.replace("&", "&amp;")}"' in html
 
 
-def test_a_refunded_copy_counts_as_a_copy_and_a_purchase(
-    client, owned_user, owned_library, graph
-):
+def test_a_refunded_copy_names_its_purchase(client, owned_user, owned_library, graph):
     record_purchase(record_entry(owned_library, graph.release))
     #: A game refund ends its copy.
     refund_purchase(record_purchase(record_entry(owned_library, graph.release)), None)
@@ -246,9 +247,25 @@ def test_a_refunded_copy_counts_as_a_copy_and_a_purchase(
     html = _page(client, graph.game)
 
     assert _note(html) == (
-        "There is 1 more copy and 1 more purchase previously in your library."
+        "There is 1 more copy (with 1 purchase) previously in your library."
     )
     assert html.count("data-summary-row") == 1
+    tied = filter_url(previous_copy_purchases_filter(graph.game))
+    assert f'href="{tied.replace("&", "&amp;")}"' in html
+
+
+def test_a_held_refund_follows_the_tied_purchases(
+    client, owned_user, owned_library, graph
+):
+    held = record_entry(owned_library, graph.release)
+    refund_purchase(record_purchase(held, kind="upgrade"), None)
+    refund_purchase(record_purchase(record_entry(owned_library, graph.release)), None)
+    client.force_login(owned_user)
+
+    assert _note(_page(client, graph.game)) == (
+        "There is 1 more copy (with 1 purchase) and 1 more purchase "
+        "previously in your library."
+    )
 
 
 def test_two_previous_purchases_read_plural(client, owned_user, owned_library, graph):
@@ -260,7 +277,7 @@ def test_two_previous_purchases_read_plural(client, owned_user, owned_library, g
     client.force_login(owned_user)
 
     assert _note(_page(client, graph.game)) == (
-        "There are 2 more copies and 2 more purchases previously in your library."
+        "There are 2 more copies (with 2 purchases) previously in your library."
     )
 
 

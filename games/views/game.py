@@ -143,7 +143,8 @@ from games.reads.playtime import (
 )
 from games.reads.previous_copies import (
     previous_copies_filter,
-    previous_purchases_filter,
+    previous_copy_purchases_filter,
+    refunded_held_purchases_filter,
 )
 from games.reads.releases import UNSPECIFIED_PLATFORM
 from games.reads.sums import PlaytimeBreakdown
@@ -1353,35 +1354,46 @@ def _playthroughs_section(
     return Div(id_="playthroughs-container")[section]
 
 
+def _plural(count: int, noun: str, plural: str) -> str:
+    return f"{count} {noun if count == 1 else plural}"
+
+
 def _counted(count: int, noun: str, plural: str) -> str:
     return f"{count} more {noun if count == 1 else plural}"
 
 
 def _previous_note(game: Game, copies: CopyRows) -> Node | None:
     """Counts what the cards leave out, linked."""
-    parts: list[Node] = []
+    parts: list[Node | str] = []
     if copies.ended:
         parts.append(
             Link(href=filter_url(previous_copies_filter(game)))[
                 _counted(copies.ended, "copy", "copies")
             ]
         )
-    if copies.previous_purchases:
+        if copies.ended_purchases:
+            parts += [
+                " (with ",
+                Link(href=filter_url(previous_copy_purchases_filter(game)))[
+                    _plural(copies.ended_purchases, "purchase", "purchases")
+                ],
+                ")",
+            ]
+    if copies.refunded_purchases:
+        if parts:
+            parts.append(" and ")
         parts.append(
-            Link(href=filter_url(previous_purchases_filter(game)))[
-                _counted(copies.previous_purchases, "purchase", "purchases")
+            Link(href=filter_url(refunded_held_purchases_filter(game)))[
+                _counted(copies.refunded_purchases, "purchase", "purchases")
             ]
         )
     if not parts:
         return None
-    first = copies.ended or copies.previous_purchases
-    joined: list[Node | str] = [parts[0]]
-    if len(parts) == 2:
-        joined += [" and ", parts[1]]
+    first = copies.ended or copies.refunded_purchases
     #: One inline run: the note's P is flex.
     return Span()[
         "There is " if first == 1 else "There are ",
-        *joined,
+        *parts,
         " previously in your library.",
     ]
 
