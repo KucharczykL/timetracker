@@ -168,19 +168,24 @@ def test_another_library_s_platform_is_refused(owned_library, other_library, gam
     assert refused.value.key == "edition-0-release-0"
 
 
-def restated_release(game, platform) -> EditionState:
+def stored_row(game, platform, **fields) -> ReleaseState:
     """The fixture's one Release, now on `platform`."""
-    return one(
-        edition=game.edition,
-        releases=(
-            ReleaseState(
-                key="edition-0-release-0",
-                release=game.release,
-                platform=platform,
-                is_default=True,
-            ),
-        ),
-    )
+    fields.setdefault("release", game.release)
+    fields.setdefault("is_default", True)
+    return ReleaseState(key="edition-0-release-0", platform=platform, **fields)
+
+
+def restated(game, *releases: ReleaseState) -> EditionState:
+    """The fixture's Edition, stating `releases`."""
+    return one(edition=game.edition, releases=releases)
+
+
+def removed_stored_platform(library, game) -> Platform:
+    """The fixture's Release stores it, then it goes."""
+    kept = Platform.objects.create(library=library, name="Kept")
+    state(game.game, library, restated(game, stored_row(game, kept)))
+    remove(kept)
+    return kept
 
 
 def test_a_new_release_on_a_removed_platform_is_refused(owned_library, game):
@@ -209,7 +214,7 @@ def test_a_stored_release_may_not_move_onto_a_removed_platform(owned_library, ga
     remove(removed)
 
     with pytest.raises(GraphRefused) as refused:
-        state(game.game, owned_library, restated_release(game, removed))
+        state(game.game, owned_library, restated(game, stored_row(game, removed)))
 
     assert REMOVED_PLATFORM in refused.value.messages
     assert refused.value.key == "edition-0-release-0"
@@ -219,24 +224,13 @@ def test_a_stored_release_may_not_move_onto_a_removed_platform(owned_library, ga
 
 def test_a_release_keeps_the_removed_platform_it_stores(owned_library, game):
     """An unrelated edit stays possible."""
-    kept = Platform.objects.create(library=owned_library, name="Kept")
-    state(game.game, owned_library, restated_release(game, kept))
-    remove(kept)
+    kept = removed_stored_platform(owned_library, game)
 
     state(
         game.game,
         owned_library,
-        one(
-            edition=game.edition,
-            releases=(
-                ReleaseState(
-                    key="edition-0-release-0",
-                    release=game.release,
-                    platform=kept,
-                    release_date=TemporalValue.from_year(1999),
-                    is_default=True,
-                ),
-            ),
+        restated(
+            game, stored_row(game, kept, release_date=TemporalValue.from_year(1999))
         ),
     )
 
@@ -252,9 +246,72 @@ def test_a_platform_removed_after_it_was_read_is_refused(owned_library, game):
     assert platform.removed_at is None
 
     with pytest.raises(GraphRefused) as refused:
-        state(game.game, owned_library, restated_release(game, platform))
+        state(game.game, owned_library, restated(game, stored_row(game, platform)))
 
     assert REMOVED_PLATFORM in refused.value.messages
+    assert refused.value.key == "edition-0-release-0"
+
+
+def test_a_removed_shared_platform_is_refused(owned_library, game):
+    shared = Platform.objects.create(library=None, name="Shared gone")
+    remove(shared)
+
+    with pytest.raises(GraphRefused) as refused:
+        state(game.game, owned_library, restated(game, stored_row(game, shared)))
+
+    assert REMOVED_PLATFORM in refused.value.messages
+
+
+def test_another_row_s_removed_platform_is_refused(owned_library, game):
+    """The allowance belongs to one row."""
+    kept = removed_stored_platform(owned_library, game)
+
+    with pytest.raises(GraphRefused) as refused:
+        state(
+            game.game,
+            owned_library,
+            restated(
+                game,
+                stored_row(game, kept),
+                ReleaseState(key="edition-0-release-1", platform=kept),
+            ),
+        )
+
+    assert REMOVED_PLATFORM in refused.value.messages
+    assert refused.value.key == "edition-0-release-1"
+
+
+def test_a_stale_release_keeps_its_removed_platform(owned_library, game):
+    """Storage, not the caller's row, decides."""
+    stale = Release.objects.get(pk=game.release.pk)
+    kept = removed_stored_platform(owned_library, game)
+    assert stale.platform_id != kept.pk
+
+    state(
+        game.game, owned_library, restated(game, stored_row(game, kept, release=stale))
+    )
+
+    game.release.refresh_from_db()
+    assert game.release.platform_id == kept.pk
+
+
+def test_a_release_on_a_removed_platform_may_be_removed(owned_library, game):
+    kept = removed_stored_platform(owned_library, game)
+    other = Platform.objects.create(library=owned_library, name="Other")
+
+    state(
+        game.game,
+        owned_library,
+        restated(
+            game,
+            stored_row(game, other, removed=True, is_default=False),
+            ReleaseState(key="edition-0-release-1", is_default=True),
+        ),
+    )
+
+    game.release.refresh_from_db()
+    assert game.release.removed_at is not None
+    assert game.release.platform_id == kept.pk
 
 
 def test_two_surviving_editions_may_not_state_one_name(owned_library, game):

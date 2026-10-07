@@ -68,9 +68,9 @@ verb resolves the owning Game under `select_for_update()` and refuses:
   are read-only for everyone;
 - a Game, Edition or Release of **another library**;
 - a **removed** Game, Edition or Release, which goes back first;
-- a **Platform of another library**. A shared Platform is fine.
+- a **Platform of another library**; a shared Platform is fine;
 - a **removed Platform** on a Release that does not store it already. A
-  Release keeps the removed Platform it stores, so its other fields stay
+  Release keeps the removed Platform it stores. Its other fields stay
   editable.
 
 Each refusal is a `ValidationError` carrying one sentence a person can read.

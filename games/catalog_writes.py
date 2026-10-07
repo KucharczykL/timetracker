@@ -111,18 +111,26 @@ class WrittenGraph:
     editions: tuple[WrittenEdition, ...]
 
 
-def _refuse_platform(library_id, row: ReleaseState, stored: Release | None) -> None:
-    """Shared or own; live when newly stated."""
+def _refuse_platform(
+    library: UserLibrary, row: ReleaseState, stored: Release | None
+) -> None:
+    """Shared or own; live unless already stored."""
     platform = row.platform
     if platform is None:
         return
-    if platform.library_id not in (None, library_id):
+    if platform.library_id not in (None, library.pk):
         raise GraphRefused(FOREIGN_PLATFORM, key=row.key)
     #: A stored removed Platform stays editable.
     if stored is not None and stored.platform_id == platform.pk:
         return
-    #: The caller's instance may predate the removal.
-    if Platform.objects.filter(pk=platform.pk, removed_at__isnull=False).exists():
+    #: Locked: a removal in flight waits.
+    removal_marks = list(
+        Platform.objects.select_for_update(no_key=True)
+        .filter(pk=platform.pk)
+        .values_list("removed_at", flat=True)
+    )
+    #: Missing or removed.
+    if not removal_marks or removal_marks[0] is not None:
         raise GraphRefused(REMOVED_PLATFORM, key=row.key)
 
 
@@ -240,7 +248,7 @@ def _refuse_the_set(
         if len(marked_rows) > 1:
             raise GraphRefused(TWO_DEFAULT_RELEASES, key=marked_rows[1].key)
         for row in rows:
-            _refuse_platform(library.pk, row, stored_releases[row.key])
+            _refuse_platform(library, row, stored_releases[row.key])
 
 
 def _written_release(
