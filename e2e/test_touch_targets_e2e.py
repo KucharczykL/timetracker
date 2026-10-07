@@ -138,12 +138,19 @@ def test_search_select_clear_meets_min_touch_target_and_a_tap_clears(
     page = touch_page
     page.goto(f"{live_server.url}{reverse('games:add_session')}?game={game.pk}")
     picker = page.locator("search-select[name='device']")
-    picker.locator("[data-search-select-search]").tap()
-    picker.locator("[data-search-select-option]", has_text="Steam Deck").tap()
+    #: A phone shows the picker's face.
+    face = page.locator(
+        "drop-down[behavior='inline-combobox']:has(search-select[name='device'])"
+        " > [data-search-select-face]"
+    )
+    face.locator("[data-search-select-face-open]").tap()
+    sheet = page.locator("dialog[data-dropdown-sheet][open]")
+    sheet.locator("[data-search-select-option]", has_text="Steam Deck").tap()
+    expect(page.locator("dialog[open]")).to_have_count(0)
     note = page.locator("textarea[name='note']")
     note.tap()
 
-    clear = picker.get_by_role("button", name="Clear")
+    clear = face.get_by_role("button", name="Clear")
     expect(clear).to_be_visible()
     box = clear.bounding_box()
     assert box is not None
@@ -154,5 +161,5 @@ def test_search_select_clear_meets_min_touch_target_and_a_tap_clears(
     expect(
         picker.locator('input[type="hidden"][name="device"][data-search-select-none]')
     ).to_have_count(1)
-    expect(picker.locator("[data-search-select-search]")).to_have_value("No device")
+    expect(face.locator("[data-search-select-face-value]")).to_have_text("No device")
     expect(note).to_be_focused()

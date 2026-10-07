@@ -242,9 +242,9 @@ def test_the_control_keeps_what_the_rows_hold(
     #: Status differs; the flags agree.
     assert "Keep: mixed" in markup
     assert "Keep: Not mastered" in markup
-    #: One per flag: each reads its own column.
-    assert markup.count("Keep: Included") == 1
-    assert markup.count("Keep: Excluded") == 1
+    #: One per flag, box and face: each reads its own column.
+    assert markup.count("Keep: Included") == 2
+    assert markup.count("Keep: Excluded") == 2
 
 
 def test_settling_refuses_a_form_that_states_nothing(owned_library):

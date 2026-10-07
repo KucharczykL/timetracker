@@ -157,11 +157,24 @@ describe("the face", () => {
     const { widget, open, value, faceClear } = mount({ held: { value: "1", label: "Deck" } });
     const cleared = vi.fn();
     widget.addEventListener("search-select:clear", cleared);
+    faceClear.focus();
     faceClear.click();
     expect(cleared).toHaveBeenCalledOnce();
     expect(value.textContent).toBe("Pick one");
     expect(faceClear.hidden).toBe(true);
     expect(document.activeElement).toBe(open);
+  });
+
+  it("leaves focus alone on a press", () => {
+    const { faceClear } = mount({ held: { value: "1", label: "Deck" } });
+    const elsewhere = document.createElement("input");
+    document.body.append(elsewhere);
+    elsewhere.focus();
+    const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    faceClear.dispatchEvent(press);
+    faceClear.click();
+    expect(press.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(elsewhere);
   });
 
   it("hands a created row from its + to the widget", () => {

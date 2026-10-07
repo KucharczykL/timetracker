@@ -73,7 +73,8 @@ def _stamped_id(element: Locator) -> str:
 def wait_for_sheet_to_close(sheet: Locator | None) -> None:
     """A leaving sheet still holds the page inert."""
     if sheet is not None:
-        expect(sheet).to_have_js_property("open", False)
+        #: A page the pick reloads has none.
+        expect(sheet.and_(sheet.page.locator("dialog[open]"))).to_have_count(0)
 
 
 def pick_choice(scope: Page | Locator, name: str, value: str) -> None:

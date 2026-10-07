@@ -1843,9 +1843,13 @@ const initWidget = (containerElement: Element): boolean => {
         openSheet();
       });
     }
+    //: A press keeps focus, as the box's ×.
+    faceClear?.addEventListener("mousedown", event => event.preventDefault());
     faceClear?.addEventListener("click", () => {
+      const fromFocus = document.activeElement === faceClear;
       clearButton?.click();
-      open.focus();
+      //: The × hides; focus needs a home.
+      if (fromFocus) open.focus();
     });
   }
 
