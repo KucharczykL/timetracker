@@ -284,6 +284,19 @@ def test_select_widget_requires_choices():
         )
 
 
+def test_empty_display_requires_a_select_widget():
+    with pytest.raises(ValueError, match="empty_display"):
+        SettingDefinition(
+            "SYNTHETIC",
+            scope=SettingScope.USER,
+            apply_timing=ApplyTiming.LIVE,
+            label="Synthetic",
+            default_factory=lambda: None,
+            widget=SettingWidget.TEXT,
+            empty_display="Nothing",
+        )
+
+
 def test_choices_require_a_select_widget():
     with pytest.raises(ValueError, match="SELECT"):
         SettingDefinition(

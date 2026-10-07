@@ -15,7 +15,6 @@ from common.components import (
     BadgeTone,
     Checkbox,
     Div,
-    Element,
     FormFieldGroup,
     Input,
     Label,
@@ -29,10 +28,15 @@ from common.components import (
     SettingsFieldLayout,
     SettingSourceBadge,
 )
+from common.components.elements import element_builder
 from common.components.primitives import P, PlainH4
 from common.layout import render_page
 from games.forms import INPUT_CLASS, SELECT_CLASS, PrimitiveWidgetsMixin
 from timetracker.settings_commands import SettingNamespace
+
+#: The kit shows the native look.
+_NativeSelect = element_builder("select")
+_NativeOption = element_builder("option")
 
 _PREVIEW_KEYS = {
     "PREVIEW_ENABLED": "Preview enabled",
@@ -224,17 +228,10 @@ def _preview_standard_field(prefix: str, *, kind: str):
     if kind == "destination":
         label = "Default destination"
         source = "database"
-        # The kit shows the native look.
-        control = Element(
-            "select",
-            [("id", field_id), ("name", field_id), ("class", SELECT_CLASS)],
-            [
-                Element(
-                    "option", [("value", "library"), ("selected", "")], ["Library"]
-                ),
-                Element("option", [("value", "statistics")], ["Statistics"]),
-            ],
-        )
+        control = _NativeSelect(id_=field_id, name=field_id, class_=SELECT_CLASS)[
+            _NativeOption(value="library", selected=True)["Library"],
+            _NativeOption(value="statistics")["Statistics"],
+        ]
     else:
         label = "Daily limit"
         source = "default"

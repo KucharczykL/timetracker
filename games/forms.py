@@ -146,13 +146,9 @@ _INPUT_LOOK = (
     "text-type-input focus:ring-brand focus:border-brand block w-full "
     f"px-3 min-h-control shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
-# No horizontal padding here: @tailwindcss/forms (base strategy) styles every
-# bare <select> with appearance:none, a chevron pinned to the right edge, AND the
-# right padding (~2.5rem/40px) that clears it. A px-*/pr-* utility can't win over
-# that plugin rule for the right side, and px-* *does* override it symmetrically —
-# pulling the right padding down so option text slides under the chevron (the old
-# px-3 did exactly this on narrow selects, e.g. the field-comparison operator
-# select). So set the shared control height and let the plugin own the horizontal.
+# Only the settings kit renders this look.
+# No horizontal padding: @tailwindcss/forms owns a select's,
+# and a px-* would pull text under its chevron.
 _SELECT_LOOK = (
     "w-full min-h-control bg-neutral-secondary-medium border border-default-medium "
     "text-heading text-type-input focus:ring-brand focus:border-brand "
@@ -178,7 +174,6 @@ def native_control_class(widget: forms.Widget, shape: ButtonShape = "full") -> s
 
 
 INPUT_CLASS = native_control_class(forms.TextInput())
-#: The settings kit's native look.
 SELECT_CLASS = f"{_SELECT_LOOK} {SHAPE_CLASSES['full']}".strip()
 TEXTAREA_CLASS = native_control_class(forms.Textarea())
 
@@ -926,7 +921,7 @@ class UnsetWidget(forms.Widget):
 
     @choices.setter
     def choices(self, value) -> None:
-        # Only these read them.
+        # Only the fixed-choice picker reads them.
         if isinstance(self.widget, ChoiceSearchSelectWidget):
             self.widget.choices = value
 

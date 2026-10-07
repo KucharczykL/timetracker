@@ -390,9 +390,10 @@ def test_zero_is_a_value_not_keep():
     assert form.cleaned_data["count"] == 0
 
 
-def test_a_native_select_is_refused():
+@pytest.mark.parametrize("select", [forms.Select, forms.NullBooleanSelect])
+def test_a_native_select_is_refused(select):
     with pytest.raises(TypeError, match="Select"):
-        UnsetWidget(forms.Select(), none_label="No letter")
+        UnsetWidget(select(), none_label="No letter")
 
 
 def test_the_mixin_leaves_one_corner_class():

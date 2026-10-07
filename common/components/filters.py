@@ -530,7 +530,7 @@ RELATION_MATCH_CHOICES: tuple[LabeledOption, ...] = (
 
 
 def _pack_operator(modifier: str, granularity: str) -> str:
-    """The operator ``<select>`` value: bare modifier in the raw comparison space,
+    """The operator picker's value: bare modifier in the raw comparison space,
     else ``modifier:granularity`` — mirrored by ``unpackOperator`` in
     ts/elements/field-comparison-set.ts."""
     return modifier if granularity == "raw" else f"{modifier}:{granularity}"
@@ -573,9 +573,7 @@ def _fc_operand(
 ) -> Node:
     """A searchable operand combobox (SearchSelect) for one side of a comparison.
 
-    The operand lists are now large enough (own + FK + multi-valued blocks) that a
-    plain ``<select>`` is unusable, so each side is a single-select SearchSelect
-    (#282 review). ``marker`` (``data-fc-left`` / ``data-fc-right``) tags the
+    ``marker`` (``data-fc-left`` / ``data-fc-right``) tags the
     wrapper the widget queries by. The left side ships the full grouped option
     set; the right side ships none — ts/elements/field-comparison-set.ts
     repopulates it (via ``setOptions``) with the type/space-compatible columns for

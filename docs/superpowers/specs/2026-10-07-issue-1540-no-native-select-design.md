@@ -19,16 +19,20 @@ The check reads these answers, at any status:
 - The `html` of a form-dialog answer. The request carries `X-Form-Dialog`,
   and the JSON answer is an object of `kind` `page`.
 
-The check skips a streaming answer. It refuses two things:
+The fixture patches `AsyncClient.request` too.
 
-- A floating panel without `popover="manual"`.
+A streamed HTML answer fails the test. Tag and content-type case do not
+matter. The check refuses two things:
+
+- A floating panel without `popover="manual"`. A `<dialog>` is not a
+  floating panel.
 - A `<select>` tag. The path `/tracker/settings-kit-preview/` is exempt.
   That DEBUG-only page shows the native look on purpose. A custom element
   named `select-…` is not a select.
 
 The check cannot reach a view that a test calls through `RequestFactory`.
-It cannot reach `e2e/`, which drives a browser. It cannot reach an
-`AsyncClient` or a Ninja `TestClient`; no test uses either.
+It cannot reach `e2e/`, which drives a browser, or a Ninja `TestClient`,
+which no test uses.
 
 Reason: a list of URLs misses pages. The suite already renders every page.
 
@@ -44,14 +48,14 @@ this name.
 ## No native path
 
 - A setting has two widgets: `TEXT` and `SELECT`. `empty_display` names
-  the unset value of a `SELECT` setting. Without it, the first choice's
-  label names the unset value.
+  the unset value of a `SELECT` setting; another widget refuses it.
+  Without it, the first choice's label names the unset value.
 - `UnsetWidget` refuses a `forms.Select` with `TypeError`.
   `ts/elements/unset-field.ts` does not look for a `select`.
 - `native_control_class` has no select look. The kit page reads
   `SELECT_CLASS`, which `_SELECT_LOOK` builds.
 - The node builders have no `Select`, `Option` or `Optgroup`. The kit page
-  builds its select with `Element`.
+  keeps two private builders for its select.
 
 `forms.Select` does not occur in `games/`, `common/` or `timetracker/`.
 Tests build a `forms.Select` as input to the swap.

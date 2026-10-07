@@ -89,6 +89,8 @@ def test_preview_renders_the_complete_gallery(preview_client):
     assert "More menu" not in body
     assert "priority-plus and sticky-rail" not in body
 
+    # The one native select the suite admits.
+    assert "<select" in body
     assert 'type="checkbox"' in _named_tag(body, "input", "enabled")
     assert picker(body, "destination")
     assert 'type="number"' in _named_tag(body, "input", "limit")

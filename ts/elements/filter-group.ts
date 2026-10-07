@@ -1128,18 +1128,18 @@ export class FilterGroupElement extends HTMLElement {
       row.querySelector("[data-fc-remove]")?.remove(); // the group's controls own removal
       this.uniquify(row);
       cell.appendChild(row);
-      // Operator and quantifier only; operands reflect later.
-      // Operand <search-select>s no-op until connected, so
-      // reflectComparisonSelection seeds them after render.
+      // Operator, quantifier: an attribute, safe detached.
+      // Operands need a connected element: reflectComparisonSelection
+      // seeds them after render.
       this.seedComparisonRow(row, comparison);
       wireComparisonRowListeners(row, columns);
     }
     return cell;
   }
 
-  // Seeds operator and quantifier through data-selected.
-  // refreshRow adopts it on first paint; the operator is packed
-  // (modifier:granularity) so it restores the space.
+  // Seeds the wrappers' data-selected; refreshRow takes it.
+  // The operator is packed (modifier:granularity) so refreshRow
+  // keeps the comparison space.
   private seedComparisonRow(row: HTMLElement, comparison: ComparisonPayload): void {
     const { modifier, granularity, quantifier } = comparison;
     if (modifier) {

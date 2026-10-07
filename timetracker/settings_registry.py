@@ -169,6 +169,8 @@ class SettingDefinition:
             )
         if self.scope is SettingScope.USER and self.widget is None:
             raise ValueError(f"{self.key}: user-scoped settings must declare a widget.")
+        if self.empty_display and self.widget is not SettingWidget.SELECT:
+            raise ValueError(f"{self.key}: only a SELECT widget reads empty_display.")
         if (self.widget is SettingWidget.SELECT) != (self.choices is not None):
             raise ValueError(
                 f"{self.key}: a SELECT widget needs choices, and choices need a "

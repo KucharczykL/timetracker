@@ -1451,8 +1451,8 @@ invariants, round-trip).
 **Every HTML answer a test client reads is checked** (`tests/html_answers.py`,
 autouse): no native `<select>` (the DEBUG settings kit aside) and no floating
 panel without `popover="manual"`, at any status, a form dialog's `page`
-included. It patches `django.test.Client`; a `RequestFactory` view and `e2e/`
-are out of reach. Contract is
+included. It patches `Client` and `AsyncClient`; a `RequestFactory` view and
+`e2e/` are out of reach. Contract is
 [No native select](docs/superpowers/specs/2026-10-07-issue-1540-no-native-select-design.md)
 
 **`games/fixtures/sample.yaml.gz`** (the `make loadsample` seed) is **generated,
@@ -1711,7 +1711,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Forms render via `FormFields`/`AddForm`, never `form.as_div()`**:
   `FormFields(form, *, extras=...)` (in `primitives.py`) renders label + control +
   errors + row layout; native controls get classes from `PrimitiveWidgetsMixin`
-  (`games/forms.py`, which swaps a fixed-choice select for the picker and stamps `INPUT/SELECT/TEXTAREA_CLASS` incl. `disabled:`
+  (`games/forms.py`, which swaps a fixed-choice select for the picker and stamps `INPUT/TEXTAREA_CLASS` incl. `disabled:`
   variants by widget type, skipping SearchSelect + checkbox). Every form on this
   path, including login. `extras` appends node into named field's row.
   A row shown by a choice states it in CSS: `FormFieldGroup.class_` names a
