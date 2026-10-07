@@ -2104,34 +2104,23 @@ type FixedBoxTag = Literal["div", "dd"]
 class FixedBox(BaseComponent):
     """Dashed field box: icon, then children."""
 
-    def __init__(
-        self,
-        icon: str,
-        *,
-        tag: FixedBoxTag = "div",
-        attributes: Attributes | None = None,
-        _children: Children = None,
-    ) -> None:
-        self.icon = icon
-        self.tag = tag
-        self.attributes = attributes
-        self._children = as_children(_children)
+    def __init__(self, icon: str, *, tag: FixedBoxTag = "div") -> None:
+        self._icon = icon
+        self._tag: FixedBoxTag = tag
+        self._children: list[Child] = []
 
     def __getitem__(self, children: Children) -> FixedBox:
-        return FixedBox(
-            self.icon, tag=self.tag, attributes=self.attributes, _children=children
-        )
+        box = FixedBox(self._icon, tag=self._tag)
+        box._children = as_children(children)
+        return box
 
     def render(self) -> Node:
         return Element(
-            self.tag,
-            [
-                ("class", field_box_class("full", look="fixed")),
-                *as_attributes(self.attributes),
-            ],
+            self._tag,
+            [("class", field_box_class("full", look="fixed"))],
             [
                 Icon(
-                    self.icon,
+                    self._icon,
                     [("class", "mr-1 text-body")],
                     "size-4",
                     decorative=True,

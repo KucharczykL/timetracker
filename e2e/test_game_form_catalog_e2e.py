@@ -315,6 +315,34 @@ def test_undo_takes_the_bin_back_and_the_mark_with_it(
     assert [release.platform for release in releases if release.is_default] == [amiga]
 
 
+def test_undo_takes_back_the_bin_of_an_edition(
+    signed_in, live_server, game, amiga, dos
+):
+    """The block comes back, and the mark inside it."""
+    second = Edition.objects.create(game=game, name="Remaster")
+    Release.objects.create(
+        edition=second, platform=dos, release_date=TemporalValue.from_year(1990)
+    )
+    page = signed_in
+    open_form(page, live_server, game)
+    block = page.locator("[data-catalog-edition='0']")
+
+    block.locator(":scope > div [data-catalog-remove]").first.click()
+    expect(block).to_be_hidden()
+    undo = page.get_by_role("button", name="Undo removing the unnamed edition")
+    undo.click()
+    expect(block).to_be_visible()
+    expect(release_card(page, 0, 0).locator("input[name='in_library']")).to_be_checked()
+    saved(page, live_server)
+
+    editions = Edition.objects.filter(game=game, removed_at=None)
+    assert editions.count() == 2
+    assert [release.platform for release in live_releases(default_edition(game))] == [
+        amiga
+    ]
+    assert live_releases(default_edition(game))[0].is_default
+
+
 def test_a_cloned_block_adds_an_edition(signed_in, live_server, game, amiga, dos):
     """A second Edition, named, and the default did not move."""
     page = signed_in

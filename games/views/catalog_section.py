@@ -136,13 +136,31 @@ _EDITION_NAME: Final = _Name("{}", "name", "Unnamed edition")
 _EDITION_BIN_NAME: Final = _Name(
     "Remove the {} edition", "name", "Remove the unnamed edition"
 )
-_RELEASE_GOING_NAME: Final = _Name("{} release will be removed", "platform")
-_RELEASE_UNDO_NAME: Final = _Name("Undo removing the {} release", "platform")
-_EDITION_GOING_NAME: Final = _Name(
-    "{} edition will be removed", "name", "Unnamed edition will be removed"
+
+
+@dataclass(frozen=True)
+class _BinNames:
+    """A binned row's sentence and Undo name."""
+
+    going: _Name
+    undo: _Name
+
+    def __post_init__(self) -> None:
+        if self.going.follows != self.undo.follows:
+            raise ValueError("a binned line's names follow one value")
+
+
+_RELEASE_BIN_LINE: Final = _BinNames(
+    going=_Name("{} release will be removed", "platform"),
+    undo=_Name("Undo removing the {} release", "platform"),
 )
-_EDITION_UNDO_NAME: Final = _Name(
-    "Undo removing the {} edition", "name", "Undo removing the unnamed edition"
+_EDITION_BIN_LINE: Final = _BinNames(
+    going=_Name(
+        "{} edition will be removed", "name", "Unnamed edition will be removed"
+    ),
+    undo=_Name(
+        "Undo removing the {} edition", "name", "Undo removing the unnamed edition"
+    ),
 )
 
 
@@ -162,12 +180,13 @@ def _row_hooks(
     return hooks
 
 
-def _binned_stub(form: BaseForm, value: str, going: _Name, undo: _Name) -> Node:
+def _binned_stub(form: BaseForm, value: str, names: _BinNames) -> Node:
     """A binned row's line and its Undo.
 
-    A sibling: the row hides whole, and would hide it. Shown while
+    A sibling, since a hidden row hides its children. Shown while
     the row states removal, in sight or not.
     """
+    going, undo = names.going, names.undo
     undo_name = undo.text(value)
     return Div([] if removal_stated(form) else _OUT_OF_SIGHT, data_catalog_binned="")[
         FixedBox("delete")[
@@ -279,12 +298,7 @@ def _release_row(
         _release_card(
             row, index=index, value=value, chosen=chosen, platforms=platforms
         ),
-        _binned_stub(
-            row,
-            _platform_name(row, platforms),
-            _RELEASE_GOING_NAME,
-            _RELEASE_UNDO_NAME,
-        ),
+        _binned_stub(row, _platform_name(row, platforms), _RELEASE_BIN_LINE),
     )
 
 
@@ -389,12 +403,7 @@ def _edition_row(
     """The block, then its binned line."""
     return Fragment(
         _edition_block(block, index, mark, platforms),
-        _binned_stub(
-            block.form,
-            _edition_name(block),
-            _EDITION_GOING_NAME,
-            _EDITION_UNDO_NAME,
-        ),
+        _binned_stub(block.form, _edition_name(block), _EDITION_BIN_LINE),
     )
 
 

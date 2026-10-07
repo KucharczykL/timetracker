@@ -327,10 +327,76 @@ describe("undo", () => {
   });
 
   it("appends an edition after the line a binned edition leaves", () => {
+    click("fieldset > [data-catalog-remove]");
     click('[data-catalog-add="edition"]');
 
     const added = document.querySelector('[data-catalog-edition="1"]')!;
     expect(added.previousElementSibling).toBe(stubAfter('[data-catalog-edition="0"]'));
+  });
+
+  it("takes back the bin of an appended row", () => {
+    click('[data-catalog-add="release"]');
+    click('[data-catalog-release="1"] [data-catalog-remove]');
+    expect(value("edition-0-release-1-removed")).toBe("on");
+
+    undo('[data-catalog-release="1"]');
+
+    expect(value("edition-0-release-1-removed")).toBe("");
+    expect(document.querySelector<HTMLElement>('[data-catalog-release="1"]')!.hidden).toBe(false);
+  });
+
+  it("chooses only a checked mark a person picked", () => {
+    click('[data-catalog-add="release"]');
+    const mark = document.querySelector<HTMLInputElement>(
+      'input[data-choice-card][value="edition-0-release-1"]',
+    )!;
+    mark.dispatchEvent(new Event("change", { bubbles: true }));
+    const count = document.querySelector<HTMLInputElement>('input[name="editions-count"]')!;
+    count.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(value("catalog-chosen-mark")).toBe("edition-0-release-0");
+  });
+
+  describe("drift", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    afterEach(() => error.mockClear());
+
+    it("says so when a row has no removed input, and leaves it", () => {
+      document.querySelector('input[name="edition-0-release-0-removed"]')!.remove();
+
+      click(releaseBin);
+
+      expect(document.querySelector<HTMLElement>('[data-catalog-release="0"]')!.hidden).toBe(false);
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("says so when a binned row has no line", () => {
+      stubAfter('[data-catalog-release="0"]').remove();
+
+      click(releaseBin);
+
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("says so when Undo finds no row", () => {
+      click(releaseBin);
+      const stub = stubAfter('[data-catalog-release="0"]');
+      document.body.querySelector("catalog-editor")!.append(stub);
+
+      stub.querySelector<HTMLElement>("[data-catalog-restore]")!.click();
+
+      expect(value("edition-0-release-0-removed")).toBe("on");
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("says so when the chosen input is missing", () => {
+      document.body.innerHTML = PAGE.replace(
+        '<input type="hidden" name="catalog-chosen-mark" value="edition-0-release-0">',
+        "",
+      );
+
+      expect(error).toHaveBeenCalled();
+    });
   });
 
   it("gives a chosen mark back across a refused page", () => {
@@ -394,6 +460,7 @@ describe("filled", () => {
 // Hooks as the server stamps them.
 const NAMED = `
 <catalog-editor>
+  <input type="hidden" name="catalog-chosen-mark" value="edition-0-release-0">
   <fieldset data-catalog-edition="0">
     <legend data-catalog-name="{}" data-catalog-name-of="name"
       data-catalog-name-empty="Unnamed edition">Gold</legend>

@@ -62,6 +62,7 @@ from common.criteria import (
 )
 from common.date_time_presentation import DateTimePresentationConfig
 from common.form_dialog import FORM_DIALOG_HEADER
+from games.catalog_form import CHOSEN_MARK_FIELD
 from games.models import ADDON_KINDS
 from games.views.catalog_section import (
     CATALOG_NAME_KINDS,
@@ -242,6 +243,7 @@ class Command(BaseCommand):
                 [],
                 constants=[
                     TsConstant("CATALOG_NAME_SLOT", str, NAME_SLOT),
+                    TsConstant("CATALOG_CHOSEN_MARK_FIELD", str, CHOSEN_MARK_FIELD),
                     TsConstant(
                         "CATALOG_NAME_KINDS",
                         list[CatalogNameKind],

@@ -126,8 +126,11 @@ hides a button to dodge a 409 either: a refusal the service states comes back on
 the row that caused it, in the form, where the value that caused it still is.
 Promoting a sibling is how the mark moves; see [The default](#the-default).
 
-The mark is never lost. A bin leaves a line in the row's place, and its Undo
-puts the row back as if it was never binned. The browser keeps the person's own
+A bin leaves a line in the row's place, and its Undo puts the row back: the row
+posts as an unbinned row posts. A binned Edition's rows come back without the
+sentences the server dropped for them; the next submit states them again.
+
+The mark is never lost. The browser keeps the person's own
 pick apart from where the mark stands (`catalog-chosen-mark`, posted and echoed
 on a refused page). While the picked row stays, the mark sits on it; a bin on it
 makes the mark fall to the first row that stays, and its Undo brings the mark

@@ -12,6 +12,7 @@ from common.date_time_presentation import (
 )
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN, mirror_legacy_columns
 from games.catalog_form import (
+    CHOSEN_MARK_FIELD,
     DUPLICATE_NAME_IN_FORM,
     DUPLICATE_RELEASE_IN_FORM,
     EDITION_COUNT_FIELD,
@@ -360,7 +361,7 @@ def test_a_submit_naming_no_release_marks_the_first_one(owned_library, plain_gam
 def test_binning_the_marked_row_moves_the_mark_to_one_that_stays(
     owned_library, plain_game
 ):
-    """A person who bins the marked row stated a removal, not a mistake."""
+    """The mark falls off a binned row."""
     form = graph_form(
         posted(
             block(
@@ -814,3 +815,59 @@ def test_a_sentence_the_service_stated_about_the_whole_statement_is_read_too(
 
     assert form.form_errors == [REMOVED_GAME]
     assert not form.is_valid()
+
+
+def test_a_write_reads_the_mark_not_the_chosen_one(owned_library, plain_game):
+    """The chosen mark is the browser's; the posted mark decides."""
+    data = posted(
+        block(
+            edition_id=plain_game.edition.pk,
+            releases=[
+                release(plain_game.release.pk, date=TemporalValue.from_year(2007)),
+                release(date=TemporalValue.from_year(2011)),
+            ],
+        ),
+        mark="edition-0-release-1",
+    ) | {CHOSEN_MARK_FIELD: "edition-0-release-0"}
+    form = graph_form(data, game=plain_game.game, library=owned_library)
+
+    assert form.is_valid(), form.form_errors
+    assert form.mark == "edition-0-release-1"
+    assert form.chosen_mark == "edition-0-release-0"
+
+
+def test_a_post_without_a_chosen_mark_keeps_the_pick_before_its_fall(
+    owned_library, plain_game
+):
+    """Undo of the binned row then brings its mark back."""
+    form = graph_form(
+        posted(
+            block(
+                releases=[
+                    release(removed=True),
+                    release(date=TemporalValue.from_year(2011)),
+                ]
+            )
+        ),
+        game=plain_game.game,
+        library=owned_library,
+    )
+
+    assert form.is_valid(), form.form_errors
+    assert form.mark == "edition-0-release-1"
+    assert form.chosen_mark == "edition-0-release-0"
+
+
+@pytest.mark.parametrize("posted_value", ["on", "true", "1", "True"])
+def test_a_removal_renders_as_the_browser_reads_it(owned_library, posted_value):
+    row = release_row(
+        {"edition-0-release-0-removed": posted_value}, library=owned_library
+    )
+
+    assert 'value="on"' in str(row["removed"])
+
+
+def test_a_staying_row_renders_no_removal(owned_library):
+    row = release_row({"edition-0-release-0-removed": "false"}, library=owned_library)
+
+    assert 'value="on"' not in str(row["removed"])

@@ -16,6 +16,7 @@
  */
 
 import {
+  CATALOG_CHOSEN_MARK_FIELD,
   CATALOG_NAME_KINDS,
   CATALOG_NAME_SLOT,
   type CatalogNameKind,
@@ -57,8 +58,7 @@ const ROW_SELECTORS = ["[data-catalog-release]", "[data-catalog-edition]"];
 // A binned row's line, right after it.
 const STUB = "[data-catalog-binned]";
 
-// Mirrors CHOSEN_MARK_FIELD in games/catalog_form.py.
-const CHOSEN_MARK = 'input[name="catalog-chosen-mark"]';
+const CHOSEN_MARK = `input[name="${CATALOG_CHOSEN_MARK_FIELD}"]`;
 
 /** Whether this row states its own removal. */
 function statesRemoval(row: HTMLElement): boolean {
@@ -131,6 +131,9 @@ class CatalogEditorElement extends HTMLElement {
     this.addEventListener("input", this.onInput);
     this.addEventListener("search-select:change", this.onInput);
     this.addEventListener("change", this.onChange);
+    if (!this.querySelector(CHOSEN_MARK)) {
+      console.error("<catalog-editor> has no chosen-mark input", this);
+    }
     this.restateNames();
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
@@ -163,7 +166,7 @@ class CatalogEditorElement extends HTMLElement {
 
   /** A person's pick of a mark is the chosen one. */
   private onChange = (event: Event): void => {
-    const target = event.target as HTMLElement;
+    const target = event.target;
     if (this.restating || !(target instanceof HTMLInputElement)) return;
     if (!target.matches(MARK_INPUT) || !target.checked) return;
     const chosen = this.querySelector<HTMLInputElement>(CHOSEN_MARK);
@@ -276,13 +279,21 @@ class CatalogEditorElement extends HTMLElement {
       button.closest<HTMLElement>("[data-catalog-release]") ??
       button.closest<HTMLElement>("[data-catalog-edition]");
     if (!row) return;
+    // Seen and posted state never part.
     const removed = row.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT);
-    if (removed) removed.value = "on";
+    if (!removed) {
+      console.error("<catalog-editor> row has no removed input", row);
+      return;
+    }
+    removed.value = "on";
     setOutOfSight(row, true);
     const stub = stubOf(row);
-    if (stub) {
+    const restore = stub?.querySelector<HTMLElement>("[data-catalog-restore]");
+    if (!stub || !restore) {
+      console.error("<catalog-editor> binned row has no Undo", row);
+    } else {
       setOutOfSight(stub, false);
-      stub.querySelector<HTMLElement>("[data-catalog-restore]")?.focus();
+      restore.focus();
     }
     this.restateMark();
   }
@@ -290,19 +301,24 @@ class CatalogEditorElement extends HTMLElement {
   /** Undo: the row posts as if never binned. */
   private stateRestored(button: HTMLElement): void {
     const stub = button.closest<HTMLElement>(STUB);
-    // The row precedes its line; not `closest`.
-    // A release line sits inside its Edition, which `closest` finds.
+    // Previous sibling: `closest` would find the Edition.
     const row = stub?.previousElementSibling;
-    if (!stub || !(row instanceof HTMLElement)) return;
-    const removed = row.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT);
-    if (removed) removed.value = "";
+    const removed =
+      row instanceof HTMLElement
+        ? row.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT)
+        : null;
+    if (!stub || !(row instanceof HTMLElement) || !removed) {
+      console.error("<catalog-editor> Undo has no binned row", button);
+      return;
+    }
+    removed.value = "";
     setOutOfSight(row, false);
     setOutOfSight(stub, true);
     row.querySelector<HTMLElement>("[data-catalog-remove]")?.focus();
     this.restateMark();
   }
 
-  /** Chosen row while it stays, else fall. */
+  /** Chosen if staying, else checked, else first. */
   private restateMark(): void {
     const staying = [
       ...this.querySelectorAll<HTMLInputElement>(MARK_INPUT),

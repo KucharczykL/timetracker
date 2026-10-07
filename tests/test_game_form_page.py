@@ -955,6 +955,8 @@ def test_a_live_row_hides_the_line_a_bin_leaves(logged_in, plain_game):
 
     # The release's line, then the edition's.
     assert stubs_shown(live(body)) == [False, False]
+    assert ">Unspecified release will be removed</span>" in live(body)
+    assert 'aria-label="Undo removing the Unspecified release"' in live(body)
     assert ">Unnamed edition will be removed</span>" in live(body)
     assert 'aria-label="Undo removing the unnamed edition"' in live(body)
 
@@ -1022,3 +1024,35 @@ def test_a_post_without_a_chosen_mark_keeps_the_posted_one(logged_in, plain_game
 
     assert response.status_code == 200
     assert chosen(live(response.content.decode())) == "edition-0-release-0"
+
+
+def test_a_refused_page_shows_the_line_of_a_binned_edition(logged_in, plain_game):
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        edit_url(plain_game),
+        {
+            "name": "",
+            "sort_name": "",
+            "status": "played",
+            "reference_wikidata": "",
+            "editions-count": "2",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-removed": "on",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": "",
+            "edition-1-edition_id": "",
+            "edition-1-name": "Remaster",
+            "edition-1-releases-count": "1",
+            "edition-1-release-0-release_id": "",
+            "edition-1-release-0-platform": "",
+            "in_library": "edition-1-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    # Edition 0's release, edition 0, edition 1's release, edition 1.
+    assert stubs_shown(live(response.content.decode())) == [False, True, False, False]
