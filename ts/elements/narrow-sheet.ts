@@ -147,13 +147,11 @@ export function attachNarrowSheet(
         if (place) returnLent(place);
       } finally {
         //: A failed return must not wedge it.
-        state =
-          state.kind === "moving"
-            ? {
-                ...state,
-                from: state.from.host === "sheet" ? { host: "sheet", place: null } : state.from,
-              }
-            : { kind: "closed" };
+        if (state.kind !== "moving") {
+          state = { kind: "closed" };
+        } else if (state.from.host === "sheet") {
+          state = { ...state, from: { host: "sheet", place: null } };
+        }
         setExpanded(false);
       }
     },

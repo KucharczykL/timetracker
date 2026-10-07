@@ -448,6 +448,10 @@ def _search_select_face(
     its row to the widget, which names,
     mirrors and opens it.
     """
+    if isinstance(value, _HeldFace):
+        shown, placeholder_mark = value.text, None
+    else:
+        shown, placeholder_mark = value.placeholder, ""
     return Div(
         data_search_select_face="",
         class_=f"{field_box_class(shape)} {_FACE_CLASS} {_FACE_DRAFT_BOX_CLASS}",
@@ -463,9 +467,9 @@ def _search_select_face(
             Span(data_search_select_face_name="", class_="sr-only"),
             Span(
                 data_search_select_face_value="",
-                data_placeholder="" if isinstance(value, _UnheldFace) else None,
+                data_placeholder=placeholder_mark,
                 class_=_FACE_VALUE_CLASS,
-            )[value.text if isinstance(value, _HeldFace) else value.placeholder],
+            )[shown],
             Icon("arrowdown", [("class", "text-body")], decorative=True),
         ],
         _clear_button(clear, [("data-search-select-face-clear", "")])
