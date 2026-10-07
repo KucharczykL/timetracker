@@ -1835,9 +1835,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   inherits it. Row library *holds* but cannot use is other ending: 409 and
   sentence naming remedy. Rule governs identifier in a **body**; row in
   route's **path** is route's own subject, scoped by `owned_or_404`. A lock
-  that misses a row the route held a moment ago is absence too: the catalog
-  service raises `RowNotHeld` for a Game gone since, and its callers answer
-  through `absent_as_404` (`games/writes/answers.py`), which `answered()` uses.
+  missing a row the request just read is absence as well: the catalog service
+  raises `RowNotHeld` for a Game gone since, answered by `absent_as_404`
+  (`games/writes/answers.py`), which `answered()` wraps.
   `PlayerGameNotTracked` is one exception: write path takes it, tracks game,
   states fact again, so 404 would end request program repairs. Contract is
   [Where a scope miss is answered](docs/superpowers/specs/2026-09-20-issue-1167-1174-scope-boundary-design.md)

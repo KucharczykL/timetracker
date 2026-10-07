@@ -103,7 +103,10 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
 
     def state() -> PlatformRelease:
         #: Concurrent creates make one Release.
-        Game.objects.select_for_update().filter(pk=game.pk).first()
+        if Game.objects.select_for_update().filter(pk=game.pk).first() is None:
+            raise RowNotHeld(
+                f"Game {game.pk} is gone before library {library.pk}'s lock."
+            )
         edition = _default_edition(game)
         standing = _standing(edition, platform)
         if standing is not None:
@@ -118,7 +121,6 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
         written = state_catalog_graph(game=game, library=library, editions=[statement])
         return PlatformRelease(written.editions[0].releases[0].release, created=True)
 
-    #: A Release goes only with its Game.
     with absent_as_404("game"):
         try:
             with transaction.atomic():
@@ -130,6 +132,10 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
             .filter(pk=reached.release.pk)
             .first()
         )
+        #: A Release goes only with its Game.
         if release is None:
-            raise RowNotHeld(f"Release {reached.release.pk} is gone with its Game.")
+            raise RowNotHeld(
+                f"Release {reached.release.pk} of Game {game.pk} is gone; "
+                f"library {library.pk} stated it."
+            )
     return PlatformRelease(release, created=reached.created)

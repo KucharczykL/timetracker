@@ -14,7 +14,7 @@ HTTP into the service and log nothing.
 ## How a Game goes
 
 A caller reads the Game, then the service locks it again. Two acts can destroy
-the Game between those two reads:
+the Game, or an add-on's parent, between those two reads:
 
 - a whole-library purge;
 - Add Game, which destroys its own Game when tracking fails after the graph
@@ -22,18 +22,21 @@ the Game between those two reads:
 
 ## Where the service raises
 
-Each lock that can miss the Game raises `RowNotHeld`. The argument names the row
-and the library.
+Each lock that can miss a Game raises `RowNotHeld`. The argument names the row
+and the library. No lock discards its answer.
 
-- `state_addon()` in `games/catalog_addons.py`. Edit Game reaches this lock
-  first. After it, the Game is locked and the later reads cannot miss.
+- `state_addon()` in `games/catalog_addons.py` locks the edited Game and the
+  stated parent. Add Game and Edit Game reach this lock first. A parent comes
+  from the request body, so Add Game can miss it too.
+- `save_game_columns()` in `games/catalog_submit.py` reads the edited Game
+  again.
 - `_writable_game()` in `games/catalog_writes.py`, which `state_catalog_graph()`
-  calls. `POST /api/releases/` reaches this lock first.
-- `release_on()` in `games/catalog_release.py`, at the read-back of the Release
-  after the commit. A Release goes only with its Game.
+  calls.
+- `release_on()` in `games/catalog_release.py` locks the Game first, then reads
+  the Release back after the write. A Release goes only with its Game.
 
-Add Game inserts its Game in the same transaction, so no other transaction can
-destroy it before the lock.
+Add Game inserts its own Game in the same transaction, so no other transaction
+can destroy that Game before the lock.
 
 ## Where the boundary answers
 
@@ -47,7 +50,8 @@ constraint sentence. Two callers use `absent_as_404("game")`:
 
 - `submitted_game_or_form_error()` in `games/catalog_submit.py`, for Add Game
   and Edit Game;
-- `release_on()`, for its whole body, which includes the read-back.
+- `release_on()`, for everything after the shared-game check, the read-back
+  included.
 
 `RowNotHeld` is not a `ValidationError`, so the `except ValidationError` clauses
 inside the wrappers do not take it.

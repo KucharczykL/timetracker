@@ -493,6 +493,10 @@ def test_a_game_gone_while_it_was_being_edited_answers_404(
     with pytest.raises(Http404):
         submitted_game_or_form_error(form, graph, references)
 
+    #: A save of a gone row would insert it again.
+    assert not Game.objects.filter(pk=game.pk).exists()
+    assert not Edition.objects.filter(game_id=game.pk).exists()
+
 
 def test_a_private_game_needs_a_library_owner(owned_library):
     form = game_form(library=owned_library, name="Elite")

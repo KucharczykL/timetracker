@@ -55,8 +55,12 @@ def state_addon(
         for row in Game.objects.select_for_update().filter(pk__in=keys).order_by("pk")
     }
     stored = locked.get(game.pk) if persisted else None
-    if persisted and stored is None:
-        raise RowNotHeld(f"Game {game.pk} is gone; library {library.pk} edited it.")
+    #: The edited Game, or its parent.
+    missing = keys - locked.keys()
+    if missing:
+        raise RowNotHeld(
+            f"Games {missing} are gone before library {library.pk}'s lock."
+        )
 
     if kind == GameKind.MAIN:
         if parent is not None:

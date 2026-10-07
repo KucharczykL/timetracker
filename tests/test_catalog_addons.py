@@ -218,3 +218,15 @@ def test_a_game_gone_since_the_fetch_is_not_held(library, kind):
 
     with pytest.raises(RowNotHeld, match=str(fetched.pk)), transaction.atomic():
         state_addon(fetched, kind=kind, parent=stated_parent, library=library)
+
+
+@pytest.mark.untracked_games
+@pytest.mark.parametrize("persisted", [False, True])
+def test_a_parent_gone_since_the_clean_is_not_held(library, persisted):
+    """Add Game reaches this too: the parent is in the body."""
+    parent = _game(library, "Parent")
+    game = _game(library, "Add-on") if persisted else Game(library=library, name="New")
+    Game.objects.filter(pk=parent.pk).delete()
+
+    with pytest.raises(RowNotHeld, match=str(parent.pk)), transaction.atomic():
+        state_addon(game, kind=GameKind.DLC, parent=parent, library=library)

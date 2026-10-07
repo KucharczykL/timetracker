@@ -78,10 +78,10 @@ The sentences are module constants, so a screen and a test name the same words.
 Nothing scopes the row away and reports success: a write a library may not make
 raises, and the transaction leaves the graph as it was.
 
-A Game that is gone is no refusal. Its row was there when the caller read it,
-and a whole-library purge or a failed Add Game took it before the lock. The
-lock raises `RowNotHeld`, and the caller answers 404 through `absent_as_404`
-in `games/writes/answers.py`. The verb takes a saved Game: an unsaved one is a
+A Game that is gone is no refusal. Its row, or an add-on's parent, was there
+when the caller read it, and a whole-library purge or a failed Add Game took it
+before the lock. The lock raises `RowNotHeld`, and the caller answers 404
+through `absent_as_404` in `games/writes/answers.py`. The verb takes a saved Game: an unsaved one is a
 `ValueError`, a defect no person can cause. Contract is
 [A missing Game answers 404](superpowers/specs/2026-10-07-issue-980-missing-game-404-design.md).
 

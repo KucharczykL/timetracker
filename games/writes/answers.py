@@ -174,7 +174,7 @@ def absent_as_404(subject: SubjectNoun) -> Iterator[None]:
     try:
         yield
     except RowNotHeld as error:
-        #: No traceback: the program is right, the id wrong.
+        #: No traceback: the program is right, the row absent.
         #: Recorded: an invisible 404 invites a second write.
         logger.warning("[answers]: a %s this library does not hold: %s", subject, error)
         raise Http404(f"No such {subject}.") from error

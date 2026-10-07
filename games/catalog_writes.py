@@ -139,7 +139,7 @@ def _writable_game(game_id, library: UserLibrary) -> Game:
     """The Game this library may write, locked."""
     game = Game.objects.select_for_update().filter(pk=game_id).first()
     if game is None:
-        raise RowNotHeld(f"Game {game_id} is gone; library {library.pk} wrote it.")
+        raise RowNotHeld(f"Game {game_id} is gone before library {library.pk}'s lock.")
     #: `GraphRefused` with no key: the sentence belongs to the whole
     #: statement, and a caller shows it rather than raising a page.
     if game.library_id is None:
@@ -353,7 +353,7 @@ def state_catalog_graph(
     catalog somebody built by hand.
     """
     if game._state.adding:
-        raise ValueError(f"state_catalog_graph takes a saved Game, not {game.pk}.")
+        raise ValueError(f"state_catalog_graph takes a saved Game; {game} is unsaved.")
     owner = _writable_game(game.pk, library)
     stored_editions: StoredEditions = {
         state.key: _resolved_edition(owner, state) for state in editions
