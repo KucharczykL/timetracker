@@ -2,7 +2,7 @@ import datetime
 import re
 import unittest
 from typing import ClassVar, get_args
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import django
@@ -708,7 +708,6 @@ class IconTest(unittest.TestCase):
 
         result = str(components.Icon("arrowdownlong", [("class", "rotate-180")]))
         self.assertIn(f'class="{ICON_SIZE_CLASS} rotate-180"', result)
-        self.assertNotIn("w-3 h-3 rotate-180", result)  # snippet size never reaches it
         self.assertIn("viewBox=", result)
 
     def test_icon_size_override_replaces_default(self):
@@ -764,9 +763,22 @@ class IconCodegenFaithfulnessTest(unittest.TestCase):
         for name, raw_html in iter_icon_sources():
             with self.subTest(icon=name):
                 source = ElementTree.fromstring(raw_html)
-                source.attrib.pop("class", None)  # codegen drops the root class
                 rendered = ElementTree.fromstring(str(get_icon_node(name)))
                 self.assertEqual(self._normalize(source), self._normalize(rendered))
+
+    def test_codegen_refuses_a_root_class(self):
+        from django.core.management.base import CommandError
+
+        from games.management.commands import gen_icons
+
+        snippet = '<svg xmlns="http://www.w3.org/2000/svg" class="rotate-90"/>'
+        with (
+            patch.object(
+                gen_icons, "iter_icon_sources", return_value=[("turned", snippet)]
+            ),
+            self.assertRaisesRegex(CommandError, "icons/turned.html"),
+        ):
+            gen_icons.render_icons_module()
 
     def test_no_generated_root_carries_a_class(self):
         from common.components.icons_generated import ICON_NODES
@@ -1213,13 +1225,21 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_button_variants_share_one_sizing_scale(self):
         # Every variant floors to one control height.
-        for variant in ("filled", "segmented", "outline"):
+        for variant in ("filled", "segmented", "outline", "ghost"):
             with self.subTest(variant=variant):
                 html = str(components.ControlButton(variant=variant)["x"])
                 self.assertIn("min-h-control", html)
                 self.assertIn("text-type-body", html)
                 self.assertNotIn("@md:", html)  # height no longer container-stepped
                 self.assertNotIn("text-xs", html)
+
+    def test_green_text_takes_the_on_success_token(self):
+        for variant in ("filled", "segmented"):
+            with self.subTest(variant=variant):
+                html = str(
+                    components.ControlButton(color="green", variant=variant)["x"]
+                )
+                self.assertIn("text-fg-on-success", html)
 
     def test_toggle_variants_ignore_color(self):
         default = str(components.ControlButton(variant="outline")["x"])

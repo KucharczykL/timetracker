@@ -909,7 +909,7 @@ _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
     ),
     "green": (
         "text-fg-on-success bg-success dark:bg-success-strong box-border border "
-        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "  # color-ok: no token past success-strong
+        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "  # color-ok: emerald, no token past success-strong
         "focus:ring-success-subtle"
     ),
 }
@@ -937,15 +937,13 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
     "green": (
         f"{_SEGMENTED_SHELL_CLASS} "
         "hover:bg-success dark:hover:bg-success-strong "
-        "hover:border-success-strong dark:hover:border-emerald-800 "  # color-ok: no token past success-strong
+        "hover:border-success-strong dark:hover:border-emerald-800 "  # color-ok: emerald, no token past success-strong
         "hover:text-fg-on-success"
     ),
 }
 
 
-# Dropdown-toggle variants (issue #272): single-look, no color axis. Outline
-# is a regular button-shaped control — base + shared sizing + its bordered
-# look.
+# Toggle variants: colourless, base plus shared sizing.
 _OUTLINE_VARIANT_CLASS = (
     "gap-2 text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
@@ -2917,7 +2915,7 @@ def Icon(
 ) -> Node:
     """Render an icon with the central classes.
 
-    Every other svg attribute is kept: without ``viewBox`` the paths clip
+    Keeps the root's svg attributes: without ``viewBox`` the paths clip
     to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
     wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
     the accessible ``<title>`` child; a passed ``class=`` appends as an override.

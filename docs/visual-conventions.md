@@ -15,13 +15,11 @@ settings-only.
 
 ## Headline
 
-The app is mid-migration between styling generations. The newest components — the
-**date-range picker and search select** — have already converged on one coherent language:
-Flowbite semantic tokens (zero `dark:` mirrors), a single `rounded-base` (12px) radius for
-controls *and* panels, `px-3 py-2.5 text-sm` control rhythm, container-query sizing. Older
-layers (primitives' buttons/tables/pagination, layout.py, custom_elements.py) hand-roll raw
-`gray-*` with `dark:` bookkeeping; a third, dead generation (`.responsive-table`,
-indigo/slate) survives on the stats page only.
+The newest components — the **date-range picker and search select** — set one coherent
+language: Flowbite semantic tokens (zero `dark:` mirrors), a single `rounded-base` (12px)
+radius for controls *and* panels, `px-3 py-2.5 text-sm` control rhythm, container-query
+sizing. Every class string in `common/`, `games/` and `ts/` uses tokens; the color guard
+refuses raw palette there (§7).
 
 **The target aesthetic is the newest generation: "looks like the date-range picker."** Every
 normalize call below converges the rest of the app toward it.
@@ -29,8 +27,8 @@ normalize call below converges the rest of the app toward it.
 ## 1. Surfaces & borders — adopt semantic tokens; normalize raw palette
 
 **Call: the Flowbite semantic-token vocabulary is the app's surface language.** New code
-(including the whole settings kit) uses tokens only; raw-palette holdouts migrate via
-follow-ups. Grounds (#399): the settings-like components are already fully semantic; ~85% of
+(including the whole settings kit) uses tokens only; a raw hue needs a `color-ok:` marker
+that names it. Grounds (#399): the settings-like components are already fully semantic; ~85% of
 raw uses have *exact* token equivalents (mapping table in #399 §5); tokens self-adapt to dark
 mode, deleting the `dark:` mirror half of every class string; and the token text system is
 WCAG-AA-clean in both themes (programmatically verified, `scripts/contrast_audit.py`).
@@ -77,7 +75,7 @@ Decisions merged in:
   the AND/OR group left-edge rails (teal/orange) and a slim hue on the relation `↳`
   arrow + label (indigo) and scope label (teal); the relation/scope cards themselves are
   neutral and follow the depth zebra. Each raw hue is `// color-ok` in
-  `ts/elements/filter-group.ts`. Also game-status dot palette, `font-alien` wordmark accent.
+  `ts/elements/filter-group.ts`. Also the `font-alien` wordmark accent.
   The Python opt-outs carry `# color-ok:`: the chip states in `filters.py`, the status dots
   in `domain.py`, the green `ControlButton`'s dark hover (`emerald-800`, no token beyond
   `success-strong`) in `primitives.py`, and the engraved `DropdownDivider` hairline
@@ -397,12 +395,14 @@ non-default family (the serif game-/purchase-detail names) compose `font-serif` 
 size token — they are not exceptions.
 
 **Guards scan `.py` and `ts/`.** The size guard (`tests/test_typography_tokens.py`) and
-the color guard (`tests/test_color_tokens.py`) walk one set of files, `guarded_files()`: the
-Python class-string modules and `ts/**/*.ts` (excluding `*.test.ts` and `ts/generated/`). The
-color guard refuses a hue with a numeric stop and bare `white`/`black`. Opt a line out with
-`# type-ok:` / `// type-ok:` (size) or `# color-ok:` / `// color-ok:` (a deliberate hue —
-color guard). Generated icons carry no class: `gen_icons` drops each snippet's root `class`,
-and `Icon()` states its own.
+the color guard (`tests/test_color_tokens.py`) walk one set of files, `guarded_files()`: every
+`.py` under `common/` and `games/` (migrations and management commands aside) and `ts/**/*.ts`
+(excluding `*.test.ts` and `ts/generated/`). The color guard refuses a hue with a numeric
+stop, bare `white`/`black`, and an arbitrary colour value. Opt a line out with
+`# type-ok: <reason>` / `// type-ok: <reason>` (size), or `# color-ok: <hue> <reason>` /
+`// color-ok: <hue> <reason>`: a color marker admits only the hues its reason names, so
+another hue on that line still fails. Generated icons carry no class: `gen_icons` refuses a
+snippet whose root `<svg>` states one, and `Icon()` states its own.
 
 ### Notes
 

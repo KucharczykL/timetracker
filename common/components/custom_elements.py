@@ -833,8 +833,7 @@ _Dropdown = custom_element_builder("drop-down")
 # `outline`: a border on the toggle AND panel for button-like (non-menu)
 # dropdowns (the value selectors, the played-row split button); menu-like
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
-# attachMenu. Toggle looks live on ControlButton (issue #272):
-# variants "outline" and "ghost"; corners from shape=.
+# attachMenu. Toggle looks: ControlButton "outline"/"ghost"; corners from shape=.
 
 # The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"
@@ -1201,7 +1200,7 @@ def DropdownDivider() -> Node:
     return Li(
         role="separator",
         class_=(
-            "mx-1 my-1.5 h-px bg-black/10 dark:bg-black/40 "  # color-ok: engraving
+            "mx-1 my-1.5 h-px bg-black/10 dark:bg-black/40 "  # color-ok: black engraving
             "shadow-[0_1px_0_rgb(255_255_255_/_0.7)] "
             "dark:shadow-[0_1px_0_rgb(255_255_255_/_0.05)]"
         ),

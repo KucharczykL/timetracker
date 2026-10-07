@@ -176,3 +176,17 @@ def test_a_library_reads_only_its_own_transitions(
         PlayerGameStatus.COMPLETED,
         PlayerGameStatus.ABANDONED,
     ]
+
+
+def test_a_history_line_reads_as_secondary_text():
+    from unittest.mock import MagicMock
+
+    from games.views.game import _game_history
+
+    html = str(
+        _game_history(
+            [StatusEntry(None, PlayerGameStatus.UNPLAYED, PlayerGameStatus.PLAYED)],
+            MagicMock(),
+        )
+    )
+    assert '<li class="text-body-subtle">' in html

@@ -1627,8 +1627,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore
   `color` — `outline` (bordered dropdown toggle), `ghost` (transparent until hover;
-  quick-facet triggers; `color="red"` gives it a danger hover). Three sizes and no `icon=` flag: `size="control"` (default,
-  `min-h-control`, 42px floored, the same in every row and at every width);
+  quick-facet triggers; `color="red"` gives it a danger hover). Three sizes and
+  no `icon=` flag: `size="control"` (default, `min-h-control`, 42px floored,
+  the same in every row and at every width);
   `size="compact"`, a 32px glyph square inside a field box; `size="row"`, a
   26px one inside a 36px picker row with `-my-0.75`. Corners scale with size.
   Icon+text layout (`inline-flex items-center gap-2`) baked in. A raw `Button`
@@ -1753,7 +1754,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `PLATFORM_ICONS` (`common/platform_icons.py`); `canonical_icon` there maps a
   retired slug (`RETIRED_ICONS`). Every non-brand glyph is a Lucide file
   copied verbatim (a missing glyph is the one exception, drawn on Lucide's
-  grid), never hand-drawn or inline. A control-height `ControlButton` states
+  grid), never hand-drawn or inline. A snippet's root `<svg>` states no
+  `class`: `gen_icons` refuses one, and `Icon()` states it. A control-height `ControlButton` states
   `--icon-size`, so an icon inside one needs no `size=`.
   `Icon(name, attributes=...)` returns node:
   `class` merges onto svg, `title` becomes `<title>` child. An unknown name

@@ -10,7 +10,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from common.icons import iter_icon_sources
 
@@ -54,8 +54,6 @@ def _emit_node(source: ElementTree.Element, indent: int) -> str:
     builder = _TAG_BUILDERS[tag]
     attributes = [(_local_name(key), value) for key, value in source.attrib.items()]
     if tag == "svg":
-        # Icon() states the class.
-        attributes = [(key, value) for key, value in attributes if key != "class"]
         # ElementTree consumes the source xmlns into namespace machinery, so
         # re-declare it explicitly to keep the rendered <svg> self-contained.
         attributes.append(("xmlns", SVG_NAMESPACE))
@@ -86,6 +84,9 @@ def render_icons_module() -> str:
     entries = []
     for name, raw_html in iter_icon_sources():
         root = ElementTree.fromstring(raw_html)
+        if "class" in root.attrib:
+            # Icon() states the class.
+            raise CommandError(f"icons/{name}.html: remove the root <svg> class")
         entries.append(f"    {name!r}: {_emit_node(root, 1).lstrip()},")
     return _HEADER + "\n".join(entries) + "\n}\n"
 

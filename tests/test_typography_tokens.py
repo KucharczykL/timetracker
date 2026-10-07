@@ -58,12 +58,9 @@ def test_named_constants_use_tokens():
 
 
 REPO = Path(__file__).resolve().parent.parent
-GUARDED = [
-    REPO / "common" / "components",
-    REPO / "common" / "layout.py",
-    REPO / "games" / "forms.py",
-    REPO / "games" / "views",
-]
+# Every module that may build class strings.
+GUARDED_PACKAGES = (REPO / "common", REPO / "games")
+UNGUARDED_PARTS = frozenset({"migrations", "management"})
 # Raw font-size utilities (with optional variant prefixes like sm: @md:) —
 # the type system owns size via text-type-*. font-* weights stay legal.
 RAW_SIZE = re.compile(
@@ -83,20 +80,26 @@ def ts_files():
 
 
 def guarded_files():
-    for path in GUARDED:
-        if path.is_file():
-            yield path
-        else:
-            yield from path.rglob("*.py")
+    for package in GUARDED_PACKAGES:
+        for path in sorted(package.rglob("*.py")):
+            if UNGUARDED_PARTS.isdisjoint(path.relative_to(package).parts):
+                yield path
     yield from ts_files()
+
+
+def test_guarded_packages_exist():
+    for package in GUARDED_PACKAGES:
+        assert package.is_dir(), f"{package} is guarded but is not a directory"
+
+
+TYPE_OK = re.compile(r"(?:#|//)\s*type-ok:\s*\S")
 
 
 def test_no_raw_size_utilities_in_components():
     offenders = []
     for f in guarded_files():
         for i, line in enumerate(f.read_text().splitlines(), 1):
-            # `# type-ok` (Python) / `// type-ok` (TS) opt a line out.
-            if "type-ok" in line:
+            if TYPE_OK.search(line):
                 continue
             if RAW_SIZE.search(line):
                 offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")

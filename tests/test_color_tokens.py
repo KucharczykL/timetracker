@@ -4,34 +4,56 @@ import re
 
 from test_typography_tokens import REPO, guarded_files, ts_files
 
-# Palette hue with a stop, or white/black.
+# Palette hue with a stop, white/black, or arbitrary.
 _HUES = (
     "gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|"
     "emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose"
 )
 RAW_COLOR = re.compile(
-    r"(?<![\w-])(?:[a-z@\[\]:.-]+:)?"
-    r"(?:bg|text|border|ring|divide|outline|decoration|shadow|fill|stroke"
+    r"(?<![\w-])(?:[a-z@\[\]:.-]+:)?!?"
+    r"(?:ring-offset|inset-ring|inset-shadow|drop-shadow|text-shadow|placeholder"
+    r"|bg|text|border|ring|divide|outline|decoration|shadow|fill|stroke"
     r"|from|via|to|accent|caret)"
     r"(?:-[a-z]{1,2})?-"
-    rf"(?:(?:{_HUES})-\d{{2,3}}(?![\w])|(?:white|black)(?![\w-]))"
+    rf"(?:(?P<hue>{_HUES})-\d{{2,3}}(?![\w])"
+    r"|(?P<plain>white|black)(?![\w-])"
+    r"|(?P<arbitrary>\[(?:#|rgb|hsl|oklch|oklab|color:)))"
 )
+# The reason names each colour it admits.
+COLOR_OK = re.compile(r"(?:#|//)\s*color-ok:\s*(?P<reason>\S.*)$")
+
+
+def unadmitted(line: str) -> list[str]:
+    """Raw colours the line's marker does not name."""
+    marker = COLOR_OK.search(line)
+    admitted = set(re.findall(r"[a-z]+", marker["reason"])) if marker else set()
+    code = line[: marker.start()] if marker else line
+    return [
+        match[0]
+        for match in RAW_COLOR.finditer(code)
+        if (match["hue"] or match["plain"] or "arbitrary") not in admitted
+    ]
 
 
 def test_raw_color_regex_self_check():
-    # Matches raw palette (incl. side modifier + variant prefix + opacity).
     for hit in (
         "border-l-teal-400",
         "dark:bg-gray-900/40",
+        "dark:bg-teal-500/20",
         "ring-red-500",
         "bg-amber-50",
         "text-indigo-500",
         "dark:text-white",
+        "text-white!",
         "bg-black/10",
         "border-l-white/30",
+        "ring-offset-white",
+        "placeholder-gray-400",
+        "drop-shadow-black/50",
+        "bg-[#fff]",
+        "text-[color:var(--x)]",
     ):
         assert RAW_COLOR.search(hit), hit
-    # Does NOT match semantic tokens or the colorless side utility.
     for miss in (
         "border-default-medium",
         "bg-neutral-tertiary-medium",
@@ -43,8 +65,19 @@ def test_raw_color_regex_self_check():
         "text-whitesmoke",
         "solid-brand",
         "text-heading",
+        "shadow-[0_1px_0_rgb(255_255_255_/_0.7)]",
     ):
         assert not RAW_COLOR.search(miss), miss
+
+
+def test_marker_admits_only_the_colours_it_names():
+    assert unadmitted('"bg-gray-500"  # color-ok: gray status dot') == []
+    assert unadmitted('"bg-gray-500"  // color-ok: gray status dot') == []
+    assert unadmitted('"bg-gray-500"  # color-ok') == ["bg-gray-500"]
+    assert unadmitted('"bg-gray-500"  # color-ok:') == ["bg-gray-500"]
+    assert unadmitted('"bg-gray-500 bg-red-500"  # color-ok: gray dot') == [
+        "bg-red-500"
+    ]
 
 
 def test_walker_finds_both_halves():
@@ -56,16 +89,15 @@ def test_walker_finds_both_halves():
 
 
 def test_no_raw_palette_colors():
-    offenders = []
-    for f in guarded_files():
-        for i, line in enumerate(f.read_text().splitlines(), 1):
-            if "color-ok" in line:
-                continue
-            if RAW_COLOR.search(line):
-                offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")
+    offenders = [
+        f"{f.relative_to(REPO)}:{i}: {line.strip()}"
+        for f in guarded_files()
+        for i, line in enumerate(f.read_text().splitlines(), 1)
+        if unadmitted(line)
+    ]
     assert not offenders, (
         "raw palette colors — use semantic tokens (or add "
-        "`# color-ok: reason` / `// color-ok: reason` for a deliberate hue):\n"
+        "`# color-ok: <colour> reason` / `// color-ok: <colour> reason`):\n"
         + "\n".join(offenders)
     )
 

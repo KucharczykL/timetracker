@@ -699,18 +699,18 @@ type ChipState = Literal["connective-and", "connective-or", "negate-off", "negat
 
 _CHIP_STATE_CLASSES: dict[ChipState, str] = {
     "connective-and": (
-        "border-teal-300 bg-teal-100 text-teal-800 "  # color-ok: logic chip hue
-        "dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-200"  # color-ok: logic chip hue
+        "border-teal-300 bg-teal-100 text-teal-800 "  # color-ok: teal logic chip
+        "dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-200"  # color-ok: teal logic chip
     ),
     "connective-or": (
-        "border-orange-300 bg-orange-100 text-orange-800 "  # color-ok: logic chip hue
-        "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200"  # color-ok: logic chip hue
+        "border-orange-300 bg-orange-100 text-orange-800 "  # color-ok: orange logic chip
+        "dark:border-orange-500/60 dark:bg-orange-500/20 dark:text-orange-200"  # color-ok: orange logic chip
     ),
     "negate-off": ("border-default-medium text-body hover:bg-neutral-tertiary-medium"),
     "negate-on": (
-        "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 "  # color-ok: logic chip hue
-        "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 "  # color-ok: logic chip hue
-        "dark:ring-amber-500/70"  # color-ok: logic chip hue
+        "border-amber-400 bg-amber-100 text-amber-900 ring-1 ring-amber-400 "  # color-ok: amber logic chip
+        "dark:border-amber-500/70 dark:bg-amber-500/25 dark:text-amber-100 "  # color-ok: amber logic chip
+        "dark:ring-amber-500/70"  # color-ok: amber logic chip
     ),
 }
 

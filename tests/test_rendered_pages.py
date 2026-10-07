@@ -330,9 +330,9 @@ class RenderedPagesTest(TestCase):
     def test_view_game_states_its_text_colours(self):
         html = self.client.get(self.game.get_absolute_url()).content.decode()
         self.assertIn("text-type-title font-serif text-heading", html)
-        self.assertIn(
-            '<p class="text-type-body text-body-subtle">No historical playtime.</p>',
+        self.assertRegex(
             html,
+            r'<p class="[^"]*\btext-body-subtle\b[^"]*">No historical playtime\.</p>',
         )
 
     def test_view_game(self):
