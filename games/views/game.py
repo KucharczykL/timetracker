@@ -629,21 +629,12 @@ def _game_fact(game: Game) -> LinkFacts | None:
 
 
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
-    """'Played N times' split button.
-
-    `played` counts runs whose completion is stated.
-
-    The day may be unknown and still count.
-
-    #687 took the '+1' action and its element away: a
-    click filled in the run a tracked game already holds,
-    which only untracking the game took back. #1024 owns
-    stating a count.
-    """
+    """'Played N times' split button; counts completed runs."""
     from common.components import (
         ControlButton,
         DropdownLinkItem,
         SplitButtonDropdown,
+        form_dialog_link,
     )
 
     count_button = ControlButton(
@@ -665,6 +656,11 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
                     "games:add_playthrough", origin=origin, facts=_game_fact(game)
                 ),
                 "Add playthrough\u2026",
+            ),
+            DropdownLinkItem(
+                action_url("games:state_times_played", game.pk, origin=origin),
+                "Set times played\u2026",
+                attributes=form_dialog_link(),
             ),
         ],
     )

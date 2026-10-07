@@ -4,6 +4,7 @@ The dispatches need real transactions, and the conftest tracking
 fixture would otherwise write projection rows no event states.
 """
 
+import uuid
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -75,6 +76,11 @@ from games.commands.playthrough import (
     StartPlaythrough,
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
+)
+from games.commands.playthrough_count import (
+    StatePlaythroughCount,
+    UndoPlaythroughCount,
+    count_statement_key,
 )
 from games.commands.purchase import (
     CorrectPurchaseRefund,
@@ -191,8 +197,16 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     third = Game.objects.create(library=library, name="Hades")
     dispatched: list[DispatchedCommand] = []
 
-    def run(command: Command, key: str) -> CommandResult:
-        result = dispatch(command, actor=user, library=library, idempotency_key=key)
+    def run(
+        command: Command, key: str, correlation_id: uuid.UUID | None = None
+    ) -> CommandResult:
+        result = dispatch(
+            command,
+            actor=user,
+            library=library,
+            idempotency_key=key,
+            correlation_id=correlation_id,
+        )
         assert result.outcome is CommandOutcome.APPENDED, (
             f"{key} recorded nothing, so the stream misses its event types."
         )
@@ -886,6 +900,35 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RecordPurchase(kind="game", copy=cascaded_copy), "record-purchase-to-cascade")
     #: Left removed with its purchase.
     run(RemoveEntry(entry_id=cascaded_copy), "remove-copy-and-purchase")
+
+    counted = Game.objects.create(library=library, name="Celeste")
+    run(TrackGame(game_id=counted.pk), "track-counted")
+
+    def count(total: int) -> CommandResult:
+        #: The Undo reads the count's own key.
+        statement_id = uuid.uuid7()
+        return run(
+            StatePlaythroughCount(game_id=counted.pk, count=total),
+            count_statement_key(statement_id),
+            statement_id,
+        )
+
+    count(3)
+    #: To zero: removes runs, voids the oldest.
+    lowered = count(0)
+    run(
+        UndoPlaythroughCount(
+            game_id=counted.pk, statement_id=lowered.correlation_id, stated=0
+        ),
+        "count-undo",
+    )
+    raised = count(4)
+    run(
+        UndoPlaythroughCount(
+            game_id=counted.pk, statement_id=raised.correlation_id, stated=4
+        ),
+        "count-undo-raise",
+    )
 
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")

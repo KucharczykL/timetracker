@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol, cast
 
 from django.db import models
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, QuerySet
 
 from games.models import (
     HistoricalPlaytimeRun,
@@ -179,6 +179,15 @@ def rows_naming(referrer: BlockingReferrer, row: ProjectionModel) -> QuerySet[An
     """
     return referrer.model._default_manager.filter(
         **{referrer.field_name: _named(referrer, row)}
+    )
+
+
+def named_in_its_library(referrer: BlockingReferrer) -> Exists:
+    """Any own-library row naming it, removed included."""
+    return Exists(
+        referrer.model._default_manager.filter(
+            **{referrer.field_name: OuterRef("pk")}, library=OuterRef("library")
+        )
     )
 
 

@@ -18,6 +18,7 @@ from games.views import (
     purchase,
     session,
     session_reclassification,
+    times_played,
 )
 from timetracker.uuidv7 import UUIDv7Converter
 
@@ -199,6 +200,16 @@ urlpatterns = [
         "session/<uuidv7:session_id>/reclassify/undo",
         session_reclassification.undo_reclassify_session,
         name="undo_reclassify_session",
+    ),
+    path(
+        "game/<uuidv7:game_id>/times-played",
+        times_played.state_times_played_view,
+        name="state_times_played",
+    ),
+    path(
+        "game/<uuidv7:game_id>/times-played/undo/<uuidv7:statement_id>/<int:stated>",
+        times_played.undo_times_played_view,
+        name="undo_times_played",
     ),
     path(
         "game/<uuidv7:game_id>/historical-playtime/add",

@@ -44,7 +44,7 @@ def _stated_now(context: CommandContext) -> TemporalValue:
     return TemporalValue.from_day(calendar_today(context.library))
 
 
-def _status_change(
+def status_change_event(
     context: CommandContext, player_game_id: uuid.UUID, status: PlayerGameStatus
 ) -> NewEvent:
     return PLAYERGAME_STATUS_CHANGED.new(
@@ -101,7 +101,7 @@ def implied_status_change(
     """The status an act implies, if stated."""
     if not status_implied_over(holder.status, implied):
         return None
-    return _status_change(context, holder.player_game_id, implied)
+    return status_change_event(context, holder.player_game_id, implied)
 
 
 def with_implied_status(
@@ -297,7 +297,7 @@ class RecordPlayerGameFacts(Command):
         #: Under dispatch's lock: no concurrent duplicate.
         events: list[NewEvent] = []
         if self.status is not None and tracked.status != self.status:
-            events.append(_status_change(context, tracked.pk, self.status))
+            events.append(status_change_event(context, tracked.pk, self.status))
         if self.implied_status is not None and tracked.removed_at is None:
             implied = implied_status_change(
                 context, HeldGame(tracked), self.implied_status
