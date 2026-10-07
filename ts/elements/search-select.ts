@@ -1005,6 +1005,7 @@ const initWidget = (containerElement: Element): boolean => {
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
         if (pendingRequest === request) pendingRequest = null;
+        hasPrefetched = false;
         answering(() => setNoResults(true));
         reportClientError("search-select[search]", String(error?.message ?? error));
       });
@@ -1631,6 +1632,8 @@ const initWidget = (containerElement: Element): boolean => {
     if (pendingRequest) {
       pendingRequest.abort();
       pendingRequest = null;
+      //: The window may never land; refetch on focus.
+      hasPrefetched = false;
     }
   };
 
