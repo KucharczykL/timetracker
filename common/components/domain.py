@@ -251,17 +251,6 @@ def GameStatus(
     return Span(class_=outer_class)[dot, *as_children(children)]
 
 
-def PriceConverted(
-    children: Children = None,
-) -> Node:
-    """Wrap content in a span that indicates the price was converted."""
-    children = children or []
-    return Span(
-        title="Price is a result of conversion and rounding.",
-        class_="decoration-dotted underline",
-    )[*as_children(children)]
-
-
 def _reference_link(reference: ExternalReference) -> Node:
     """One link, or the words alone.
 
@@ -324,7 +313,7 @@ def PurchaseName(purchase: Purchase) -> Node:
 
 
 def PurchaseAmount(purchase: Purchase) -> Node:
-    """Free, Unknown, or the amount; valuation beside."""
+    """Free, Unknown, or one price; the stated one revealed."""
     if purchase.amount is None:
         return Span()["Unknown"]
     if purchase.amount == 0:
@@ -336,18 +325,25 @@ def PurchaseAmount(purchase: Purchase) -> Node:
             "read it through annotated_for_filtering(library)"
         )
     valuation = cast("ValuedPurchase", purchase)
-    if (
-        valuation.valuation_amount is None
-        or valuation.valuation_currency == purchase.currency
-    ):
+    #: Keyed on the purchase: two equal prices share content.
+    popover_id = f"purchase-amount-{purchase.pk}"
+    if valuation.valuation_currency == purchase.currency:
         return Span(class_="whitespace-nowrap")[stated]
-    return Span(class_="whitespace-nowrap")[
-        stated,
-        " ",
-        PriceConverted(
-            f"({valuation.valuation_amount} {valuation.valuation_currency})"
+    if valuation.valuation_amount is None:
+        return Popover(
+            "Not valued yet",
+            wrapped_content=stated,
+            wrapped_classes="whitespace-nowrap",
+            id=popover_id,
+        )
+    return Popover(
+        TooltipDefinitionList([TooltipDefinition("Paid", stated)]),
+        wrapped_content=(
+            f"{valuation.valuation_amount} {valuation.valuation_currency}"
         ),
-    ]
+        wrapped_classes="whitespace-nowrap",
+        id=popover_id,
+    )
 
 
 class PlatformBadge(NamedTuple):

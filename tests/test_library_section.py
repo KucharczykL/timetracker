@@ -249,8 +249,9 @@ def test_a_foreign_currency_line_shows_its_valuation(
 
     html = _page(client, graph.game)
 
+    assert "5.00 EUR" in html
+    assert "(5.00 EUR)" not in html
     assert "10.00 USD" in html
-    assert "(5.00 EUR)" in html
 
 
 def test_the_copy_menu_offers_add_purchase_and_each_purchases_acts(

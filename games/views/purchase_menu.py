@@ -63,16 +63,16 @@ def purchase_line(purchase: Purchase, presentation: DateTimePresentation) -> Nod
     ]
 
 
-def price_line(purchase: Purchase) -> str:
-    """The price, led by kind or name."""
+def price_line(purchase: Purchase) -> Node:
+    """The valued amount, led by kind or name."""
     if purchase.kind == PurchaseKind.GAME and not purchase.name:
-        return price_words(purchase)
-    return f"{purchase_label(purchase)} · {price_words(purchase)}"
+        return PurchaseAmount(purchase)
+    return Fragment(f"{purchase_label(purchase)} · ", PurchaseAmount(purchase))
 
 
 def price_lines(purchases: Sequence[Purchase]) -> Node:
     """One line per purchase."""
-    return Div(class_="flex flex-col")[
+    return Div(class_="flex flex-col items-start")[
         *(Span()[price_line(purchase)] for purchase in purchases)
     ]
 

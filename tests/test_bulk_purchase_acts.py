@@ -747,9 +747,10 @@ def test_the_library_tab_lists_each_purchase_price(logged_in, copy, first):
 
     row = _purchases_cell(logged_in, copy)
 
-    assert "<span>19.99 EUR</span>" in row
-    assert "<span>Season pass · 9.99 EUR</span>" in row
-    assert "<span>Deluxe · Unknown price</span>" in row
+    assert "19.99 EUR" in row
+    assert "Season pass · <pop-over" in row
+    assert "9.99 EUR" in row
+    assert "Deluxe · <span>Unknown</span>" in row
     assert "Free" not in row
 
 

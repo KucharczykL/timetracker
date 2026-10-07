@@ -42,11 +42,8 @@ Two orthogonal signals, one meaning each, freely composable: a linked duration i
 text *and* an ⓘ. Dotted underline is retired from every `Popover` — once the ⓘ carries "there's
 more", it has no job left there.
 
-One documented holdout: `PriceConverted` keeps `decoration-dotted underline`, because it uses a
-native `title=` tooltip rather than a `Popover` and is deliberately deferred (see follow-ups).
-So dotted is retired from the popover algebra, not yet from the app. The `decoration-dotted`
-JIT-safelist hack inside `_tooltip_panel` (a hidden `Span` plus an explanatory comment, present
-only to keep the class compiled) is deleted with that follow-up, not with PR 1.
+No dotted underline remains in the app: #1463 states a purchase's conversion through a
+`Popover`.
 
 **Symbol carve-out.** When a popover trigger's entire visible content is a non-text symbol — an
 icon, or a single-character badge like the filter builder's `!` — that symbol *is* the
@@ -340,8 +337,5 @@ pare-back levers. Its existing line — "Accent / focus / links | `brand` family
 
 ## Follow-ups to file
 
-- `PriceConverted` uses a native `title=` tooltip rather than a `Popover`, so it sits outside
-  this algebra entirely. Deliberately deferred. Converting it is what finally retires
-  `decoration-dotted` app-wide and lets the `_tooltip_panel` JIT-safelist hack go.
 - [#590](https://github.com/KucharczykL/timetracker/issues/590) — dark `--color-body`
   gray-400 → gray-300. Already filed.

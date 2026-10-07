@@ -396,11 +396,6 @@ def _tooltip_panel(
             content
         ],
         Div([("data-pop-over-arrow", "")], class_="absolute w-2 h-2 rotate-45"),
-        Safe(  # nosec — intentional HTML comment for Tailwind JIT
-            "<!-- for Tailwind CSS to generate decoration-dotted CSS "
-            "from Python component -->"
-        ),
-        Span(class_="hidden decoration-dotted"),
     ]
 
 

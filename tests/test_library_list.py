@@ -157,6 +157,36 @@ def test_the_tab_lists_live_copies_of_this_library_alone(
     assert "Physical" in html
 
 
+def test_the_purchases_column_shows_the_valuation(logged_in, owned_library, graph):
+    from decimal import Decimal
+
+    from purchases import record_purchase, request_run
+
+    from games import tasks
+    from games.models import ExchangeRate
+
+    ExchangeRate.objects.update_or_create(
+        currency_from="USD",
+        currency_to="EUR",
+        year=2021,
+        defaults={"rate": Decimal("0.5")},
+    )
+    purchase = record_purchase(
+        record_entry(owned_library, graph.release),
+        amount=Decimal(10),
+        currency="USD",
+        purchased=TemporalValue.parse("2021-03-01"),
+    )
+    tasks.convert_library_prices(
+        str(owned_library.pk), request_run(owned_library, "EUR")
+    )
+
+    html = logged_in.get(reverse("games:list_library")).content.decode()
+
+    assert f'id="purchase-amount-{purchase.pk}"' in html
+    assert "5.00 EUR" in html
+
+
 def test_both_tabs_render_the_tab_row(logged_in):
     for route in ("games:list_games", "games:list_library"):
         html = logged_in.get(reverse(route)).content.decode()
