@@ -316,7 +316,7 @@ _QUICK_PILL_CLASS = (
 
 def _facet_apply() -> Node:
     """A facet panel's Apply."""
-    #: Submits the bar's form.
+    # Submits the bar's form.
     return Div(class_="flex justify-end mt-2 pt-2 border-t border-default-medium")[
         ControlButton(type="submit", color="blue", data_quick_facet_apply="")["Apply"]
     ]

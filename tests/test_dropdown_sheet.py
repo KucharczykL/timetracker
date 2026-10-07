@@ -1,6 +1,7 @@
 """The narrow-viewport sheet a dropdown may carry."""
 
 import re
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,9 +12,13 @@ from common.components import (
     DateTimePicker,
     Dropdown,
 )
-from common.components.custom_elements import BottomSheet
+from common.components.custom_elements import (
+    SHEET_ATTRIBUTES,
+    SHEET_HOST_VALUE,
+    BottomSheet,
+)
 from common.components.primitives import Button, Div, YearPicker
-from common.components.quick_filter import QuickFilterBar
+from common.components.quick_filter import QUICK_FACETS, QuickFilterBar
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -103,8 +108,9 @@ def test_the_year_picker_carries_a_sheet():
 
 
 @pytest.mark.django_db
-def test_every_quick_facet_carries_a_sheet():
-    html = str(QuickFilterBar(mode="sessions", presentation=PRESENTATION))
+@pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
+def test_every_quick_facet_carries_a_sheet(mode):
+    html = str(QuickFilterBar(mode=mode, presentation=PRESENTATION))
     facets = re.findall(r"<drop-down[^>]*data-quick-facet", html)
     assert facets
     assert len(sheets(html)) == len(facets)
@@ -126,21 +132,49 @@ def test_every_quick_facet_carries_a_sheet():
 )
 def test_a_single_date_calendar_offers_close_in_the_sheet_alone(picker, has_close):
     html = str(picker)
-    close = re.search(
-        r'<span class="hidden group-data-\[dropdown-host=sheet\]/dropdown:contents">'
-        r"<button[^>]*data-date-range-close",
-        html,
+    wrapper = re.search(
+        r'<span class="([^"]*)"><button[^>]*data-date-range-close', html
     )
-    assert bool(close) is has_close
+    assert bool(wrapper) is has_close
+    if wrapper:
+        classes = wrapper.group(1).split()
+        assert "hidden" in classes
+        assert "group-data-[dropdown-host=sheet]/dropdown:contents" in classes
     assert html.count("data-date-range-close") == int(has_close)
 
 
 @pytest.mark.django_db
-def test_every_quick_facet_applies_the_bar():
-    html = str(QuickFilterBar(mode="sessions", presentation=PRESENTATION))
+@pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
+def test_every_quick_facet_applies_the_bar(mode):
+    html = str(QuickFilterBar(mode=mode, presentation=PRESENTATION))
     facets = re.findall(r"<drop-down[^>]*data-quick-facet", html)
     applies = re.findall(
         r'<button type="submit"[^>]*data-(?:quick-facet|date-range)-apply', html
     )
     assert len(applies) == len(facets)
-    assert html.count("data-date-range-apply") == 1
+    dates = re.findall(
+        r"<drop-down[^>]*data-quick-facet[^>]*>(?:(?!</drop-down>).)*?data-static-calendar",
+        html,
+        re.DOTALL,
+    )
+    assert html.count("data-date-range-apply") == len(dates)
+
+
+def test_the_sheet_behavior_refuses_a_second_sheet():
+    with pytest.raises(ValueError):
+        dropdown(behavior="sheet", sheet_title="Sections")
+
+
+def test_every_sheet_variant_names_the_generated_host():
+    """Tailwind needs literals; they follow the mapping."""
+    attribute = SHEET_ATTRIBUTES["host"].removeprefix("data-")
+    stated = f"data-[{attribute}={SHEET_HOST_VALUE}]"
+    variant = re.compile(r"data-\[([a-z-]+)=([a-z]+)\]")
+    sources = Path(__file__).resolve().parent.parent / "common" / "components"
+    named = {
+        match.group(0)
+        for path in sources.glob("*.py")
+        for match in variant.finditer(path.read_text())
+        if "host" in match.group(1)
+    }
+    assert named == {stated}

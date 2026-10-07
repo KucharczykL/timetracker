@@ -62,12 +62,16 @@ export interface MenuOptions {
   // Keep the panel open while Tab moves between its native controls. The
   // focus-leave listener closes it once focus exits the panel.
   keepOpenOnTab?: boolean;
-  /** The controller the toggle drives; defaults to this one. */
+  /** What the toggle drives; defaults to this.
+   *
+   * It must wrap this controller and never
+   * dispatch a toggle click itself.
+   */
   presenter?: () => MenuController;
 }
 
 export interface MenuController {
-  /** `opener` takes focus back on close. */
+  /** `opener` may take focus back on close. */
   open: (opener?: HTMLElement) => void;
   /** Idempotent; a sheet may finish later. */
   close: () => void;
@@ -254,7 +258,8 @@ export function attachMenu(
     if (item.getAttribute("aria-haspopup")) return;
     const role = item.getAttribute("role");
     if (role !== "menuitemcheckbox" && role !== "menuitemradio") {
-      close();
+      // A pick closes whichever host shows it.
+      presenter().close();
       toggle.focus();
     }
   };
@@ -308,7 +313,7 @@ export function attachMenu(
       event.preventDefault();
       const target = presenter();
       if (!target.isOpen()) target.open(toggle);
-      // Only the anchored panel roves from the toggle.
+      // Only the anchored panel roves here.
       if (target !== self) {
         target.focusFirst();
         return;
@@ -438,7 +443,7 @@ export function attachMenu(
     if (role === "menuitemcheckbox" || role === "menuitemradio") {
       toggleChecked(item);
     } else {
-      close();
+      presenter().close();
     }
   });
 

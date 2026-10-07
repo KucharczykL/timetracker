@@ -22,8 +22,9 @@ contains two extra nodes:
   `hidden max-sm:block`. A rect on the sentinel means "narrow". If the
   stylesheet does not have the rule, the dropdown keeps the anchored popup.
 
-`DROPDOWN_SHEET_ATTRIBUTES` names these attributes. The codegen writes them
-to TypeScript.
+`SHEET_ATTRIBUTES` names these attributes, and `SHEET_HOST_VALUE` names
+the host value. The codegen writes both to TypeScript. A test holds the
+Tailwind variants to them.
 
 ## Switch
 
@@ -41,7 +42,10 @@ to TypeScript.
   (`returnToTopLayer`).
 - If a window resize moves the viewport across the breakpoint while the
   panel is open, the switch moves the panel to the other host. The panel
-  stays open. A close cancels a pending move.
+  stays open. A close cancels a pending move. A move fires `dropdown:hide`
+  and `dropdown:show` again, so a facet's search box starts empty.
+- One state names the switch: closed, anchored, sheet, or moving.
+- A half-built sheet is reported, and the dropdown stays anchored.
 - `attachMenu` keeps its own open state, because the panel is visible in the
   sheet while the anchored controller is closed.
 - `attachMenu` sends its toggle click and its arrow-key opens through

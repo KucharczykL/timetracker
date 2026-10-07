@@ -10,8 +10,10 @@ from django.core.management.base import BaseCommand
 import common.components
 import common.criteria
 from common.components.custom_elements import (
-    DROPDOWN_SHEET_ATTRIBUTES,
-    DropdownSheetRole,
+    SHEET_ATTRIBUTES,
+    SHEET_HOST_VALUE,
+    SheetAttribute,
+    SheetRole,
     TypedDictClass,
     render_props_module,
 )
@@ -214,15 +216,16 @@ class Command(BaseCommand):
                     ),
                 ],
             ),
-            # The narrow-viewport sheet reads and stamps these.
-            output_dir / "dropdown-sheet-attributes.ts": render_filter_metadata_module(
+            # The sheets read and stamp these.
+            output_dir / "sheet-attributes.ts": render_filter_metadata_module(
                 [],
                 constants=[
                     TsConstant(
-                        "DROPDOWN_SHEET_ATTRIBUTES",
-                        dict[DropdownSheetRole, str],
-                        dict(DROPDOWN_SHEET_ATTRIBUTES),
+                        "SHEET_ATTRIBUTES",
+                        dict[SheetRole, SheetAttribute],
+                        dict(SHEET_ATTRIBUTES),
                     ),
+                    TsConstant("SHEET_HOST_VALUE", str, SHEET_HOST_VALUE),
                 ],
             ),
             # The form dialog's wire contract.

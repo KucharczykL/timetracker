@@ -2,16 +2,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
+import { registerBehavior } from "./dropdown-behaviors.js";
 import { resetModalLayerForTests } from "./modal-layer.js";
 import { resetSurfacesForTests } from "./surface-stack.js";
 
 let narrow = true;
+let reducedMotion = true;
 
-function fixture(behavior = "menu"): string {
+function fixture(behavior = "menu", panelContent = '<button data-inside type="button">1</button>'): string {
   return `
     <drop-down behavior="${behavior}" placement="bottom-start" submenu="false">
       <button data-toggle type="button" aria-expanded="false">Day</button>
-      <div data-menu popover="manual" hidden id="panel"><button data-inside type="button">1</button></div>
+      <div data-menu popover="manual" hidden id="panel">${panelContent}</div>
       <dialog data-modal data-dropdown-sheet>
         <div data-sheet-panel>
           <div><h2 data-dropdown-sheet-title>Day</h2><button data-modal-dismiss type="button">×</button></div>
@@ -22,13 +24,13 @@ function fixture(behavior = "menu"): string {
     </drop-down>`;
 }
 
-function mount(behavior = "menu"): {
+function mount(behavior = "menu", panelContent?: string): {
   host: DropdownElement;
   toggle: HTMLButtonElement;
   panel: HTMLElement;
   dialog: HTMLDialogElement;
 } {
-  document.body.innerHTML = fixture(behavior);
+  document.body.innerHTML = fixture(behavior, panelContent);
   const host = document.querySelector("drop-down")!;
   const sentinel = host.querySelector<HTMLElement>("[data-dropdown-narrow]")!;
   sentinel.getClientRects = () =>
@@ -52,11 +54,16 @@ function resize(): void {
 
 beforeEach(() => {
   narrow = true;
+  reducedMotion = true;
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout"] });
   // Reduced motion: a close finishes at once.
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    vi.fn(() => ({
+      matches: reducedMotion,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
   );
   vi.stubGlobal("scrollTo", vi.fn());
 });
@@ -141,10 +148,12 @@ describe("a dropdown with a narrow sheet", () => {
     expect(host.isOpen()).toBe(true);
     expect(panel.parentElement).toBe(host);
     expect(panel.hidden).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
 
     narrow = true;
     resize();
     expect(dialog.open).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(panel.parentElement).toBe(dialog.querySelector("[data-sheet-body]"));
   });
 
@@ -167,5 +176,119 @@ describe("a dropdown with a narrow sheet", () => {
       const title = dialog.querySelector("[data-dropdown-sheet-title]")!;
       expect(dialog.getAttribute("aria-labelledby")).toBe(title.id);
     });
+  });
+});
+
+describe("a sheet that slides out", () => {
+  function leave(): void {
+    vi.advanceTimersByTime(300);
+  }
+
+  beforeEach(() => {
+    reducedMotion = false;
+  });
+
+  it("refuses an open while it leaves", () => {
+    const { host, toggle, panel, dialog } = mount();
+    mouseClick(toggle);
+    host.close();
+    host.open();
+    expect(dialog.querySelectorAll("#panel")).toHaveLength(1);
+    leave();
+    expect(dialog.open).toBe(false);
+    expect(panel.parentElement).toBe(host);
+    expect(host.isOpen()).toBe(false);
+  });
+
+  it("drops a pending move on a close", () => {
+    const { host, toggle, panel, dialog } = mount();
+    mouseClick(toggle);
+    narrow = false;
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersToNextFrame();
+    host.close();
+    leave();
+    expect(dialog.open).toBe(false);
+    expect(host.isOpen()).toBe(false);
+    expect(panel.parentElement).toBe(host);
+    expect(panel.hidden).toBe(true);
+  });
+
+  it("moves once for two resizes during the leave", () => {
+    const { host, toggle, panel } = mount();
+    mouseClick(toggle);
+    narrow = false;
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersToNextFrame();
+    window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersToNextFrame();
+    leave();
+    expect(host.isOpen()).toBe(true);
+    expect(panel.parentElement).toBe(host);
+    expect(panel.matches(":popover-open")).toBe(true);
+  });
+});
+
+describe("a sheet's first focus", () => {
+  it("is the behavior's choice", () => {
+    const { host } = mount(
+      "date-calendar",
+      '<button data-date="2026-10-01">1</button><button data-date="2026-10-02" aria-selected="true">2</button>',
+    );
+    host.open();
+    expect(document.activeElement?.getAttribute("data-date")).toBe("2026-10-02");
+  });
+
+  it("falls back to the dismiss button", () => {
+    const { host, dialog } = mount();
+    host.open();
+    expect(document.activeElement).toBe(dialog.querySelector("[data-modal-dismiss]"));
+  });
+
+  it("opens from the toggle's ArrowDown into the sheet", () => {
+    const { toggle, dialog } = mount();
+    toggle.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+    expect(dialog.open).toBe(true);
+    expect(document.activeElement).toBe(dialog.querySelector("[data-modal-dismiss]"));
+  });
+});
+
+describe("a dropdown sheet's edges", () => {
+  it("ignores a nested dropdown's hide", () => {
+    const { host, toggle, panel } = mount();
+    mouseClick(toggle);
+    panel
+      .querySelector("[data-inside]")!
+      .dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
+    narrow = false;
+    resize();
+    expect(host.isOpen()).toBe(true);
+    expect(panel.parentElement).toBe(host);
+  });
+
+  it("reports a half-built sheet and stays anchored", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    document.body.innerHTML = fixture().replace("<span data-dropdown-narrow></span>", "");
+    const host = document.querySelector("drop-down")!;
+    host.open();
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("narrow sentinel"));
+    expect(host.querySelector("#panel")!.parentElement).toBe(host);
+    expect(host.isOpen()).toBe(true);
+  });
+
+  it("reports a sheet beside its own controller", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    registerBehavior("test-own-controller", {
+      createController: () => ({
+        open: vi.fn(),
+        close: vi.fn(),
+        isOpen: () => false,
+        focusFirst: vi.fn(),
+      }),
+    });
+    mount("test-own-controller");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("its sheet stays unused"));
   });
 });

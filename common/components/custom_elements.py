@@ -839,7 +839,7 @@ _Dropdown = custom_element_builder("drop-down")
 
 # The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"
-#: A sheet-hosted panel drops its surface.
+#: Sheet-hosted: no surface; names the group.
 SHEET_HOSTED_PANEL_CLASS = (
     "group/dropdown data-[dropdown-host=sheet]:w-full "
     "data-[dropdown-host=sheet]:rounded-none data-[dropdown-host=sheet]:border-0 "
@@ -1209,17 +1209,20 @@ def DropdownDivider() -> Node:
     )
 
 
-type DropdownSheetRole = Literal["sheet", "narrow", "host", "body", "title"]
-type DropdownSheetAttribute = str  # e.g. "data-dropdown-sheet"
+type SheetRole = Literal["sheet", "narrow", "host", "panel", "body", "title"]
+type SheetAttribute = str  # e.g. "data-dropdown-sheet"
 
 #: The attributes ts/elements/narrow-sheet.ts reads and stamps.
-DROPDOWN_SHEET_ATTRIBUTES: Mapping[DropdownSheetRole, DropdownSheetAttribute] = {
+SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "sheet": "data-dropdown-sheet",
     "narrow": "data-dropdown-narrow",
     "host": "data-dropdown-host",
+    "panel": "data-sheet-panel",
     "body": "data-sheet-body",
     "title": "data-dropdown-sheet-title",
 }
+#: The ``host`` value of a panel lent to a sheet.
+SHEET_HOST_VALUE = "sheet"
 
 
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
@@ -1255,6 +1258,8 @@ def _assemble(
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
+    if sheet_title is not None and behavior == "sheet":
+        raise ValueError("The sheet behavior brings its own sheet.")
     config_attributes = [
         (key.replace("_", "-"), value) for key, value in (config or {}).items()
     ]
@@ -1340,7 +1345,7 @@ def _sheet_dialog(
         class_=_SHEET_DIALOG_CLASS,
     )[
         ModalPanel(
-            [("data-sheet-panel", "")],
+            [(SHEET_ATTRIBUTES["panel"], "")],
             class_=(
                 f"flex w-full {height_class} flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
@@ -1349,7 +1354,7 @@ def _sheet_dialog(
         )[
             header,
             Div(
-                [(DROPDOWN_SHEET_ATTRIBUTES["body"], "")],
+                [(SHEET_ATTRIBUTES["body"], "")],
                 class_=(
                     "min-h-0 overflow-y-auto overscroll-contain px-2 pt-2 "
                     "pb-[max(1rem,env(safe-area-inset-bottom))]"
@@ -1400,17 +1405,17 @@ def dropdown_sheet(title: Child) -> Fragment:
     header = ModalPanelHeader(
         title,
         title_id=None,
-        title_attributes=[(DROPDOWN_SHEET_ATTRIBUTES["title"], "")],
+        title_attributes=[(SHEET_ATTRIBUTES["title"], "")],
     )
     return Fragment(
         _sheet_dialog(
-            [(DROPDOWN_SHEET_ATTRIBUTES["sheet"], "")],
+            [(SHEET_ATTRIBUTES["sheet"], "")],
             header=header,
             height_class=_DROPDOWN_SHEET_HEIGHT_CLASS,
         ),
         # Missing CSS keeps the anchored panel.
         Span(
-            [(DROPDOWN_SHEET_ATTRIBUTES["narrow"], "")],
+            [(SHEET_ATTRIBUTES["narrow"], "")],
             aria_hidden="true",
             class_="pointer-events-none absolute size-0 hidden max-sm:block",
         ),

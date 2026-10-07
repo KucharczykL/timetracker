@@ -1,6 +1,7 @@
 /** The bottom sheet's slide and lifecycle events. */
 import type { MenuController } from "./menu-behavior.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
 import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
@@ -12,7 +13,7 @@ interface PendingNavigation {
 }
 
 type TimerHandle = number;
-type FrameHandle = number;
+export type FrameHandle = number;
 
 interface PendingLeave {
   finish: FinishLeave;
@@ -59,7 +60,7 @@ function navigateTo(pending: PendingNavigation): void {
   pending.focusTarget.focus({ preventScroll: true });
 }
 
-/** The sheet's hooks around a close. */
+/** The sheet's hooks around open and close. */
 export interface SheetCoreOptions {
   initialFocus?: () => HTMLElement | null;
   /** Runs before `dropdown:show`. */
@@ -71,7 +72,7 @@ export interface SheetCoreOptions {
 }
 
 export interface SheetCore {
-  /** False when the modal layer refused. */
+  /** False unless this call opened it. */
   open: (opener?: HTMLElement) => boolean;
   close: () => void;
   isOpen: () => boolean;
@@ -84,9 +85,9 @@ export function attachSheetCore(
   dialog: HTMLDialogElement,
   options: SheetCoreOptions = {},
 ): SheetCore {
-  const panel = dialog.querySelector<HTMLElement>("[data-sheet-panel]");
+  const panel = dialog.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.panel}]`);
   if (!panel) {
-    throw new TypeError("A bottom sheet requires [data-sheet-panel].");
+    throw new TypeError(`A bottom sheet requires [${SHEET_ATTRIBUTES.panel}].`);
   }
 
   let entered = false;
@@ -135,9 +136,13 @@ export function attachSheetCore(
     },
     onClosed: () => {
       clearMotion();
-      options.beforeHide?.();
-      render();
-      host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
+      try {
+        options.beforeHide?.();
+      } finally {
+        // Listeners wait on it, whatever threw.
+        render();
+        host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
+      }
       options.afterHide?.();
     },
   });
@@ -146,7 +151,13 @@ export function attachSheetCore(
   const open = (opener?: HTMLElement): boolean => {
     if (modal.state() !== "closed") return false;
     if (!modal.open(opener)) return false;
-    options.beforeShow?.();
+    try {
+      options.beforeShow?.();
+    } catch (error) {
+      // No open sheet without its show.
+      modal.close();
+      throw error;
+    }
     render();
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
     openFrame = window.requestAnimationFrame(() => {
@@ -181,9 +192,6 @@ export function attachSheet(
     throw new TypeError('drop-down behavior="sheet" requires a <dialog> target.');
   }
   const dialog = target;
-  if (!dialog.querySelector("[data-sheet-panel]")) {
-    throw new TypeError('drop-down behavior="sheet" requires [data-sheet-panel].');
-  }
 
   let pendingNavigation: PendingNavigation | null = null;
 
@@ -199,12 +207,12 @@ export function attachSheet(
     },
   });
 
-  const open = (): void => {
+  const open = (opener?: HTMLElement): void => {
     if (sheet.isOpen()) return;
     // A hidden trigger: the sheet is unavailable.
     if (!isReachable(toggle)) return;
     // Safari does not focus a clicked button.
-    sheet.open(toggle);
+    sheet.open(opener ?? toggle);
   };
 
   toggle.addEventListener("click", () => (sheet.isOpen() ? sheet.close() : open()));

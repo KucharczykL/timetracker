@@ -369,7 +369,7 @@ def _calendar_nav_button(direction: str, glyph: str, label: str) -> Node:
 
 def sheet_close_button() -> Node:
     """Close, shown only in a sheet."""
-    #: The popup closes on outside press.
+    # Anchored, an outside press closes it.
     return Span(class_="hidden group-data-[dropdown-host=sheet]/dropdown:contents")[
         footer_button("close", "Close")
     ]
@@ -421,10 +421,8 @@ def date_calendar_shell(
     field has nothing to preset). ``static=True`` flows the calendar inline
     instead of as a popup (the quick-facet host already owns visibility).
 
-    The non-static popup is the ``<drop-down>``'s ``[data-menu]`` (issue #485
-    follow-up): attachMenu owns visibility via the ``hidden`` attribute and
-    viewport-aware fixed positioning, so it carries no positioning classes of
-    its own (no ``absolute``/``top-full``/``mt-1``) — only its surface look."""
+    The non-static popup is the ``<drop-down>``'s ``[data-menu]``; its host
+    places it, so it carries only its surface look."""
     children: list[Node] = []
     if presets is not None:
         preset_buttons = [
@@ -497,9 +495,8 @@ def DateRangeCalendar(*, input_name_prefix: str, static: bool = False) -> Node:
     Cancel / Clear / Select footer. Hidden until the calendar toggle opens it.
 
     ``static=True`` is the panel variant (:func:`DateRangePanel`): the
-    calendar flows statically, always visible, and the footer shrinks to
-    Clear alone — Cancel/Select only exist to close the popup, and the
-    hosting dropdown owns open/close."""
+    calendar flows statically, always visible, and the footer is Clear and
+    a submitting Apply; the hosting dropdown owns open/close."""
     footer_buttons: list[Node] = []
     if not static:
         footer_buttons.append(footer_button("cancel", "Cancel"))

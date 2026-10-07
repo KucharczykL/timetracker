@@ -251,6 +251,12 @@ describe("date-picker calendar", () => {
 describe("date-picker Close", () => {
   it("closes the calendar and keeps the value", () => {
     const picker = mount();
+    const [year, month, day] = picker.querySelectorAll<HTMLInputElement>(
+      "input[data-date-part]",
+    );
+    typeDigits(year, "2026");
+    typeDigits(month, "06");
+    typeDigits(day, "15");
     picker
       .querySelector<HTMLElement>("[data-date-picker-calendar-toggle]")!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -260,6 +266,59 @@ describe("date-picker Close", () => {
       .querySelector<HTMLElement>("[data-date-range-close]")!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(calendar.hasAttribute("hidden")).toBe(true);
+    expect(hidden(picker).value).toBe("2026-06-15");
+  });
+});
+
+describe("date-picker in a sheet", () => {
+  it("keeps aria-expanded on its calendar button", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    document.body.replaceChildren();
+    const dropdown = document.createElement("drop-down");
+    dropdown.setAttribute("behavior", "date-calendar");
+    dropdown.innerHTML = `
+      <date-picker>
+        <input type="hidden" data-date-picker-hidden />
+        <div data-date-picker-field data-toggle>
+          ${segment("year", 4, "YYYY")}${segment("month", 2, "MM")}${segment("day", 2, "DD")}
+          <button data-date-picker-calendar-toggle></button>
+        </div>
+        <div data-date-range-calendar data-menu popover="manual" hidden>
+          <button data-date-range-prev></button>
+          <span data-date-range-month-label></span>
+          <button data-date-range-next></button>
+          <div data-date-range-grid></div>
+          <button data-date-range-clear></button>
+          <button data-date-range-close></button>
+        </div>
+      </date-picker>
+      <dialog data-modal data-dropdown-sheet>
+        <div data-sheet-panel>
+          <h2 data-dropdown-sheet-title>Day</h2>
+          <button data-modal-dismiss type="button">×</button>
+          <div data-sheet-body></div>
+        </div>
+      </dialog>
+      <span data-dropdown-narrow></span>`;
+    const sentinel = dropdown.querySelector<HTMLElement>("[data-dropdown-narrow]")!;
+    sentinel.getClientRects = () => [new DOMRect()] as unknown as DOMRectList;
+    document.body.appendChild(dropdown);
+    const button = dropdown.querySelector<HTMLElement>("[data-date-picker-calendar-toggle]")!;
+    const dialog = dropdown.querySelector("dialog")!;
+
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(dialog.open).toBe(true);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+
+    dialog
+      .querySelector<HTMLElement>("[data-date-range-close]")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(dialog.open).toBe(false);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    vi.unstubAllGlobals();
   });
 });
 

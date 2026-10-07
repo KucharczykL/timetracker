@@ -1,6 +1,6 @@
 import { registerBehavior } from "../dropdown-behaviors.js";
 
-// Date-calendar dropdown (issue #485 follow-up): a DateRangePicker/DatePicker
+// Date-calendar dropdown: a DateRangePicker/DatePicker
 // popup hosted in <drop-down behavior="date-calendar">, mirroring the
 // inline-combobox shape — the field is a typing surface (segments), and the
 // picker element itself decides WHEN to open (its calendar-icon click, or a
@@ -21,8 +21,9 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 // - a small `gap` so the popup doesn't sit flush against the field it opens
 //   under (every other dropdown is flush; a calendar reads better with
 //   daylight).
+// - `sheetFocus`: the first focus when the panel is a sheet.
 //
-// attachMenu and the stack do the rest.
+// The host (anchored panel or sheet) does the rest.
 registerBehavior("date-calendar", {
   menuOptions: () => ({
     itemSelector: "[data-date-calendar-no-items]",
@@ -30,8 +31,9 @@ registerBehavior("date-calendar", {
     keepOpenOnTab: true,
     gap: 4,
   }),
-  // The picked day, else today.
+  // The picked day or year, else today.
   sheetFocus: (menu) =>
-    menu.querySelector<HTMLElement>('[data-date][aria-selected="true"]') ??
-    menu.querySelector<HTMLElement>('[data-date][aria-current="date"]'),
+    menu.querySelector<HTMLElement>(
+      '[data-date][aria-selected="true"], [data-year][aria-current="page"]',
+    ) ?? menu.querySelector<HTMLElement>('[data-date][aria-current="date"]'),
 });

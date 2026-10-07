@@ -1,10 +1,14 @@
 """A dropdown panel opens as a bottom sheet below 640 px."""
 
+import json
 import re
+from urllib.parse import unquote
 
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, ViewportSize, expect
+
+from games.views.filtering import builder_url_for
 
 LOGIN = ("tester", "secret123")
 PHONE = ViewportSize(width=375, height=812)
@@ -156,4 +160,97 @@ def test_a_quick_facet_applies_from_its_sheet(phone: Page, live_server, errors):
     with page.expect_navigation():
         sheet.get_by_role("button", name="Apply", exact=True).click()
     assert "duration_only" in page.url
+    assert errors == []
+
+
+def test_escape_leaves_a_sheet_for_its_calendar_button(
+    phone: Page, live_server, errors
+):
+    page = phone
+    _open_started(page, live_server)
+    expect(page.locator(SHEET)).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator(SHEET)).to_have_count(0)
+    expect(
+        page.locator(f"{STARTED} [data-date-picker-calendar-toggle]")
+    ).to_be_focused()
+    assert errors == []
+
+
+def test_a_range_calendar_selects_and_cancels_in_its_sheet(
+    phone: Page, live_server, errors
+):
+    page = phone
+    stated = {"purchased": {"value": "", "value2": "", "modifier": "BETWEEN"}}
+    page.goto(f"{live_server.url}{builder_url_for('purchases', json.dumps(stated))}")
+    picker = page.locator("drop-down:has(> date-range-picker)").first
+    toggle = picker.locator("[data-date-range-calendar-toggle]")
+    sheet = page.locator(SHEET)
+
+    def day(number: int):
+        return (
+            sheet.locator("[data-date-range-grid] button[data-date]")
+            .filter(has_text=re.compile(rf"^{number}$"))
+            .first
+        )
+
+    toggle.click()
+    expect(sheet).to_be_visible()
+    sheet.get_by_role("button", name="Cancel", exact=True).click()
+    expect(page.locator(SHEET)).to_have_count(0)
+
+    toggle.click()
+    day(10).click()
+    day(12).click()
+    sheet.get_by_role("button", name="Select", exact=True).click()
+    expect(page.locator(SHEET)).to_have_count(0)
+    expect(picker.locator('input[data-date-range-hidden="min"]')).to_have_value(
+        re.compile(r"-10$")
+    )
+    expect(picker.locator('input[data-date-range-hidden="max"]')).to_have_value(
+        re.compile(r"-12$")
+    )
+    assert errors == []
+
+
+def _open_overflow_facet(page: Page, label: str):
+    page.locator("[data-quick-overflow-trigger]").click()
+    facet = page.locator("drop-down[data-quick-facet]").filter(
+        has=page.get_by_role("button", name=label, exact=True)
+    )
+    facet.get_by_role("button", name=label, exact=True).click()
+    return facet
+
+
+def test_a_date_facet_applies_from_its_calendar_footer(
+    phone: Page, live_server, errors
+):
+    page = phone
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    _open_overflow_facet(page, "Day")
+    sheet = page.locator(SHEET)
+    expect(sheet).to_be_visible()
+    sheet.get_by_role("button", name="Today", exact=True).click()
+    expect(sheet.get_by_role("button", name="Apply", exact=True)).to_have_count(1)
+    with page.expect_navigation():
+        sheet.get_by_role("button", name="Apply", exact=True).click()
+    assert '"day"' in unquote(page.url)
+    assert errors == []
+
+
+def test_a_facet_sheet_survives_the_bar_reflowing(phone: Page, live_server, errors):
+    page = phone
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    facet = _open_overflow_facet(page, "Timing")
+    expect(page.locator(SHEET)).to_be_visible()
+    page.set_viewport_size(ViewportSize(width=560, height=812))
+    page.wait_for_timeout(200)
+    panel = page.locator("#quick-timing_mode-dropdown")
+    if page.locator(SHEET).count():
+        expect(
+            page.locator(SHEET).locator("#quick-timing_mode-dropdown")
+        ).to_have_count(1)
+    else:
+        assert panel.evaluate("panel => !panel.closest('dialog')")
+    expect(facet.locator("#quick-timing_mode-dropdown")).to_have_count(1)
     assert errors == []

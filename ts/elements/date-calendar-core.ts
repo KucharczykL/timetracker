@@ -165,8 +165,8 @@ let calendarIdCounter = 0;
  * stamping (the widget owns these under `inlineTrigger`, not attachMenu —
  * see date-calendar.ts), open()/close() delegated to the closest
  * `<drop-down>`, the toggle's click handler, and resyncing aria-expanded
- * when attachMenu closes the popup for a reason this element didn't
- * initiate (outside press, Escape, Tab, another panel opening).
+ * when the host opens or closes on its own (outside press, Escape,
+ * Tab, a move between hosts).
  *
  * `staticAlways` (the DateRangePanel variant) skips the host entirely — it
  * lives inside a DIFFERENT, unrelated `<drop-down>` (the quick-facet's own
@@ -202,8 +202,7 @@ export function bindCalendarPopupHost(options: {
 
   const open = (): void => {
     options.beforeOpen();
-    // Render before opening: attachMenu unhides then measures scrollHeight
-    // for its flip decision, so stale (or empty) grid content must never be it.
+    // Render first: the host shows what is there.
     options.render();
     // Safari does not focus a tapped button.
     dropdownHost?.open(options.toggleButton ?? undefined);
@@ -334,8 +333,8 @@ export function bindSingleSelectCalendar(options: {
   }
 
   popup
-    .querySelector<HTMLElement>("[data-date-range-close]")
-    ?.addEventListener("click", () => host.close());
+    .querySelector<HTMLElement>("[data-date-range-close]")!
+    .addEventListener("click", () => host.close());
 
   // Clear: empty the value but keep the popup open (the single-select footer
   // has no Cancel/Select, only Clear — and, for the datetime field, Now).
