@@ -192,6 +192,8 @@ _HIDDEN_WHEN_LENT_CLASS = "in-data-[dropdown-host=sheet]:hidden!"
 _LENT_BOX_CLASS = (
     "in-data-[dropdown-host=sheet]:sticky in-data-[dropdown-host=sheet]:top-0"
 )
+#: A panel's footer stays below its list.
+_PANEL_LISTBOX_SHEET_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-[calc(var(--sheet-visible-height,100dvh)*0.9-13rem)]!"
 #: The sheet, not the rows, caps the list.
 _LENT_LISTBOX_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-none!"
 #: The phone's stand-in for the box.
@@ -657,10 +659,11 @@ def _combobox_children(
     ]
     if multi_select:
         listbox_attributes.append(("aria-multiselectable", "true"))
-    #: Either home may sit in a sheet.
-    listbox_attributes.append(("class", _LENT_LISTBOX_CLASS))
     if home == "drop_down":
+        listbox_attributes.append(("class", _LENT_LISTBOX_CLASS))
         box_class = f"{box_class} {_LENT_BOX_CLASS}"
+    else:
+        listbox_attributes.append(("class", _PANEL_LISTBOX_SHEET_CLASS))
     options_panel: Node
     if home == "dialog":
         options_panel = Div(listbox_attributes, class_=_DIALOG_LISTBOX_CLASS)[
