@@ -1359,7 +1359,7 @@ def _plural(count: int, noun: str, plural: str) -> str:
 
 
 def _counted(count: int, noun: str, plural: str) -> str:
-    return f"{count} more {noun if count == 1 else plural}"
+    return _plural(count, f"more {noun}", f"more {plural}")
 
 
 def _previous_note(game: Game, copies: CopyRows) -> Node | None:

@@ -15,6 +15,7 @@ from purchases import (
     refund_purchase,
     remove_purchase,
     request_run,
+    void_refund,
 )
 
 from games import tasks
@@ -181,7 +182,7 @@ def test_the_query_count_holds_over_more_copies(
     client, owned_user, owned_library, graph
 ):
     record_entry(owned_library, graph.release)
-    #: The first ended copy adds one query.
+    #: Baseline includes the ended-purchase count.
     end_entry_access(record_entry(owned_library, graph.release))
     client.force_login(owned_user)
     _page(client, graph.game)
@@ -399,3 +400,27 @@ def test_the_library_tab_query_count_holds_over_more_purchases(
         client.get(url)
 
     assert len(four) == len(one)
+
+
+def test_refunds_alone_read_plural(client, owned_user, owned_library, graph):
+    held = record_entry(owned_library, graph.release)
+    for _ in range(2):
+        refund_purchase(record_purchase(held, kind="upgrade"), None)
+    client.force_login(owned_user)
+
+    assert _note(_page(client, graph.game)) == (
+        "There are 2 more purchases previously in your library."
+    )
+
+
+def test_a_voided_refund_returns_to_the_card(client, owned_user, owned_library, graph):
+    held = record_entry(owned_library, graph.release)
+    purchase = void_refund(
+        refund_purchase(record_purchase(held, kind="upgrade", name="Back"), None)
+    )
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert f"entry-menu-{held.pk}-purchase-{purchase.pk}" in html
+    assert "previously in your library" not in html

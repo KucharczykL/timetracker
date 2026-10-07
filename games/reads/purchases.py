@@ -316,11 +316,16 @@ def copy_purchases(library: UserLibrary, entry_ids: Iterable[EntryId]) -> CopyPu
     return grouped
 
 
-def unrefunded(purchases: Sequence[ValuedRow]) -> list[ValuedRow]:
-    """The purchases no refund names."""
+def unrefunded(purchases: Iterable[ValuedRow]) -> list[ValuedRow]:
+    """Purchases stating no refund."""
     return [
         purchase for purchase in purchases if stated(purchase, PURCHASE_REFUND) is None
     ]
+
+
+def card_purchases(purchases: CopyPurchases, entry_id: EntryId) -> list[ValuedRow]:
+    """One copy's unrefunded purchases, for cards and menus."""
+    return unrefunded(purchases.get(entry_id, ()))
 
 
 #: What every purchase page reads.

@@ -721,9 +721,10 @@ docs/           — Additional documentation
   Game detail lists each held copy's live, unrefunded purchases
   (`copy_purchases`, then `unrefunded`), and the copy's menu carries their
   acts (`games/views/purchase_menu.py`); one sentence counts and links the
-  ended copies, their purchases and held copies' refunds
-  ([#1468](docs/superpowers/specs/2026-10-07-issue-1468-refunded-purchase-copy-screens-design.md)). Contract is
-  [Every purchase write](docs/superpowers/specs/2026-10-01-issue-724-purchase-writes-design.md)
+  ended copies, their purchases and held copies' refunded purchases.
+  Contract for that sentence is
+  [The copy screens reach every purchase](docs/superpowers/specs/2026-10-07-issue-1468-refunded-purchase-copy-screens-design.md).
+  Contract is [Every purchase write](docs/superpowers/specs/2026-10-01-issue-724-purchase-writes-design.md)
   #1266 (P5b2): the Purchases list is selectable; `purchase.edit`
   (kind, price with Keep, day, note; `games/bulk_purchase_edit.py`) and
   `purchase.remove` share `games/bulk_purchases.py`, and the list's read

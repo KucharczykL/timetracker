@@ -318,6 +318,7 @@ def test_an_ended_copy_prints_its_refunded_purchase(logged_in, owned_library, gr
 
     html = logged_in.get(reverse("games:list_library")).content.decode()
 
+    assert f'id="purchase-amount-{refunded.pk}"' in html
     assert ">7.25 EUR<" in html
     assert f"entry-menu-{entry.pk}-purchase-{refunded.pk}" not in html
 
