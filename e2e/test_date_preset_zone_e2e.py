@@ -69,6 +69,8 @@ def test_today_preset_uses_the_display_zone(
     expect(panel.locator("[data-range-min]")).to_have_value(display_today)
     expect(panel.locator("[data-range-max]")).to_have_value(display_today)
 
-    page.locator('quick-filter-bar button[type="submit"]').click()
+    page.locator(
+        'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+    ).click()
     page.wait_for_url("**filter=**")
     expect(page.locator(f"#session-row-{session.pk}")).to_be_visible()

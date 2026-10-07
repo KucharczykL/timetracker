@@ -141,9 +141,11 @@ def test_stats_year_picker_geometry_scales_and_clamps(
     authenticated_page: Page, live_server, stats_data
 ):
     page = authenticated_page
-    page.set_viewport_size({"width": 600, "height": 800})
+    # Above sm: the anchored popup.
+    page.set_viewport_size({"width": 700, "height": 800})
     page.goto(f"{live_server.url}{reverse('games:stats_alltime')}")
-    picker = page.locator("year-picker")
+    # Below sm the panel moves to the sheet.
+    picker = page.locator("drop-down:has(> year-picker)")
     toggle = picker.locator("[data-year-picker-toggle]")
     popup = picker.locator("[data-year-picker-popup]")
     grid = picker.locator("[data-year-picker-grid]")
@@ -233,7 +235,8 @@ def test_stats_year_picker_narrow_viewport_pointer_navigation(
     page = authenticated_page
     page.set_viewport_size({"width": 360, "height": 800})
     page.goto(f"{live_server.url}{reverse('games:stats_by_year', args=[2024])}")
-    picker = page.locator("year-picker")
+    # Below sm the panel moves to the sheet.
+    picker = page.locator("drop-down:has(> year-picker)")
     toggle = picker.locator("[data-year-picker-toggle]")
     popup = picker.locator("[data-year-picker-popup]")
     previous = picker.locator("[data-year-picker-prev]")

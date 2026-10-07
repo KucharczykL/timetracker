@@ -43,7 +43,9 @@ def _filter_from_url(url: str) -> dict:
 
 
 def _quick_apply(page: Page) -> None:
-    page.locator('quick-filter-bar button[type="submit"]').click()
+    page.locator(
+        'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+    ).click()
 
 
 def test_quick_facet_apply_filters_the_list(
