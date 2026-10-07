@@ -433,7 +433,7 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
             messages.error(request, failure.message)
             refused_status = failure.status_code
         else:
-            #: An edit states no act, so its own dispatch.
+            #: An edit states no act.
             if form.cleaned_data.get("mark_as_played"):
                 record_facts_for_request(
                     request,

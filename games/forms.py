@@ -2556,10 +2556,7 @@ class PlaythroughForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
         return game
 
     def clean(self) -> dict[str, Any]:
-        """A box the render took out is False.
-
-        The command decides the status, under the lock.
-        """
+        """A box the render took out is False."""
         cleaned = super().clean() or {}
         cleaned.setdefault("also_mark_played", False)
         cleaned.setdefault("also_mark_completed", False)

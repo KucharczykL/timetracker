@@ -183,8 +183,7 @@ def _state_endpoint(
     stated and answer this person success.
 
     A correction carries the note the endpoint already
-    states, or it states a note nobody wrote. Only the
-    first act implies a status.
+    states, or it states a note nobody wrote.
     """
     endpoint, act, implies_status = statement
     if act is None:

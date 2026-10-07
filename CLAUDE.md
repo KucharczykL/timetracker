@@ -275,11 +275,15 @@ docs/           — Additional documentation
   `UndoPlaythroughCompletion`, which void only where batch's own event is
   still latest of that endpoint's family — statement, correction and void
   are one family — then puts back status batch changed,
-  read from its own `playergame.status_changed`. Endpoint and status it
-  implies are one writer, `games/writes/playthrough_endpoints.py`, over the
-  rule and status write in `games/writes/implied_status.py`: Played
-  where Unplayed, Completed every time, stated on appended and
-  on replayed outcome alike, keyed from row's key. Row's ⋯ items post one-row
+  read from its own `playergame.status_changed`. An act states the
+  status it implies in its own dispatch, last (#1034): `implies_status`
+  on start/completion, `implies_played`/`implies_completed` on
+  `CreatePlaythrough`, `implies_played` on `CreateSession`, always on a
+  move; `RecordPlayerGameFacts.implied_status` where no act is stated.
+  One rule, `status_implied_over` (`games/models.py`): Played over
+  Unplayed alone, Completed wherever not held; `played_is_offered` is
+  the render hint over it. Contract is
+  [An act states its status](docs/superpowers/specs/2026-10-07-issue-1034-status-walk-back-in-command-design.md). Row's ⋯ items post one-row
   statement to those acts (`one_row_statement` in `games/bulk_tray.py`); no
   per-row route, because act with side effect is never one press. Its
   `removed_at` is projector's, so absent from
@@ -308,9 +312,8 @@ docs/           — Additional documentation
   follow, a record naming the run alone follows through
   `historicalplaytime.moved` (no `restated_at`), one naming another run
   refuses; target's placeholder removed, bare source mints one, bucket
-  refused. `restate_run` then states the status the run's endpoints
-  imply on the target through the same rule, keyed `<move key>-status`;
-  source keeps its own; a later failure raises `MovedThenFailed`
+  refused. The move states the status the run's endpoints imply on the
+  target; source keeps its own; a later failure raises `MovedThenFailed`
   carrying the move. Edit playthrough and PATCH `game_id` dispatch it
   before the description; batch Undo reads the run's game at batch time
   (`run_game_at_batch`). Contract is
