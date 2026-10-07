@@ -152,6 +152,7 @@ def a_session(library, run, release=None) -> PlayerSession:
                 day_zone=calendar_day_zone(library).key,
             ),
             release_id=None if release is None else release.pk,
+            implies_played=False,
         ),
     )
     return PlayerSession.objects.latest("created_at")
@@ -164,6 +165,7 @@ def created_session(run, release) -> CreateSession:
             started_at=START, day_zone=calendar_day_zone(run.library).key
         ),
         release_id=release.pk,
+        implies_played=False,
     )
 
 
@@ -294,7 +296,12 @@ def test_a_move_to_another_game_clears_the_release(
 
 def test_a_move_within_the_game_keeps_the_release(owned_library, graph, run, entry):
     session = a_session(owned_library, run, graph.release)
-    state(owned_library, CreatePlaythrough(game_id=graph.game.pk))
+    state(
+        owned_library,
+        CreatePlaythrough(
+            game_id=graph.game.pk, implies_played=False, implies_completed=False
+        ),
+    )
     sibling = Playthrough.objects.exclude(pk=run.pk).get(player_game=run.player_game)
 
     state(
@@ -432,6 +439,7 @@ def test_an_edit_moving_games_states_the_targets_release_after_the_move(
         session,
         a_draft(other_run, other_graph.release),
         correlation_id=correlation_id,
+        implies_played=False,
     )
 
     session.refresh_from_db()
@@ -454,7 +462,11 @@ def test_an_edit_that_keeps_the_release_states_nothing_about_it(
     correlation_id = uuid.uuid7()
 
     restate_session(
-        owned_user, session, a_draft(run, graph.release), correlation_id=correlation_id
+        owned_user,
+        session,
+        a_draft(run, graph.release),
+        correlation_id=correlation_id,
+        implies_played=False,
     )
 
     assert not LibraryEvent.objects.filter(correlation_id=correlation_id).exists()
@@ -470,7 +482,14 @@ def test_a_run_move_counts_the_releases_it_cleared(
     moved = restate_run(
         owned_user,
         run,
-        RunDraft(started=None, completed=None, note="", game_id=other_graph.game.pk),
+        RunDraft(
+            started=None,
+            completed=None,
+            note="",
+            game_id=other_graph.game.pk,
+            implies_played=False,
+            implies_completed=False,
+        ),
         correlation_id=uuid.uuid7(),
     )
 
@@ -1012,6 +1031,7 @@ def test_an_edit_whose_release_refuses_writes_nothing(
             session,
             a_draft(other_run, uncopied, note="moved"),
             correlation_id=uuid.uuid7(),
+            implies_played=False,
         )
 
     assert refused.value.message == NO_COPY_OF_RELEASE
@@ -1211,7 +1231,14 @@ def test_the_toast_names_one_cleared_release(
     moved = restate_run(
         owned_user,
         run,
-        RunDraft(started=None, completed=None, note="", game_id=other_graph.game.pk),
+        RunDraft(
+            started=None,
+            completed=None,
+            note="",
+            game_id=other_graph.game.pk,
+            implies_played=False,
+            implies_completed=False,
+        ),
         correlation_id=uuid.uuid7(),
     )
 

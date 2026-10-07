@@ -46,7 +46,9 @@ def _state(command, owned_user, owned_library, key):
 
 def _start(run, owned_user, owned_library, when=DAY, note=""):
     _state(
-        StartPlaythrough(playthrough_id=run.pk, when=when, note=note),
+        StartPlaythrough(
+            playthrough_id=run.pk, when=when, note=note, implies_status=False
+        ),
         owned_user,
         owned_library,
         "start",
@@ -55,7 +57,9 @@ def _start(run, owned_user, owned_library, when=DAY, note=""):
 
 def _complete(run, owned_user, owned_library, when=DAY, note=""):
     _state(
-        CompletePlaythrough(playthrough_id=run.pk, when=when, note=note),
+        CompletePlaythrough(
+            playthrough_id=run.pk, when=when, note=note, implies_status=False
+        ),
         owned_user,
         owned_library,
         "complete",

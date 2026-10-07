@@ -32,10 +32,13 @@ from games.reads.calendar import calendar_today
 from games.reads.events import aggregate_events, run_game_at_batch
 from games.reads.playergame_facts import status_change
 from games.writes.answers import answered
-from games.writes.implied_status import StatusRefused
 from games.writes.playergame import record_facts
-from games.writes.playthrough import undo_completion, undo_start
-from games.writes.playthrough_endpoints import StatedAct, state_completion, state_start
+from games.writes.playthrough import (
+    complete_run,
+    start_run,
+    undo_completion,
+    undo_start,
+)
 from timetracker.temporal import TemporalValue
 
 logger = logging.getLogger("games")
@@ -153,24 +156,6 @@ def _stated_day(choice: ChoiceValue | None, run: Playthrough, name: str) -> date
         return DayStatement.decode(choice).day
 
 
-def _report_a_refused_status(stated: StatedAct, run: Playthrough, name: str) -> None:
-    """The endpoint stands; the word it implies did not.
-
-    Logged, not counted: a refusal here would report a stated endpoint
-    as refused.
-    """
-    if not isinstance(stated.status, StatusRefused):
-        return
-    logger.info(
-        "[bulk]: %s stated the endpoint of playthrough %s of library %s, and "
-        "the game kept its status: %s",
-        name,
-        run.pk,
-        run.library_id,
-        stated.status.refusal.message,
-    )
-
-
 def start_one(
     actor: User,
     run: Playthrough,
@@ -180,16 +165,16 @@ def start_one(
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     day = _stated_day(choice, run, START_RUNS.name)
-    stated = state_start(
+    result = start_run(
         actor,
         run,
         TemporalValue.from_day(day),
+        implies_status=True,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         source_metadata=_source(START_RUNS.name),
     )
-    _report_a_refused_status(stated, run, START_RUNS.name)
-    return RowOutcome.of(stated.result)
+    return RowOutcome.of(result)
 
 
 def complete_one(
@@ -201,16 +186,16 @@ def complete_one(
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     day = _stated_day(choice, run, COMPLETE_RUNS.name)
-    stated = state_completion(
+    result = complete_run(
         actor,
         run,
         TemporalValue.from_day(day),
+        implies_status=True,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         source_metadata=_source(COMPLETE_RUNS.name),
     )
-    _report_a_refused_status(stated, run, COMPLETE_RUNS.name)
-    return RowOutcome.of(stated.result)
+    return RowOutcome.of(result)
 
 
 # ── Backward ─────────────────────────────────────────────────────────────────

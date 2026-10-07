@@ -169,6 +169,7 @@ def test_a_command_states_the_completion_the_year_counts(owned_user, owned_libra
             playthrough_id=run.pk,
             when=TemporalValue.from_day(date(YEAR, 8, 3)),
             note="",
+            implies_status=False,
         ),
         actor=owned_user,
         library=owned_library,

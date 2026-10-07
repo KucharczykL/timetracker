@@ -9,7 +9,11 @@ from django.test.utils import isolate_apps
 from django.utils import timezone
 
 from games.commands.endpoint import certainly_reversed
-from games.commands.playergame import PlayerGameNotTracked, TrackGame
+from games.commands.playergame import (
+    PlayerGameNotTracked,
+    RecordPlayerGameFacts,
+    TrackGame,
+)
 from games.commands.playersession import (
     CreateSession,
     MoveSessionToPlaythrough,
@@ -45,6 +49,7 @@ from games.models import (
     HistoricalPlaytimeRun,
     LibraryEvent,
     PlayerGame,
+    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -53,6 +58,7 @@ from games.models import (
     RemovableLibraryQuerySet,
 )
 from games.reads import referrers
+from games.reads.events import created_aggregate_id, dispatched_events
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.referrers import BlockingReferrer
 from timetracker.temporal import TemporalValue
@@ -81,7 +87,9 @@ def test_creating_a_playthrough_records_it_and_projects_it(
     _track(owned_user, owned_library, game)
 
     result = dispatch(
-        CreatePlaythrough(game_id=game.pk),
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="second-run",
@@ -106,7 +114,9 @@ def test_creating_a_playthrough_for_an_untracked_game_is_refused(
 ):
     with pytest.raises(PlayerGameNotTracked):
         dispatch(
-            CreatePlaythrough(game_id=game.pk),
+            CreatePlaythrough(
+                game_id=game.pk, implies_played=False, implies_completed=False
+            ),
             actor=owned_user,
             library=owned_library,
             idempotency_key="untracked",
@@ -125,7 +135,9 @@ def test_creating_a_playthrough_for_a_removed_game_is_refused(
 
     with pytest.raises(CommandRejected) as refusal:
         dispatch(
-            CreatePlaythrough(game_id=game.pk),
+            CreatePlaythrough(
+                game_id=game.pk, implies_played=False, implies_completed=False
+            ),
             actor=owned_user,
             library=owned_library,
             idempotency_key="removed",
@@ -146,7 +158,9 @@ def test_a_repeat_under_one_key_records_nothing_further(
     _track(owned_user, owned_library, game)
     for _ in range(2):
         dispatch(
-            CreatePlaythrough(game_id=game.pk),
+            CreatePlaythrough(
+                game_id=game.pk, implies_played=False, implies_completed=False
+            ),
             actor=owned_user,
             library=owned_library,
             idempotency_key="second-run",
@@ -168,6 +182,8 @@ def test_one_build_states_the_run_its_note_and_both_acts(
             started=ActStatement(TemporalValue.from_day(date(2026, 1, 2))),
             completed=ActStatement(TemporalValue.from_day(date(2026, 2, 3))),
             note="12h 30m",
+            implies_played=False,
+            implies_completed=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -192,6 +208,8 @@ def test_an_act_with_no_day_is_still_an_act(owned_user, owned_library, game):
             game_id=game.pk,
             started=ActStatement(None),
             completed=ActStatement(None),
+            implies_played=False,
+            implies_completed=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -212,7 +230,9 @@ def test_a_creation_that_states_no_act_states_no_endpoint(
     _track(owned_user, owned_library, game)
 
     dispatch(
-        CreatePlaythrough(game_id=game.pk),
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="actless",
@@ -237,6 +257,8 @@ def test_a_creation_whose_acts_are_reversed_records_nothing(
                 game_id=game.pk,
                 started=ActStatement(TemporalValue.from_day(date(2026, 2, 3))),
                 completed=ActStatement(TemporalValue.from_day(date(2026, 1, 2))),
+                implies_played=False,
+                implies_completed=False,
             ),
             actor=owned_user,
             library=owned_library,
@@ -261,6 +283,8 @@ def test_the_endpoint_notes_of_a_created_run_are_its_own(
             game_id=game.pk,
             started=ActStatement(None, "  from the box  "),
             completed=ActStatement(TemporalValue.from_day(date(2026, 2, 3)), "100%"),
+            implies_played=False,
+            implies_completed=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -386,7 +410,9 @@ def test_the_order_rule_refuses_only_the_certainly_impossible(
 
 def _start(owned_user, owned_library, playthrough, *, when, note="", key="start"):
     return dispatch(
-        StartPlaythrough(playthrough_id=playthrough.pk, when=when, note=note),
+        StartPlaythrough(
+            playthrough_id=playthrough.pk, when=when, note=note, implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key=key,
@@ -395,7 +421,9 @@ def _start(owned_user, owned_library, playthrough, *, when, note="", key="start"
 
 def _complete(owned_user, owned_library, playthrough, *, when, note="", key="done"):
     return dispatch(
-        CompletePlaythrough(playthrough_id=playthrough.pk, when=when, note=note),
+        CompletePlaythrough(
+            playthrough_id=playthrough.pk, when=when, note=note, implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key=key,
@@ -669,7 +697,9 @@ def test_stating_an_endpoint_of_no_playthrough_is_refused_alike(
     """A row of another library and no row answer in one sentence."""
     with pytest.raises(PlaythroughNotHeld) as absent:
         dispatch(
-            StartPlaythrough(playthrough_id=uuid.uuid7(), when=None, note=""),
+            StartPlaythrough(
+                playthrough_id=uuid.uuid7(), when=None, note="", implies_status=False
+            ),
             actor=owned_user,
             library=owned_library,
             idempotency_key="nowhere",
@@ -1558,7 +1588,9 @@ def _second_run(owned_user, owned_library, key="second-run"):
     #: CommandResult carries no events; diff the rows.
     before = set(Playthrough.objects.values_list("pk", flat=True))
     dispatch(
-        CreatePlaythrough(game_id=game.pk),
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key=key,
@@ -2223,6 +2255,7 @@ def _record_session(owned_user, owned_library, run, key="session"):
                 started_at=timezone.now() - timedelta(hours=1),
                 day_zone="UTC",
             ),
+            implies_played=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -2338,7 +2371,9 @@ def test_a_creation_appends_the_creation_alone(owned_user, owned_library, game):
     before = LibraryEvent.objects.count()
 
     dispatch(
-        CreatePlaythrough(game_id=game.pk),
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="unnamed-run",
@@ -2372,3 +2407,143 @@ def test_each_endpoint_repeat_answers_in_its_own_words(owned_user, owned_library
         f"Playthrough {run.pk} states no start to take back.",
         f"Playthrough {run.pk} states no completion to take back.",
     ]
+
+
+def _create(owned_user, owned_library, game, **fields):
+    return dispatch(
+        CreatePlaythrough(game_id=game.pk, **fields),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def _status_types(result):
+    return list(dispatched_events(result).values_list("event_type", flat=True))
+
+
+DAY_ACT = ActStatement(TemporalValue.from_day(date(2026, 1, 2)))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_with_both_boxes_states_completed_alone(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+
+    result = _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        completed=DAY_ACT,
+        implies_played=True,
+        implies_completed=True,
+    )
+
+    types = _status_types(result)
+    assert types[-1] == "library.playergame.status_changed"
+    assert types.count("library.playergame.status_changed") == 1
+    assert PlayerGame.objects.get().status == "completed"
+    #: The created run stays first.
+    assert created_aggregate_id(result) == Playthrough.objects.latest("pk").pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_with_a_start_alone_states_played(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+
+    _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        implies_played=True,
+        implies_completed=True,
+    )
+
+    assert PlayerGame.objects.get().status == "played"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_without_boxes_states_no_status(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+
+    result = _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        completed=DAY_ACT,
+        implies_played=False,
+        implies_completed=False,
+    )
+
+    assert "library.playergame.status_changed" not in _status_types(result)
+    assert PlayerGame.objects.get().status == "unplayed"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "held",
+    ["played", "retired", "shelved", "abandoned", "completed"],
+)
+def test_a_creation_never_walks_a_status_back(owned_user, owned_library, game, held):
+    _track(owned_user, owned_library, game)
+    dispatch(
+        RecordPlayerGameFacts(game_id=game.pk, status=PlayerGameStatus(held)),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="held",
+    )
+
+    _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        implies_played=True,
+        implies_completed=False,
+    )
+
+    assert PlayerGame.objects.get().status == held
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_with_both_acts_and_the_played_box_states_played(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+
+    _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        completed=DAY_ACT,
+        implies_played=True,
+        implies_completed=False,
+    )
+
+    assert PlayerGame.objects.get().status == "played"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_key_with_another_implication_is_refused(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    def start(implies_status):
+        return dispatch(
+            StartPlaythrough(
+                playthrough_id=run.pk, when=None, note="", implies_status=implies_status
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="one-start",
+        )
+
+    start(False)
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        start(True)

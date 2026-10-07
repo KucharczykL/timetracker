@@ -56,8 +56,6 @@ from games.list_columns import column_choice
 from games.models import (
     Device,
     Game,
-    PlayerGame,
-    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     UserLibrary,
@@ -77,7 +75,6 @@ from games.sorting import (
     parse_find_filter,
 )
 from games.views.filtering import warn_unknown_sort
-from games.views.playergame_writes import record_facts_for_request
 from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
 from games.views.session_menu import session_row_menu
@@ -328,23 +325,6 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _record_played(request: HttpRequest, game: Game) -> None:
-    """State Played for a game the projection calls unplayed."""
-    tracked = PlayerGame.objects.filter(
-        library=cast(User, request.user).library, game=game
-    ).first()
-    #: No row states nothing. record_facts() tracks it
-    #: first, as it does for both sibling paths.
-    if tracked is not None and tracked.status != PlayerGameStatus.UNPLAYED:
-        return
-    record_facts_for_request(
-        request,
-        game,
-        status=PlayerGameStatus.PLAYED,
-        correlation_id=new_correlation_id(),
-    )
-
-
 def _session_draft(form: SessionForm, library: UserLibrary) -> SessionDraft:
     """What the valid form states, in the library's calendar."""
     device = form.cleaned_data.get("device")
@@ -400,19 +380,17 @@ def add_session(request: HttpRequest) -> HttpResponse:
     #: The same tail renders an invalid form.
     refused_status = 200
     if form.is_valid():
-        game = form.cleaned_data["game"]
         try:
             record_session(
                 cast(User, request.user),
                 _session_draft(form, library),
+                implies_played=bool(form.cleaned_data.get("mark_as_played")),
                 correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
             messages.error(request, failure.message)
             refused_status = failure.status_code
         else:
-            if form.cleaned_data.get("mark_as_played"):
-                _record_played(request, game)
             return redirect(return_url(request, fallback="games:list_sessions"))
 
     # TODO: re-add custom buttons #91
@@ -440,20 +418,18 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     )
     refused_status = 200
     if form.is_valid():
-        game = form.cleaned_data["game"]
         try:
             restate_session(
                 cast(User, request.user),
                 session,
                 _session_draft(form, library),
+                implies_played=bool(form.cleaned_data.get("mark_as_played")),
                 correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
             messages.error(request, failure.message)
             refused_status = failure.status_code
         else:
-            if form.cleaned_data.get("mark_as_played"):
-                _record_played(request, game)
             return redirect(return_url(request, fallback="games:list_sessions"))
     return _render_session_form(request, form, "Edit Session", status=refused_status)
 

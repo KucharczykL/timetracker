@@ -38,17 +38,16 @@ The endpoints of a run imply a status on its new game:
 - Else a start implies Played on an Unplayed game.
 - Else nothing.
 
-`games/writes/implied_status.py` holds the rule and the status write,
-which the endpoint acts share. The status takes the correlation id of
-the move and its key with `-status`. A repeated move is `Unchanged` and
-states nothing. The source keeps its status.
+The move states that status in the move's dispatch, last, by the rule
+of [An act states its status](2026-10-07-issue-1034-status-walk-back-in-command-design.md).
+A repeated move is `Unchanged` and states nothing. The source keeps its
+status.
 
 The move reads the endpoints from before the draft; the Edit page boxes
-state the rest, and the Played box reads the status after the move.
+state the rest, and each first act reads the status after the move.
 
-A rejection or a collision refuses the status, not the move; a key
-mismatch is a defect. The page toasts a refusal, the API logs it. A
-failure after the move raises `MovedThenFailed`, carrying the move.
+The move and its status land or fail together. A failure after the
+move raises `MovedThenFailed`, carrying the move.
 
 ## The record event
 

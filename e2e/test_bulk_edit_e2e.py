@@ -35,6 +35,7 @@ def _two_sessions(library, actor, device=None) -> list[PlayerSession]:
                     day=date(2026, 3, day), duration=timedelta(hours=2)
                 ),
                 device_id=None if device is None else device.pk,
+                implies_played=False,
             ),
             actor=actor,
             library=library,

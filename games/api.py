@@ -148,7 +148,6 @@ from games.valuations import CurrencyCode
 from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.endpoint import KEEP, Restated
-from games.writes.implied_status import StatusRefused
 from games.writes.libraryentry import (
     record_entry,
     restate_entry,
@@ -485,6 +484,9 @@ def create_playthrough(request, payload: PlaythroughIn):
                 started=ActStatement(payload.started),
                 completed=ActStatement(payload.completed),
                 note=payload.note,
+                #: The API states no implied status.
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=correlation_id,
         )
@@ -574,7 +576,7 @@ def partial_update_playthrough(
     #: would hand back canonical strings and every key, and
     #: the commands take values.
     stated = payload.model_fields_set
-    moved = restate_run(
+    restate_run(
         cast("User", request.user),
         run,
         RunDraft(
@@ -583,20 +585,12 @@ def partial_update_playthrough(
             if "completed" in stated
             else None,
             note=payload.note if "note" in stated else run.note,
+            implies_played=False,
+            implies_completed=False,
             game_id=payload.game_id,
         ),
         correlation_id=new_correlation_id(),
     )
-    #: Move stood; its status was refused.
-    if moved is not None and isinstance(moved.status, StatusRefused):
-        logger.warning(
-            "Playthrough %s of library %s moved to game %s, which was not marked %s.",
-            run.pk,
-            library.pk,
-            moved.target.pk,
-            moved.status.status.value,
-            exc_info=moved.status.refusal,
-        )
     return Status(204, None)
 
 
@@ -1204,6 +1198,7 @@ def create_session(
                 emulated=payload.emulated,
                 release_id=payload.release_id,
             ),
+            implies_played=False,
             correlation_id=new_correlation_id(),
             idempotency_key=stated_key,
         )

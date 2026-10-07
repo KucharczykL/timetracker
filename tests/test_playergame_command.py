@@ -897,3 +897,145 @@ def test_recording_facts_for_an_untracked_game_is_its_own_rejection(
             library=owned_library,
             idempotency_key="facts",
         )
+
+
+def status_events(library) -> int:
+    return LibraryEvent.objects.filter(
+        library=library, event_type="library.playergame.status_changed"
+    ).count()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_implied_played_states_played_over_unplayed(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    result = state(
+        owned_user,
+        owned_library,
+        game,
+        {"implied_status": PlayerGameStatus.PLAYED},
+        "implied",
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_implied_played_never_walks_completed_back(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    state(
+        owned_user,
+        owned_library,
+        game,
+        {"status": PlayerGameStatus.COMPLETED},
+        "completed",
+    )
+
+    result = state(
+        owned_user,
+        owned_library,
+        game,
+        {"implied_status": PlayerGameStatus.PLAYED},
+        "implied",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_implied_status_beside_mastery_states_mastery_alone(
+    owned_user, owned_library
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    state(
+        owned_user,
+        owned_library,
+        game,
+        {"status": PlayerGameStatus.SHELVED},
+        "shelved",
+    )
+
+    state(
+        owned_user,
+        owned_library,
+        game,
+        {"implied_status": PlayerGameStatus.PLAYED, "mastered": True},
+        "implied",
+    )
+
+    row = PlayerGame.objects.get()
+    assert (row.status, row.mastered) == (PlayerGameStatus.SHELVED, True)
+    assert status_events(owned_library) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_removed_game_takes_no_implied_status(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    dispatch(
+        RemovePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="remove",
+    )
+
+    result = state(
+        owned_user,
+        owned_library,
+        game,
+        {"implied_status": PlayerGameStatus.PLAYED},
+        "implied",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert result.reason is not None
+    assert "removed" in result.reason
+    assert status_events(owned_library) == 0
+
+
+def test_an_implied_status_alone_states_a_fact():
+    RecordPlayerGameFacts(game_id=uuid.uuid7(), implied_status=PlayerGameStatus.PLAYED)
+
+
+def test_a_status_beside_an_implied_one_cannot_be_built():
+    with pytest.raises(ValueError, match="implied"):
+        RecordPlayerGameFacts(
+            game_id=uuid.uuid7(),
+            status=PlayerGameStatus.SHELVED,
+            implied_status=PlayerGameStatus.PLAYED,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_key_recorded_before_the_implied_status_replays(owned_user, owned_library):
+    """A digest from the four-fact command."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    stated = {
+        "status": PlayerGameStatus.PLAYED,
+        "mastered": None,
+        "excluded_from_unfinished": None,
+        "excluded_from_dropped": None,
+    }
+    first = state(owned_user, owned_library, game, stated, "before-deploy")
+    old_digest = fingerprint_command_input(
+        {
+            "command": "library.playergame.record_facts",
+            "fields": {"game_id": game.pk, **stated},
+        }
+    )
+    LibraryIdempotencyRecord.objects.filter(idempotency_key="before-deploy").update(
+        request_fingerprint=old_digest, fingerprint_version=5
+    )
+
+    again = state(owned_user, owned_library, game, stated, "before-deploy")
+
+    assert (first.outcome, again.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )

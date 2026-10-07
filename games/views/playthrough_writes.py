@@ -14,7 +14,6 @@ from django.http import HttpRequest
 
 from games.models import Game, Playthrough
 from games.writes.answers import CommandFailed, WriteAnswer
-from games.writes.implied_status import StatusRefused, StatusStated
 from games.writes.playthrough import (
     MovedRun,
     MovedThenFailed,
@@ -69,15 +68,7 @@ def restate_run_for_request(
 
 
 def _toast_the_move(request: HttpRequest, moved: MovedRun) -> None:
-    """The move, then a status it could not state."""
     messages.info(request, moved_sentence(moved))
-    if isinstance(moved.status, StatusRefused):
-        #: Not the refusal's sentence: the move stands.
-        messages.error(
-            request,
-            f"{moved.target} could not be marked {moved.status.status.label}. "
-            "Set its status on the game's page.",
-        )
 
 
 def moved_sentence(moved: MovedRun) -> str:
@@ -88,8 +79,8 @@ def moved_sentence(moved: MovedRun) -> str:
         sentence = f"Moved to {moved.target}."
     if moved.removed_a_placeholder:
         sentence += " Its empty playthrough was removed."
-    if isinstance(moved.status, StatusStated):
-        sentence += f" {moved.target} is now {moved.status.status.label}."
+    if moved.stated_status is not None:
+        sentence += f" {moved.target} is now {moved.stated_status.label}."
     if moved.minted_a_placeholder:
         sentence += (
             f" {moved.source} got an empty playthrough, since every tracked "

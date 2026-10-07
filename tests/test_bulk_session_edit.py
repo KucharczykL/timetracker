@@ -75,6 +75,7 @@ def a_session(owned_user, run, day=A_DAY, device=None, emulated=False, note=""):
             device_id=None if device is None else device.pk,
             emulated=emulated,
             note=note,
+            implies_played=False,
         ),
         actor=owned_user,
         library=owned_user.library,

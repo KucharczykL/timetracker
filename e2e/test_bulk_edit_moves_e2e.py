@@ -50,6 +50,7 @@ def _a_game_with_a_bucket(library, actor) -> tuple[Playthrough, Playthrough]:
                 timing=DurationOnlyTiming(
                     day=date(2026, 3, day), duration=timedelta(hours=2)
                 ),
+                implies_played=False,
             ),
             actor=actor,
             library=library,

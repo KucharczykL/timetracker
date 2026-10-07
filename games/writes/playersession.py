@@ -12,6 +12,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 from games.commands.historical_playtime import HistoricalPlaytimeStatement
+from games.commands.playergame import RecordPlayerGameFacts
 from games.commands.playersession import (
     CorrectSessionTiming,
     CreateSession,
@@ -35,7 +36,14 @@ from games.events.dispatch import Command, CommandRejected, CommandResult, dispa
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_RELEASE_CHANGED, ZoneName
 from games.ids import PlayerSessionId
-from games.models import Device, Game, PlayerSession, Playthrough, UserLibrary
+from games.models import (
+    Device,
+    Game,
+    PlayerGameStatus,
+    PlayerSession,
+    Playthrough,
+    UserLibrary,
+)
 from games.reads.calendar import calendar_day_zone
 from games.reads.devices import held_devices
 from games.reads.events import created_aggregate_id, dispatched_events
@@ -91,6 +99,7 @@ def record_session(
     actor: User,
     draft: SessionDraft,
     *,
+    implies_played: bool,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
 ) -> uuid.UUID:
@@ -107,6 +116,7 @@ def record_session(
                 release_id=draft.release_id,
                 note=draft.note,
                 emulated=draft.emulated,
+                implies_played=implies_played,
             ),
             actor=actor,
             library=actor.library,
@@ -166,12 +176,14 @@ def restate_session(
     session: PlayerSession,
     draft: SessionDraft,
     *,
+    implies_played: bool,
     correlation_id: uuid.UUID,
 ) -> None:
     """State the draft's differences onto a session.
 
-    Four dispatches at most, one fact each, under one correlation:
-    the timing, then the description, then the move, then the Release.
+    Five dispatches at most, one fact each, under one correlation:
+    the timing, then the description, then the move, then the Release,
+    then the Played the box implies.
     Each answers Unchanged for state the row holds, so a failed submit
     is finished by submitting again. The description names only the
     facts that differ, and is not dispatched when none does, since a
@@ -235,6 +247,25 @@ def restate_session(
                 library=actor.library,
                 correlation_id=correlation_id,
             )
+        if implies_played:
+            _dispatch(
+                RecordPlayerGameFacts(
+                    game_id=_run_game_id(actor.library, draft.playthrough_id),
+                    implied_status=PlayerGameStatus.PLAYED,
+                ),
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+
+
+def _run_game_id(library: UserLibrary, playthrough_id: uuid.UUID) -> uuid.UUID:
+    """The catalog game the run belongs to."""
+    return (
+        Playthrough.objects.filter(library=library, pk=playthrough_id)
+        .values_list("player_game__game_id", flat=True)
+        .get()
+    )
 
 
 def correct_session(
@@ -546,6 +577,7 @@ def clone_session(
                 device_id=None if resumed.device is None else resumed.device.pk,
                 note="",
                 emulated=resumed.emulated,
+                implies_played=False,
             ),
             actor=actor,
             library=actor.library,

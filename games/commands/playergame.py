@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar, cast
+from typing import ClassVar, NamedTuple, Protocol, cast
 
 from games.commands.scope import Refusal, library_row, visible_row
 from games.events.dispatch import (
@@ -11,6 +11,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
+    RowUnreadable,
 )
 from games.events.playergame import (
     PLAYERGAME_CREATED,
@@ -25,7 +26,15 @@ from games.events.playergame import (
 from games.events.playthrough import playthrough_created
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Game, PlayerGame, PlayerGameStatus
+from games.ids import PlayerGameId
+from games.models import (
+    IMPLIED_STATUSES,
+    Game,
+    ImpliedStatus,
+    PlayerGame,
+    PlayerGameStatus,
+    status_implied_over,
+)
 from games.reads.calendar import calendar_today
 from timetracker.temporal import TemporalValue
 
@@ -33,6 +42,82 @@ from timetracker.temporal import TemporalValue
 def _stated_now(context: CommandContext) -> TemporalValue:
     """A change happens on the library's calendar."""
     return TemporalValue.from_day(calendar_today(context.library))
+
+
+def _status_change(
+    context: CommandContext, player_game_id: uuid.UUID, status: PlayerGameStatus
+) -> NewEvent:
+    return PLAYERGAME_STATUS_CHANGED.new(
+        aggregate_id=player_game_id,
+        #: A test pins Literal and choices equal.
+        payload={"status": cast("StatusValue", status.value)},
+        effective_time=_stated_now(context),
+    )
+
+
+class StatusHolder(Protocol):
+    """A tracked game and its held status."""
+
+    @property
+    def player_game_id(self) -> PlayerGameId: ...
+
+    @property
+    def status(self) -> PlayerGameStatus: ...
+
+
+def held_status(row: PlayerGame) -> PlayerGameStatus:
+    """The row's status, or a defect."""
+    try:
+        return PlayerGameStatus(row.status)
+    except ValueError as error:
+        raise RowUnreadable(
+            f"PlayerGame {row.pk} of library {row.library_id} holds status "
+            f"{row.status!r}, which no PlayerGameStatus names."
+        ) from error
+
+
+class HeldGame(NamedTuple):
+    """A game this library tracks already."""
+
+    row: PlayerGame
+
+    @property
+    def player_game_id(self) -> PlayerGameId:
+        return self.row.pk
+
+    @property
+    def status(self) -> PlayerGameStatus:
+        return held_status(self.row)
+
+
+def implied_if(implies: bool, status: ImpliedStatus) -> ImpliedStatus | None:
+    """The status, where the act implies it."""
+    return status if implies else None
+
+
+def implied_status_change(
+    context: CommandContext, holder: StatusHolder, implied: ImpliedStatus
+) -> NewEvent | None:
+    """The status an act implies, if stated."""
+    if not status_implied_over(holder.status, implied):
+        return None
+    return _status_change(context, holder.player_game_id, implied)
+
+
+def with_implied_status(
+    context: CommandContext,
+    acts: Sequence[NewEvent] | Unchanged,
+    holder: StatusHolder,
+    implied: ImpliedStatus | None,
+) -> Sequence[NewEvent] | Unchanged:
+    """The acts, then the implied status.
+
+    Last: created_aggregate_id reads the first.
+    """
+    if isinstance(acts, Unchanged) or implied is None:
+        return acts
+    change = implied_status_change(context, holder, implied)
+    return acts if change is None else [*acts, change]
 
 
 class PlayerGameNotTracked(CommandRejected):
@@ -180,13 +265,26 @@ class RecordPlayerGameFacts(Command):
     mastered: bool | None = None
     excluded_from_unfinished: bool | None = None
     excluded_from_dropped: bool | None = None
+    #: By the rule; never on a removed game.
+    implied_status: ImpliedStatus | None = None
 
     def __post_init__(self) -> None:
+        if self.implied_status not in (None, *IMPLIED_STATUSES):
+            raise ValueError(
+                f"RecordPlayerGameFacts implies {self.implied_status}, and no "
+                "act implies it."
+            )
+        if self.status is not None and self.implied_status is not None:
+            raise ValueError(
+                "RecordPlayerGameFacts states a status and an implied one. "
+                "The stated one always wins, so the implied one says nothing."
+            )
         if (
             self.status is None
             and self.mastered is None
             and self.excluded_from_unfinished is None
             and self.excluded_from_dropped is None
+            and self.implied_status is None
         ):
             raise ValueError(
                 "RecordPlayerGameFacts states no fact. A command that asks for "
@@ -199,14 +297,13 @@ class RecordPlayerGameFacts(Command):
         #: Under dispatch's lock: no concurrent duplicate.
         events: list[NewEvent] = []
         if self.status is not None and tracked.status != self.status:
-            events.append(
-                PLAYERGAME_STATUS_CHANGED.new(
-                    aggregate_id=tracked.pk,
-                    #: A test pins Literal and choices equal.
-                    payload={"status": cast("StatusValue", self.status.value)},
-                    effective_time=_stated_now(context),
-                )
+            events.append(_status_change(context, tracked.pk, self.status))
+        if self.implied_status is not None and tracked.removed_at is None:
+            implied = implied_status_change(
+                context, HeldGame(tracked), self.implied_status
             )
+            if implied is not None:
+                events.append(implied)
         if self.mastered is not None and tracked.mastered != self.mastered:
             events.append(
                 PLAYERGAME_MASTERED_CHANGED.new(
@@ -233,6 +330,11 @@ class RecordPlayerGameFacts(Command):
                     aggregate_id=tracked.pk,
                     payload={"excluded_from_dropped": self.excluded_from_dropped},
                 )
+            )
+        if not events and tracked.removed_at is not None:
+            return Unchanged(
+                f"This library removed game {self.game_id}, so it takes no "
+                "implied status and holds every other stated fact."
             )
         if not events:
             return Unchanged(

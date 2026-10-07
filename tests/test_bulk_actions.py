@@ -78,6 +78,7 @@ def a_written_session(library, actor, run, duration=LONG_ENOUGH, day=A_DAY):
         CreateSession(
             playthrough_id=run.pk,
             timing=DurationOnlyTiming(day=day, duration=duration),
+            implies_played=False,
         ),
         actor=actor,
         library=library,

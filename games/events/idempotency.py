@@ -47,7 +47,7 @@ class WordedValue(TypedDict):
 #: Bump when a deployed record's digest changes.
 #:
 #: Field names and value words enter digests.
-FINGERPRINT_VERSION = 5
+FINGERPRINT_VERSION = 6
 
 
 _VALUE_WORDS: dict[FingerprintWord, DefinitionSite] = {}

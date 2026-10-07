@@ -371,6 +371,7 @@ def test_a_started_event_writes_the_date_the_marker_and_the_note(
             playthrough_id=run.pk,
             when=TemporalValue.from_month(2024, 3),
             note="blind run",
+            implies_status=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -398,7 +399,9 @@ def test_played_before_reads_back_as_an_act_with_no_day(owned_user, owned_librar
     run = Playthrough.objects.get()
 
     dispatch(
-        StartPlaythrough(playthrough_id=run.pk, when=None, note=""),
+        StartPlaythrough(
+            playthrough_id=run.pk, when=None, note="", implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="start",
@@ -416,7 +419,10 @@ def test_a_completed_event_leaves_the_start_alone(owned_user, owned_library):
     run = Playthrough.objects.get()
     dispatch(
         StartPlaythrough(
-            playthrough_id=run.pk, when=TemporalValue.from_month(2024, 3), note="blind"
+            playthrough_id=run.pk,
+            when=TemporalValue.from_month(2024, 3),
+            note="blind",
+            implies_status=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -428,6 +434,7 @@ def test_a_completed_event_leaves_the_start_alone(owned_user, owned_library):
             playthrough_id=run.pk,
             when=TemporalValue.from_day(date(2024, 4, 2)),
             note="hard mode",
+            implies_status=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -450,11 +457,19 @@ def test_an_empty_database_replay_reproduces_both_endpoints(owned_user, owned_li
     for command, key in (
         (
             StartPlaythrough(
-                playthrough_id=run.pk, when=TemporalValue.from_month(2024, 3), note="a"
+                playthrough_id=run.pk,
+                when=TemporalValue.from_month(2024, 3),
+                note="a",
+                implies_status=False,
             ),
             "start",
         ),
-        (CompletePlaythrough(playthrough_id=run.pk, when=None, note="b"), "done"),
+        (
+            CompletePlaythrough(
+                playthrough_id=run.pk, when=None, note="b", implies_status=False
+            ),
+            "done",
+        ),
     ):
         dispatch(command, actor=owned_user, library=owned_library, idempotency_key=key)
     before = list(Playthrough.objects.order_by("pk").values())
@@ -485,7 +500,9 @@ def started_run(owned_user, owned_library, *, when, note="first"):
     track(owned_user, owned_library, game)
     run = Playthrough.objects.get()
     dispatch(
-        StartPlaythrough(playthrough_id=run.pk, when=when, note=note),
+        StartPlaythrough(
+            playthrough_id=run.pk, when=when, note=note, implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="start",
@@ -497,7 +514,10 @@ def _describe_and_correct(owned_user, owned_library, run):
     """One event of every descriptive and corrective kind."""
     dispatch(
         CompletePlaythrough(
-            playthrough_id=run.pk, when=TemporalValue.from_year(2024), note="done"
+            playthrough_id=run.pk,
+            when=TemporalValue.from_year(2024),
+            note="done",
+            implies_status=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -597,7 +617,10 @@ def test_a_corrected_completion_replaces_the_date_and_keeps_the_marker(
     run = Playthrough.objects.get()
     dispatch(
         CompletePlaythrough(
-            playthrough_id=run.pk, when=TemporalValue.from_year(2023), note="done"
+            playthrough_id=run.pk,
+            when=TemporalValue.from_year(2023),
+            note="done",
+            implies_status=False,
         ),
         actor=owned_user,
         library=owned_library,

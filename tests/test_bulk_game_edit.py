@@ -493,9 +493,10 @@ def test_an_undo_of_a_dropped_flag_already_back_is_already_so(
 
 def test_the_fact_lists_agree():
     """Command, statement, wire and Undo name one set."""
+    #: Bulk Edit never states an implied status.
     command_facts = {
         field.name for field in dataclass_fields(RecordPlayerGameFacts)
-    } - {"game_id"}
+    } - {"game_id", "implied_status"}
 
     assert command_facts == {
         field.name for field in dataclass_fields(GameEditStatement)

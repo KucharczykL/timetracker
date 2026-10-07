@@ -36,12 +36,10 @@ state no rule of their own. `StartPlaythrough` and `CompletePlaythrough`
 refuse a run that states that endpoint. The refusal is a sentence for that
 row, and the batch continues.
 
-`games/writes/playthrough_endpoints.py` states the endpoint and then the
-status. It states the status for an appended outcome and for a replayed
-one. A replay is a chunk that a person posts again, and the status can be
-the statement that the first post did not make. The status has a key that
-comes from the key of the row. A refused status is a log entry, and the
-row counts as done.
+Each act passes `implies_status=True`. The command states the endpoint
+and then the status in one dispatch, by the rule of
+[An act states its status](2026-10-07-issue-1034-status-walk-back-in-command-design.md).
+A replay replays both.
 
 ## The voids
 

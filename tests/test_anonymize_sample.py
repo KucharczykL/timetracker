@@ -148,6 +148,7 @@ def _record(owner, run, timing, *, device=None, note=""):
             release_id=None,
         ),
         correlation_id=uuid.uuid7(),
+        implies_played=False,
     )
 
 
@@ -188,6 +189,7 @@ def _build_dataset():
             playthrough_id=run_one.pk,
             when=TemporalValue.from_day(date(2021, 6, 1)),
             note="",
+            implies_status=False,
         ),
         actor=owner,
         library=owner.library,
@@ -198,6 +200,7 @@ def _build_dataset():
             playthrough_id=run_one.pk,
             when=TemporalValue.from_day(date(2021, 6, 20)),
             note="finished on holiday",
+            implies_status=False,
         ),
         actor=owner,
         library=owner.library,
@@ -1130,6 +1133,8 @@ class ReassignedIdentityTest(TransactionTestCase):
             CreatePlaythrough(
                 game_id=game.pk,
                 started=ActStatement(TemporalValue.from_day(date(2020, 1, 1)), ""),
+                implies_played=False,
+                implies_completed=False,
             ),
             actor=owner,
             library=owner.library,

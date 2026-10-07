@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from django.db import connection
 
 from common.date_time_presentation import zone_or_none
+from games.commands.playergame import HeldGame, implied_if, with_implied_status
 from games.commands.playthrough import (
     PlaythroughNotHeld,
     _live_run,
@@ -52,6 +53,7 @@ from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
     HistoricalPlaytime,
+    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -576,6 +578,8 @@ class CreateSession(Command):
     release_id: uuid.UUID | None = None
     note: str = ""
     emulated: bool = False
+    #: Played, where the game is Unplayed.
+    implies_played: bool
 
     def __post_init__(self) -> None:
         #: One spelling, so restatements fingerprint alike.
@@ -597,16 +601,21 @@ class CreateSession(Command):
         )
         payload = timing_payload(self.timing)
         _check_calendar(context, payload)
-        return [
-            playersession_created(
-                run.pk,
-                timing=payload,
-                device=None if device is None else capture_reference(device),
-                release=None if release is None else capture_reference(release),
-                note=self.note,
-                emulated=self.emulated,
-            )
-        ]
+        return with_implied_status(
+            context,
+            [
+                playersession_created(
+                    run.pk,
+                    timing=payload,
+                    device=None if device is None else capture_reference(device),
+                    release=None if release is None else capture_reference(release),
+                    note=self.note,
+                    emulated=self.emulated,
+                )
+            ],
+            HeldGame(run.player_game),
+            implied_if(self.implies_played, PlayerGameStatus.PLAYED),
+        )
 
 
 @dataclass(frozen=True, slots=True)

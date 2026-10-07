@@ -35,7 +35,9 @@ def a_tracked_game(owned_user, game) -> PlayerGame:
 def a_second_run(owned_user, owned_library, game) -> None:
     """One more run, beside the game's first."""
     dispatch(
-        CreatePlaythrough(game_id=game.pk),
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key=str(uuid.uuid7()),

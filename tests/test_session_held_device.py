@@ -60,6 +60,7 @@ def a_session(library, run, device) -> PlayerSession:
                 day_zone=calendar_day_zone(library).key,
             ),
             device_id=device.pk,
+            implies_played=False,
         ),
         actor=library.user,
         library=library,

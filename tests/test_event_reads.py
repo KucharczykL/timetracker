@@ -55,6 +55,7 @@ def a_written_session(library, actor, run, day=A_DAY) -> PlayerSession:
         CreateSession(
             playthrough_id=run.pk,
             timing=DurationOnlyTiming(day=day, duration=timedelta(hours=9)),
+            implies_played=False,
         ),
         actor=actor,
         library=library,

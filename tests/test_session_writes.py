@@ -23,6 +23,8 @@ from games.models import (
     Game,
     HistoricalPlaytime,
     LibraryEvent,
+    PlayerGame,
+    PlayerGameStatus,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -86,7 +88,10 @@ def test_recording_answers_the_new_rows_id(owned_user, owned_library, game):
     correlation_id = uuid.uuid7()
 
     session_id = record_session(
-        owned_user, _draft(run, note="first"), correlation_id=correlation_id
+        owned_user,
+        _draft(run, note="first"),
+        correlation_id=correlation_id,
+        implies_played=False,
     )
 
     row = PlayerSession.objects.get(pk=session_id)
@@ -95,14 +100,75 @@ def test_recording_answers_the_new_rows_id(owned_user, owned_library, game):
     assert _events(correlation_id) == ["library.playersession.created"]
 
 
+STATUS_CHANGED = "library.playergame.status_changed"
+
+
+def test_a_played_creation_still_answers_the_session(owned_user, owned_library, game):
+    run = tracked_run(owned_library, game)
+    correlation_id = uuid.uuid7()
+
+    session_id = record_session(
+        owned_user, _draft(run), correlation_id=correlation_id, implies_played=True
+    )
+
+    assert PlayerSession.objects.get(pk=session_id).playthrough_id == run.pk
+    assert _events(correlation_id) == ["library.playersession.created", STATUS_CHANGED]
+
+
+def test_a_played_edit_states_played_last(owned_user, owned_library, game):
+    row = session_row(game, started_at=STARTED_AT, ended_at=ENDED_AT)
+    correlation_id = uuid.uuid7()
+
+    restate_session(
+        owned_user,
+        row,
+        _draft(row.playthrough, note="again"),
+        implies_played=True,
+        correlation_id=correlation_id,
+    )
+
+    assert _events(correlation_id)[-1] == STATUS_CHANGED
+    assert PlayerGame.objects.get(game=game).status == PlayerGameStatus.PLAYED
+
+
+def test_a_refused_edit_states_no_played(owned_user, owned_library, game):
+    row = session_row(game, started_at=STARTED_AT, ended_at=ENDED_AT)
+
+    with pytest.raises(CommandFailed):
+        restate_session(
+            owned_user,
+            row,
+            _draft(
+                row.playthrough,
+                timing=TimedTiming(
+                    started_at=STARTED_AT,
+                    day_zone="Europe/Prague",
+                    ended_at=STARTED_AT - timedelta(hours=1),
+                ),
+            ),
+            implies_played=True,
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert PlayerGame.objects.get(game=game).status == PlayerGameStatus.UNPLAYED
+
+
 def test_record_session_absorbs_a_repeat_under_one_key(owned_user, owned_library, game):
     run = tracked_run(owned_library, game)
 
     first = record_session(
-        owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key="k-1"
+        owned_user,
+        _draft(run),
+        correlation_id=uuid.uuid7(),
+        idempotency_key="k-1",
+        implies_played=False,
     )
     second = record_session(
-        owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key="k-1"
+        owned_user,
+        _draft(run),
+        correlation_id=uuid.uuid7(),
+        idempotency_key="k-1",
+        implies_played=False,
     )
 
     assert first == second
@@ -115,7 +181,11 @@ def test_record_session_refuses_a_blank_key(owned_user, owned_library, game):
 
     with pytest.raises(ValueError):
         record_session(
-            owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key=""
+            owned_user,
+            _draft(run),
+            correlation_id=uuid.uuid7(),
+            idempotency_key="",
+            implies_played=False,
         )
 
     assert not PlayerSession.objects.filter(playthrough=run).exists()
@@ -130,6 +200,7 @@ def test_record_session_refuses_a_key_that_names_another_statement(
         _draft(run, note="first"),
         correlation_id=uuid.uuid7(),
         idempotency_key="k-1",
+        implies_played=False,
     )
 
     with pytest.raises(CommandFailed) as refusal:
@@ -138,6 +209,7 @@ def test_record_session_refuses_a_key_that_names_another_statement(
             _draft(run, note="second"),
             correlation_id=uuid.uuid7(),
             idempotency_key="k-1",
+            implies_played=False,
         )
 
     assert refusal.value.status_code == 409
@@ -160,6 +232,7 @@ def test_an_edit_from_timed_to_duration_only_records_one_correction(
             ),
         ),
         correlation_id=correlation_id,
+        implies_played=False,
     )
 
     row.refresh_from_db()
@@ -182,6 +255,7 @@ def test_an_unchanged_edit_records_no_event(owned_user, owned_library, game):
             ),
         ),
         correlation_id=correlation_id,
+        implies_played=False,
     )
 
     assert _events(correlation_id) == []
@@ -202,6 +276,7 @@ def test_a_note_only_edit_records_one_description(owned_user, owned_library, gam
             note="  boss fight ",
         ),
         correlation_id=correlation_id,
+        implies_played=False,
     )
 
     row.refresh_from_db()
@@ -225,6 +300,7 @@ def test_moving_the_run_records_one_move(owned_user, owned_library, game):
             ),
         ),
         correlation_id=correlation_id,
+        implies_played=False,
     )
 
     row.refresh_from_db()

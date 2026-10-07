@@ -93,6 +93,7 @@ def _session_on(user, run: Playthrough) -> None:
             timing=TimedTiming(
                 started_at=timezone.now() - timedelta(hours=1), day_zone="UTC"
             ),
+            implies_played=False,
         ),
         actor=user,
         library=user.library,

@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable, Mapping
 from datetime import timedelta
 from operator import attrgetter
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, assert_never
 from uuid import UUID
 
 from django.conf import settings
@@ -1471,6 +1471,30 @@ class PlayerGameStatus(models.TextChoices):
     RETIRED = "retired", "Retired"
     SHELVED = "shelved", "Shelved"
     ABANDONED = "abandoned", "Abandoned"
+
+
+#: The statuses an act may imply.
+type ImpliedStatus = Literal[PlayerGameStatus.PLAYED, PlayerGameStatus.COMPLETED]
+
+IMPLIED_STATUSES: tuple[ImpliedStatus, ...] = (
+    PlayerGameStatus.PLAYED,
+    PlayerGameStatus.COMPLETED,
+)
+
+
+def status_implied_over(held: PlayerGameStatus, implied: ImpliedStatus) -> bool:
+    """Whether an act's implied status is stated.
+
+    Two equality rules, not an order: Completed
+    is stated over Retired, Shelved and Abandoned.
+    """
+    match implied:
+        case PlayerGameStatus.PLAYED:
+            return held == PlayerGameStatus.UNPLAYED
+        case PlayerGameStatus.COMPLETED:
+            return held != PlayerGameStatus.COMPLETED
+        case _:
+            assert_never(implied)
 
 
 #: Done with the game: completed or retired.

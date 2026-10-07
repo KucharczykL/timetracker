@@ -35,7 +35,9 @@ def bought_game(user, library, name, completed, **purchase) -> BoughtGame:
     run = Playthrough.objects.get(player_game__game=game.game)
     if completed is not False:
         dispatch(
-            CompletePlaythrough(playthrough_id=run.pk, when=completed, note=""),
+            CompletePlaythrough(
+                playthrough_id=run.pk, when=completed, note="", implies_status=False
+            ),
             actor=user,
             library=library,
             idempotency_key=f"done-{name}",
@@ -58,6 +60,8 @@ def add_run(user, game, completed):
             started=None,
             completed=None if completed is False else ActStatement(completed),
             note="",
+            implies_played=False,
+            implies_completed=False,
         ),
         correlation_id=uuid.uuid7(),
     )
