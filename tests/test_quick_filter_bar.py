@@ -490,12 +490,13 @@ class QuickFilterBarRenderingTest(TestCase):
 
 
 class RunFacetsTest(TestCase):
-    """The two facets that ask about a session's run."""
+    """The facets that ask about a session's run."""
 
-    def test_the_sessions_row_carries_both_triggers(self):
+    def test_the_sessions_row_carries_every_trigger(self):
         html = str(QuickFilterBar(mode="sessions", builder_url="/x"))
         self.assertIn(">Playthrough<", html)
-        self.assertIn(">Outside dates<", html)
+        self.assertIn(">Before start<", html)
+        self.assertIn(">After completion<", html)
 
     def test_the_runs_kind_alone_stays_editable(self):
         filter_json = json.dumps(
@@ -513,15 +514,17 @@ class RunFacetsTest(TestCase):
         self.assertIn("<quick-filter-bar", html)
         self.assertNotIn("Advanced filter active", html)
 
-    def test_the_dates_question_alone_stays_editable(self):
-        filter_json = json.dumps(
-            {"outside_playthrough_dates": {"value": True, "modifier": "EQUALS"}}
-        )
-        html = str(
-            QuickFilterBar(mode="sessions", filter_json=filter_json, builder_url="/x")
-        )
-        self.assertIn("<quick-filter-bar", html)
-        self.assertNotIn("Advanced filter active", html)
+    def test_either_dates_question_alone_stays_editable(self):
+        for key in ("before_playthrough_start", "after_playthrough_completion"):
+            with self.subTest(key=key):
+                filter_json = json.dumps({key: {"value": True, "modifier": "EQUALS"}})
+                html = str(
+                    QuickFilterBar(
+                        mode="sessions", filter_json=filter_json, builder_url="/x"
+                    )
+                )
+                self.assertIn("<quick-filter-bar", html)
+                self.assertNotIn("Advanced filter active", html)
 
 
 _DROP_DOWN = re.compile(r"<drop-down\b[^>]*>")
@@ -627,7 +630,8 @@ class FacetOrderTest(SimpleTestCase):
             "game",
             "day",
             "playthrough_kind",
-            "outside_playthrough_dates",
+            "before_playthrough_start",
+            "after_playthrough_completion",
             "device",
             "timing_mode",
             "duration_hours",

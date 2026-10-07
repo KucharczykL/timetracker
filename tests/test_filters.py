@@ -6359,7 +6359,7 @@ class TestMultivaluedComparison:
             )
 
 
-# ── Sessions outside their run's dates ──────────────────────────────────────
+# ── Sessions beyond their run's dates ──────────────────────────────────────
 
 AN_HOUR = timedelta(hours=1)
 A_STATED_START = date(2022, 2, 1)
@@ -6416,6 +6416,9 @@ def dated_population(owned_library):
     imprecise = _dated_run(
         owned_library, "A year", started=TemporalValue.from_year(2022)
     )
+    open_start = _dated_run(
+        owned_library, "Open start", started=TemporalValue.parse("../2022-03-01")
+    )
     bucket = _bucket_run(owned_library, "Imported")
     return {
         "before_a_stated_start": duration_only_row(both, date(2021, 12, 30), AN_HOUR),
@@ -6438,14 +6441,17 @@ def dated_population(owned_library):
         "before_an_imprecise_start": duration_only_row(
             imprecise, date(2021, 6, 1), AN_HOUR
         ),
+        "before_an_open_start": duration_only_row(
+            open_start, date(2020, 6, 1), AN_HOUR
+        ),
     }
 
 
-def _answered(library, value):
+def _answered(library, field, value):
     from games.filters import filter_query_context_for_library
     from games.reads.player_sessions import library_sessions
 
-    criteria = PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=value))
+    criteria = PlayerSessionFilter(**{field: BoolCriterion(value=value)})
     return set(
         library_sessions(library).filter(
             criteria.to_q(filter_query_context_for_library(library))
@@ -6453,43 +6459,65 @@ def _answered(library, value):
     )
 
 
-#: The cases the day falls outside; every other row is inside.
-OUTSIDE_CASES = frozenset(
+#: The cases each side flags; every other row answers no.
+BEFORE_START_CASES = frozenset(
+    {"before_a_stated_start", "before_a_lone_start", "before_an_imprecise_start"}
+)
+AFTER_COMPLETION_CASES = frozenset(
+    {"after_a_stated_completion", "after_a_lone_completion"}
+)
+
+#: Rows whose run states no bound on that side.
+UNBOUNDED_BELOW = frozenset(
     {
-        "before_a_stated_start",
-        "after_a_stated_completion",
-        "before_a_lone_start",
+        "on_a_run_stating_neither",
+        "in_the_bucket",
         "after_a_lone_completion",
-        "before_an_imprecise_start",
+        "before_an_open_start",
     }
+)
+UNBOUNDED_ABOVE = frozenset(
+    {"on_a_run_stating_neither", "in_the_bucket", "after_a_lone_start"}
+)
+
+BEYOND_A_BOUND = pytest.mark.parametrize(
+    ("field", "cases", "unbounded"),
+    [
+        ("before_playthrough_start", BEFORE_START_CASES, UNBOUNDED_BELOW),
+        ("after_playthrough_completion", AFTER_COMPLETION_CASES, UNBOUNDED_ABOVE),
+    ],
 )
 
 
 @pytest.mark.django_db
-class TestSessionsOutsideTheirRunsDates:
-    def test_true_answers_the_days_no_endpoint_covers(
-        self, owned_library, dated_population
+@BEYOND_A_BOUND
+class TestSessionsBeyondTheirRunsDates:
+    def test_true_answers_the_days_beyond_that_bound(
+        self, owned_library, dated_population, field, cases, unbounded
     ):
-        assert _answered(owned_library, True) == {
-            dated_population[case] for case in OUTSIDE_CASES
+        assert _answered(owned_library, field, True) == {
+            dated_population[case] for case in cases
         }
 
-    def test_false_answers_every_other_day(self, owned_library, dated_population):
-        inside = set(dated_population) - OUTSIDE_CASES
-        assert _answered(owned_library, False) == {
-            dated_population[case] for case in inside
+    def test_false_answers_every_other_day(
+        self, owned_library, dated_population, field, cases, unbounded
+    ):
+        assert _answered(owned_library, field, False) == {
+            dated_population[case] for case in set(dated_population) - cases
         }
 
-    def test_a_run_stating_no_date_answers_no_rather_than_nothing(
-        self, owned_library, dated_population
+    def test_a_run_stating_no_bound_answers_no_rather_than_nothing(
+        self, owned_library, dated_population, field, cases, unbounded
     ):
         """A negated column comparison keeps its null rows."""
-        undated = {
-            dated_population["on_a_run_stating_neither"],
-            dated_population["in_the_bucket"],
-        }
-        assert undated <= _answered(owned_library, False)
-        assert not (undated & _answered(owned_library, True))
+        rows = {dated_population[case] for case in unbounded}
+        assert rows <= _answered(owned_library, field, False)
+        assert not (rows & _answered(owned_library, field, True))
+
+
+def test_the_two_sided_key_is_refused():
+    with pytest.raises(FilterError):
+        PlayerSessionFilter.from_json({"outside_playthrough_dates": {"value": True}})
 
 
 @pytest.mark.django_db
@@ -6565,28 +6593,37 @@ class TestTheDatesQuestionStatedTheLongWay:
             "playthrough__completed_upper",
         } <= offered
 
-    def test_two_comparisons_answer_what_the_shorthand_answers(
-        self, owned_library, dated_population
+    @pytest.mark.parametrize(
+        ("field", "bound", "modifier", "cases"),
+        [
+            (
+                "before_playthrough_start",
+                "playthrough__started_lower",
+                Modifier.LESS_THAN,
+                BEFORE_START_CASES,
+            ),
+            (
+                "after_playthrough_completion",
+                "playthrough__completed_upper",
+                Modifier.GREATER_THAN,
+                AFTER_COMPLETION_CASES,
+            ),
+        ],
+    )
+    def test_one_comparison_answers_what_the_shorthand_answers(
+        self, owned_library, dated_population, field, bound, modifier, cases
     ):
         from games.filters import filter_query_context_for_library
         from games.reads.player_sessions import library_sessions
 
-        def branch(right, modifier):
-            return PlayerSessionFilter(
-                field_comparisons=[
-                    FieldComparisonCriterion(
-                        left="effective_day", right=right, modifier=modifier
-                    )
-                ]
-            )
-
         stated = PlayerSessionFilter(
-            OR=[
-                branch("playthrough__started_lower", Modifier.LESS_THAN),
-                branch("playthrough__completed_upper", Modifier.GREATER_THAN),
+            field_comparisons=[
+                FieldComparisonCriterion(
+                    left="effective_day", right=bound, modifier=modifier
+                )
             ]
         )
         context = filter_query_context_for_library(owned_library)
-        assert set(library_sessions(owned_library).filter(stated.to_q(context))) == {
-            dated_population[case] for case in OUTSIDE_CASES
-        }
+        answered = set(library_sessions(owned_library).filter(stated.to_q(context)))
+        assert answered == {dated_population[case] for case in cases}
+        assert answered == _answered(owned_library, field, True)

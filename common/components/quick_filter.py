@@ -161,7 +161,8 @@ QUICK_FACETS: dict[FilterMode, list[AnyQuickFacet]] = {
         QuickFacet("game"),
         QuickFacet("day", "Day"),
         QuickFacet("playthrough_kind", "Playthrough"),
-        QuickFacet("outside_playthrough_dates", "Outside dates"),
+        QuickFacet("before_playthrough_start", "Before start"),
+        QuickFacet("after_playthrough_completion", "After completion"),
         QuickFacet("device"),
         QuickFacet("timing_mode", "Timing"),
         QuickFacet(

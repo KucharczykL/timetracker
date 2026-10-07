@@ -849,32 +849,38 @@ def answered(library, criteria) -> set[PlayerSession]:
     return set(library_sessions(library).filter(criteria.to_q(context)))
 
 
-def test_a_session_on_a_prerelease_is_never_outside_its_runs_dates(
+def test_a_session_on_a_prerelease_is_never_beyond_its_runs_dates(
     owned_library, graph, run, demo
 ):
-    started = TemporalValue.from_day(date(2024, 1, 1))
     Playthrough.objects.filter(pk=run.pk).update(
-        started=started, start_recorded_at=timezone.now()
+        started=TemporalValue.from_day(date(2024, 1, 1)),
+        start_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(2024, 3, 1)),
+        completion_recorded_at=timezone.now(),
     )
-    before = date(2023, 6, 1)
-    on_the_demo = duration_only_row(run, before, timedelta(hours=1), release=demo)
-    on_the_game = duration_only_row(
-        run, before, timedelta(hours=1), release=graph.release
-    )
-    unstated = duration_only_row(run, before, timedelta(hours=1))
+    rows = {}
+    for side, day in (("before", date(2023, 6, 1)), ("after", date(2024, 6, 1))):
+        rows[side, "demo"] = duration_only_row(
+            run, day, timedelta(hours=1), release=demo
+        )
+        rows[side, "game"] = duration_only_row(
+            run, day, timedelta(hours=1), release=graph.release
+        )
+        rows[side, "unstated"] = duration_only_row(run, day, timedelta(hours=1))
 
-    outside = answered(
-        owned_library,
-        PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=True)),
-    )
-    inside = answered(
-        owned_library,
-        PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=False)),
-    )
-
-    assert outside == {on_the_game, unstated}
-    assert inside == {on_the_demo}
-    assert organization_counts(owned_library).outside == 2
+    for field, side in (
+        ("before_playthrough_start", "before"),
+        ("after_playthrough_completion", "after"),
+    ):
+        flagged = answered(
+            owned_library, PlayerSessionFilter(**{field: BoolCriterion(value=True)})
+        )
+        unflagged = answered(
+            owned_library, PlayerSessionFilter(**{field: BoolCriterion(value=False)})
+        )
+        assert flagged == {rows[side, "game"], rows[side, "unstated"]}
+        assert unflagged == set(rows.values()) - flagged
+    assert organization_counts(owned_library).before_start == 2
 
 
 def test_sessions_filter_by_release_and_edition_kind(owned_library, graph, run, demo):
