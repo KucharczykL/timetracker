@@ -156,7 +156,7 @@ def copy_rows(
         )
         for copies in by_version.values()
     )
-    #: The cards' own rows: what they leave out.
+    #: Held copies' refunds the cards omit.
     refunded_purchases = sum(
         len(listed) - len(unrefunded(listed)) for listed in purchases.values()
     )

@@ -1354,12 +1354,8 @@ def _playthroughs_section(
     return Div(id_="playthroughs-container")[section]
 
 
-def _plural(count: int, noun: str, plural: str) -> str:
-    return f"{count} {noun if count == 1 else plural}"
-
-
-def _counted(count: int, noun: str, plural: str) -> str:
-    return _plural(count, f"more {noun}", f"more {plural}")
+def _plural(count: int, singular: str, plural: str) -> str:
+    return f"{count} {singular if count == 1 else plural}"
 
 
 def _previous_note(game: Game, copies: CopyRows) -> Node | None:
@@ -1368,7 +1364,7 @@ def _previous_note(game: Game, copies: CopyRows) -> Node | None:
     if copies.ended:
         parts.append(
             Link(href=filter_url(previous_copies_filter(game)))[
-                _counted(copies.ended, "copy", "copies")
+                _plural(copies.ended, "more copy", "more copies")
             ]
         )
         if copies.ended_purchases:
@@ -1384,15 +1380,15 @@ def _previous_note(game: Game, copies: CopyRows) -> Node | None:
             parts.append(" and ")
         parts.append(
             Link(href=filter_url(refunded_held_purchases_filter(game)))[
-                _counted(copies.refunded_purchases, "purchase", "purchases")
+                _plural(copies.refunded_purchases, "more purchase", "more purchases")
             ]
         )
     if not parts:
         return None
-    first = copies.ended or copies.refunded_purchases
+    leading = copies.ended or copies.refunded_purchases
     #: One inline run: the note's P is flex.
     return Span()[
-        "There is " if first == 1 else "There are ",
+        "There is " if leading == 1 else "There are ",
         *parts,
         " previously in your library.",
     ]
