@@ -6,7 +6,7 @@
 import { reportClientError } from "../client-errors.js";
 import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import type { MenuController } from "./menu-behavior.js";
-import { isModalLeaving, whenSettled } from "./modal-layer.js";
+import { type CancelSettled, isModalLeaving, whenSettled } from "./modal-layer.js";
 import { attachSheetCore, type FrameHandle } from "./sheet-controller.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
 
@@ -16,16 +16,16 @@ export interface NarrowSheetOptions {
   /** Its `aria-expanded` follows the sheet. */
   expandedToggle?: HTMLElement;
   sheetFocus?: (menu: HTMLElement) => HTMLElement | null;
-  /** Node the sheet holds; default: menu. */
+  /** Holds the menu; default: the menu. */
   lent?: HTMLElement;
   /** Focus return when no opener is stated. */
-  opener?: () => HTMLElement | null;
+  defaultOpener?: () => HTMLElement | null;
 }
 
 type CssValue = string; // e.g. "12px"
 
 /** Where a lent node returns. */
-interface PanelPlace {
+interface LentPlace {
   parent: ParentNode & Node;
   next: Node | null;
 }
@@ -34,8 +34,8 @@ interface PanelPlace {
 type SwitchState =
   | { kind: "closed" }
   | { kind: "anchored"; opener?: HTMLElement }
-  | { kind: "sheet"; opener?: HTMLElement; place: PanelPlace }
-  | { kind: "moving"; opener?: HTMLElement; place: PanelPlace | null };
+  | { kind: "sheet"; opener?: HTMLElement; place: LentPlace }
+  | { kind: "moving"; opener?: HTMLElement; place: LentPlace | null; fromSheet: boolean };
 
 let sheetTitleCounter = 0;
 
@@ -64,10 +64,13 @@ export function attachNarrowSheet(
   nameSheet(dialog);
 
   const lent = options.lent ?? menu;
+  if (!lent.contains(menu)) {
+    throw new TypeError("A lent node must hold the menu.");
+  }
   let state: SwitchState = { kind: "closed" };
   let frame: FrameHandle | null = null;
   let viewportFrame: FrameHandle | null = null;
-  let retry: object | null = null;
+  let cancelRetry: CancelSettled | null = null;
 
   const isNarrow = (): boolean => sentinel.getClientRects().length > 0;
   const setExpanded = (expanded: boolean): void =>
@@ -75,13 +78,13 @@ export function attachNarrowSheet(
 
   const isOpen = (): boolean => anchored.isOpen() || sheet.isOpen();
 
-  const lentPlace = (): PanelPlace | null =>
+  const lentPlace = (): LentPlace | null =>
     state.kind === "sheet" || state.kind === "moving" ? state.place : null;
 
-  const returnPanel = (place: PanelPlace): void => {
+  const returnLent = (place: LentPlace): void => {
     const { parent, next } = place;
     if (!parent.isConnected) {
-      reportClientError("narrow-sheet", "the panel's home left the page", {
+      reportClientError("narrow-sheet", "the lent node's home left the page", {
         toast: false,
       });
     }
@@ -134,15 +137,20 @@ export function attachNarrowSheet(
     beforeHide: () => {
       unwatchViewport();
       const place = lentPlace();
-      if (place) returnPanel(place);
-      state = state.kind === "moving" ? { ...state, place: null } : { kind: "closed" };
-      setExpanded(false);
+      try {
+        if (place) returnLent(place);
+      } finally {
+        //: A failed return must not wedge it.
+        state = state.kind === "moving" ? { ...state, place: null } : { kind: "closed" };
+        setExpanded(false);
+      }
     },
+    hideDetail: () => ({ moving: state.kind === "moving" }),
   });
 
-  /** False when refused. */
+  /** False when it did not open. */
   const openSheet = (stated: HTMLElement | undefined): boolean => {
-    const opener = stated ?? options.opener?.() ?? undefined;
+    const opener = stated ?? options.defaultOpener?.() ?? undefined;
     const parent = lent.parentNode;
     if (!parent) {
       reportClientError("narrow-sheet", "a detached panel cannot open", {
@@ -150,7 +158,7 @@ export function attachNarrowSheet(
       });
       return false;
     }
-    const place: PanelPlace = { parent, next: lent.nextSibling };
+    const place: LentPlace = { parent, next: lent.nextSibling };
     state = { kind: "sheet", opener, place };
     let opened = false;
     try {
@@ -163,7 +171,7 @@ export function attachNarrowSheet(
     } finally {
       // A refused open drops the tap.
       if (!opened) {
-        returnPanel(place);
+        returnLent(place);
         state = { kind: "closed" };
       }
     }
@@ -186,7 +194,7 @@ export function attachNarrowSheet(
     if (state.kind !== "anchored" && state.kind !== "sheet") return;
     const inSheet = state.kind === "sheet";
     if (isNarrow() === inSheet) return;
-    state = { kind: "moving", opener: state.opener, place: lentPlace() };
+    state = { kind: "moving", opener: state.opener, place: lentPlace(), fromSheet: inSheet };
     if (inSheet) sheet.close();
     else anchored.close();
   };
@@ -209,29 +217,49 @@ export function attachNarrowSheet(
       unwatch();
       return;
     }
-    if (!present(state.opener)) unwatch();
+    const { opener, fromSheet } = state;
+    if (!present(opener)) {
+      unwatch();
+      return;
+    }
+    //: The sheet's focus returned to a hidden opener.
+    if (fromSheet && anchored.isOpen()) {
+      options.sheetFocus?.(menu)?.focus({ preventScroll: true });
+    }
   });
 
   const open = (opener?: HTMLElement): void => {
     // Open, or lent and leaving.
     if (state.kind !== "closed") return;
-    retry = null;
+    dropRetry();
     if (present(opener)) window.addEventListener("resize", queueCheck);
   };
 
+  function dropRetry(): void {
+    cancelRetry?.();
+    cancelRetry = null;
+  }
+
   // A tap during another sheet's leave.
   function retryOnSettle(opener: HTMLElement | undefined): void {
-    const token = {};
-    retry = token;
-    whenSettled(() => {
-      if (retry !== token || state.kind !== "closed") return;
-      retry = null;
-      if (isNarrow() && openSheet(opener)) window.addEventListener("resize", queueCheck);
+    dropRetry();
+    cancelRetry = whenSettled(() => {
+      cancelRetry = null;
+      if (state.kind !== "closed") return;
+      if (isNarrow() && !openSheet(opener)) {
+        reportClientError("narrow-sheet", "a retried open was refused again", {
+          toast: false,
+        });
+        return;
+      }
+      //: Widened during the leave: open anchored.
+      if (!isNarrow()) present(opener);
+      if (isOpen()) window.addEventListener("resize", queueCheck);
     });
   }
 
   const close = (): void => {
-    retry = null;
+    dropRetry();
     // A close cancels a pending move.
     if (state.kind === "moving") {
       state = state.place

@@ -17,15 +17,16 @@ sheet on top. The Presets panel and `TimeZoneRow` also open as sheets.
 
 ## The face
 
-Below `sm`, the host shows a face, and the widget is hidden. The face is the
-widget's own field box: its text area is a button, and it holds the box's ×
-and +. The server writes the held label, or `none_label`, or the
-placeholder. The widget keeps the face current: the held value, a typed
-draft in the uncommitted look, or the placeholder. It copies `disabled`,
+Below `sm`, the host shows a face, and the widget is hidden. The face has
+the look of the widget's field box, and its text area is a button. Its own ×
+presses the box's ×, and its own + gives its created row to the widget. A
+`FilterSelect` face has no × and no +. The server writes the held label, or
+`none_label`, or the placeholder. The widget keeps the face current: the
+held value, a typed draft in the uncommitted look, or the placeholder. It copies `disabled`,
 `aria-invalid` and `aria-describedby` from the search box. A hidden span
-gives the field name, so the button name is "Field, value". A click on the
-field label opens the sheet. A + on the face gives its created row to the
-widget.
+gives the field name, so the button name is "Field, value". The widget also
+writes the field name into the empty sheet title. A click on the field label
+opens the sheet.
 
 ## The lent widget
 
@@ -37,10 +38,11 @@ the stamp after the move back.
 While the widget has the stamp:
 
 - `hidePanel` does not close the host, so a code commit keeps the sheet open.
-- A person's single-select pick closes the sheet. A multi-select or filter
-  pick does not.
+- A person's single-select pick, or a pick of none, closes the sheet. A
+  multi-select or filter pick does not. Escape, the backdrop and the sheet's
+  × also close it.
 - `focusout` does nothing. The leave work (revert, pending search) runs once
-  on the host's `dropdown:hide`.
+  on the host's `dropdown:hide`, but not when the sheet only changes hosts.
 - The sheet controls the list height, and the search box stays at the top.
 - The + of the box is hidden.
 
@@ -61,7 +63,6 @@ a title does not include a value.
 
 ## Tests
 
-Vitest covers the switch, the face and the lent widget. Pytest covers the
-markup. E2E tests at 375 px cover a pick, a clear, Escape and the Presets
-sheet. The e2e helpers wait for a closing sheet to finish. A manual iOS
-Safari test covers the keyboard.
+Vitest, pytest and 375 px e2e tests cover the switch, the face, the lent
+widget and the markup. The e2e helpers wait for a closing sheet. A manual
+iOS Safari test covers the keyboard.

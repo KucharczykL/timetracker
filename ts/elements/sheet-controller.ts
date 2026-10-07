@@ -69,6 +69,13 @@ export interface SheetCoreOptions {
   beforeHide?: () => void;
   /** Runs after `dropdown:hide`. */
   afterHide?: () => void;
+  /** The `dropdown:hide` event's detail. */
+  hideDetail?: () => DropdownHideDetail;
+}
+
+/** A sheet closed only to change hosts. */
+export interface DropdownHideDetail {
+  moving: boolean;
 }
 
 export interface SheetCore {
@@ -141,7 +148,12 @@ export function attachSheetCore(
       } finally {
         // Listeners wait on it, whatever threw.
         render();
-        host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
+        host.dispatchEvent(
+          new CustomEvent<DropdownHideDetail>("dropdown:hide", {
+            bubbles: true,
+            detail: options.hideDetail?.() ?? { moving: false },
+          }),
+        );
       }
       options.afterHide?.();
     },

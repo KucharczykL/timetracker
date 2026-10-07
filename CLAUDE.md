@@ -1675,13 +1675,15 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `group-data-[dropdown-host=sheet]/dropdown:`; `sheetFocus` names the first
   focus. Every calendar and quick-bar facet opts in. Contract is
   [Bottom sheet](docs/superpowers/specs/2026-10-07-issue-516-calendar-bottom-sheet-design.md).
-  A field picker (#1537) shows a face below `sm`, its own field box with
-  a button for text; a tap lends the whole `<search-select>`
-  (`sheetLent`), so its focus checks hold. While stamped, only a person's
-  single-select pick closes it, and the leave work runs on
-  `dropdown:hide`. The `combobox` behavior closes a "Label ▾" panel on
-  such a pick. E2E: `open_picker`/`wait_for_sheet_to_close`
-  (`e2e/helpers.py`); a leaving sheet holds the page inert. Contract is
+  A field picker (#1537) shows a face below `sm`: the field box's look,
+  its text area a button, its own × and + acting on the widget. A tap
+  lends the whole `<search-select>` (`sheetLent`), so its focus checks
+  hold. While stamped, a code commit keeps the sheet open; a person's
+  single-select pick or none closes it, as do Escape and the backdrop.
+  The leave work runs on `dropdown:hide`, not on a host change. The
+  `combobox` behavior closes a "Label ▾" panel on such a pick. E2E: `with
+  picker_opened(picker):` (`e2e/helpers.py`) waits out the sheet, which
+  holds the page inert while it leaves. Contract is
   [Picker sheet](docs/superpowers/specs/2026-10-07-issue-1537-picker-sheet-design.md)
 - **A form page opens in a modal by marking its link**, opt-in per link (#1384):
   `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no

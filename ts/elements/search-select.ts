@@ -35,9 +35,15 @@
 import { isPresenceModifier } from "./filter-tokens.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
+import {
+  FACE_EXCLUDED_PREFIX,
+  FACE_NAME_SUFFIX,
+  FACE_SEPARATOR,
+} from "../generated/search-select-face.js";
 import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import { followPointer } from "../pointer-follow.js";
 import { ownChild } from "./own-child.js";
+import type { DropdownHideDetail } from "./sheet-controller.js";
 // Defines the host a delegated widget opens.
 import "./drop-down.js";
 import { FORM_DIALOG_CREATED, type FormDialogCreatedDetail } from "./form-dialog/events.js";
@@ -49,10 +55,6 @@ const NAVIGABLE_ROWS =
 
 //: Hidden inputs that carry a value.
 const HELD_VALUE_INPUTS = 'input[type="hidden"]:not([data-search-select-none])';
-
-//: As the face renders them server-side.
-const FACE_EXCLUDED_PREFIX = "not ";
-const FACE_SEPARATOR = ", ";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers import these types — never redefine them.
@@ -288,7 +290,10 @@ const rewriteDialogCreate = (container: Element, params: ParamSources): void => 
   const scope = container.hasAttribute("data-toggle")
     ? (container.closest("drop-down") ?? container)
     : container;
-  const links = Array.from(scope.querySelectorAll("a[data-search-select-dialog-create]"));
+  //: A nested picker's + is its own.
+  const links = Array.from(
+    scope.querySelectorAll("a[data-search-select-dialog-create]"),
+  ).filter(link => link.closest("drop-down") === scope || container.contains(link));
   if (!links.length) {
     reportClientError(DIALOG_CREATE_CONTEXT, "params set, no + link", { toast: false });
     return;
@@ -467,11 +472,16 @@ const initWidget = (containerElement: Element): boolean => {
     pills.querySelector("input[data-search-select-none]") !== null &&
     !container._searchSelectDirty;
 
+  let reportedBlankPill = false;
   const pillLabel = (pill: Element): string => {
     const label =
       pill.querySelector("[data-search-select-label]")?.textContent ??
       pill.getAttribute("data-label") ??
       "";
+    if (!label && !reportedBlankPill) {
+      reportedBlankPill = true;
+      reportClientError("search-select", `${name}: a pill has no label`, { toast: false });
+    }
     return pill.getAttribute("data-search-select-type") === "exclude"
       ? `${FACE_EXCLUDED_PREFIX}${label}`
       : label;
@@ -621,8 +631,10 @@ const initWidget = (containerElement: Element): boolean => {
     clearHighlight();
     syncExpanded();
     if (!wasLent) return;
-    //: The leave focusout skipped.
     wasLent = false;
+    //: A host change is no leave.
+    if ((event as CustomEvent<DropdownHideDetail | undefined>).detail?.moving) return;
+    //: The leave focusout skipped.
     cancelPendingSearch();
     revertDrop();
   });
@@ -1779,10 +1791,6 @@ const initWidget = (containerElement: Element): boolean => {
     });
   }
 
-  // ── Close panel when focus leaves the widget (e.g. Tab away) ──
-  // focusout bubbles, so the container catches the input losing focus in every
-  // mode. Option mousedown preventDefault keeps the input focused during a
-  // click, so this only fires on a genuine exit.
   //: Restores what a first keystroke dropped.
   const revertDrop = (): void => {
     const restore = heldBeforeDrop;
@@ -1793,8 +1801,12 @@ const initWidget = (containerElement: Element): boolean => {
     }
     // Otherwise blur keeps text and value.
   };
+  // ── Close panel when focus leaves the widget (e.g. Tab away) ──
+  // focusout bubbles, so the container catches the input losing focus in every
+  // mode. Option mousedown preventDefault keeps the input focused during a
+  // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
-    //: Moves blur it; the hide leaves.
+    //: Sheet moves blur; dropdown:hide does the leave.
     if (lent()) return;
     if (!container.contains(event.relatedTarget as Node)) {
       cancelPendingSearch();
@@ -1804,13 +1816,25 @@ const initWidget = (containerElement: Element): boolean => {
   });
 
   // ── The face ──
+  //: Below sm, these breaks leave no way in.
+  if (face && !faceOpen) {
+    reportClientError("search-select", `${name}: its face has no open button`, { toast: false });
+  }
+  if (faceClear && !clearButton) {
+    reportClientError("search-select", `${name}: its face has a × the box lacks`, {
+      toast: false,
+    });
+  }
   if (face && faceOpen) {
     const open = faceOpen;
     const fieldName =
       search.labels?.[0]?.textContent?.trim() ||
       search.getAttribute("aria-label")?.trim() ||
       search.placeholder.trim();
-    if (faceName && fieldName) faceName.textContent = `${fieldName}${FACE_SEPARATOR}`;
+    if (!fieldName) {
+      reportClientError("search-select", `${name}: no label names its sheet`, { toast: false });
+    }
+    if (faceName && fieldName) faceName.textContent = `${fieldName}${FACE_NAME_SUFFIX}`;
     const sheetTitle = dropdownHost
       ? ownChild(dropdownHost, `[${SHEET_ATTRIBUTES.title}]`)
       : null;

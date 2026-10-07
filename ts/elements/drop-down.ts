@@ -78,6 +78,7 @@ export class DropdownElement extends HTMLElement {
       });
       controller = anchored;
       if (narrow) {
+        const sheetOpener = behavior?.sheetOpener;
         try {
           controller = attachNarrowSheet(this, menu, anchored, {
             dialog: narrow.sheet,
@@ -85,7 +86,7 @@ export class DropdownElement extends HTMLElement {
             expandedToggle: menuOptions.inlineTrigger ? undefined : toggle,
             sheetFocus: behavior?.sheetFocus,
             lent: behavior?.sheetLent?.(this, toggle, menu),
-            opener: behavior?.sheetOpener && (() => behavior.sheetOpener?.(this) ?? null),
+            defaultOpener: sheetOpener ? () => sheetOpener(this) : undefined,
           });
         } catch (error) {
           // The behavior still wires below.

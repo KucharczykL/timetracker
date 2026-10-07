@@ -45,7 +45,7 @@ def TimeZoneRow(
             content=picker,
             id=f"{field_name}-dropdown",
             ghost=True,
-            #: The value changes; the name does not.
+            # The value changes; the name does not.
             sheet_title=label,
         )
     ]

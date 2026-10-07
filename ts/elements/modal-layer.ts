@@ -120,17 +120,39 @@ export function isModalLeaving(): boolean {
 }
 
 type SettledCallback = () => void;
-const settledCallbacks: SettledCallback[] = [];
+export type CancelSettled = () => void;
+//: A wrapper per call, so each cancels alone.
+const settledCallbacks = new Set<{ callback: SettledCallback }>();
+//: Nested closes and finishes in progress.
+let settleDepth = 0;
 
-/** Runs once no modal leaves. */
-export function whenSettled(callback: SettledCallback): void {
-  if (isModalLeaving()) settledCallbacks.push(callback);
-  else callback();
+/** Runs once no modal leaves; cancellable. */
+export function whenSettled(callback: SettledCallback): CancelSettled {
+  if (!isModalLeaving() && settleDepth === 0) {
+    callback();
+    return () => undefined;
+  }
+  const queued = { callback };
+  settledCallbacks.add(queued);
+  return () => settledCallbacks.delete(queued);
+}
+
+//: Only an outermost close or finish flushes.
+function settling(run: () => void): void {
+  settleDepth += 1;
+  try {
+    run();
+  } finally {
+    settleDepth -= 1;
+    if (settleDepth === 0) flushSettled();
+  }
 }
 
 function flushSettled(): void {
   if (isModalLeaving()) return;
-  for (const callback of settledCallbacks.splice(0)) {
+  const queued = [...settledCallbacks];
+  settledCallbacks.clear();
+  for (const { callback } of queued) {
     try {
       callback();
     } catch (error) {
@@ -339,6 +361,10 @@ function clearLeaveLimit(entry: Entry): void {
 
 /** Idempotent. */
 function finish(entry: Entry): void {
+  settling(() => finishEntry(entry));
+}
+
+function finishEntry(entry: Entry): void {
   if (entry.state === "closed") return;
   closeAbove(entry);
   entry.state = "closed";
@@ -365,7 +391,6 @@ function finish(entry: Entry): void {
   } catch (error) {
     report(`onClosed threw: ${String(error)}`);
   }
-  flushSettled();
 }
 
 /** Undoes an open that never showed. */
@@ -415,6 +440,10 @@ function open(entry: Entry, opener: HTMLElement | undefined): boolean {
 }
 
 function close(entry: Entry): void {
+  settling(() => closeEntry(entry));
+}
+
+function closeEntry(entry: Entry): void {
   if (entry.state === "closed") return;
   if (entry.state === "leaving") {
     // A detached host never ends its leave.
@@ -566,7 +595,8 @@ export function resetModalLayerForTests(): void {
     unmarkDepth(entry.dialog);
   }
   shown.length = 0;
-  settledCallbacks.length = 0;
+  settledCallbacks.clear();
+  settleDepth = 0;
   stopWatchingStack();
   lastTop = null;
   stopWatchingRemovals();

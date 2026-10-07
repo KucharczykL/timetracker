@@ -484,3 +484,113 @@ describe("a sheet and the on-screen keyboard", () => {
     expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("");
   });
 });
+
+describe("a sheet's edges, lent", () => {
+  beforeEach(() => {
+    reducedMotion = false;
+  });
+
+  function twoHosts(): [DropdownElement, DropdownElement] {
+    document.body.innerHTML = fixture() + lentFixture();
+    const hosts = [...document.querySelectorAll("drop-down")] as DropdownElement[];
+    for (const host of hosts) {
+      host.querySelector<HTMLElement>("[data-dropdown-narrow]")!.getClientRects = () =>
+        (narrow ? [new DOMRect(0, 0, 0, 0)] : []) as unknown as DOMRectList;
+    }
+    return [hosts[0], hosts[1]];
+  }
+
+  it("opens once for two taps during another leave", () => {
+    const [first, second] = twoHosts();
+    first.open();
+    first.close();
+    second.open();
+    second.open();
+    vi.advanceTimersByTime(300);
+    expect(second.isOpen()).toBe(true);
+    expect(document.querySelectorAll("dialog[open]")).toHaveLength(1);
+  });
+
+  it("opens anchored when the viewport widened during the leave", () => {
+    const [first, second] = twoHosts();
+    first.open();
+    first.close();
+    second.open();
+    narrow = false;
+    vi.advanceTimersByTime(300);
+    expect(second.isOpen()).toBe(true);
+    expect(second.querySelector("dialog")!.open).toBe(false);
+    expect(second.querySelector("#lent")!.parentElement).toBe(second);
+  });
+
+  it("reports a retry refused again", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const [first, second] = twoHosts();
+    first.open();
+    first.close();
+    second.open();
+    second.querySelector("dialog")!.showModal = () => {
+      throw new DOMException("refused", "InvalidStateError");
+    };
+    vi.advanceTimersByTime(300);
+    expect(second.isOpen()).toBe(false);
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("refused again"));
+  });
+});
+
+describe("a lent sheet that fails", () => {
+  it("refuses a lent node that does not hold the menu", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    registerBehavior("test-bad-lent", {
+      menuOptions: () => ({ itemSelector: "[data-none]", inlineTrigger: true }),
+      sheetLent: (host) => host.querySelector<HTMLElement>("[data-face]")!,
+    });
+    mountLent(lentFixture().replace('behavior="test-lent"', 'behavior="test-bad-lent"'));
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("must hold the menu"));
+  });
+
+  it("opens again after a return that threw", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { host, lent } = mountLent();
+    host.open();
+    const home = host;
+    const insert = home.insertBefore.bind(home);
+    let broken = true;
+    home.insertBefore = (<T extends Node>(node: T, child: Node | null): T => {
+      if (broken && node === lent) throw new DOMException("no", "HierarchyRequestError");
+      return insert(node, child);
+    }) as typeof home.insertBefore;
+    host.close();
+    broken = false;
+    expect(host.isOpen()).toBe(false);
+    host.open();
+    expect(host.isOpen()).toBe(true);
+  });
+});
+
+describe("the keyboard inset, more", () => {
+  class FakeViewport extends EventTarget {
+    height = 768;
+    offsetTop = 0;
+  }
+
+  it("follows a scroll while open, clamps, and coalesces", () => {
+    const viewport = new FakeViewport();
+    vi.stubGlobal("visualViewport", viewport);
+    const frames = vi.spyOn(window, "requestAnimationFrame");
+    const { host, dialog } = mountLent();
+    host.open();
+    frames.mockClear();
+    viewport.offsetTop = 100;
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event("scroll"));
+    viewport.dispatchEvent(new Event("resize"));
+    expect(frames).toHaveBeenCalledOnce();
+    vi.advanceTimersToNextFrame();
+    expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("168px");
+    viewport.offsetTop = 400;
+    viewport.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersToNextFrame();
+    expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("0px");
+  });
+});

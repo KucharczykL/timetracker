@@ -1,3 +1,4 @@
+import { reportClientError } from "../../client-errors.js";
 import { registerBehavior } from "../dropdown-behaviors.js";
 
 // Combobox-hosting dropdown (issue #297): the [data-menu] panel is a dialog
@@ -53,8 +54,12 @@ registerBehavior("combobox", {
       if (widget.getAttribute("multi") === "true" || widget.getAttribute("filter-mode") === "true") {
         return;
       }
-      const { last, none } = (event as CustomEvent<{ last: unknown; none: boolean }>).detail ?? {};
-      if (last || none) controller.close();
+      const detail = (event as CustomEvent<{ last: unknown; none: boolean } | null>).detail;
+      if (!detail) {
+        reportClientError("combobox", "a change event carries no detail", { toast: false });
+        return;
+      }
+      if (detail.last || detail.none) controller.close();
     };
     host.addEventListener("dropdown:show", onShow);
     host.addEventListener("search-select:change", onChange);

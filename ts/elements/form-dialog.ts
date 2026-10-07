@@ -803,9 +803,14 @@ export class FormDialogElement extends HTMLElement {
   /** True when the opener took the row. */
   private handOver(entry: OpenDialog, option: FormDialogCreatedDetail): boolean {
     const link = entry.opener;
+    const face = link.closest(PICKER_FACE);
     //: The face's parent is the picker's host.
-    const host = link.closest(PICKER_FACE)?.parentElement;
+    const host = face?.parentElement;
     const picker = link.closest(PICKER) ?? (host ? ownChild(host, PICKER) : null);
+    if (face && !picker) {
+      this.declined("its face names no picker", option);
+      return false;
+    }
     if (!link.isConnected) {
       if (picker) this.declined("its picker left the page", option);
       return false;

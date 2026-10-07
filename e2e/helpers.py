@@ -1,5 +1,8 @@
 """Shared waits and steps for e2e tests."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from playwright.sync_api import Locator, Page, expect
 
 TABLES_SETTLED = """
@@ -45,10 +48,12 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
-def open_picker(picker: Locator) -> Locator | None:
-    """Below sm, tap the face; else the box.
+@contextmanager
+def picker_opened(picker: Locator) -> Iterator[None]:
+    """Open a picker; on exit, its sheet has closed.
 
-    Answers the sheet a face opened.
+    Below sm, the face opens a sheet; a leaving
+    sheet still holds the page inert.
     """
     host = picker.locator("xpath=..")
     face = host.locator(
@@ -56,38 +61,35 @@ def open_picker(picker: Locator) -> Locator | None:
     )
     if not face.is_visible():
         picker.locator("[data-search-select-search]").click()
-        return None
-    sheet = host.locator(":scope > dialog[data-dropdown-sheet]")
-    #: The widget leaves its host; pin the dialog.
-    sheet = sheet.page.locator(f"#{_stamped_id(sheet)}")
+        yield
+        return
+    # The widget leaves its host; pin the dialog.
+    sheet = picker.page.locator(
+        f"#{_stamped_id(host.locator(':scope > dialog[data-dropdown-sheet]'))}"
+    )
     face.click()
-    return sheet
+    yield
+    # A page the pick reloads has none.
+    expect(sheet.and_(picker.page.locator("dialog[open]"))).to_have_count(0)
 
 
 def _stamped_id(element: Locator) -> str:
+    """The element's id; stamps one, kept for the page."""
     return element.evaluate(
         "dialog => dialog.id || (dialog.id = `picker-sheet-${crypto.randomUUID()}`)"
     )
 
 
-def wait_for_sheet_to_close(sheet: Locator | None) -> None:
-    """A leaving sheet still holds the page inert."""
-    if sheet is not None:
-        #: A page the pick reloads has none.
-        expect(sheet.and_(sheet.page.locator("dialog[open]"))).to_have_count(0)
-
-
 def pick_choice(scope: Page | Locator, name: str, value: str) -> None:
     """Pick a picker's row by value; empty picks none."""
     picker = scope.locator(f'search-select[name="{name}"]')
-    sheet = open_picker(picker)
-    row = (
-        picker.locator("[data-search-select-none-option]")
-        if value == ""
-        else picker.locator(f'[data-search-select-option][data-value="{value}"]')
-    )
-    row.click()
-    wait_for_sheet_to_close(sheet)
+    with picker_opened(picker):
+        row = (
+            picker.locator("[data-search-select-none-option]")
+            if value == ""
+            else picker.locator(f'[data-search-select-option][data-value="{value}"]')
+        )
+        row.click()
 
 
 def held_choice(scope: Page | Locator, name: str) -> Locator:

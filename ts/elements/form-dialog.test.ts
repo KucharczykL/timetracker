@@ -1016,6 +1016,42 @@ describe("created", () => {
     expect(reloads).toBe(1);
   });
 
+  it("hands a face's row to its picker", async () => {
+    const main = document.getElementById("main-container")!;
+    main.insertAdjacentHTML(
+      "beforeend",
+      `<drop-down><div data-search-select-face><a href="/game/add" data-form-dialog="">+</a></div>` +
+        `<search-select></search-select></drop-down>`,
+    );
+    const taken = takeCreated(main.querySelector("[data-search-select-face]")!);
+    replies.push(reply(EDIT_FORM));
+    click(main.querySelector("a")!);
+    await settle();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(taken).toEqual([OPTION]);
+    expect(toasts.at(-1)).toEqual(SAVED);
+    expect(reloads).toBe(0);
+  });
+
+  it("reports a face whose picker is gone", async () => {
+    const main = document.getElementById("main-container")!;
+    main.insertAdjacentHTML(
+      "beforeend",
+      `<div><div data-search-select-face><a href="/game/add" data-form-dialog="">+</a></div></div>`,
+    );
+    replies.push(reply(EDIT_FORM));
+    click(main.querySelector("a")!);
+    await settle();
+    replies.push(reply(created(HOST, SAVED)));
+    submit();
+    await settle();
+    expect(toasts.flat()).toContainEqual(
+      expect.objectContaining({ type: "error", message: expect.stringContaining("Pick it") }),
+    );
+  });
+
   it("tells the person when a picker's face declines", async () => {
     const main = document.getElementById("main-container")!;
     main.insertAdjacentHTML(

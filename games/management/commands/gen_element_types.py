@@ -46,6 +46,11 @@ from common.components.primitives import (
     ButtonShape,
     PageWidth,
 )
+from common.components.search_select import (
+    FACE_EXCLUDED_PREFIX,
+    FACE_NAME_SUFFIX,
+    FACE_SEPARATOR,
+)
 from common.components.ts_codegen import (
     ChoiceVocab,
     TsConstant,
@@ -227,6 +232,15 @@ class Command(BaseCommand):
                         dict(SHEET_ATTRIBUTES),
                     ),
                     TsConstant("SHEET_HOST_VALUE", str, SHEET_HOST_VALUE),
+                ],
+            ),
+            # The picker face's text, both sides.
+            output_dir / "search-select-face.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant("FACE_EXCLUDED_PREFIX", str, FACE_EXCLUDED_PREFIX),
+                    TsConstant("FACE_SEPARATOR", str, FACE_SEPARATOR),
+                    TsConstant("FACE_NAME_SUFFIX", str, FACE_NAME_SUFFIX),
                 ],
             ),
             # The form dialog's wire contract.

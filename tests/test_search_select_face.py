@@ -2,9 +2,16 @@
 
 import re
 
+import pytest
+
 from common.components import FilterSelect, SearchSelect, TimeZoneRow
-from common.components.primitives import Button
-from common.components.search_select import DialogCreate, presets_member
+from common.components.primitives import Button, Span
+from common.components.search_select import (
+    ComboboxDropdown,
+    DialogCreate,
+    _FaceValue,
+    presets_member,
+)
 
 SHEET = re.compile(r"<dialog[^>]*data-dropdown-sheet[^>]*>")
 FACE_VALUE = re.compile(
@@ -154,3 +161,26 @@ def test_the_time_zone_row_opens_as_a_sheet():
     assert re.search(
         r"<h2[^>]*data-dropdown-sheet-title[^>]*>Start time zone</h2>", html
     )
+
+
+def test_a_filter_face_leads_with_its_modifier():
+    html = str(
+        FilterSelect(
+            field_name="platform",
+            options=[("1", "PC")],
+            included=[("1", "PC")],
+            modifier="INCLUDES_ALL",
+            modifier_options=[("INCLUDES_ALL", "(All)")],
+        )
+    )
+    assert face_value(html) == ("(All), PC", False)
+
+
+def test_a_combobox_sheet_needs_a_title():
+    with pytest.raises(ValueError):
+        ComboboxDropdown(label="Zone", content=Span(), id="zone", sheet_title="")
+
+
+def test_a_held_face_names_its_value():
+    with pytest.raises(ValueError):
+        _FaceValue.held([""])

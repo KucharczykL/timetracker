@@ -8,7 +8,9 @@ import {
   isReachable,
   MODAL_CHANGE,
   openModals,
+  resetModalLayerForTests,
   topModal,
+  whenSettled,
 } from "./modal-layer.js";
 import { openSurfaces, pushSurface, removeSurface, type Surface } from "./surface-stack.js";
 
@@ -963,5 +965,96 @@ describe("scrollbar", () => {
     document.body.style.paddingRight = "5px";
     attachModal(mountDialog()).open();
     expect(document.body.style.paddingRight).toBe("20px");
+  });
+});
+
+describe("whenSettled", () => {
+  let finishes: (() => void)[] = [];
+
+  function leavingModal(): { open: () => void; close: () => void } {
+    const dialog = mountDialog();
+    const modal = attachModal(dialog, { leave: (finish) => finishes.push(finish) });
+    return { open: () => modal.open(), close: () => modal.close() };
+  }
+
+  beforeEach(() => {
+    finishes = [];
+  });
+
+  afterEach(() => {
+    resetModalLayerForTests();
+  });
+
+  it("runs at once when no modal leaves", () => {
+    const callback = vi.fn();
+    whenSettled(callback);
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it("waits for every leaving modal", () => {
+    const first = leavingModal();
+    const second = leavingModal();
+    first.open();
+    second.open();
+    second.close();
+    const callback = vi.fn();
+    whenSettled(callback);
+    first.close();
+    finishes[0]();
+    expect(callback).not.toHaveBeenCalled();
+    finishes[1]();
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it("reports a callback that throws and runs the rest", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const modal = leavingModal();
+    modal.open();
+    modal.close();
+    const later = vi.fn();
+    whenSettled(() => {
+      throw new Error("broken");
+    });
+    whenSettled(later);
+    finishes[0]();
+    expect(later).toHaveBeenCalledOnce();
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("a settle callback threw"));
+  });
+
+  it("cancels a queued callback", () => {
+    const modal = leavingModal();
+    modal.open();
+    modal.close();
+    const callback = vi.fn();
+    const cancel = whenSettled(callback);
+    cancel();
+    finishes[0]();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("waits for the outermost close, not a modal it closes above", () => {
+    const lower = leavingModal();
+    const upper = leavingModal();
+    lower.open();
+    upper.open();
+    upper.close();
+    const callback = vi.fn(() => expect(openModals()).toEqual([]));
+    whenSettled(callback);
+    //: Closing the lower one finishes the upper first.
+    lower.close();
+    expect(callback).not.toHaveBeenCalled();
+    finishes.at(-1)!();
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it("forgets its queue on a test reset", () => {
+    const modal = leavingModal();
+    modal.open();
+    modal.close();
+    const callback = vi.fn();
+    whenSettled(callback);
+    resetModalLayerForTests();
+    whenSettled(vi.fn());
+    expect(callback).not.toHaveBeenCalled();
   });
 });

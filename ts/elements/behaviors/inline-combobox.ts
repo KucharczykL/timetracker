@@ -1,3 +1,4 @@
+import { reportClientError } from "../../client-errors.js";
 import { registerBehavior } from "../dropdown-behaviors.js";
 import { ownChild } from "../own-child.js";
 
@@ -33,8 +34,13 @@ registerBehavior("inline-combobox", {
   }),
   sheetLent: (_host, toggle) => toggle,
   sheetOpener: (host) => ownChild(host, "[data-search-select-face-open]"),
-  sheetFocus: (menu) =>
-    menu.closest("drop-down")?.querySelector<HTMLElement>("[data-search-select-search]") ?? null,
+  sheetFocus: (menu) => {
+    const search =
+      menu.closest("drop-down")?.querySelector<HTMLElement>("[data-search-select-search]") ?? null;
+    //: Else no phone keyboard rises.
+    if (!search) reportClientError("inline-combobox", "no search box to focus", { toast: false });
+    return search;
+  },
   wire: ({ menu }) => {
     const searchInput = menu
       .closest("drop-down")

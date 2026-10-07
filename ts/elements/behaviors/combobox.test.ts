@@ -163,4 +163,38 @@ describe("combobox dropdown behavior (#297)", () => {
     );
     expect(host.isOpen()).toBe(true);
   });
+
+  it("closes on a real row pick, not on a nested picker's", () => {
+    const host = document.createElement("drop-down");
+    host.setAttribute("behavior", "combobox");
+    host.setAttribute("placement", "bottom-start");
+    host.setAttribute("submenu", "false");
+    host.innerHTML = `
+      <button data-toggle aria-expanded="false" type="button">Zone</button>
+      <div data-menu popover="manual" hidden role="dialog" aria-label="Zone">
+        <search-select name="zone" multi="false" always-visible="true">
+          <div data-search-select-pills></div>
+          <input data-search-select-search />
+          <div data-search-select-options role="listbox">
+            <div data-search-select-option data-value="UTC" data-label="UTC" role="option">UTC</div>
+          </div>
+        </search-select>
+        <div data-nested></div>
+      </div>`;
+    document.body.appendChild(host);
+    toggleOf(host).click();
+
+    const nested = host.querySelector("[data-nested]")!;
+    nested.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "other", values: ["1"], last: { value: "1", label: "A", data: {} }, none: false },
+      }),
+    );
+    expect((host as DropdownElement).isOpen()).toBe(true);
+
+    host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
+    expect((host as DropdownElement).isOpen()).toBe(false);
+  });
 });
+

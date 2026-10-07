@@ -11,7 +11,7 @@ below 640 px. Above 640 px, the panel stays an anchored popup.
 ## Markup
 
 A builder opts in with a sheet title: `_assemble(sheet_title=...)`,
-`Dropdown(sheet_title=...)`, `ComboboxDropdown(sheet=True)`, or
+`Dropdown(sheet_title=...)`, `ComboboxDropdown(sheet_title=...)`, or
 `dropdown_sheet(title)` beside the picker inside `_Dropdown`. The host then
 contains two extra nodes:
 

@@ -195,7 +195,7 @@ _LENT_BOX_CLASS = (
 #: The sheet, not the rows, caps the list.
 _LENT_LISTBOX_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-none!"
 #: The phone's stand-in for the box.
-#: Shown below sm; ``max-sm:`` beats the box's flex.
+#: ``hidden`` beats the box's flex; ``max-sm:flex`` restores it.
 _FACE_CLASS = "hidden max-sm:flex"
 #: The box's text area, as the search box.
 _FACE_OPEN_CLASS = (
@@ -213,6 +213,8 @@ _FACE_VALUE_CLASS = (
 FACE_EXCLUDED_PREFIX = "not "
 #: Joins a multi value on the face.
 FACE_SEPARATOR = ", "
+#: Ends the field name before the value.
+FACE_NAME_SUFFIX = ", "
 #: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
 #: Picker rows wear the menu item look.
@@ -405,25 +407,40 @@ def _dialog_create_link(create: DialogCreate, *, face: bool = False) -> Node:
     )
 
 
+type FaceLabel = str  # e.g. "Celeste", "not PC"
+
+
 @dataclass(frozen=True, slots=True)
-class FaceValue:
+class _FaceValue:
     """What the face shows before upgrade."""
 
     text: str
     #: The text is the placeholder.
-    placeholder: bool = False
+    placeholder: bool
+
+    @classmethod
+    def held(cls, labels: Sequence[FaceLabel]) -> _FaceValue:
+        text = FACE_SEPARATOR.join(labels)
+        if not text:
+            raise ValueError("a held face names its value")
+        return cls(text, placeholder=False)
+
+    @classmethod
+    def unheld(cls, placeholder: str) -> _FaceValue:
+        return cls(placeholder, placeholder=True)
 
 
 def _search_select_face(
-    value: FaceValue,
+    value: _FaceValue,
     *,
     clear: ClearControl | None = None,
     dialog_create: DialogCreate | None = None,
     shape: ButtonShape = "full",
 ) -> Node:
-    """The phone's face: the box, its value a button.
+    """The phone's face: the box's look, its text a button.
 
-    × and + are the box's own. The widget names,
+    Its × presses the box's ×; its + hands
+    its row to the widget, which names,
     mirrors and opens it.
     """
     return Div(
@@ -437,14 +454,14 @@ def _search_select_face(
             aria_expanded="false",
             class_=_FACE_OPEN_CLASS,
         )[
-            #: The widget writes the field's name.
+            # The widget writes the field's name.
             Span(data_search_select_face_name="", class_="sr-only"),
             Span(
                 data_search_select_face_value="",
                 data_placeholder="" if value.placeholder else None,
                 class_=_FACE_VALUE_CLASS,
             )[value.text],
-            Icon("arrowdown", [("class", "text-body")]),
+            Icon("arrowdown", [("class", "text-body")], decorative=True),
         ],
         _clear_button(clear, [("data-search-select-face-clear", "")])
         if clear
@@ -957,10 +974,10 @@ def SearchSelect(
     return _inline_combobox_host(widget, face)
 
 
-def _face_value(labels: Sequence[str], placeholder: str) -> FaceValue:
+def _face_value(labels: Sequence[FaceLabel], placeholder: str) -> _FaceValue:
     if labels:
-        return FaceValue(FACE_SEPARATOR.join(labels))
-    return FaceValue(placeholder, placeholder=True)
+        return _FaceValue.held(labels)
+    return _FaceValue.unheld(placeholder)
 
 
 def _inline_combobox_host(widget: Node, face: Node) -> Node:
@@ -1307,6 +1324,9 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
     )[*children]
 
 
+type SheetTitle = str  # e.g. "Start time zone"
+
+
 def ComboboxDropdown(
     *,
     label: str,
@@ -1316,7 +1336,7 @@ def ComboboxDropdown(
     config: dict[str, str] | None = None,
     panel_width: str = "w-72",
     applied: bool = False,
-    sheet_title: str | None = None,
+    sheet_title: SheetTitle | None = None,
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
@@ -1338,6 +1358,8 @@ def ComboboxDropdown(
     its accessible name. ``sheet_title``: names the narrow-viewport
     sheet; none, no sheet.
     """
+    if sheet_title == "":
+        raise ValueError("a sheet needs a title; pass None for none")
     mark: list[Node] = []
     if applied:
         mark = [Span(class_="sr-only")[" (applied)"], AppliedDot()]

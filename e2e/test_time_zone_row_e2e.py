@@ -157,3 +157,18 @@ def test_clearing_the_picker_submits_the_display_zone(
     tokyo_page.click('button[type="submit"]:has-text("Submit")')
     tokyo_page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}**")
     assert PlayerSession.objects.get().started_at_zone is None
+
+
+def test_a_zone_pick_closes_the_picker(matched_zone_page, live_server, e2e_library):
+    Game.objects.create(library=e2e_library, name="Hades")
+    matched_zone_page.goto(f"{live_server.url}{reverse('games:add_session')}")
+    start_row = matched_zone_page.locator('time-zone-row[field-name="started_at_zone"]')
+    start_row.locator('button[aria-haspopup="dialog"]').click()
+    picker = start_row.locator("search-select")
+    picker.locator("[data-search-select-search]").fill("Asia/Tokyo")
+    picker.locator('[data-search-select-option][data-value="Asia/Tokyo"]').click()
+
+    expect(picker.locator("[data-search-select-search]")).to_be_hidden()
+    expect(start_row.locator('button[aria-haspopup="dialog"]')).to_contain_text(
+        "Asia/Tokyo"
+    )
