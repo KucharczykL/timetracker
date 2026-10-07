@@ -35,7 +35,10 @@ type SwitchState =
   | { kind: "closed" }
   | { kind: "anchored"; opener?: HTMLElement }
   | { kind: "sheet"; opener?: HTMLElement; place: LentPlace }
-  | { kind: "moving"; opener?: HTMLElement; place: LentPlace | null; fromSheet: boolean };
+  | { kind: "moving"; opener?: HTMLElement; from: MoveOrigin };
+
+/** The host a move left; a sheet's place empties once returned. */
+type MoveOrigin = { host: "sheet"; place: LentPlace | null } | { host: "anchored" };
 
 let sheetTitleCounter = 0;
 
@@ -78,8 +81,11 @@ export function attachNarrowSheet(
 
   const isOpen = (): boolean => anchored.isOpen() || sheet.isOpen();
 
-  const lentPlace = (): LentPlace | null =>
-    state.kind === "sheet" || state.kind === "moving" ? state.place : null;
+  const lentPlace = (): LentPlace | null => {
+    if (state.kind === "sheet") return state.place;
+    if (state.kind === "moving" && state.from.host === "sheet") return state.from.place;
+    return null;
+  };
 
   const returnLent = (place: LentPlace): void => {
     const { parent, next } = place;
@@ -141,7 +147,13 @@ export function attachNarrowSheet(
         if (place) returnLent(place);
       } finally {
         //: A failed return must not wedge it.
-        state = state.kind === "moving" ? { ...state, place: null } : { kind: "closed" };
+        state =
+          state.kind === "moving"
+            ? {
+                ...state,
+                from: state.from.host === "sheet" ? { host: "sheet", place: null } : state.from,
+              }
+            : { kind: "closed" };
         setExpanded(false);
       }
     },
@@ -153,7 +165,7 @@ export function attachNarrowSheet(
     const opener = stated ?? options.defaultOpener?.() ?? undefined;
     const parent = lent.parentNode;
     if (!parent) {
-      reportClientError("narrow-sheet", "a detached panel cannot open", {
+      reportClientError("narrow-sheet", "a detached lent node cannot open", {
         toast: false,
       });
       return false;
@@ -194,7 +206,9 @@ export function attachNarrowSheet(
     if (state.kind !== "anchored" && state.kind !== "sheet") return;
     const inSheet = state.kind === "sheet";
     if (isNarrow() === inSheet) return;
-    state = { kind: "moving", opener: state.opener, place: lentPlace(), fromSheet: inSheet };
+    const from: MoveOrigin =
+      state.kind === "sheet" ? { host: "sheet", place: state.place } : { host: "anchored" };
+    state = { kind: "moving", opener: state.opener, from };
     if (inSheet) sheet.close();
     else anchored.close();
   };
@@ -217,8 +231,11 @@ export function attachNarrowSheet(
       unwatch();
       return;
     }
-    const { opener, fromSheet } = state;
-    if (!present(opener)) {
+    const { opener } = state;
+    const fromSheet = state.from.host === "sheet";
+    //: The other host may hide it.
+    const shown = opener && opener.getClientRects().length > 0 ? opener : undefined;
+    if (!present(shown)) {
       unwatch();
       return;
     }
@@ -248,7 +265,12 @@ export function attachNarrowSheet(
       if (state.kind !== "closed") return;
       if (!isNarrow()) {
         //: Widened during the leave: open anchored.
-        present(opener);
+        if (!present(opener)) {
+          reportClientError("narrow-sheet", "a retried anchored open was refused", {
+            toast: false,
+          });
+          return;
+        }
       } else if (!openSheet(opener)) {
         reportClientError("narrow-sheet", "a retried open was refused again", {
           toast: false,
@@ -263,8 +285,9 @@ export function attachNarrowSheet(
     dropRetry();
     // A close cancels a pending move.
     if (state.kind === "moving") {
-      state = state.place
-        ? { kind: "sheet", opener: state.opener, place: state.place }
+      const place = lentPlace();
+      state = place
+        ? { kind: "sheet", opener: state.opener, place }
         : { kind: "closed" };
     }
     anchored.close();

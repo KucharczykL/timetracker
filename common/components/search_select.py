@@ -71,6 +71,7 @@ from common.components.custom_elements import (
     DropdownPanel,
     FilterMode,
     SearchSelectCreate,
+    SheetSpec,
     _as_dialog_trigger,
     _Dropdown,
     _PresetPanelElement,
@@ -149,8 +150,8 @@ class OptionGroup(NamedTuple):
 
 
 _BOX_CLASS = field_box_class("full")
-#: Below sm the face stands in, unless lent.
-_CONTAINER_CLASS = "block max-sm:not-data-[dropdown-host=sheet]:hidden"
+#: Below sm the face stands in, unless lent or sheetless.
+_CONTAINER_CLASS = "block max-sm:not-data-[dropdown-host=sheet]:not-in-data-[dropdown-sheetless]:hidden"
 _PILLS_CLASS = "contents"
 # Under 16px text, iOS zooms on focus.
 _SEARCH_CLASS = (
@@ -197,8 +198,8 @@ _PANEL_LISTBOX_SHEET_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-[c
 #: The sheet, not the rows, caps the list.
 _LENT_LISTBOX_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-none!"
 #: The phone's stand-in for the box.
-#: ``hidden`` beats the box's flex; ``max-sm:flex`` restores it.
-_FACE_CLASS = "hidden max-sm:flex"
+#: Wide, or sheetless, the box shows.
+_FACE_CLASS = "sm:hidden in-data-[dropdown-sheetless]:hidden"
 #: The box's text area, as the search box.
 _FACE_OPEN_CLASS = (
     "peer flex min-w-0 flex-1 -my-1 self-stretch items-center gap-2 py-1 "
@@ -409,27 +410,29 @@ def _dialog_create_link(create: DialogCreate, *, face: bool = False) -> Node:
     )
 
 
-type FaceLabel = str  # e.g. "Celeste", "not PC"
+type FaceText = str  # as shown, e.g. "Celeste", "not PC"
 
 
 @dataclass(frozen=True, slots=True)
-class _FaceValue:
-    """What the face shows before upgrade."""
+class _HeldFace:
+    """Held labels, joined; never blank."""
 
-    text: str
-    #: The text is the placeholder.
-    placeholder: bool
+    text: FaceText
 
-    @classmethod
-    def held(cls, labels: Sequence[FaceLabel]) -> _FaceValue:
-        text = FACE_SEPARATOR.join(labels)
-        if not text:
+    def __post_init__(self) -> None:
+        if not self.text:
             raise ValueError("a held face names its value")
-        return cls(text, placeholder=False)
 
-    @classmethod
-    def unheld(cls, placeholder: str) -> _FaceValue:
-        return cls(placeholder, placeholder=True)
+
+@dataclass(frozen=True, slots=True)
+class _UnheldFace:
+    """Nothing held: the placeholder."""
+
+    placeholder: str
+
+
+#: What the face shows before upgrade.
+type _FaceValue = _HeldFace | _UnheldFace
 
 
 def _search_select_face(
@@ -460,9 +463,9 @@ def _search_select_face(
             Span(data_search_select_face_name="", class_="sr-only"),
             Span(
                 data_search_select_face_value="",
-                data_placeholder="" if value.placeholder else None,
+                data_placeholder="" if isinstance(value, _UnheldFace) else None,
                 class_=_FACE_VALUE_CLASS,
-            )[value.text],
+            )[value.text if isinstance(value, _HeldFace) else value.placeholder],
             Icon("arrowdown", [("class", "text-body")], decorative=True),
         ],
         _clear_button(clear, [("data-search-select-face-clear", "")])
@@ -978,10 +981,11 @@ def SearchSelect(
     return _inline_combobox_host(widget, face)
 
 
-def _face_value(labels: Sequence[FaceLabel], placeholder: str) -> _FaceValue:
-    if labels:
-        return _FaceValue.held(labels)
-    return _FaceValue.unheld(placeholder)
+def _face_value(labels: Sequence[FaceText], placeholder: str) -> _FaceValue:
+    """Blank labels drop; none left, the placeholder."""
+    if text := FACE_SEPARATOR.join(label for label in labels if label):
+        return _HeldFace(text)
+    return _UnheldFace(placeholder)
 
 
 def _inline_combobox_host(widget: Node, face: Node) -> Node:
@@ -996,7 +1000,7 @@ def _inline_combobox_host(widget: Node, face: Node) -> Node:
         placement="bottom-start",
         submenu="false",
         behavior="inline-combobox",
-    )[face, widget, dropdown_sheet("", searchable=True)]
+    )[face, widget, dropdown_sheet(SheetSpec.named_on_connect(searchable=True))]
 
 
 def _filter_value_pill(
@@ -1328,9 +1332,6 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
     )[*children]
 
 
-type SheetTitle = str  # e.g. "Start time zone"
-
-
 def ComboboxDropdown(
     *,
     label: str,
@@ -1340,8 +1341,7 @@ def ComboboxDropdown(
     config: dict[str, str] | None = None,
     panel_width: str = "w-72",
     applied: bool = False,
-    sheet_title: SheetTitle | None = None,
-    sheet_searchable: bool = False,
+    sheet: SheetSpec | None = None,
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
@@ -1360,11 +1360,8 @@ def ComboboxDropdown(
     ``w-auto``.
 
     ``applied`` puts a dot in the trigger's corner and "(applied)" in
-    its accessible name. ``sheet_title``: names the narrow-viewport
-    sheet; none, no sheet. ``sheet_searchable``: its height stays.
+    its accessible name. ``sheet``: the narrow-viewport sheet, if any.
     """
-    if sheet_title == "":
-        raise ValueError("a sheet needs a title; pass None for none")
     mark: list[Node] = []
     if applied:
         mark = [Span(class_="sr-only")[" (applied)"], AppliedDot()]
@@ -1386,8 +1383,7 @@ def ComboboxDropdown(
         id=id,
         behavior="combobox",
         config=config,
-        sheet_title=sheet_title,
-        sheet_searchable=sheet_searchable,
+        sheet=sheet,
     )
 
 
@@ -1421,8 +1417,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
             id=id,
             placement="bottom-end",
             behavior="combobox",
-            sheet_title=PRESETS_LABEL,
-            sheet_searchable=True,
+            sheet=SheetSpec(PRESETS_LABEL, searchable=True),
         )
 
     return {

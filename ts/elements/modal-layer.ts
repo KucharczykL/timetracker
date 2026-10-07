@@ -119,7 +119,8 @@ export function isModalLeaving(): boolean {
   return shown.some((entry) => entry.state === "leaving");
 }
 
-type SettledCallback = () => void;
+/** Takes nothing: it says only "the layer is quiet". */
+export type SettledCallback = () => void;
 export type CancelSettled = () => void;
 //: A wrapper per call, so each cancels alone.
 const settledCallbacks = new Set<{ callback: SettledCallback }>();
@@ -129,7 +130,7 @@ let settleDepth = 0;
 /** Runs once no modal leaves; cancellable. */
 export function whenSettled(callback: SettledCallback): CancelSettled {
   if (!isModalLeaving() && settleDepth === 0) {
-    callback();
+    runSettled(callback);
     return () => undefined;
   }
   const queued = { callback };
@@ -152,12 +153,15 @@ function flushSettled(): void {
   if (isModalLeaving()) return;
   const queued = [...settledCallbacks];
   settledCallbacks.clear();
-  for (const { callback } of queued) {
-    try {
-      callback();
-    } catch (error) {
-      report(`a settle callback threw: ${String(error)}`);
-    }
+  for (const { callback } of queued) runSettled(callback);
+}
+
+//: Both paths report a throw alike.
+function runSettled(callback: SettledCallback): void {
+  try {
+    callback();
+  } catch (error) {
+    report(`a settle callback threw: ${String(error)}`);
   }
 }
 

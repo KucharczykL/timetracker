@@ -35,8 +35,8 @@ registerBehavior("inline-combobox", {
   sheetLent: (_host, toggle) => toggle,
   sheetOpener: (host) => ownChild(host, "[data-search-select-face-open]"),
   sheetFocus: (menu) => {
-    const search =
-      menu.closest("drop-down")?.querySelector<HTMLElement>("[data-search-select-search]") ?? null;
+    const host = menu.closest<HTMLElement>("drop-down");
+    const search = host ? ownChild(host, "[data-search-select-search]") : null;
     //: Else no phone keyboard rises.
     if (!search) reportClientError("inline-combobox", "no search box to focus", { toast: false });
     return search;

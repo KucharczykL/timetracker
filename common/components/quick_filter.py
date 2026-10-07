@@ -34,6 +34,7 @@ from common.components.custom_elements import (
     DropdownFieldset,
     DropdownPanel,
     FilterMode,
+    SheetSpec,
     _QuickFilterBarElement,
     list_url_for,
 )
@@ -476,9 +477,8 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
-            sheet_title=label,
             # A FilterSelect searches.
-            sheet_searchable=searchable,
+            sheet=SheetSpec(label, searchable=searchable),
         )
 
     def _group_content(self, filter_cls: type, group: QuickFacetGroup) -> Node:

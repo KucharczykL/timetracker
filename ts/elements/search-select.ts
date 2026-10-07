@@ -43,7 +43,6 @@ import {
 import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import { followPointer } from "../pointer-follow.js";
 import { ownChild } from "./own-child.js";
-import type { DropdownHideDetail } from "./sheet-controller.js";
 // Defines the host a delegated widget opens.
 import "./drop-down.js";
 import { FORM_DIALOG_CREATED, type FormDialogCreatedDetail } from "./form-dialog/events.js";
@@ -77,9 +76,15 @@ export type SearchSelectChangeDetail =
   | { name: string; values: string[]; last: SearchSelectOption | null; none: false }
   | { name: string; values: []; last: null; none: true };
 
+//: A person's single-select pick, changed or not.
+export interface SearchSelectPickDetail {
+  name: string;
+}
+
 declare global {
   interface HTMLElementEventMap {
     "search-select:change": CustomEvent<SearchSelectChangeDetail>;
+    "search-select:pick": CustomEvent<SearchSelectPickDetail>;
   }
 }
 
@@ -293,7 +298,11 @@ const rewriteDialogCreate = (container: Element, params: ParamSources): void => 
   //: A nested picker's + is its own.
   const links = Array.from(
     scope.querySelectorAll("a[data-search-select-dialog-create]"),
-  ).filter(link => link.closest("drop-down") === scope || container.contains(link));
+  ).filter(link =>
+    scope === container
+      ? link.closest("search-select") === container
+      : link.closest("drop-down") === scope,
+  );
   if (!links.length) {
     reportClientError(DIALOG_CREATE_CONTEXT, "params set, no + link", { toast: false });
     return;
@@ -598,8 +607,15 @@ const initWidget = (containerElement: Element): boolean => {
   };
 
   //: A person's pick ends a single-select sheet.
-  const closeAfterPick = () => {
-    if (lent() && !multi && !isFilter) dropdownHost?.close();
+  const personPicked = () => {
+    if (multi || isFilter) return;
+    container.dispatchEvent(
+      new CustomEvent<SearchSelectPickDetail>("search-select:pick", {
+        bubbles: true,
+        detail: { name },
+      }),
+    );
+    if (lent()) dropdownHost?.close();
   };
 
   //: One node says both "nothing matched" and "fill that in first",
@@ -622,7 +638,10 @@ const initWidget = (containerElement: Element): boolean => {
   //: Lent since the last hide.
   let wasLent = false;
   dropdownHost?.addEventListener("dropdown:show", (event) => {
-    if (event.target === dropdownHost && lent()) wasLent = true;
+    if (event.target !== dropdownHost) return;
+    if (lent()) wasLent = true;
+    //: Also when no box takes focus.
+    syncExpanded();
   });
 
   // A host close resets the ARIA state.
@@ -633,7 +652,7 @@ const initWidget = (containerElement: Element): boolean => {
     if (!wasLent) return;
     wasLent = false;
     //: A host change is no leave.
-    if ((event as CustomEvent<DropdownHideDetail | undefined>).detail?.moving) return;
+    if (event.detail.moving) return;
     //: The leave focusout skipped.
     cancelPendingSearch();
     revertDrop();
@@ -953,7 +972,7 @@ const initWidget = (containerElement: Element): boolean => {
       createRow.hidden = true;
       selectOption(option);
       hidePanel();
-      closeAfterPick();
+      personPicked();
       return;
     }
     if (create === "event") {
@@ -1006,7 +1025,7 @@ const initWidget = (containerElement: Element): boolean => {
         if (clears !== clearsAtStart) return;
         selectOption(option);
         hidePanel();
-        closeAfterPick();
+        personPicked();
       })
       .catch(error => {
         //: Nothing else reports here: the row would un-dim on a POST
@@ -1318,7 +1337,7 @@ const initWidget = (containerElement: Element): boolean => {
           search.value = "";
         } else {
           selectOption(option);
-          closeAfterPick();
+          personPicked();
         }
         hidePanel(); // also clears the highlight
       }
@@ -1401,7 +1420,7 @@ const initWidget = (containerElement: Element): boolean => {
       addFilterPill(optionFromRow(row), "include");
     } else {
       selectOption(optionFromRow(row));
-      closeAfterPick();
+      personPicked();
     }
   });
 
@@ -1579,7 +1598,7 @@ const initWidget = (containerElement: Element): boolean => {
     soleDeclined = false;
     hidePanel();
     if (!sameHeld(before, heldNow())) emitNone();
-    closeAfterPick();
+    personPicked();
   };
 
   const offeredRow = (value: string): HTMLElement | undefined =>

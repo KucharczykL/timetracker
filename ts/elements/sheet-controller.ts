@@ -1,5 +1,5 @@
 /** The bottom sheet's slide and lifecycle events. */
-import type { MenuController } from "./menu-behavior.js";
+import { dispatchHide, type DropdownHideDetail, type MenuController } from "./menu-behavior.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
 import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
@@ -73,11 +73,6 @@ export interface SheetCoreOptions {
   hideDetail?: () => DropdownHideDetail;
 }
 
-/** A sheet closed only to change hosts. */
-export interface DropdownHideDetail {
-  moving: boolean;
-}
-
 export interface SheetCore {
   /** False unless this call opened it. */
   open: (opener?: HTMLElement) => boolean;
@@ -148,12 +143,7 @@ export function attachSheetCore(
       } finally {
         // Listeners wait on it, whatever threw.
         render();
-        host.dispatchEvent(
-          new CustomEvent<DropdownHideDetail>("dropdown:hide", {
-            bubbles: true,
-            detail: options.hideDetail?.() ?? { moving: false },
-          }),
-        );
+        dispatchHide(host, options.hideDetail?.());
       }
       options.afterHide?.();
     },

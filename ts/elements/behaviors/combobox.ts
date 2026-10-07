@@ -1,4 +1,3 @@
-import { reportClientError } from "../../client-errors.js";
 import { registerBehavior } from "../dropdown-behaviors.js";
 
 // Combobox-hosting dropdown (issue #297): the [data-menu] panel is a dialog
@@ -16,7 +15,7 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 // - keeps Enter inside the search input from implicitly submitting an ancestor
 //   <form> (the filter bar renders its action row inside one); the widget's own
 //   Enter-pick handling has already run by the time this listener fires,
-// - closes on a single-select pick or none.
+// - closes on a person's single-select pick, changed or not.
 //
 // The widget methods are duck-typed so this module never imports search-select
 // (keeps drop-down.js's transitive graph lean; the element upgrades on its own).
@@ -48,25 +47,16 @@ registerBehavior("combobox", {
     const onSearchKeydown = (event: KeyboardEvent) => {
       if (event.key === "Enter") event.preventDefault();
     };
-    //: Code sets silently; a change is a person's.
-    const onChange = (event: Event) => {
-      if (!widget || event.target !== widget) return;
-      if (widget.getAttribute("multi") === "true" || widget.getAttribute("filter-mode") === "true") {
-        return;
-      }
-      const detail = (event as CustomEvent<{ last: unknown; none: boolean } | null>).detail;
-      if (!detail) {
-        reportClientError("combobox", "a change event carries no detail", { toast: false });
-        return;
-      }
-      if (detail.last || detail.none) controller.close();
+    //: Only a person's single-select pick sends it.
+    const onPick = (event: HTMLElementEventMap["search-select:pick"]) => {
+      if (widget && event.target === widget) controller.close();
     };
     host.addEventListener("dropdown:show", onShow);
-    host.addEventListener("search-select:change", onChange);
+    host.addEventListener("search-select:pick", onPick);
     searchInput?.addEventListener("keydown", onSearchKeydown);
     return () => {
       host.removeEventListener("dropdown:show", onShow);
-      host.removeEventListener("search-select:change", onChange);
+      host.removeEventListener("search-select:pick", onPick);
       searchInput?.removeEventListener("keydown", onSearchKeydown);
     };
   },

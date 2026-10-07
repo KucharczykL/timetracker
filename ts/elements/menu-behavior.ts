@@ -241,7 +241,7 @@ export function attachMenu(
     window.removeEventListener("scroll", reposition, true);
     window.removeEventListener("resize", reposition);
     resizeObserver?.disconnect();
-    host.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
+    dispatchHide(host);
   };
 
   const toggleChecked = (item: HTMLElement): void => {
@@ -448,4 +448,24 @@ export function attachMenu(
   });
 
   return self;
+}
+
+/** The `dropdown:hide` detail. */
+export interface DropdownHideDetail {
+  /** True when it closed only to change hosts. */
+  moving: boolean;
+}
+
+/** Every dropdown hide goes through here. */
+export function dispatchHide(
+  host: HTMLElement,
+  detail: DropdownHideDetail = { moving: false },
+): void {
+  host.dispatchEvent(new CustomEvent<DropdownHideDetail>("dropdown:hide", { bubbles: true, detail }));
+}
+
+declare global {
+  interface HTMLElementEventMap {
+    "dropdown:hide": CustomEvent<DropdownHideDetail>;
+  }
 }

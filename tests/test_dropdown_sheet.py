@@ -17,6 +17,7 @@ from common.components.custom_elements import (
     SHEET_ATTRIBUTES,
     SHEET_HOST_VALUE,
     BottomSheet,
+    SheetSpec,
 )
 from common.components.primitives import Button, Div, YearPicker
 from common.components.quick_filter import QUICK_FACETS, QuickFilterBar
@@ -60,7 +61,7 @@ def test_a_dropdown_without_a_title_carries_no_sheet():
 
 
 def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
-    html = dropdown(sheet_title="Day")
+    html = dropdown(sheet=SheetSpec("Day"))
     [dialog] = sheets(html)
     assert "data-menu" not in dialog
     assert "data-bottom-sheet" not in dialog
@@ -71,7 +72,7 @@ def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
 
 
 def test_a_dropdown_sheet_rises_above_the_keyboard():
-    html = dropdown(sheet_title="Day")
+    html = dropdown(sheet=SheetSpec("Day"))
     assert "mb-[var(--sheet-keyboard-inset,0px)]" in html
     assert "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]" in html
 
@@ -80,8 +81,8 @@ STEADY = " h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
 
 
 def test_only_a_searchable_sheet_keeps_its_height():
-    assert STEADY not in dropdown(sheet_title="Day")
-    assert STEADY in dropdown(sheet_title="Game", sheet_searchable=True)
+    assert STEADY not in dropdown(sheet=SheetSpec("Day"))
+    assert STEADY in dropdown(sheet=SheetSpec("Game", searchable=True))
 
 
 def test_the_section_sheet_keeps_its_own_shape():
@@ -201,7 +202,7 @@ def test_every_quick_facet_applies_the_bar(mode):
 
 def test_the_sheet_behavior_refuses_a_second_sheet():
     with pytest.raises(ValueError):
-        dropdown(behavior="sheet", sheet_title="Sections")
+        dropdown(behavior="sheet", sheet=SheetSpec("Sections"))
 
 
 def test_every_sheet_variant_names_the_generated_host():
@@ -217,3 +218,9 @@ def test_every_sheet_variant_names_the_generated_host():
         if "host" in match.group(1)
     }
     assert named == {stated}
+
+
+@pytest.mark.parametrize("title", ["", None])
+def test_a_sheet_needs_a_title(title):
+    with pytest.raises(ValueError):
+        SheetSpec(title)

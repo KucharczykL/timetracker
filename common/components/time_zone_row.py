@@ -12,7 +12,7 @@ on unsaved records and emphasises the trigger when the zones disagree.
 """
 
 from common.components.core import Media, Node
-from common.components.custom_elements import _TimeZoneRow
+from common.components.custom_elements import SheetSpec, _TimeZoneRow
 from common.components.primitives import Div, Input
 from common.components.search_select import ComboboxDropdown, SearchSelect
 
@@ -49,8 +49,7 @@ def TimeZoneRow(
             id=f"{field_name}-dropdown",
             ghost=True,
             # The value changes; the name does not.
-            sheet_title=label,
-            sheet_searchable=True,
+            sheet=SheetSpec(label, searchable=True),
         )
     ]
     element = _TimeZoneRow(

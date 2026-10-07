@@ -1795,6 +1795,7 @@ def YearPicker(
     from common.components.custom_elements import (
         OVERLAY_SURFACE_CLASS,
         SHEET_HOSTED_PANEL_CLASS,
+        SheetSpec,
         _Dropdown,
         dropdown_sheet,
     )
@@ -1879,7 +1880,7 @@ def YearPicker(
         placement="bottom-end",
         submenu="false",
         behavior="date-calendar",
-    )[picker, dropdown_sheet("Year")]
+    )[picker, dropdown_sheet(SheetSpec("Year"))]
 
 
 # Form-field rendering. The element classes (label/error/checkbox-row + the

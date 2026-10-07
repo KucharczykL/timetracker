@@ -5,11 +5,11 @@ import re
 import pytest
 
 from common.components import FilterSelect, SearchSelect, TimeZoneRow
-from common.components.primitives import Button, Span
+from common.components.primitives import Button
 from common.components.search_select import (
-    ComboboxDropdown,
     DialogCreate,
-    _FaceValue,
+    _face_value,
+    _HeldFace,
     presets_member,
 )
 
@@ -39,8 +39,12 @@ def test_a_field_picker_renders_its_face_and_one_untitled_sheet():
     assert 'aria-haspopup="dialog"' in open_button
     assert 'aria-expanded="false"' in open_button
     assert 'type="button"' in open_button
-    assert "hidden max-sm:flex" in tag_with(html, 'data-search-select-face=""')[0]
-    assert "max-sm:not-data-[dropdown-host=sheet]:hidden" in html
+    face_class = tag_with(html, 'data-search-select-face=""')[0]
+    assert "sm:hidden in-data-[dropdown-sheetless]:hidden" in face_class
+    assert (
+        "max-sm:not-data-[dropdown-host=sheet]:not-in-data-[dropdown-sheetless]:hidden"
+        in html
+    )
 
 
 def test_a_dialog_picker_has_no_face_and_no_sheet():
@@ -176,14 +180,13 @@ def test_a_filter_face_leads_with_its_modifier():
     assert face_value(html) == ("(All), PC", False)
 
 
-def test_a_combobox_sheet_needs_a_title():
-    with pytest.raises(ValueError):
-        ComboboxDropdown(label="Zone", content=Span(), id="zone", sheet_title="")
-
-
 def test_a_held_face_names_its_value():
     with pytest.raises(ValueError):
-        _FaceValue.held([""])
+        _HeldFace("")
+
+
+def test_blank_labels_leave_the_placeholder():
+    assert _face_value(["", ""], "Pick one").placeholder == "Pick one"
 
 
 STEADY = " h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"

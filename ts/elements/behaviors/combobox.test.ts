@@ -132,29 +132,10 @@ describe("combobox dropdown behavior (#297)", () => {
     expect(nested.querySelector<HTMLElement>("[data-search-select-panel]")!.hidden).toBe(true);
   });
 
-  it("closes on a person's single-select pick, not on a clear", () => {
+  it("closes on a pick event, not on a change alone", () => {
     const host = mountComboboxDropdown();
     toggleOf(host).click();
     const widget = host.querySelector("search-select")!;
-    const change = (detail: object) =>
-      widget.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true, detail }));
-
-    change({ name: "preset", values: [], last: null, none: false });
-    expect(host.isOpen()).toBe(true);
-
-    change({ name: "preset", values: ["1"], last: { value: "1", label: "A", data: {} }, none: false });
-    expect(host.isOpen()).toBe(false);
-
-    toggleOf(host).click();
-    change({ name: "preset", values: [], last: null, none: true });
-    expect(host.isOpen()).toBe(false);
-  });
-
-  it("stays open over a multi-select or filter pick", () => {
-    const host = mountComboboxDropdown();
-    const widget = host.querySelector("search-select")!;
-    widget.setAttribute("multi", "true");
-    toggleOf(host).click();
     widget.dispatchEvent(
       new CustomEvent("search-select:change", {
         bubbles: true,
@@ -162,6 +143,10 @@ describe("combobox dropdown behavior (#297)", () => {
       }),
     );
     expect(host.isOpen()).toBe(true);
+    widget.dispatchEvent(
+      new CustomEvent("search-select:pick", { bubbles: true, detail: { name: "preset" } }),
+    );
+    expect(host.isOpen()).toBe(false);
   });
 
   it("closes on a real row pick, not on a nested picker's", () => {
@@ -186,15 +171,59 @@ describe("combobox dropdown behavior (#297)", () => {
 
     const nested = host.querySelector("[data-nested]")!;
     nested.dispatchEvent(
-      new CustomEvent("search-select:change", {
-        bubbles: true,
-        detail: { name: "other", values: ["1"], last: { value: "1", label: "A", data: {} }, none: false },
-      }),
+      new CustomEvent("search-select:pick", { bubbles: true, detail: { name: "other" } }),
     );
     expect((host as DropdownElement).isOpen()).toBe(true);
 
     host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
     expect((host as DropdownElement).isOpen()).toBe(false);
   });
-});
 
+  it("closes on a re-pick of the held row", () => {
+    const host = document.createElement("drop-down");
+    host.setAttribute("behavior", "combobox");
+    host.setAttribute("placement", "bottom-start");
+    host.setAttribute("submenu", "false");
+    host.innerHTML = `
+      <button data-toggle aria-expanded="false" type="button">Zone</button>
+      <div data-menu popover="manual" hidden role="dialog" aria-label="Zone">
+        <search-select name="zone" multi="false" always-visible="true">
+          <div data-search-select-pills><input type="hidden" name="zone" value="UTC"></div>
+          <input data-search-select-search value="UTC" />
+          <div data-search-select-options role="listbox">
+            <div data-search-select-option data-value="UTC" data-label="UTC" role="option">UTC</div>
+          </div>
+        </search-select>
+      </div>`;
+    document.body.appendChild(host);
+    const changed = vi.fn();
+    host.addEventListener("search-select:change", changed);
+    toggleOf(host).click();
+    host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
+    expect(changed).not.toHaveBeenCalled();
+    expect((host as DropdownElement).isOpen()).toBe(false);
+  });
+
+  it("stays open over a multi-select pick", () => {
+    const host = document.createElement("drop-down");
+    host.setAttribute("behavior", "combobox");
+    host.setAttribute("placement", "bottom-start");
+    host.setAttribute("submenu", "false");
+    host.innerHTML = `
+      <button data-toggle aria-expanded="false" type="button">Tags</button>
+      <div data-menu popover="manual" hidden role="dialog" aria-label="Tags">
+        <search-select name="tags" multi="true" always-visible="true">
+          <div data-search-select-pills></div>
+          <input data-search-select-search />
+          <div data-search-select-options role="listbox">
+            <div data-search-select-option data-value="1" data-label="A" role="option">A</div>
+          </div>
+          <template data-search-select-template="pill"><span data-pill><span data-search-select-label></span></span></template>
+        </search-select>
+      </div>`;
+    document.body.appendChild(host);
+    toggleOf(host).click();
+    host.querySelector<HTMLElement>("[data-search-select-option]")!.click();
+    expect((host as DropdownElement).isOpen()).toBe(true);
+  });
+});

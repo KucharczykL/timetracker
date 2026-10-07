@@ -90,6 +90,7 @@ export class DropdownElement extends HTMLElement {
           });
         } catch (error) {
           // The behavior still wires below.
+          this.setAttribute(SHEET_ATTRIBUTES.sheetless, "");
           reportClientError("drop-down", `its sheet is unusable: ${String(error)}`, {
             toast: false,
           });
@@ -113,6 +114,7 @@ export class DropdownElement extends HTMLElement {
     if (!sheet && !sentinel) return null;
     if (sheet instanceof HTMLDialogElement && sentinel) return { sheet, sentinel };
     // A half-built sheet stays anchored.
+    this.setAttribute(SHEET_ATTRIBUTES.sheetless, "");
     reportClientError(
       "drop-down",
       "a sheet needs a <dialog> and its narrow sentinel; it stays anchored",

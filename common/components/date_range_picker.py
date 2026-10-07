@@ -22,6 +22,7 @@ from common.components.core import Node
 from common.components.custom_elements import (
     OVERLAY_SURFACE_CLASS,
     SHEET_HOSTED_PANEL_CLASS,
+    SheetSpec,
     _DateRangePicker,
     _Dropdown,
     dropdown_sheet,
@@ -559,7 +560,7 @@ def DateRangePicker(
         placement="bottom-start",
         submenu="false",
         behavior="date-calendar",
-    )[picker, dropdown_sheet(label)]
+    )[picker, dropdown_sheet(SheetSpec(label))]
 
 
 def DateRangePanel(
