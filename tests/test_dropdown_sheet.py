@@ -108,3 +108,28 @@ def test_every_quick_facet_carries_a_sheet():
     facets = re.findall(r"<drop-down[^>]*data-quick-facet", html)
     assert facets
     assert len(sheets(html)) == len(facets)
+
+
+@pytest.mark.parametrize(
+    ("picker", "has_done"),
+    [
+        (DatePicker(presentation=PRESENTATION, label="Day", name="day"), True),
+        (DateTimePicker(presentation=PRESENTATION, label="Start", name="start"), True),
+        (
+            DateRangePicker(
+                presentation=PRESENTATION, label="Day", input_name_prefix="day"
+            ),
+            False,
+        ),
+    ],
+    ids=["date", "datetime", "range"],
+)
+def test_a_single_date_calendar_offers_done_in_the_sheet_alone(picker, has_done):
+    html = str(picker)
+    done = re.search(
+        r'<span class="hidden group-data-\[dropdown-host=sheet\]/dropdown:contents">'
+        r"<button[^>]*data-date-range-done",
+        html,
+    )
+    assert bool(done) is has_done
+    assert html.count("data-date-range-done") == int(has_done)

@@ -367,6 +367,14 @@ def _calendar_nav_button(direction: str, glyph: str, label: str) -> Node:
     )[Icon(glyph, decorative=True)]
 
 
+def sheet_done_button() -> Node:
+    """Done, shown only in a sheet."""
+    #: The anchored popup closes on an outside press.
+    return Span(class_="hidden group-data-[dropdown-host=sheet]/dropdown:contents")[
+        footer_button("done", "Done", color="blue")
+    ]
+
+
 def footer_button(action: str, label: str, *, color: ButtonColor = "gray") -> Node:
     """One calendar footer action. Cancel/Clear are secondary (gray); Select is
     the primary commit (blue)."""
