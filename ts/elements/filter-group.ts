@@ -1128,22 +1128,18 @@ export class FilterGroupElement extends HTMLElement {
       row.querySelector("[data-fc-remove]")?.remove(); // the group's controls own removal
       this.uniquify(row);
       cell.appendChild(row);
-      // Seed only the plain <select>s here (they work while detached). The
-      // operands are <search-select>s whose setSelected/setOptions no-op until
-      // connected, so their seed + option build runs on the post-render reflect
-      // pass (reflectComparisonSelection), mirroring the field-picker reflect.
+      // Operator and quantifier only; operands reflect later.
+      // Operand <search-select>s no-op until connected, so
+      // reflectComparisonSelection seeds them after render.
       this.seedComparisonRow(row, comparison);
       wireComparisonRowListeners(row, columns);
     }
     return cell;
   }
 
-  // Seed the plain <select>s of a freshly-cloned comparison row from a stored
-  // payload (preset load / ?filter= import) via the `data-selected` contract that
-  // refreshRow adopts on first paint. Only the operator + quantifier live here;
-  // the left/right operands are <search-select>s seeded on the reflect pass
-  // (applyComparisonSelection), since their setSelected no-ops while detached. The
-  // operator is packed (modifier:granularity) so refreshRow restores the space.
+  // Seeds operator and quantifier through data-selected.
+  // refreshRow adopts it on first paint; the operator is packed
+  // (modifier:granularity) so it restores the space.
   private seedComparisonRow(row: HTMLElement, comparison: ComparisonPayload): void {
     const { modifier, granularity, quantifier } = comparison;
     if (modifier) {

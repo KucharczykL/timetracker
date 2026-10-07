@@ -49,7 +49,7 @@ does not block the submit. The server refusal is the only check.
   element, so the parent picker's events do not reach it. A change with
   no value is a keystroke, not a pick, and moves nothing.
 - `ts/setting-control.ts` reads inputs, textareas and the picker. It
-  refuses a native select, which only a `MODEL` setting would render.
+  refuses a native select.
 
 ## The temporal shape
 
@@ -72,7 +72,7 @@ is a second interface with no use.
 
 - `tests/test_choice_search_select.py`: the swap, ×, `required`, attrs,
   and the widgets the swap leaves alone.
-- `tests/test_html_validity.py`: the listed form pages render no native
+- `tests/html_answers.py`: no HTML answer in the suite holds a native
   select.
 - `tests/pickers.py` reads a picker's held value from markup.
 - `tests/test_temporal_form_field.py`: the hidden shape, and an

@@ -1049,8 +1049,8 @@ Submodules re-exported via `common/components/__init__.py`:
   #1301; `apply_primitive_widget_classes` swaps every fixed-choice field
   still on a plain `forms.Select` for one (× only with a none row,
   `revert_on_leave`, × and `aria-required` decided at render), so no form
-  renders a native select but a MODEL setting, which `settingControlOf`
-  refuses ([spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md));
+  renders a native select; a model field states its own picker
+  ([spec](docs/superpowers/specs/2026-10-06-issue-1292-fixed-choices-search-select-design.md));
   every SELECT setting renders one, read beside native controls
   through `ts/setting-control.ts` by `<live-setting-fields>` and
   `<theme-setting>` ([spec](docs/superpowers/specs/2026-10-06-issue-1289-live-setting-search-select-design.md));
@@ -1447,6 +1447,13 @@ named after what they cover; less obvious ones are `test_paths_return_200.py`
 `test_signals.py` (game removal cascade, raw fixture loads, …), and
 `test_anonymize_sample.py` (fixture anonymizer's rollback safety, determinism,
 invariants, round-trip).
+
+**Every HTML answer a test client reads is checked** (`tests/html_answers.py`,
+autouse): no native `<select>` (the DEBUG settings kit aside) and no floating
+panel without `popover="manual"`, at any status, a form dialog's `page`
+included. It patches `django.test.Client`; a `RequestFactory` view and `e2e/`
+are out of reach. Contract is
+[No native select](docs/superpowers/specs/2026-10-07-issue-1540-no-native-select-design.md)
 
 **`games/fixtures/sample.yaml.gz`** (the `make loadsample` seed) is **generated,
 anonymized production snapshot** — gzip-compressed (~950 KB), do not

@@ -284,31 +284,6 @@ def test_select_widget_requires_choices():
         )
 
 
-def test_model_widget_requires_a_queryset_factory():
-    with pytest.raises(ValueError, match="MODEL"):
-        SettingDefinition(
-            "SYNTHETIC",
-            scope=SettingScope.USER,
-            apply_timing=ApplyTiming.LIVE,
-            label="Synthetic",
-            default_factory=lambda: None,
-            widget=SettingWidget.MODEL,
-        )
-
-
-def test_model_widget_requires_empty_display():
-    with pytest.raises(ValueError, match="empty_display"):
-        SettingDefinition(
-            "SYNTHETIC",
-            scope=SettingScope.USER,
-            apply_timing=ApplyTiming.LIVE,
-            label="Synthetic",
-            default_factory=lambda: None,
-            widget=SettingWidget.MODEL,
-            model_queryset=lambda: UserPreferences.objects.all(),
-        )
-
-
 def test_choices_require_a_select_widget():
     with pytest.raises(ValueError, match="SELECT"):
         SettingDefinition(

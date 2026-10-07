@@ -15,14 +15,11 @@ before the chain exists) and the deprecated ``PROD`` alias.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-
-if TYPE_CHECKING:
-    from django.db.models import QuerySet
 
 type SettingKey = str  # e.g. "DEFAULT_DISPLAY_CURRENCY"
 type Cast = Callable[[str], object]  # coercion applied to raw string sources
@@ -32,7 +29,6 @@ type SettingWriteValidator = Callable[
     [object], None
 ]  # write-time referential check; raises on failure
 type SettingOption = tuple[Any, str]  # e.g. ("cs", "Čeština"), (25, "25")
-type QuerysetFactory = Callable[[], "QuerySet[Any]"]  # lazy; imports models when called
 
 LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("games:list_sessions", "Playtime"),
@@ -122,7 +118,6 @@ class SettingWidget(StrEnum):
 
     TEXT = "text"
     SELECT = "select"
-    MODEL = "model"
 
 
 class ApplyTiming(StrEnum):
@@ -153,8 +148,7 @@ class SettingDefinition:
     validator: SettingValidator | None = None
     widget: SettingWidget | None = None
     choices: tuple[SettingOption, ...] | None = None
-    model_queryset: QuerysetFactory | None = None
-    empty_display: str = ""  # label for a MODEL widget's unset/dangling value
+    empty_display: str = ""  # a SELECT setting's unset label
     reload_after_save: bool = False
     user_help_text: str = ""
     superuser_only: bool = False
@@ -180,13 +174,6 @@ class SettingDefinition:
                 f"{self.key}: a SELECT widget needs choices, and choices need a "
                 "SELECT widget."
             )
-        if (self.widget is SettingWidget.MODEL) != (self.model_queryset is not None):
-            raise ValueError(
-                f"{self.key}: a MODEL widget needs model_queryset, and "
-                "model_queryset needs a MODEL widget."
-            )
-        if self.widget is SettingWidget.MODEL and not self.empty_display:
-            raise ValueError(f"{self.key}: a MODEL widget needs empty_display.")
         # A restart-only value cannot be fixed by reloading the page.
         if self.reload_after_save and self.apply_timing is not ApplyTiming.LIVE:
             raise ValueError(

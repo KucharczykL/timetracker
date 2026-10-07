@@ -140,17 +140,6 @@ it("binds once across a DOM move", async () => {
   expect(toggle().getAttribute("aria-pressed")).toBe("true");
 });
 
-it("on a select, empties and restores the choice", async () => {
-  mount(`<select name="letter"><option value="a">A</option><option value="b" selected>B</option></select>`);
-  await settled();
-  const select = document.querySelector<HTMLSelectElement>("select")!;
-  toggle().click();
-  expect(select.value).toBe("");
-  expect(select.disabled).toBe(true);
-  toggle().click();
-  expect(select.value).toBe("b");
-});
-
 it("reports and stays unpressed when the field has no control", async () => {
   mount(`<input type="hidden" name="note" value="x">`);
   await settled();

@@ -61,6 +61,6 @@ the edition name, restores.
 
 ## Rules
 
-- No form page that `tests/test_html_validity.py` lists renders a native
-  `<select>`. A MODEL setting may; `settingControlOf` refuses it.
+- No HTML answer in the suite holds a native `<select>`
+  (`tests/html_answers.py`).
 - `games/filters.py` keeps its URL literals, beside the device ones.

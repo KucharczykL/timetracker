@@ -515,7 +515,7 @@ class FieldComparisonRow(NamedTuple):
     )
 
 
-# Picker widths; the native selects sized to content.
+# Picker widths.
 _OPERATOR_WIDTH = "w-40"
 _QUANTIFIER_WIDTH = "w-28"
 _RELATION_MATCH_WIDTH = "w-28"

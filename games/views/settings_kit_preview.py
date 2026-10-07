@@ -15,16 +15,15 @@ from common.components import (
     BadgeTone,
     Checkbox,
     Div,
+    Element,
     FormFieldGroup,
     Input,
     Label,
     LiveSettingFields,
     MaskedSecretField,
-    Option,
     PageHeading,
     SectionedPageScaffold,
     SectionedPageSection,
-    Select,
     SettingFieldState,
     SettingsFieldColumns,
     SettingsFieldLayout,
@@ -225,14 +224,17 @@ def _preview_standard_field(prefix: str, *, kind: str):
     if kind == "destination":
         label = "Default destination"
         source = "database"
-        control = Select(
-            id_=field_id,
-            name=field_id,
-            class_=SELECT_CLASS,
-        )[
-            Option(value="library", selected=True)["Library"],
-            Option(value="statistics")["Statistics"],
-        ]
+        # The kit shows the native look.
+        control = Element(
+            "select",
+            [("id", field_id), ("name", field_id), ("class", SELECT_CLASS)],
+            [
+                Element(
+                    "option", [("value", "library"), ("selected", "")], ["Library"]
+                ),
+                Element("option", [("value", "statistics")], ["Statistics"]),
+            ],
+        )
     else:
         label = "Daily limit"
         source = "default"

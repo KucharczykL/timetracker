@@ -72,21 +72,8 @@ def field_name_for(definition: SettingDefinition) -> SettingFieldName:
     return definition.key.lower()
 
 
-def _model_label(definition: SettingDefinition, value: object) -> str:
-    # bool is an int subclass; a stray True must not look up pk=1.
-    if isinstance(value, int) and not isinstance(value, bool):
-        queryset_factory = definition.model_queryset
-        if queryset_factory is not None:
-            instance = queryset_factory().filter(pk=value).first()
-            if instance is not None:
-                return str(instance)
-    return definition.empty_display
-
-
 def display_label(definition: SettingDefinition, value: object) -> str:
     """The human label for a resolved value, as used in "Use site default (…)"."""
-    if definition.widget is SettingWidget.MODEL:
-        return _model_label(definition, value)
     if definition.widget is SettingWidget.SELECT:
         choices = definition.choices or ()
         for choice_value, label in choices:
@@ -170,15 +157,6 @@ class RegistrySettingsForm(forms.Form):
 
     def _build_field(self, definition: SettingDefinition) -> forms.Field:
         empty_label = self.empty_label(definition)
-        if definition.widget is SettingWidget.MODEL:
-            queryset_factory = definition.model_queryset
-            if queryset_factory is None:
-                raise ValueError(f"{definition.key}: MODEL widget without a queryset.")
-            return forms.ModelChoiceField(
-                queryset=queryset_factory(),
-                required=False,
-                empty_label=empty_label,
-            )
         if definition.widget is SettingWidget.SELECT:
             choices = (("", empty_label), *(definition.choices or ()))
             widget = ChoiceSearchSelectWidget(revert_on_leave=True)

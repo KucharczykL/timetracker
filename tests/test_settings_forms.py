@@ -11,7 +11,7 @@ from games.forms import (
     ChoiceSearchSelectWidget,
     apply_primitive_widget_classes,
 )
-from games.models import Platform, SiteSetting
+from games.models import SiteSetting
 from games.settings_forms import (
     SiteSettingsForm,
     UserSettingsForm,
@@ -167,43 +167,6 @@ def test_display_label_names_the_unset_landing_page_regardless_of_choice_order()
     assert reordered_choices is not None
     assert reordered_choices[0][1] != "Playtime"
     assert display_label(reordered, None) == "Playtime"
-
-
-@pytest.fixture
-def synthetic_model_setting(monkeypatch):
-    """A MODEL-widget setting with an empty_display distinct from every real
-    MODEL setting's, so a hardcoded "No device" cannot pass for it by luck."""
-    definition = SettingDefinition(
-        "SYNTHETIC_MODEL",
-        scope=SettingScope.USER,
-        apply_timing=ApplyTiming.LIVE,
-        label="Synthetic model",
-        default_factory=lambda: None,
-        widget=SettingWidget.MODEL,
-        model_queryset=lambda: Platform.objects.order_by("name"),
-        empty_display="No synthetic platform",
-    )
-    monkeypatch.setitem(SETTINGS_REGISTRY, definition.key, definition)
-    clear_cache()
-    yield definition
-    clear_cache()
-
-
-@pytest.mark.django_db
-def test_display_label_reads_the_empty_display_from_the_definition(
-    synthetic_model_setting,
-):
-    assert display_label(synthetic_model_setting, None) == "No synthetic platform"
-
-
-@pytest.mark.django_db
-def test_the_personal_page_names_the_synthetic_model_empty_display(
-    synthetic_model_setting,
-):
-    field = UserSettingsForm().fields["synthetic_model"]
-
-    assert field.empty_label == "Use site default (No synthetic platform)"
-    assert "No device" not in field.empty_label
 
 
 _SYNTHETIC_CHOICES = (("alpha", "Alpha"), ("beta", "Beta"))

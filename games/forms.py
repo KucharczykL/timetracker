@@ -170,9 +170,7 @@ _TEXTAREA_LOOK = (
 
 def native_control_class(widget: forms.Widget, shape: ButtonShape = "full") -> str:
     """A native control's classes, rounding ``shape``'s corners."""
-    if isinstance(widget, forms.Select):
-        look = _SELECT_LOOK
-    elif isinstance(widget, forms.Textarea):
+    if isinstance(widget, forms.Textarea):
         look = _TEXTAREA_LOOK
     else:
         look = _INPUT_LOOK
@@ -180,7 +178,8 @@ def native_control_class(widget: forms.Widget, shape: ButtonShape = "full") -> s
 
 
 INPUT_CLASS = native_control_class(forms.TextInput())
-SELECT_CLASS = native_control_class(forms.Select())
+#: The settings kit's native look.
+SELECT_CLASS = f"{_SELECT_LOOK} {SHAPE_CLASSES['full']}".strip()
 TEXTAREA_CLASS = native_control_class(forms.Textarea())
 
 
@@ -214,7 +213,7 @@ def _holds_a_plain_select(field: forms.Field) -> TypeGuard[forms.ChoiceField]:
     return (
         isinstance(field, forms.ChoiceField)
         and not isinstance(field, (forms.ModelChoiceField, forms.MultipleChoiceField))
-        and type(field.widget) is forms.Select
+        and type(field.widget) is forms.ChoiceField.widget
     )
 
 
@@ -928,7 +927,7 @@ class UnsetWidget(forms.Widget):
     @choices.setter
     def choices(self, value) -> None:
         # Only these read them.
-        if isinstance(self.widget, (forms.Select, ChoiceSearchSelectWidget)):
+        if isinstance(self.widget, ChoiceSearchSelectWidget):
             self.widget.choices = value
 
     @property
@@ -1005,11 +1004,6 @@ def _join_of(widget: forms.Widget) -> UnsetJoin | None:
     if isinstance(widget, _SearchSelectAdapter):
         return "picker"
     if isinstance(widget, forms.Textarea):
-        return "native"
-    if isinstance(widget, forms.Select):
-        # Its empty is a state.
-        if isinstance(widget, forms.NullBooleanSelect):
-            return None
         return "native"
     if isinstance(widget, forms.widgets.Input):
         return "native" if widget.input_type in _EMPTYABLE_INPUT_TYPES else None
