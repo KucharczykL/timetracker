@@ -195,12 +195,12 @@ def GameLink(
 #: Keyed on str, not on the enum: the value reaching GameStatus() is a
 #: plain word off a queryset annotation as often as it is a member.
 _STATUS_COLORS: dict[str, str] = {
-    PlayerGameStatus.UNPLAYED: "bg-gray-500",
-    PlayerGameStatus.PLAYED: "bg-orange-400",
-    PlayerGameStatus.COMPLETED: "bg-green-500",
-    PlayerGameStatus.RETIRED: "bg-purple-500",
-    PlayerGameStatus.SHELVED: "bg-sky-500",
-    PlayerGameStatus.ABANDONED: "bg-red-500",
+    PlayerGameStatus.UNPLAYED: "bg-gray-500",  # color-ok: status hue
+    PlayerGameStatus.PLAYED: "bg-orange-400",  # color-ok: status hue
+    PlayerGameStatus.COMPLETED: "bg-green-500",  # color-ok: status hue
+    PlayerGameStatus.RETIRED: "bg-purple-500",  # color-ok: status hue
+    PlayerGameStatus.SHELVED: "bg-sky-500",  # color-ok: status hue
+    PlayerGameStatus.ABANDONED: "bg-red-500",  # color-ok: status hue
 }
 
 

@@ -78,6 +78,10 @@ Decisions merged in:
   arrow + label (indigo) and scope label (teal); the relation/scope cards themselves are
   neutral and follow the depth zebra. Each raw hue is `// color-ok` in
   `ts/elements/filter-group.ts`. Also game-status dot palette, `font-alien` wordmark accent.
+  The Python opt-outs carry `# color-ok:`: the chip states in `filters.py`, the status dots
+  in `domain.py`, the green `ControlButton`'s dark hover (`emerald-800`, no token beyond
+  `success-strong`) in `primitives.py`, and the engraved `DropdownDivider` hairline
+  (`bg-black/*`) in `custom_elements.py`.
 
 Known AA failures in shipped UI (pagination current-page, dark thead text, dark row-hover
 text) are repaired inside the token migration, not separately — see follow-ups.
@@ -323,7 +327,7 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
 
 Calls from #402:
 
-- **ControlButton: adopt as-is.** Variants (filled/segmented/outline/ghost/plain),
+- **ControlButton: adopt as-is.** Variants (filled/segmented/outline/ghost),
   polymorphism (`href=` → `<a>`, `method="post"` → form submit), `@container` sizing, and
   the `DISABLED_CONTROL_CLASS`/`DISABLED_WITHIN_CLASS` contract are exactly what settings
   rows need. **No new variant, no new color.** A locked settings field = real `disabled`
@@ -392,14 +396,13 @@ sanctioned exception, annotated `# type-ok: <reason>` on its line. Brand accents
 non-default family (the serif game-/purchase-detail names) compose `font-serif` alongside a
 size token — they are not exceptions.
 
-**Guards scan `.py` and `ts/` (#441).** The size guard (`tests/test_typography_tokens.py`) and
-the color guard (`tests/test_color_tokens.py`) walk both Python source and `ts/**/*.ts`
-(excluding `*.test.ts` and `ts/generated/`), so class strings hardcoded in TS are covered too —
-the whole TS layer silently drifted before #441 (raw `text-sm`, raw `gray-*`, off-tier radius;
-surfaced by the filter-tree `Choose a field…` placeholder). Opt a line out with
-`# type-ok:` / `// type-ok:` (size) or `// color-ok:` (a deliberate categorical hue — color
-guard). The **color guard is `ts/`-only**: `common/` still carries raw palette mid-migration
-(#404–#407), so a `.py` color guard belongs to those issues.
+**Guards scan `.py` and `ts/`.** The size guard (`tests/test_typography_tokens.py`) and
+the color guard (`tests/test_color_tokens.py`) walk one set of files, `guarded_files()`: the
+Python class-string modules and `ts/**/*.ts` (excluding `*.test.ts` and `ts/generated/`). The
+color guard refuses a hue with a numeric stop and bare `white`/`black`. Opt a line out with
+`# type-ok:` / `// type-ok:` (size) or `# color-ok:` / `// color-ok:` (a deliberate hue —
+color guard). Generated icons carry no class: `gen_icons` drops each snippet's root `class`,
+and `Icon()` states its own.
 
 ### Notes
 

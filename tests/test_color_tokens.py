@@ -1,22 +1,15 @@
-"""Guard: no raw Tailwind palette colors in ts/ class strings (#441).
+"""Guard: no raw Tailwind palette colors in class strings.
 
-Class strings hardcoded in ts/ escape the .py color-token conventions (the
-guards are otherwise Python-only). Raw palette utilities (`bg-gray-50`,
-`border-l-teal-400`, `ring-red-500`) must use semantic tokens
-(`bg-neutral-*`, `border-default-medium`, `ring-danger`, …). Deliberate
-categorical hues (the filter-builder accents that mirror the logic chips) opt
-out per line with `// color-ok: <reason>`.
-
-Scoped to ts/ ONLY — common/ still carries raw palette mid-migration
-(#404–#407); a .py color guard belongs to those issues, not here.
+Walks the size guard's files. Deliberate hues opt out per line with
+`# color-ok: <reason>` or `// color-ok: <reason>`.
 """
 
 import re
 
-from test_typography_tokens import REPO, ts_files
+from test_typography_tokens import REPO, guarded_files, ts_files
 
 # A palette utility: a color property, an optional side/axis (border-l), a
-# Tailwind hue, and a numeric stop. Semantic tokens (neutral-*, default-*,
+# Tailwind hue with a numeric stop, or white/black. Semantic tokens (neutral-*, default-*,
 # body, danger, warning, brand — no numeric stop) don't match.
 _HUES = (
     "gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|"
@@ -27,8 +20,7 @@ RAW_COLOR = re.compile(
     r"(?:bg|text|border|ring|divide|outline|decoration|shadow|fill|stroke"
     r"|from|via|to|accent|caret)"
     r"(?:-[a-z]{1,2})?-"
-    rf"(?:{_HUES})"
-    r"-\d{2,3}(?![\w])"
+    rf"(?:(?:{_HUES})-\d{{2,3}}(?![\w])|(?:white|black)(?![\w-]))"
 )
 
 
@@ -40,6 +32,9 @@ def test_raw_color_regex_self_check():
         "ring-red-500",
         "bg-amber-50",
         "text-indigo-500",
+        "dark:text-white",
+        "bg-black/10",
+        "border-l-white/30",
     ):
         assert RAW_COLOR.search(hit), hit
     # Does NOT match semantic tokens or the colorless side utility.
@@ -51,29 +46,32 @@ def test_raw_color_regex_self_check():
         "bg-warning-soft",
         "text-type-body",
         "border-l-4",
+        "text-whitesmoke",
+        "solid-brand",
+        "text-heading",
     ):
         assert not RAW_COLOR.search(miss), miss
 
 
-def test_ts_walker_finds_files():
-    # Guard against a vacuous pass: if ts_files() ever yields nothing (a broken
-    # rglob/exclusion), test_no_raw_palette_colors_in_ts would pass trivially.
-    files = list(ts_files())
-    assert files, "ts_files() yielded no files — the ts/ guard would pass vacuously"
-    assert all(not f.name.endswith(".test.ts") for f in files)
+def test_walker_finds_both_halves():
+    # An empty half would pass vacuously.
+    files = list(guarded_files())
+    assert any(f.suffix == ".py" for f in files)
+    assert any(f.suffix == ".ts" for f in files)
+    assert all(not f.name.endswith(".test.ts") for f in ts_files())
 
 
-def test_no_raw_palette_colors_in_ts():
+def test_no_raw_palette_colors():
     offenders = []
-    for f in ts_files():
+    for f in guarded_files():
         for i, line in enumerate(f.read_text().splitlines(), 1):
-            if "color-ok" in line:  # `// color-ok: <reason>` opts a line out
+            if "color-ok" in line:
                 continue
             if RAW_COLOR.search(line):
                 offenders.append(f"{f.relative_to(REPO)}:{i}: {line.strip()}")
     assert not offenders, (
-        "raw palette colors in ts/ — use semantic tokens (or add "
-        "`// color-ok: reason` for a deliberate categorical hue):\n"
+        "raw palette colors — use semantic tokens (or add "
+        "`# color-ok: reason` / `// color-ok: reason` for a deliberate hue):\n"
         + "\n".join(offenders)
     )
 

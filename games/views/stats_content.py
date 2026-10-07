@@ -536,7 +536,7 @@ def stats_content(
         )
 
     grid = Div(class_="grid grid-cols-1 md:grid-cols-2 gap-6 items-start")[*cards]
-    return Div(class_="flex flex-col gap-4 dark:text-white")[
+    return Div(class_="flex flex-col gap-4")[
         PageHeading([ctx["title"]]),
         _year_nav(year, ctx.get("stats_dropdown_year_range"), url_template),
         grid,

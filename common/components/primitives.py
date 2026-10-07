@@ -172,7 +172,6 @@ type ButtonVariant = Literal[
     "filled",  # standalone default
     "segmented",  # ButtonGroup member
     "outline",  # bordered dropdown-toggle look (colorless)
-    "plain",  # borderless navbar nav-link look (colorless)
     "ghost",  # transparent-until-hover dropdown-toggle look (colorless)
 ]
 # How a button's content sits on its main axis. Centered is the button default;
@@ -909,8 +908,8 @@ _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
         "focus:ring-neutral-tertiary-medium"
     ),
     "green": (
-        "text-white bg-success dark:bg-success-strong box-border border "
-        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "
+        "text-fg-on-success bg-success dark:bg-success-strong box-border border "
+        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "  # color-ok: dark success scale stops at emerald-700
         "focus:ring-success-subtle"
     ),
 }
@@ -938,17 +937,15 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
     "green": (
         f"{_SEGMENTED_SHELL_CLASS} "
         "hover:bg-success dark:hover:bg-success-strong "
-        "hover:border-success-strong dark:hover:border-emerald-800 "
-        "hover:text-white"
+        "hover:border-success-strong dark:hover:border-emerald-800 "  # color-ok: dark success scale stops at emerald-700
+        "hover:text-fg-on-success"
     ),
 }
 
 
 # Dropdown-toggle variants (issue #272): single-look, no color axis. Outline
 # is a regular button-shaped control — base + shared sizing + its bordered
-# look. Plain is the navbar nav-link: its layout (flex justify-between,
-# md:p-0) contradicts the base and the sizing scale, so it alone carries its
-# complete look and skips both.
+# look.
 _OUTLINE_VARIANT_CLASS = (
     "gap-2 text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
@@ -984,14 +981,6 @@ _GHOST_TONE_CLASSES: dict[tuple[ButtonSize, bool], str] = {
     ),
 }
 
-_PLAIN_VARIANT_CLASS = (
-    "flex items-center justify-between w-full py-2 px-3 text-gray-900 "
-    "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
-    "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
-    "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
-    "md:dark:hover:bg-transparent hover:cursor-pointer"
-)
-
 
 def control_button_class(
     *,
@@ -1021,11 +1010,6 @@ def control_button_class(
     glyph_square = size != "control"
     corners = COMPACT_SHAPE_CLASSES if glyph_square else SHAPE_CLASSES
     shape_class = corners[shape]
-    if variant == "plain":
-        # The navbar nav-link owns its whole layout (flex justify-between,
-        # md:p-0) and sits outside both the base and the sizing contract, so
-        # neither the base nor alignment applies to it.
-        return " ".join(part for part in (_PLAIN_VARIANT_CLASS, shape_class) if part)
     parts = [_CONTROL_BASE_CLASS, _ALIGN_CLASSES[align], _SIZE_CLASSES[size]]
     if variant == "outline":
         parts.append(_OUTLINE_VARIANT_CLASS)
@@ -1106,9 +1090,7 @@ class ControlButton(BaseComponent):
     selectors);
     ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
     dropdown triggers) — outline's look on hover, invisible chrome at rest;
-    ``color="red"`` gives it a danger hover;
-    ``variant="plain"`` is the borderless navbar nav-link trigger, the one
-    variant outside the sizing contract (its navbar layout is its own).
+    ``color="red"`` gives it a danger hover.
 
     ``shape=`` states which corners the button rounds, and is the only way to
     state them: ``"full"`` (the default) rounds all four, ``"start"``/``"end"``
@@ -1120,7 +1102,6 @@ class ControlButton(BaseComponent):
     choices (the date picker's preset column); the default is centered. It is a
     parameter and not a caller ``class_`` because the justify/text utilities
     collide and Tailwind breaks that tie by stylesheet order, not class order.
-    ``variant="plain"`` ignores it, owning its own layout.
 
     Children go via the htpy ``[]`` slot — ``ControlButton(color="red")[label]``
     — which routes into the inner button in post mode. Extra attributes take the
@@ -2890,15 +2871,14 @@ def get_icon_node(name: str) -> Element:
     return node
 
 
-# Classes applied to every icon, overriding whatever each snippet baked in — no
-# need to touch the individual icon snippets. ICON_BASE_CLASS is intentionally
-# colourless: monochrome icons use `fill="currentColor"`, so they inherit the
-# text colour of their container (button, badge, body). Pinning a colour here
-# would defeat that — an icon on a coloured button would keep black while the
-# label followed the button's `text-white`. The size is ICON_SIZE_CLASS by
-# default, or whatever a caller passes as `size=`. ICON_BUTTON_SIZE_CLASS is the
-# override for icons rendered inside buttons (bigger than the small inline
-# platform icons). Tune sizes here.
+# Classes applied to every icon; codegen drops each snippet's own. ICON_BASE_CLASS
+# is intentionally colourless: monochrome icons use `fill="currentColor"`, so
+# they inherit the text colour of their container (button, badge, body).
+# Pinning a colour here would defeat that — an icon on a coloured button would
+# keep black while the label followed the button's text colour. The size is
+# ICON_SIZE_CLASS by default, or whatever a caller passes as `size=`.
+# ICON_BUTTON_SIZE_CLASS is the override for icons rendered inside buttons
+# (bigger than the small inline platform icons). Tune sizes here.
 ICON_BASE_CLASS = ""
 # em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
 # scales with font size, no jump at a viewport width. A control-height button
@@ -2942,8 +2922,8 @@ def Icon(
     *,
     decorative: bool = False,
 ) -> Node:
-    """Render an icon, overriding its snippet's baked ``class`` with the central
-    icon classes (:data:`ICON_BASE_CLASS` colour + size). Every other svg
+    """Render an icon with the central icon classes
+    (:data:`ICON_BASE_CLASS` colour + size). Every other svg
     attribute (``viewBox``, ``xmlns`` …) is kept — dropping ``viewBox`` would clip
     the paths to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
     wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
@@ -2975,10 +2955,9 @@ def Icon(
         for part in (ICON_BASE_CLASS, size or ICON_SIZE_CLASS, caller_class)
         if part
     )
-    preserved = [(key, value) for key, value in root.attributes if key != "class"]
     return Element(
         root.tag_name,
-        [("class", class_value), *preserved, *extra_attributes],
+        [("class", class_value), *root.attributes, *extra_attributes],
         children,
     )
 

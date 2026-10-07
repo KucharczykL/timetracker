@@ -834,8 +834,8 @@ _Dropdown = custom_element_builder("drop-down")
 # dropdowns (the value selectors, the played-row split button); menu-like
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
 # attachMenu. Toggle looks live on ControlButton (issue #272):
-# variant="outline" is the bordered toggle, variant="plain" the borderless
-# navbar trigger. Corners come from the toggle's own shape= either way.
+# variant="outline" is the bordered toggle, variant="ghost" the quiet one.
+# Corners come from the toggle's own shape=.
 
 # The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"
@@ -1202,7 +1202,7 @@ def DropdownDivider() -> Node:
     return Li(
         role="separator",
         class_=(
-            "mx-1 my-1.5 h-px bg-black/10 dark:bg-black/40 "
+            "mx-1 my-1.5 h-px bg-black/10 dark:bg-black/40 "  # color-ok: engraving
             "shadow-[0_1px_0_rgb(255_255_255_/_0.7)] "
             "dark:shadow-[0_1px_0_rgb(255_255_255_/_0.05)]"
         ),
@@ -1542,7 +1542,7 @@ def SplitButtonDropdown(
         )[Icon("arrowdown")]
     else:
         caret_button = ControlButton(
-            [("class", f"border-l border-l-white/30 {caret_focus}"), *caret_name],
+            [("class", f"border-l border-l-current/30 {caret_focus}"), *caret_name],
             color=caret_color,
         )[Icon("arrowdown")]
     # The row's two places, counted rather than remembered: a third element

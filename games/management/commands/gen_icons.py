@@ -54,6 +54,8 @@ def _emit_node(source: ElementTree.Element, indent: int) -> str:
     builder = _TAG_BUILDERS[tag]
     attributes = [(_local_name(key), value) for key, value in source.attrib.items()]
     if tag == "svg":
+        # Icon() states the class.
+        attributes = [(key, value) for key, value in attributes if key != "class"]
         # ElementTree consumes the source xmlns into namespace machinery, so
         # re-declare it explicitly to keep the rendered <svg> self-contained.
         attributes.append(("xmlns", SVG_NAMESPACE))
