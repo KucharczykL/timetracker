@@ -78,3 +78,7 @@ def test_declares_its_module_media():
         )
     )
     assert "dist/elements/time-zone-row.js" in media.js
+
+
+def test_the_picker_fills_a_phone_sheet():
+    assert 'prefetch="25"' in _render()

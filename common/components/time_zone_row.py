@@ -17,6 +17,7 @@ from common.components.primitives import Div, Input
 from common.components.search_select import ComboboxDropdown, SearchSelect
 
 TIMEZONE_SEARCH_API_URL = "/api/timezones/search"
+TIMEZONE_PREFETCH = 25
 
 
 def TimeZoneRow(
@@ -36,6 +37,8 @@ def TimeZoneRow(
             else None
         ),
         search_url=TIMEZONE_SEARCH_API_URL,
+        # A phone sheet's worth, and a few.
+        prefetch=TIMEZONE_PREFETCH,
         placeholder="Search time zones…",
         panel=True,
     )
