@@ -367,20 +367,28 @@ def _calendar_nav_button(direction: str, glyph: str, label: str) -> Node:
     )[Icon(glyph, decorative=True)]
 
 
-def sheet_done_button() -> Node:
-    """Done, shown only in a sheet."""
+def sheet_footer_button(action: str, label: str, *, submit: bool = False) -> Node:
+    """A primary footer action, shown only in a sheet."""
     #: The anchored popup closes on an outside press.
     return Span(class_="hidden group-data-[dropdown-host=sheet]/dropdown:contents")[
-        footer_button("done", "Done", color="blue")
+        footer_button(action, label, color="blue", submit=submit)
     ]
 
 
-def footer_button(action: str, label: str, *, color: ButtonColor = "gray") -> Node:
+def sheet_done_button() -> Node:
+    """Done, shown only in a sheet."""
+    return sheet_footer_button("done", "Done")
+
+
+def footer_button(
+    action: str, label: str, *, color: ButtonColor = "gray", submit: bool = False
+) -> Node:
     """One calendar footer action. Cancel/Clear are secondary (gray); Select is
     the primary commit (blue)."""
     return ControlButton(
         [(f"data-date-range-{action}", "")],
         color=color,
+        type="submit" if submit else "button",
     )[label]
 
 
@@ -503,6 +511,9 @@ def DateRangeCalendar(*, input_name_prefix: str, static: bool = False) -> Node:
     footer_buttons.append(footer_button("clear", "Clear"))
     if not static:
         footer_buttons.append(footer_button("select", "Select", color="blue"))
+    else:
+        # The quick bar's form hosts the panel.
+        footer_buttons.append(sheet_footer_button("apply", "Apply", submit=True))
     return date_calendar_shell(
         input_name_prefix=input_name_prefix,
         presets=_PRESET_OPTIONS,
