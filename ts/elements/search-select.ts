@@ -486,12 +486,13 @@ const initWidget = (containerElement: Element): boolean => {
     return pills.querySelector(HELD_VALUE_INPUTS) ? (container._searchSelectLabel ?? "") : "";
   };
   const syncFace = () => {
+    const text = faceText();
     if (faceValue) {
-      const text = faceText();
       faceValue.textContent = text || search.placeholder;
       faceValue.toggleAttribute("data-placeholder", !text);
     }
-    if (faceClear && clearButton) faceClear.hidden = clearButton.hidden;
+    //: A draft query is not on the face.
+    if (faceClear && clearButton) faceClear.hidden = clearButton.hidden || !text;
   };
 
   //: Also syncs the face.

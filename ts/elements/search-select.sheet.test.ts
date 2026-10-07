@@ -134,6 +134,13 @@ describe("the face", () => {
     expect(faceClear.hidden).toBe(true);
   });
 
+  it("offers no × for a draft query alone", () => {
+    const { box, open, faceClear } = mount();
+    open.click();
+    type(box, "Sw");
+    expect(faceClear.hidden).toBe(true);
+  });
+
   it("joins a multi-select's labels", () => {
     const { widget, value } = mount({ multi: true, held: { value: "1", label: "Deck" } });
     widget.setSelected("2", "Switch");

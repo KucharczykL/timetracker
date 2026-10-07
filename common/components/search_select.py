@@ -195,8 +195,8 @@ _LENT_BOX_CLASS = (
 _LENT_LISTBOX_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-none!"
 #: The phone's stand-in for the box.
 _FACE_CLASS = "hidden max-sm:flex items-center gap-1"
-_FACE_OPEN_CLASS = "peer flex-1 min-w-0 justify-between"
-_FACE_VALUE_CLASS = "truncate data-[placeholder]:text-body data-[placeholder]:italic"
+_FACE_OPEN_CLASS = "peer flex-1 min-w-0"
+_FACE_VALUE_CLASS = "flex-1 min-w-0 truncate text-left data-[placeholder]:text-body data-[placeholder]:italic"
 #: Prefixes an excluded value on the face.
 FACE_EXCLUDED_PREFIX = "not "
 #: Joins a multi value on the face.
