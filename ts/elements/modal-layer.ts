@@ -119,6 +119,26 @@ export function isModalLeaving(): boolean {
   return shown.some((entry) => entry.state === "leaving");
 }
 
+type SettledCallback = () => void;
+const settledCallbacks: SettledCallback[] = [];
+
+/** Runs once no modal leaves. */
+export function whenSettled(callback: SettledCallback): void {
+  if (isModalLeaving()) settledCallbacks.push(callback);
+  else callback();
+}
+
+function flushSettled(): void {
+  if (isModalLeaving()) return;
+  for (const callback of settledCallbacks.splice(0)) {
+    try {
+      callback();
+    } catch (error) {
+      report(`a settle callback threw: ${String(error)}`);
+    }
+  }
+}
+
 export function isModalOpen(): boolean {
   return topModal() !== null;
 }
@@ -345,6 +365,7 @@ function finish(entry: Entry): void {
   } catch (error) {
     report(`onClosed threw: ${String(error)}`);
   }
+  flushSettled();
 }
 
 /** Undoes an open that never showed. */
@@ -545,6 +566,7 @@ export function resetModalLayerForTests(): void {
     unmarkDepth(entry.dialog);
   }
   shown.length = 0;
+  settledCallbacks.length = 0;
   stopWatchingStack();
   lastTop = null;
   stopWatchingRemovals();

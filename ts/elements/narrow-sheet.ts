@@ -6,6 +6,7 @@
 import { reportClientError } from "../client-errors.js";
 import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import type { MenuController } from "./menu-behavior.js";
+import { isModalLeaving, whenSettled } from "./modal-layer.js";
 import { attachSheetCore, type FrameHandle } from "./sheet-controller.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
 
@@ -15,9 +16,15 @@ export interface NarrowSheetOptions {
   /** Its `aria-expanded` follows the sheet. */
   expandedToggle?: HTMLElement;
   sheetFocus?: (menu: HTMLElement) => HTMLElement | null;
+  /** The node the sheet holds; default the menu. */
+  lent?: HTMLElement;
+  /** Focus returns here when no opener is stated. */
+  opener?: () => HTMLElement | null;
 }
 
-/** Where a lent panel returns. */
+type CssValue = string; // e.g. "12px"
+
+/** Where a lent node returns. */
 interface PanelPlace {
   parent: ParentNode & Node;
   next: Node | null;
@@ -56,8 +63,11 @@ export function attachNarrowSheet(
   }
   nameSheet(dialog);
 
+  const lent = options.lent ?? menu;
   let state: SwitchState = { kind: "closed" };
   let frame: FrameHandle | null = null;
+  let viewportFrame: FrameHandle | null = null;
+  let retry: object | null = null;
 
   const isNarrow = (): boolean => sentinel.getClientRects().length > 0;
   const setExpanded = (expanded: boolean): void =>
@@ -75,16 +85,54 @@ export function attachNarrowSheet(
         toast: false,
       });
     }
-    if (next && next.parentNode === parent) parent.insertBefore(menu, next);
-    else parent.appendChild(menu);
+    if (next && next.parentNode === parent) parent.insertBefore(lent, next);
+    else parent.appendChild(lent);
     returnToTopLayer(menu);
+    // After the move: its blur reads the stamp.
     menu.removeAttribute(SHEET_ATTRIBUTES.host);
+    lent.removeAttribute(SHEET_ATTRIBUTES.host);
+  };
+
+  const pixels = (value: number): CssValue => `${Math.max(0, Math.round(value))}px`;
+
+  const measureViewport = (): void => {
+    viewportFrame = null;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const bottom = viewport.offsetTop + viewport.height;
+    dialog.style.setProperty("--sheet-keyboard-inset", pixels(window.innerHeight - bottom));
+    dialog.style.setProperty("--sheet-visible-height", pixels(viewport.height));
+  };
+
+  const queueMeasure = (): void => {
+    if (viewportFrame === null) viewportFrame = window.requestAnimationFrame(measureViewport);
+  };
+
+  const watchViewport = (): void => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    viewport.addEventListener("resize", queueMeasure);
+    viewport.addEventListener("scroll", queueMeasure);
+    measureViewport();
+  };
+
+  const unwatchViewport = (): void => {
+    window.visualViewport?.removeEventListener("resize", queueMeasure);
+    window.visualViewport?.removeEventListener("scroll", queueMeasure);
+    if (viewportFrame !== null) window.cancelAnimationFrame(viewportFrame);
+    viewportFrame = null;
+    dialog.style.removeProperty("--sheet-keyboard-inset");
+    dialog.style.removeProperty("--sheet-visible-height");
   };
 
   const sheet = attachSheetCore(host, dialog, {
     initialFocus: () => options.sheetFocus?.(menu) ?? null,
-    beforeShow: () => setExpanded(true),
+    beforeShow: () => {
+      setExpanded(true);
+      watchViewport();
+    },
     beforeHide: () => {
+      unwatchViewport();
       const place = lentPlace();
       if (place) returnPanel(place);
       state = state.kind === "moving" ? { ...state, place: null } : { kind: "closed" };
@@ -92,21 +140,25 @@ export function attachNarrowSheet(
     },
   });
 
-  const openSheet = (opener: HTMLElement | undefined): void => {
-    const parent = menu.parentNode;
+  /** False when refused. */
+  const openSheet = (stated: HTMLElement | undefined): boolean => {
+    const opener = stated ?? options.opener?.() ?? undefined;
+    const parent = lent.parentNode;
     if (!parent) {
       reportClientError("narrow-sheet", "a detached panel cannot open", {
         toast: false,
       });
-      return;
+      return false;
     }
-    const place: PanelPlace = { parent, next: menu.nextSibling };
+    const place: PanelPlace = { parent, next: lent.nextSibling };
     state = { kind: "sheet", opener, place };
     let opened = false;
     try {
-      body.appendChild(menu);
-      releaseFromTopLayer(menu);
+      // Before the move: its blur reads the stamp.
+      lent.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       menu.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
+      body.appendChild(lent);
+      releaseFromTopLayer(menu);
       opened = sheet.open(opener);
     } finally {
       // A refused open drops the tap.
@@ -115,12 +167,13 @@ export function attachNarrowSheet(
         state = { kind: "closed" };
       }
     }
+    return opened;
   };
 
   /** True when a host opened. */
   const present = (opener: HTMLElement | undefined): boolean => {
     if (isNarrow()) {
-      openSheet(opener);
+      if (!openSheet(opener) && isModalLeaving()) retryOnSettle(opener);
     } else {
       anchored.open(opener);
       state = anchored.isOpen() ? { kind: "anchored", opener } : { kind: "closed" };
@@ -162,10 +215,23 @@ export function attachNarrowSheet(
   const open = (opener?: HTMLElement): void => {
     // Open, or lent and leaving.
     if (state.kind !== "closed") return;
+    retry = null;
     if (present(opener)) window.addEventListener("resize", queueCheck);
   };
 
+  // A tap during another sheet's leave.
+  function retryOnSettle(opener: HTMLElement | undefined): void {
+    const token = {};
+    retry = token;
+    whenSettled(() => {
+      if (retry !== token || state.kind !== "closed") return;
+      retry = null;
+      if (isNarrow() && openSheet(opener)) window.addEventListener("resize", queueCheck);
+    });
+  }
+
   const close = (): void => {
+    retry = null;
     // A close cancels a pending move.
     if (state.kind === "moving") {
       state = state.place

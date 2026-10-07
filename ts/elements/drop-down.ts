@@ -84,6 +84,8 @@ export class DropdownElement extends HTMLElement {
             sentinel: narrow.sentinel,
             expandedToggle: menuOptions.inlineTrigger ? undefined : toggle,
             sheetFocus: behavior?.sheetFocus,
+            lent: behavior?.sheetLent?.(this, toggle, menu),
+            opener: behavior?.sheetOpener && (() => behavior.sheetOpener?.(this) ?? null),
           });
         } catch (error) {
           // The behavior still wires below.

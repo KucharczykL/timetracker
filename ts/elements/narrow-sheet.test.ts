@@ -292,3 +292,195 @@ describe("a dropdown sheet's edges", () => {
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("its sheet stays unused"));
   });
 });
+
+function lentFixture(): string {
+  return `
+    <drop-down behavior="test-lent" placement="bottom-start" submenu="false">
+      <div data-face><button data-face-open type="button">Face</button></div>
+      <div data-toggle id="lent">
+        <input data-box>
+        <div data-menu popover="manual" hidden id="panel"><button type="button">1</button></div>
+      </div>
+      <span id="after-lent"></span>
+      <dialog data-modal data-dropdown-sheet>
+        <div data-sheet-panel>
+          <div><h2 data-dropdown-sheet-title>Pick</h2><button data-modal-dismiss type="button">×</button></div>
+          <div data-sheet-body></div>
+        </div>
+      </dialog>
+      <span data-dropdown-narrow></span>
+    </drop-down>`;
+}
+
+registerBehavior("test-lent", {
+  menuOptions: () => ({ itemSelector: "[data-none]", inlineTrigger: true }),
+  sheetLent: (_host, toggle) => toggle,
+  sheetOpener: (host) => host.querySelector<HTMLElement>("[data-face-open]"),
+  sheetFocus: (menu) => menu.closest("drop-down")!.querySelector<HTMLElement>("[data-box]"),
+});
+
+function mountLent(markup = lentFixture()): {
+  host: DropdownElement;
+  lent: HTMLElement;
+  panel: HTMLElement;
+  dialog: HTMLDialogElement;
+  face: HTMLButtonElement;
+} {
+  document.body.innerHTML = markup;
+  const host = document.querySelector("drop-down")!;
+  const sentinel = host.querySelector<HTMLElement>("[data-dropdown-narrow]")!;
+  sentinel.getClientRects = () =>
+    (narrow ? [new DOMRect(0, 0, 0, 0)] : []) as unknown as DOMRectList;
+  return {
+    host,
+    lent: host.querySelector<HTMLElement>("#lent")!,
+    panel: host.querySelector<HTMLElement>("#panel")!,
+    dialog: host.querySelector<HTMLDialogElement>("dialog")!,
+    face: host.querySelector<HTMLButtonElement>("[data-face-open]")!,
+  };
+}
+
+describe("a sheet lent a node other than the panel", () => {
+  it("moves the lent node in and back to its place", () => {
+    const { host, lent, panel, dialog } = mountLent();
+    const body = dialog.querySelector("[data-sheet-body]")!;
+    host.open();
+    expect(lent.parentElement).toBe(body);
+    expect(panel.parentElement).toBe(lent);
+    expect(panel.hasAttribute("popover")).toBe(false);
+    expect(panel.hidden).toBe(false);
+    expect(document.activeElement).toBe(lent.querySelector("[data-box]"));
+
+    host.close();
+    expect(lent.parentElement).toBe(host);
+    expect(lent.nextElementSibling?.id).toBe("after-lent");
+    expect(panel.parentElement).toBe(lent);
+    expect(panel.getAttribute("popover")).toBe("manual");
+    expect(panel.hidden).toBe(true);
+  });
+
+  it("stamps both nodes before the move in and clears them after the move back", () => {
+    const { host, lent, panel } = mountLent();
+    const stampedAtFocus: (string | null)[] = [];
+    lent.querySelector("[data-box]")!.addEventListener("focus", () => {
+      stampedAtFocus.push(lent.getAttribute("data-dropdown-host"));
+    });
+    host.open();
+    expect(stampedAtFocus).toEqual(["sheet"]);
+    expect(lent.getAttribute("data-dropdown-host")).toBe("sheet");
+    expect(panel.getAttribute("data-dropdown-host")).toBe("sheet");
+
+    const stampedAtBlur: (string | null)[] = [];
+    lent.querySelector("[data-box]")!.addEventListener("blur", () => {
+      stampedAtBlur.push(lent.getAttribute("data-dropdown-host"));
+    });
+    host.close();
+    expect(stampedAtBlur.every((stamp) => stamp === "sheet")).toBe(true);
+    expect(lent.hasAttribute("data-dropdown-host")).toBe(false);
+    expect(panel.hasAttribute("data-dropdown-host")).toBe(false);
+  });
+
+  it("returns focus to the behavior's opener after a code open", () => {
+    const { host, face } = mountLent();
+    host.open();
+    host.close();
+    expect(document.activeElement).toBe(face);
+  });
+
+  it("keeps a stated opener", () => {
+    const { host } = mountLent();
+    const other = document.createElement("button");
+    document.body.append(other);
+    host.open(other);
+    host.close();
+    expect(document.activeElement).toBe(other);
+  });
+
+  it("opens anchored when wide, nothing moved", () => {
+    narrow = false;
+    const { host, lent, panel, dialog } = mountLent();
+    host.open();
+    expect(dialog.open).toBe(false);
+    expect(lent.parentElement).toBe(host);
+    expect(lent.hasAttribute("data-dropdown-host")).toBe(false);
+    expect(panel.hidden).toBe(false);
+  });
+});
+
+describe("an open while another sheet leaves", () => {
+  beforeEach(() => {
+    reducedMotion = false;
+  });
+
+  it("is retried once the layer settles", () => {
+    document.body.innerHTML = fixture() + lentFixture();
+    const [first, second] = [...document.querySelectorAll("drop-down")];
+    for (const host of [first, second]) {
+      host.querySelector<HTMLElement>("[data-dropdown-narrow]")!.getClientRects = () =>
+        [new DOMRect(0, 0, 0, 0)] as unknown as DOMRectList;
+    }
+    const secondDialog = second.querySelector("dialog")!;
+    first.open();
+    first.close();
+    second.open();
+    expect(secondDialog.open).toBe(false);
+    expect(second.querySelector("#lent")!.parentElement).toBe(second);
+
+    vi.advanceTimersByTime(300);
+    expect(secondDialog.open).toBe(true);
+    expect(second.isOpen()).toBe(true);
+  });
+
+  it("is dropped when closed before the layer settles", () => {
+    document.body.innerHTML = fixture() + lentFixture();
+    const [first, second] = [...document.querySelectorAll("drop-down")];
+    for (const host of [first, second]) {
+      host.querySelector<HTMLElement>("[data-dropdown-narrow]")!.getClientRects = () =>
+        [new DOMRect(0, 0, 0, 0)] as unknown as DOMRectList;
+    }
+    first.open();
+    first.close();
+    second.open();
+    second.close();
+    vi.advanceTimersByTime(300);
+    expect(second.isOpen()).toBe(false);
+  });
+});
+
+describe("a sheet and the on-screen keyboard", () => {
+  class FakeViewport extends EventTarget {
+    height = 768;
+    offsetTop = 0;
+  }
+
+  it("writes the keyboard inset and visible height while open", () => {
+    const viewport = new FakeViewport();
+    vi.stubGlobal("visualViewport", viewport);
+    const { host, dialog } = mountLent();
+    host.open();
+    expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("0px");
+    expect(dialog.style.getPropertyValue("--sheet-visible-height")).toBe("768px");
+
+    viewport.height = 400;
+    viewport.offsetTop = 20;
+    viewport.dispatchEvent(new Event("resize"));
+    vi.advanceTimersToNextFrame();
+    expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("348px");
+    expect(dialog.style.getPropertyValue("--sheet-visible-height")).toBe("400px");
+
+    host.close();
+    expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("");
+    expect(dialog.style.getPropertyValue("--sheet-visible-height")).toBe("");
+    viewport.height = 300;
+    viewport.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersToNextFrame();
+    expect(dialog.style.getPropertyValue("--sheet-visible-height")).toBe("");
+  });
+
+  it("writes nothing without a visual viewport", () => {
+    vi.stubGlobal("visualViewport", undefined);
+    const { host, dialog } = mountLent();
+    host.open();
+    expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("");
+  });
+});
