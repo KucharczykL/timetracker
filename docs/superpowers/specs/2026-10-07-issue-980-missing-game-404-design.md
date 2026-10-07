@@ -56,6 +56,13 @@ constraint sentence. Two callers use `absent_as_404("game")`:
 `RowNotHeld` is not a `ValidationError`, so the `except ValidationError` clauses
 inside the wrappers do not take it.
 
+## The form dialog
+
+A 404 in `<form-dialog>` is an answer, not a failure. The toast reads "This no
+longer exists. Close this to reload the page." It carries no client error id,
+because the server logged the 404. The dialog drops its unsaved-changes
+baseline, so closing it asks nothing, and the close reloads the page.
+
 ## Path subjects
 
 `RowNotHeld` governs an identifier in a request body. A row in a route's path
