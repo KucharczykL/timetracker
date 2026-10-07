@@ -15,7 +15,12 @@ from django.urls import reverse
 from entries import record_entry
 from playwright.sync_api import Locator, Page, expect
 
-from e2e.helpers import held_choice, open_picker, pick_choice
+from e2e.helpers import (
+    held_choice,
+    open_picker,
+    pick_choice,
+    wait_for_sheet_to_close,
+)
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
@@ -126,9 +131,10 @@ def platform_picker(card: Locator) -> Locator:
 def choose_platform(card: Locator, name: str) -> None:
     """Search the row's picker; pick by label."""
     picker = platform_picker(card)
-    open_picker(picker)
+    sheet = open_picker(picker)
     picker.locator("[data-search-select-search]").fill(name)
     picker.locator(f'[data-search-select-option][data-label="{name}"]').click()
+    wait_for_sheet_to_close(sheet)
 
 
 def type_year(card: Locator, year: str) -> None:

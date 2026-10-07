@@ -1,6 +1,6 @@
 """Shared waits and steps for e2e tests."""
 
-from playwright.sync_api import Locator, Page
+from playwright.sync_api import Locator, Page, expect
 
 TABLES_SETTLED = """
 () => [...document.querySelectorAll('responsive-table')].every(
@@ -45,27 +45,48 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
-def open_picker(picker: Locator) -> None:
-    """Below sm, tap the face; else the box."""
-    face = picker.locator("xpath=..").locator(
+def open_picker(picker: Locator) -> Locator | None:
+    """Below sm, tap the face; else the box.
+
+    Answers the sheet a face opened.
+    """
+    host = picker.locator("xpath=..")
+    face = host.locator(
         ":scope > [data-search-select-face] [data-search-select-face-open]"
     )
-    if face.is_visible():
-        face.click()
-    else:
+    if not face.is_visible():
         picker.locator("[data-search-select-search]").click()
+        return None
+    sheet = host.locator(":scope > dialog[data-dropdown-sheet]")
+    #: The widget leaves its host; pin the dialog.
+    sheet = sheet.page.locator(f"#{_stamped_id(sheet)}")
+    face.click()
+    return sheet
+
+
+def _stamped_id(element: Locator) -> str:
+    return element.evaluate(
+        "dialog => dialog.id || (dialog.id = `picker-sheet-${crypto.randomUUID()}`)"
+    )
+
+
+def wait_for_sheet_to_close(sheet: Locator | None) -> None:
+    """A leaving sheet still holds the page inert."""
+    if sheet is not None:
+        expect(sheet).to_have_js_property("open", False)
 
 
 def pick_choice(scope: Page | Locator, name: str, value: str) -> None:
     """Pick a picker's row by value; empty picks none."""
     picker = scope.locator(f'search-select[name="{name}"]')
-    open_picker(picker)
+    sheet = open_picker(picker)
     row = (
         picker.locator("[data-search-select-none-option]")
         if value == ""
         else picker.locator(f'[data-search-select-option][data-value="{value}"]')
     )
     row.click()
+    wait_for_sheet_to_close(sheet)
 
 
 def held_choice(scope: Page | Locator, name: str) -> Locator:
