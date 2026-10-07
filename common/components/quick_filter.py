@@ -25,7 +25,7 @@ import json
 from collections.abc import Collection
 from typing import NamedTuple, cast
 
-from common.components.core import BaseComponent, Element, Node
+from common.components.core import BaseComponent, Element, Fragment, Node
 from common.components.custom_elements import (
     CLEAR_FILTER_LABEL,
     FILTER_ACTS_LABEL,
@@ -46,6 +46,7 @@ from common.components.primitives import (
     AppliedDot,
     ButtonGroup,
     ButtonGroupMember,
+    ControlButton,
     Div,
     EllipsisTrigger,
     FilterJson,
@@ -313,6 +314,17 @@ _QUICK_PILL_CLASS = (
 )
 
 
+def _sheet_apply() -> Node:
+    """Apply, shown only in a facet sheet."""
+    #: Submits the bar's form, as its Apply does.
+    return Div(
+        class_=(
+            "hidden justify-end mt-2 pt-2 border-t border-default-medium "
+            "group-data-[dropdown-host=sheet]/dropdown:flex"
+        ),
+    )[ControlButton(type="submit", color="blue", data_quick_sheet_apply="")["Apply"]]
+
+
 class QuickFilterBar(BaseComponent):
     """The quick facet bar for one list mode.
 
@@ -452,7 +464,7 @@ class QuickFilterBar(BaseComponent):
             config["data_quick_facet_applied"] = ""
         return ComboboxDropdown(
             label=label,
-            content=content,
+            content=Fragment(content, _sheet_apply()),
             id=f"quick-{facet.key}-dropdown",
             ghost=True,
             panel_width=panel_width,

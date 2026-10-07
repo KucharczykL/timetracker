@@ -133,3 +133,11 @@ def test_a_single_date_calendar_offers_done_in_the_sheet_alone(picker, has_done)
     )
     assert bool(done) is has_done
     assert html.count("data-date-range-done") == int(has_done)
+
+
+@pytest.mark.django_db
+def test_every_quick_facet_sheet_applies_the_bar():
+    html = str(QuickFilterBar(mode="sessions", presentation=PRESENTATION))
+    facets = re.findall(r"<drop-down[^>]*data-quick-facet", html)
+    applies = re.findall(r'<button type="submit"[^>]*data-quick-sheet-apply', html)
+    assert len(applies) == len(facets)
