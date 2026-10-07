@@ -297,8 +297,10 @@ def cascaded_purchase_ids(library: UserLibrary, entry_id: EntryId) -> list[uuid.
     )
 
 
+#: A purchase ``with_valuation`` annotated.
+type ValuedRow = Purchase
 #: Absent key means none: .get(pk, ()).
-type HeldPurchases = Mapping[EntryId, Sequence[Purchase]]
+type HeldPurchases = Mapping[EntryId, Sequence[ValuedRow]]
 
 
 def held_purchases(library: UserLibrary, entry_ids: Iterable[EntryId]) -> HeldPurchases:

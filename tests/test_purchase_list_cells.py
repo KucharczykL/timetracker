@@ -41,7 +41,17 @@ def test_an_unknown_or_free_amount_says_so(entry, amount, words):
     assert words in str(PurchaseAmount(_listed(record_purchase(entry, amount=amount))))
 
 
-def test_a_valuation_in_the_same_currency_is_not_repeated(entry, owned_library):
+def _visible(cell: str) -> str:
+    """The trigger, which renders before the panel."""
+    return cell.split("data-pop-over-panel")[0]
+
+
+def _panel(cell: str) -> str:
+    """The popover panel."""
+    return cell.split("data-pop-over-panel")[1]
+
+
+def test_a_valuation_in_the_same_currency_is_the_amount_alone(entry, owned_library):
     purchase = record_purchase(entry, amount=Decimal("12.50"), currency="EUR")
     tasks.convert_library_prices(
         str(owned_library.pk), request_run(owned_library, "EUR")
@@ -51,29 +61,100 @@ def test_a_valuation_in_the_same_currency_is_not_repeated(entry, owned_library):
 
     assert "12.50 EUR" in cell
     assert cell.count("EUR") == 1
+    assert "<pop-over" not in cell
 
 
-def test_a_foreign_valuation_stands_beside(entry, owned_library):
+def test_a_display_currency_purchase_not_valued_yet_is_the_amount_alone(entry):
+    cell = str(
+        PurchaseAmount(
+            _listed(record_purchase(entry, amount=Decimal(5), currency="CZK"))
+        )
+    )
+
+    assert "5.00 CZK" in cell
+    assert "<pop-over" not in cell
+
+
+@pytest.fixture
+def foreign(entry):
     ExchangeRate.objects.update_or_create(
         currency_from="USD",
         currency_to="EUR",
         year=2021,
         defaults={"rate": Decimal("0.5")},
     )
-    purchase = record_purchase(
+    return record_purchase(
         entry,
         amount=Decimal(10),
         currency="USD",
         purchased=TemporalValue.parse("2021-03-01"),
     )
-    tasks.convert_library_prices(
-        str(owned_library.pk), request_run(owned_library, "EUR")
+
+
+def _value_in_eur(library) -> None:
+    tasks.convert_library_prices(str(library.pk), request_run(library, "EUR"))
+
+
+def test_a_foreign_purchase_shows_its_valuation(foreign, owned_library):
+    _value_in_eur(owned_library)
+
+    cell = str(PurchaseAmount(_listed(foreign)))
+
+    assert "5.00 EUR" in _visible(cell)
+    assert "USD" not in _visible(cell)
+    assert "Price" in _panel(cell)
+    assert "10.00 USD" in _panel(cell)
+    assert f'id="purchase-amount-{foreign.pk}"' in cell
+
+
+def test_a_purchase_without_a_valuation_says_so(foreign):
+    cell = str(PurchaseAmount(_listed(foreign)))
+
+    assert "10.00 USD" in _visible(cell)
+    #: The seeded target is the display currency.
+    assert "No CZK valuation" in _panel(cell)
+    assert f'id="purchase-amount-{foreign.pk}"' in cell
+    assert "decoration-dotted" not in cell
+
+
+def test_a_purchase_without_a_rate_says_so_after_a_run(
+    entry, owned_library, monkeypatch
+):
+    monkeypatch.setattr(tasks, "exchange_rate", lambda *_: None)
+    purchase = record_purchase(
+        entry,
+        amount=Decimal(3),
+        currency="EUO",
+        purchased=TemporalValue.parse("2021-03-01"),
     )
+    _value_in_eur(owned_library)
 
     cell = str(PurchaseAmount(_listed(purchase)))
 
-    assert "10.00 USD" in cell
-    assert "(5.00 EUR)" in cell
+    assert "3.00 EUO" in _visible(cell)
+    assert "No EUR valuation" in _panel(cell)
+
+
+def test_a_changed_amount_drops_the_old_valuation(foreign, owned_library):
+    _value_in_eur(owned_library)
+    Purchase.objects.filter(pk=foreign.pk).update(amount=Decimal(11))
+
+    cell = str(PurchaseAmount(_listed(foreign)))
+
+    assert "11.00 USD" in _visible(cell)
+    assert "5.00 EUR" not in cell
+    assert "No EUR valuation" in _panel(cell)
+
+
+def test_a_requested_currency_shows_the_published_one_until_it_runs(
+    foreign, entry, owned_library
+):
+    _value_in_eur(owned_library)
+    euros = record_purchase(entry, amount=Decimal(7), currency="EUR")
+    request_run(owned_library, "CZK")
+
+    assert "5.00 EUR" in _visible(str(PurchaseAmount(_listed(foreign))))
+    assert "<pop-over" not in str(PurchaseAmount(_listed(euros)))
 
 
 def test_an_amount_without_its_valuation_is_refused(entry):

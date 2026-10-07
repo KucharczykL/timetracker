@@ -236,7 +236,7 @@ def test_a_foreign_currency_line_shows_its_valuation(
         defaults={"rate": Decimal("0.5")},
     )
     entry = record_entry(owned_library, graph.release)
-    record_purchase(
+    purchase = record_purchase(
         entry,
         amount=Decimal(10),
         currency="USD",
@@ -249,8 +249,13 @@ def test_a_foreign_currency_line_shows_its_valuation(
 
     html = _page(client, graph.game)
 
-    assert "10.00 USD" in html
-    assert "(5.00 EUR)" in html
+    reveal = html.index(f'aria-describedby="purchase-amount-{purchase.pk}"')
+    start = html.rindex("<pop-over", 0, reveal)
+    amount = html[start : html.index("</pop-over>", start)]
+    trigger, panel = amount.split("data-pop-over-panel")
+    assert "5.00 EUR" in trigger
+    assert "USD" not in trigger
+    assert "10.00 USD" in panel
 
 
 def test_the_copy_menu_offers_add_purchase_and_each_purchases_acts(

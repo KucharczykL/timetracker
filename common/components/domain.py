@@ -251,17 +251,6 @@ def GameStatus(
     return Span(class_=outer_class)[dot, *as_children(children)]
 
 
-def PriceConverted(
-    children: Children = None,
-) -> Node:
-    """Wrap content in a span that indicates the price was converted."""
-    children = children or []
-    return Span(
-        title="Price is a result of conversion and rounding.",
-        class_="decoration-dotted underline",
-    )[*as_children(children)]
-
-
 def _reference_link(reference: ExternalReference) -> Node:
     """One link, or the words alone.
 
@@ -324,7 +313,7 @@ def PurchaseName(purchase: Purchase) -> Node:
 
 
 def PurchaseAmount(purchase: Purchase) -> Node:
-    """Free, Unknown, or the amount; valuation beside."""
+    """Free, Unknown, or the valuation; price in popover."""
     if purchase.amount is None:
         return Span()["Unknown"]
     if purchase.amount == 0:
@@ -336,18 +325,29 @@ def PurchaseAmount(purchase: Purchase) -> Node:
             "read it through annotated_for_filtering(library)"
         )
     valuation = cast("ValuedPurchase", purchase)
-    if (
-        valuation.valuation_amount is None
-        or valuation.valuation_currency == purchase.currency
-    ):
+    #: Already in the target currency.
+    if valuation.valuation_currency == purchase.currency:
         return Span(class_="whitespace-nowrap")[stated]
-    return Span(class_="whitespace-nowrap")[
-        stated,
-        " ",
-        PriceConverted(
-            f"({valuation.valuation_amount} {valuation.valuation_currency})"
+    #: Content-hashed ids collide on equal prices.
+    popover_id = f"purchase-amount-{purchase.pk}"
+    if valuation.valuation_amount is None:
+        target = valuation.valuation_currency
+        return Popover(
+            f"No {target} valuation" if target else "No valuation",
+            wrapped_content=stated,
+            wrapped_classes="whitespace-nowrap",
+            id=popover_id,
+            trigger_label="Valuation",
+        )
+    return Popover(
+        TooltipDefinitionList([TooltipDefinition("Price", stated)]),
+        wrapped_content=(
+            f"{valuation.valuation_amount} {valuation.valuation_currency}"
         ),
-    ]
+        wrapped_classes="whitespace-nowrap",
+        id=popover_id,
+        trigger_label="Price",
+    )
 
 
 class PlatformBadge(NamedTuple):

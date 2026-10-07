@@ -778,9 +778,11 @@ Edit, Remove, shared with Game detail (#1352). No navbar item and no
 standalone page.
 
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
-game, or product · game), Kind, Amount (Free and Unknown as words, the
-valuation beside; #1463 restores the legacy shape, one price with the
-stated amount in a popover), Purchased, Refunded, Finished, Created. Facets kind,
+game, or product · game), Kind, Amount (Free and Unknown as words, else
+one price: the valuation, the stated amount in a popover; a foreign
+amount without a valuation shows itself, its popover saying so; #1463; the
+Library tab's Purchases column and Game detail read the same
+`PurchaseAmount`), Purchased, Refunded, Finished, Created. Facets kind,
 amount, price state (Paid, Free, Unknown), purchased, refunded, and access
 and platform through the entry. Tray Edit and Remove; row menu Edit,
 Refund, Remove, the list's own.

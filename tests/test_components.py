@@ -471,7 +471,6 @@ class ComponentOutputIsNotEscapedTest(unittest.TestCase):
                     )
                 ),
             ),
-            ("PriceConverted", str(components.PriceConverted(["27 CZK"]))),
             ("PageHeading", str(components.PageHeading(["Title"]))),
             (
                 "PageHeading with badge",
@@ -1646,10 +1645,7 @@ class PopOverContractTest(unittest.TestCase):
         # Trigger carries the hook + aria-describedby -> the panel id.
         self.assertIn("data-pop-over-trigger", html)
         self.assertIn('aria-describedby="pid"', html)
-        # Panel is a role="tooltip" that starts hidden. Assert the hidden
-        # ATTRIBUTE on the panel itself — a bare assertIn("hidden") would also
-        # match the decoration-dotted JIT-safety span and pass even if the
-        # closed-state attribute were dropped (every tooltip rendering open).
+        # The panel starts closed: the attribute, not the word.
         self.assertIn("data-pop-over-panel", html)
         self.assertRegex(html, r'role="tooltip"\s+hidden')
         self.assertIn('id="pid"', html)
