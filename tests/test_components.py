@@ -1212,9 +1212,7 @@ class ControlButtonTest(SimpleTestCase):
         self.assertIn("focus:ring-2", html)
 
     def test_button_variants_share_one_sizing_scale(self):
-        # ALL button-shaped variants floor to the one control-height token.
-        # Height is container-independent — no @md step, so a button is 42px
-        # in every row.
+        # Every variant floors to one control height.
         for variant in ("filled", "segmented", "outline"):
             with self.subTest(variant=variant):
                 html = str(components.ControlButton(variant=variant)["x"])

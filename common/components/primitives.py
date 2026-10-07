@@ -909,7 +909,7 @@ _FILLED_COLOR_CLASSES: dict[ButtonColor, str] = {
     ),
     "green": (
         "text-fg-on-success bg-success dark:bg-success-strong box-border border "
-        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "  # color-ok: dark success scale stops at emerald-700
+        "border-transparent hover:bg-success-strong dark:hover:bg-emerald-800 "  # color-ok: no token past success-strong
         "focus:ring-success-subtle"
     ),
 }
@@ -937,7 +937,7 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
     "green": (
         f"{_SEGMENTED_SHELL_CLASS} "
         "hover:bg-success dark:hover:bg-success-strong "
-        "hover:border-success-strong dark:hover:border-emerald-800 "  # color-ok: dark success scale stops at emerald-700
+        "hover:border-success-strong dark:hover:border-emerald-800 "  # color-ok: no token past success-strong
         "hover:text-fg-on-success"
     ),
 }
@@ -2871,14 +2871,7 @@ def get_icon_node(name: str) -> Element:
     return node
 
 
-# Classes applied to every icon; codegen drops each snippet's own. ICON_BASE_CLASS
-# is intentionally colourless: monochrome icons use `fill="currentColor"`, so
-# they inherit the text colour of their container (button, badge, body).
-# Pinning a colour here would defeat that — an icon on a coloured button would
-# keep black while the label followed the button's text colour. The size is
-# ICON_SIZE_CLASS by default, or whatever a caller passes as `size=`.
-# ICON_BUTTON_SIZE_CLASS is the override for icons rendered inside buttons
-# (bigger than the small inline platform icons). Tune sizes here.
+# Colourless, so icons inherit currentColor.
 ICON_BASE_CLASS = ""
 # em-based so a badge is always ~1.15x its adjacent text at any breakpoint —
 # scales with font size, no jump at a viewport width. A control-height button
@@ -2922,10 +2915,10 @@ def Icon(
     *,
     decorative: bool = False,
 ) -> Node:
-    """Render an icon with the central icon classes
-    (:data:`ICON_BASE_CLASS` colour + size). Every other svg
-    attribute (``viewBox``, ``xmlns`` …) is kept — dropping ``viewBox`` would clip
-    the paths to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
+    """Render an icon with the central classes.
+
+    Every other svg attribute is kept: without ``viewBox`` the paths clip
+    to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
     wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
     the accessible ``<title>`` child; a passed ``class=`` appends as an override.
     ``decorative`` drops the ``<title>``, whose tooltip would cover the

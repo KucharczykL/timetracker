@@ -834,8 +834,7 @@ _Dropdown = custom_element_builder("drop-down")
 # dropdowns (the value selectors, the played-row split button); menu-like
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
 # attachMenu. Toggle looks live on ControlButton (issue #272):
-# variant="outline" is the bordered toggle, variant="ghost" the quiet one.
-# Corners come from the toggle's own shape=.
+# variants "outline" and "ghost"; corners from shape=.
 
 # The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"

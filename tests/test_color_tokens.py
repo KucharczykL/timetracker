@@ -1,16 +1,10 @@
-"""Guard: no raw Tailwind palette colors in class strings.
-
-Walks the size guard's files. Deliberate hues opt out per line with
-`# color-ok: <reason>` or `// color-ok: <reason>`.
-"""
+"""Guard: raw palette colours need `color-ok:`."""
 
 import re
 
 from test_typography_tokens import REPO, guarded_files, ts_files
 
-# A palette utility: a color property, an optional side/axis (border-l), a
-# Tailwind hue with a numeric stop, or white/black. Semantic tokens (neutral-*, default-*,
-# body, danger, warning, brand — no numeric stop) don't match.
+# Palette hue with a stop, or white/black.
 _HUES = (
     "gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|"
     "emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose"
