@@ -18,7 +18,11 @@ from games.commands.endpoint import (
     state_endpoint,
     void_endpoint,
 )
-from games.commands.playergame import tracked_game, tracking_event
+from games.commands.playergame import (
+    implied_status_change,
+    tracked_game,
+    tracking_event,
+)
 from games.commands.scope import Refusal, library_row, visible_row
 from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START, Endpoint
 from games.events.dispatch import (
@@ -48,10 +52,12 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeRun,
     PlayerGame,
+    PlayerGameStatus,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
+from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.reads.referrers import (
     blocking_referrer,
     foreign_referrer,
@@ -82,7 +88,28 @@ def refuse_name_the_column_cannot_hold(name: str) -> None:
     )
 
 
-@dataclass(frozen=True, slots=True)
+def with_implied_status(
+    context: CommandContext,
+    acts: Sequence[NewEvent] | Unchanged,
+    player_game_id: uuid.UUID,
+    held: str,
+    implied: PlayerGameStatus | None,
+) -> Sequence[NewEvent] | Unchanged:
+    """The acts, then the status they imply.
+
+    Last: created_aggregate_id reads the first.
+    """
+    if isinstance(acts, Unchanged) or implied is None:
+        return acts
+    change = implied_status_change(context, player_game_id, held, implied)
+    return acts if change is None else [*acts, change]
+
+
+def _implied_if(implies: bool, status: PlayerGameStatus) -> PlayerGameStatus | None:
+    return status if implies else None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class CreatePlaythrough(Command):
     """State one more run at a game.
 
@@ -99,6 +126,9 @@ class CreatePlaythrough(Command):
     started: ActStatement | None = None
     completed: ActStatement | None = None
     note: str = ""
+    #: No default: every caller decides.
+    implies_played: bool
+    implies_completed: bool
 
     def __post_init__(self) -> None:
         for field_name in ("started", "completed"):
@@ -153,7 +183,17 @@ class CreatePlaythrough(Command):
                     run_id, when=self.completed.when, note=self.completed.note
                 )
             )
-        return events
+        return with_implied_status(
+            context, events, tracked.pk, tracked.status, self._implied()
+        )
+
+    def _implied(self) -> PlayerGameStatus | None:
+        """Completed over Played: one status at most."""
+        if self.implies_completed and self.completed is not None:
+            return PlayerGameStatus.COMPLETED
+        if self.implies_played and self.started is not None:
+            return PlayerGameStatus.PLAYED
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,6 +329,8 @@ class StartPlaythrough(Command):
     when: TemporalValue | None
     #: No default: the build compares the whole endpoint.
     note: str
+    #: Played, where the game is Unplayed.
+    implies_status: bool
 
     def __post_init__(self) -> None:
         #: One spelling of no day, so a restatement fingerprints alike.
@@ -298,7 +340,7 @@ class StartPlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        return state_endpoint(
+        acts = state_endpoint(
             run,
             PLAYTHROUGH_START,
             ActStatement(self.when, self.note),
@@ -306,6 +348,13 @@ class StartPlaythrough(Command):
             before_event=partial(
                 _refuse_a_start_after_the_completion, run, started=self.when
             ),
+        )
+        return with_implied_status(
+            context,
+            acts,
+            run.player_game_id,
+            run.player_game.status,
+            _implied_if(self.implies_status, PlayerGameStatus.PLAYED),
         )
 
 
@@ -318,6 +367,8 @@ class CompletePlaythrough(Command):
     playthrough_id: uuid.UUID
     when: TemporalValue | None
     note: str
+    #: Completed, wherever the game is not.
+    implies_status: bool
 
     def __post_init__(self) -> None:
         #: One spelling of no day, so a restatement fingerprints alike.
@@ -327,7 +378,7 @@ class CompletePlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        return state_endpoint(
+        acts = state_endpoint(
             run,
             PLAYTHROUGH_COMPLETION,
             ActStatement(self.when, self.note),
@@ -335,6 +386,13 @@ class CompletePlaythrough(Command):
             before_event=partial(
                 _refuse_a_completion_before_the_start, run, completed=self.when
             ),
+        )
+        return with_implied_status(
+            context,
+            acts,
+            run.player_game_id,
+            run.player_game.status,
+            _implied_if(self.implies_status, PlayerGameStatus.COMPLETED),
         )
 
 
@@ -774,6 +832,10 @@ class HeldTarget(NamedTuple):
     def player_game_id(self) -> PlayerGameId:
         return self.row.pk
 
+    @property
+    def status(self) -> str:
+        return self.row.status
+
 
 class NewlyTracked(NamedTuple):
     """A game this dispatch starts tracking."""
@@ -783,6 +845,11 @@ class NewlyTracked(NamedTuple):
     @property
     def player_game_id(self) -> PlayerGameId:
         return self.tracking.aggregate_id
+
+    @property
+    def status(self) -> str:
+        """A newly tracked game holds Unplayed."""
+        return PlayerGameStatus.UNPLAYED
 
 
 type MoveTarget = HeldTarget | NewlyTracked
@@ -920,4 +987,15 @@ class MovePlaythroughToGame(Command):
                 events.append(playthrough_removed(placeholder.pk))
         if not _other_live_ordinary_runs(context, run).exists():
             events.append(playthrough_created(run.player_game_id))
-        return events
+        return with_implied_status(
+            context, events, target.player_game_id, target.status, _implied_by(run)
+        )
+
+
+def _implied_by(run: Playthrough) -> PlayerGameStatus | None:
+    """The status a run's endpoints imply."""
+    if stated_completion(run) is not None:
+        return PlayerGameStatus.COMPLETED
+    if stated_start(run) is not None:
+        return PlayerGameStatus.PLAYED
+    return None

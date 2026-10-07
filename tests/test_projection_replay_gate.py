@@ -259,6 +259,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             playthrough_id=first_run.pk,
             when=TemporalValue.from_day(date(2024, 1, 1)),
             note="Began here",
+            implies_status=False,
         ),
         "start-first-run",
     )
@@ -267,6 +268,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             playthrough_id=first_run.pk,
             when=TemporalValue.from_day(date(2024, 2, 1)),
             note="Ended here",
+            implies_status=False,
         ),
         "complete-first-run",
     )
@@ -293,7 +295,12 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "describe-first-run",
     )
 
-    run(CreatePlaythrough(game_id=first.pk), "create-second-run")
+    run(
+        CreatePlaythrough(
+            game_id=first.pk, implies_played=False, implies_completed=False
+        ),
+        "create-second-run",
+    )
     second_run = (
         Playthrough.objects.filter(player_game__game=first)
         .exclude(pk=first_run.pk)
@@ -302,13 +309,19 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     #: A stated act on no day: the marker stands, the date is null.
     run(
         StartPlaythrough(
-            playthrough_id=second_run.pk, when=None, note="Before I kept dates"
+            playthrough_id=second_run.pk,
+            when=None,
+            note="Before I kept dates",
+            implies_status=False,
         ),
         "start-second-run-undated",
     )
     run(
         CompletePlaythrough(
-            playthrough_id=second_run.pk, when=None, note="Some time later"
+            playthrough_id=second_run.pk,
+            when=None,
+            note="Some time later",
+            implies_status=False,
         ),
         "complete-second-run-undated",
     )
@@ -324,13 +337,19 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     )
     run(
         StartPlaythrough(
-            playthrough_id=second_run.pk, when=None, note="Before I kept dates"
+            playthrough_id=second_run.pk,
+            when=None,
+            note="Before I kept dates",
+            implies_status=False,
         ),
         "restate-start-second-run",
     )
     run(
         CompletePlaythrough(
-            playthrough_id=second_run.pk, when=None, note="Some time later"
+            playthrough_id=second_run.pk,
+            when=None,
+            note="Some time later",
+            implies_status=False,
         ),
         "restate-completion-second-run",
     )
@@ -347,7 +366,12 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RestorePlaythrough(playthrough_id=second_run.pk), "restore-second-run")
 
     #: Left removed, so a stamped removed_at reaches the snapshot.
-    run(CreatePlaythrough(game_id=first.pk), "create-third-run")
+    run(
+        CreatePlaythrough(
+            game_id=first.pk, implies_played=False, implies_completed=False
+        ),
+        "create-third-run",
+    )
     third_run = (
         Playthrough.objects.filter(player_game__game=first)
         .exclude(pk__in=(first_run.pk, second_run.pk))
@@ -399,6 +423,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             CreateSession(
                 playthrough_id=first_run.pk,
                 timing=TimedTiming(started_at=noon, day_zone=zone),
+                implies_played=False,
             ),
             "create-timed-session",
         )
@@ -411,6 +436,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
                     day=date(2024, 1, 3), duration=timedelta(minutes=45)
                 ),
                 note="From memory",
+                implies_played=False,
             ),
             "create-duration-only-session",
         )
@@ -426,6 +452,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
                     day_zone=zone,
                 ),
                 device_id=device.pk,
+                implies_played=False,
             ),
             "create-corrected-session",
         )
@@ -529,7 +556,12 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
     #: A run moved to the second game; its record follows.
     moving_run = _created_id(
-        run(CreatePlaythrough(game_id=first.pk), "create-run-to-move")
+        run(
+            CreatePlaythrough(
+                game_id=first.pk, implies_played=False, implies_completed=False
+            ),
+            "create-run-to-move",
+        )
     )
     run(
         RecordHistoricalPlaytime(
@@ -551,6 +583,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
                     day=date(2024, 2, 9), duration=timedelta(hours=9)
                 ),
                 note="Off the launcher",
+                implies_played=False,
             ),
             "create-session-to-reclassify",
         )
@@ -570,6 +603,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
                 timing=DurationOnlyTiming(
                     day=date(2024, 2, 10), duration=timedelta(hours=11)
                 ),
+                implies_played=False,
             ),
             "create-session-to-reclassify-and-undo",
         )
@@ -612,7 +646,12 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     )
     #: A session and a record name a Release; a run move clears both.
     released_run = _created_id(
-        run(CreatePlaythrough(game_id=first.pk), "create-released-run")
+        run(
+            CreatePlaythrough(
+                game_id=first.pk, implies_played=False, implies_completed=False
+            ),
+            "create-released-run",
+        )
     )
     released = _created_id(
         run(
@@ -624,6 +663,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
                     ended_at=noon + timedelta(days=9, hours=1),
                 ),
                 release_id=first_release.pk,
+                implies_played=False,
             ),
             "create-released-session",
         )
@@ -933,6 +973,7 @@ def build_neighbour(user, library) -> None:
             timing=DurationOnlyTiming(
                 day=date(2024, 3, 1), duration=timedelta(hours=1)
             ),
+            implies_played=False,
         ),
         actor=user,
         library=library,

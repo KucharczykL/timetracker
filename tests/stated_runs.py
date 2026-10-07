@@ -44,7 +44,13 @@ def state_run(
     restate_run(
         user,
         run,
-        RunDraft(started=started, completed=completed, note=note),
+        RunDraft(
+            started=started,
+            completed=completed,
+            note=note,
+            implies_played=False,
+            implies_completed=False,
+        ),
         correlation_id=new_correlation_id(),
     )
     run.refresh_from_db()
@@ -65,7 +71,12 @@ def another_run(
     )
     dispatch(
         CreatePlaythrough(
-            game_id=game.pk, started=started, completed=completed, note=note
+            game_id=game.pk,
+            started=started,
+            completed=completed,
+            note=note,
+            implies_played=False,
+            implies_completed=False,
         ),
         actor=user,
         library=user.library,

@@ -123,6 +123,7 @@ def a_recorded_session(owned_user, run, day=A_DAY) -> PlayerSession:
         CreateSession(
             playthrough_id=run.pk,
             timing=DurationOnlyTiming(day=day, duration=AN_HOUR),
+            implies_played=False,
         ),
         actor=owned_user,
         library=owned_user.library,

@@ -71,7 +71,11 @@ def run(owned_user, owned_library, game) -> Playthrough:
 @pytest.fixture
 def second_run(owned_user, owned_library, run) -> Playthrough:
     dispatch(
-        CreatePlaythrough(game_id=run.player_game.game_id),
+        CreatePlaythrough(
+            game_id=run.player_game.game_id,
+            implies_played=False,
+            implies_completed=False,
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="second",

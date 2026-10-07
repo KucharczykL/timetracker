@@ -38,12 +38,12 @@ from games.events.dispatch import (
 )
 from games.events.historical_playtime import HISTORICALPLAYTIME_MOVED, clears_release
 from games.events.idempotency import IdempotencyKey
-from games.events.playergame import PLAYERGAME_CREATED
+from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGED
 from games.events.playersession import PLAYERSESSION_RELEASE_CHANGED
 from games.events.playthrough import PLAYTHROUGH_CREATED, PLAYTHROUGH_REMOVED
 from games.events.vocabulary import EventType
 from games.ids import GameId
-from games.models import Game, PlayerGame, Playthrough, UserLibrary
+from games.models import Game, PlayerGame, PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.events import created_aggregate_id, dispatched_events
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
@@ -55,11 +55,6 @@ from games.reads.playthrough_endpoints import (
 from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
 from games.writes.answers import CommandFailed, answered
 from games.writes.endpoint import Act, endpoint_move
-from games.writes.implied_status import (
-    StatusAnswer,
-    implied_status,
-    state_implied_status,
-)
 from games.writes.playergame import track_game
 from timetracker.temporal import TemporalValue
 
@@ -76,6 +71,9 @@ class RunDraft:
     started: ActStatement | None
     completed: ActStatement | None
     note: str
+    #: The boxes: each act's implied status.
+    implies_played: bool
+    implies_completed: bool
     #: The run's catalog game; None states none.
     game_id: GameId | None = None
 
@@ -124,11 +122,24 @@ class EndpointCommand(Protocol):
     ) -> Command: ...
 
 
+class FirstActCommand(Protocol):
+    """Builds an endpoint's first act."""
+
+    def __call__(
+        self,
+        *,
+        playthrough_id: uuid.UUID,
+        when: TemporalValue | None,
+        note: str,
+        implies_status: bool,
+    ) -> Command: ...
+
+
 class EndpointStatement(NamedTuple):
     """How one endpoint is stated, and restated."""
 
     reads: Callable[[Playthrough], StatedEndpoint | None]
-    first: EndpointCommand
+    first: FirstActCommand
     correction: EndpointCommand
 
 
@@ -137,8 +148,13 @@ _COMPLETION = EndpointStatement(
     stated_completion, CompletePlaythrough, CorrectPlaythroughCompletion
 )
 
-#: One endpoint, and the act stated about it.
-type Statement = tuple[EndpointStatement, ActStatement | None]
+
+class Statement(NamedTuple):
+    """One endpoint, its act, and its box."""
+
+    endpoint: EndpointStatement
+    act: ActStatement | None
+    implies_status: bool
 
 
 def _stated_day(act: ActStatement | None) -> TemporalValue | None:
@@ -149,8 +165,7 @@ def _stated_day(act: ActStatement | None) -> TemporalValue | None:
 def _state_endpoint(
     actor: User,
     run: Playthrough,
-    endpoint: EndpointStatement,
-    act: ActStatement | None,
+    statement: Statement,
     *,
     correlation_id: uuid.UUID,
 ) -> None:
@@ -168,16 +183,26 @@ def _state_endpoint(
     stated and answer this person success.
 
     A correction carries the note the endpoint already
-    states, or it states a note nobody wrote.
+    states, or it states a note nobody wrote. Only the
+    first act implies a status.
     """
+    endpoint, act, implies_status = statement
     if act is None:
         return
     stated = endpoint.reads(run)
-    move = endpoint_move(stated, act)
-    command_class = endpoint.first if isinstance(move, Act) else endpoint.correction
     note = "" if stated is None else stated.note
+    command = (
+        endpoint.first(
+            playthrough_id=run.pk,
+            when=act.when,
+            note=note,
+            implies_status=implies_status,
+        )
+        if isinstance(endpoint_move(stated, act), Act)
+        else endpoint.correction(playthrough_id=run.pk, when=act.when, note=note)
+    )
     _dispatch(
-        command_class(playthrough_id=run.pk, when=act.when, note=note),
+        command,
         actor=actor,
         library=actor.library,
         correlation_id=correlation_id,
@@ -187,9 +212,10 @@ def _state_endpoint(
 def _state_first_act(
     actor: User,
     run: Playthrough,
-    command: EndpointCommand,
+    command: FirstActCommand,
     when: TemporalValue | None,
     *,
+    implies_status: bool,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
@@ -207,7 +233,12 @@ def _state_first_act(
     """
     with answered("playthrough"):
         return _dispatch(
-            command(playthrough_id=run.pk, when=when, note=""),
+            command(
+                playthrough_id=run.pk,
+                when=when,
+                note="",
+                implies_status=implies_status,
+            ),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
@@ -221,6 +252,7 @@ def start_run(
     run: Playthrough,
     when: TemporalValue | None,
     *,
+    implies_status: bool,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
@@ -231,6 +263,7 @@ def start_run(
         run,
         StartPlaythrough,
         when,
+        implies_status=implies_status,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         source_metadata=source_metadata,
@@ -242,6 +275,7 @@ def complete_run(
     run: Playthrough,
     when: TemporalValue | None,
     *,
+    implies_status: bool,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
@@ -252,17 +286,14 @@ def complete_run(
         run,
         CompletePlaythrough,
         when,
+        implies_status=implies_status,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         source_metadata=source_metadata,
     )
 
 
-def _statement_order(
-    run: Playthrough,
-    started: ActStatement | None,
-    completed: ActStatement | None,
-) -> tuple[Statement, Statement]:
+def _statement_order(run: Playthrough, draft: RunDraft) -> tuple[Statement, Statement]:
     """The order that states no reversed pair.
 
     One endpoint is stated at a time, so in between the run
@@ -273,17 +304,21 @@ def _statement_order(
     reverse: both would need the draft itself reversed, and
     the caller refused that already.
     """
-    start_first: tuple[Statement, Statement] = (
-        (_START, started),
-        (_COMPLETION, completed),
-    )
-    completion_first: tuple[Statement, Statement] = (
-        (_COMPLETION, completed),
-        (_START, started),
-    )
-    if certainly_reversed(earlier=_stated_day(started), later=run.completed):
-        return completion_first
-    return start_first
+    start = Statement(_START, draft.started, draft.implies_played)
+    completion = Statement(_COMPLETION, draft.completed, draft.implies_completed)
+    if certainly_reversed(earlier=_stated_day(draft.started), later=run.completed):
+        return (completion, start)
+    return (start, completion)
+
+
+class StatusStated(NamedTuple):
+    """The game now holds this status."""
+
+    status: PlayerGameStatus
+
+
+#: None: nothing implied, or the game held it.
+type StatusAnswer = StatusStated | None
 
 
 class MovedRun(NamedTuple):
@@ -295,7 +330,7 @@ class MovedRun(NamedTuple):
     removed_a_placeholder: bool
     minted_a_placeholder: bool
     #: The status the endpoints implied on the target.
-    status: StatusAnswer = None
+    status: StatusAnswer
     #: Live rows whose Release the move cleared.
     cleared_releases: int = 0
 
@@ -325,7 +360,6 @@ def restate_run(
     One dispatch per fact, so a resubmit finishes.
     A move goes first; None where none happened.
     """
-    #: The status key derives from it.
     move_key = str(uuid.uuid7())
     with answered("playthrough"):
         #: Before the move: no act withdraws.
@@ -338,16 +372,6 @@ def restate_run(
             idempotency_key=move_key,
         )
     try:
-        if moved is not None:
-            moved = moved._replace(
-                status=_state_the_moved_status(
-                    actor,
-                    run,
-                    moved.target,
-                    correlation_id=correlation_id,
-                    idempotency_key=move_key,
-                )
-            )
         with answered("playthrough"):
             _restate(actor, run, draft, correlation_id=correlation_id)
     except CommandFailed as failure:
@@ -394,8 +418,17 @@ def _move(
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
+        status=stated_status(events),
         cleared_releases=_live_rows_cleared(actor.library, events),
     )
+
+
+def stated_status(events: list[AppendedEvent]) -> StatusAnswer:
+    """The status a dispatch appended, if any."""
+    for event_type, _, payload in events:
+        if event_type == PLAYERGAME_STATUS_CHANGED.event_type:
+            return StatusStated(PlayerGameStatus(str(payload["status"])))
+    return None
 
 
 def _live_rows_cleared(library: UserLibrary, events: list[AppendedEvent]) -> int:
@@ -413,32 +446,6 @@ def _live_rows_cleared(library: UserLibrary, events: list[AppendedEvent]) -> int
     return (
         library_sessions(library).filter(pk__in=sessions).count()
         + library_records(library).filter(pk__in=records).count()
-    )
-
-
-def _state_the_moved_status(
-    actor: User,
-    run: Playthrough,
-    target: Game,
-    *,
-    correlation_id: uuid.UUID,
-    idempotency_key: IdempotencyKey,
-) -> StatusAnswer:
-    """The status the endpoints carried there.
-
-    Read before the draft's own endpoints:
-    those state their status through the
-    page's boxes, as on any edit.
-    """
-    status = implied_status(run)
-    if status is None:
-        return None
-    return state_implied_status(
-        actor,
-        target,
-        status,
-        correlation_id=correlation_id,
-        idempotency_key=idempotency_key,
     )
 
 
@@ -462,8 +469,6 @@ def _restate(
     correlation_id: uuid.UUID,
 ) -> None:
     """The statements themselves, inside a caller's answer."""
-    started = draft.started
-    completed = draft.completed
     #: A start commits, then the completion refuses.
     _refuse_a_reversed_draft(run, draft)
     if draft.note.strip() != run.note:
@@ -474,8 +479,8 @@ def _restate(
             correlation_id=correlation_id,
         )
         run.refresh_from_db()
-    for endpoint, act in _statement_order(run, started, completed):
-        _state_endpoint(actor, run, endpoint, act, correlation_id=correlation_id)
+    for statement in _statement_order(run, draft):
+        _state_endpoint(actor, run, statement, correlation_id=correlation_id)
 
 
 class RecordedRun(NamedTuple):
@@ -560,6 +565,8 @@ def _record_once(
             started=draft.started,
             completed=draft.completed,
             note=draft.note,
+            implies_played=draft.implies_played,
+            implies_completed=draft.implies_completed,
         ),
         actor=actor,
         library=actor.library,

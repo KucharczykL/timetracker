@@ -91,6 +91,7 @@ def record_session(
     actor: User,
     draft: SessionDraft,
     *,
+    implies_played: bool,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
 ) -> uuid.UUID:
@@ -107,6 +108,7 @@ def record_session(
                 release_id=draft.release_id,
                 note=draft.note,
                 emulated=draft.emulated,
+                implies_played=implies_played,
             ),
             actor=actor,
             library=actor.library,
@@ -546,6 +548,7 @@ def clone_session(
                 device_id=None if resumed.device is None else resumed.device.pk,
                 note="",
                 emulated=resumed.emulated,
+                implies_played=False,
             ),
             actor=actor,
             library=actor.library,

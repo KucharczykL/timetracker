@@ -16,6 +16,7 @@ from games.commands.playthrough import (
     _live_run,
     library_playthrough,
     refuse_unless_live,
+    with_implied_status,
 )
 from games.commands.scope import (
     Refusal,
@@ -52,6 +53,7 @@ from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
     HistoricalPlaytime,
+    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -576,6 +578,8 @@ class CreateSession(Command):
     release_id: uuid.UUID | None = None
     note: str = ""
     emulated: bool = False
+    #: Played, where the game is Unplayed.
+    implies_played: bool
 
     def __post_init__(self) -> None:
         #: One spelling, so restatements fingerprint alike.
@@ -597,16 +601,22 @@ class CreateSession(Command):
         )
         payload = timing_payload(self.timing)
         _check_calendar(context, payload)
-        return [
-            playersession_created(
-                run.pk,
-                timing=payload,
-                device=None if device is None else capture_reference(device),
-                release=None if release is None else capture_reference(release),
-                note=self.note,
-                emulated=self.emulated,
-            )
-        ]
+        return with_implied_status(
+            context,
+            [
+                playersession_created(
+                    run.pk,
+                    timing=payload,
+                    device=None if device is None else capture_reference(device),
+                    release=None if release is None else capture_reference(release),
+                    note=self.note,
+                    emulated=self.emulated,
+                )
+            ],
+            run.player_game_id,
+            run.player_game.status,
+            PlayerGameStatus.PLAYED if self.implies_played else None,
+        )
 
 
 @dataclass(frozen=True, slots=True)

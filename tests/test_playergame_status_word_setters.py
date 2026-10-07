@@ -116,7 +116,7 @@ def test_the_endpoint_takes_a_shared_game_this_library_tracks(logged_in, owned_l
 
 @pytest.mark.django_db(transaction=True)
 def test_a_session_marks_an_unplayed_game_played(logged_in, owned_library):
-    """_record_played reads the row."""
+    """The creation carries the box."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     logged_in.post(

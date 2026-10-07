@@ -87,6 +87,8 @@ def test_a_refused_row_states_its_sentence_while_the_rest_are_removed(
                 started=ActStatement(TemporalValue.from_day(day)),
                 completed=ActStatement(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )

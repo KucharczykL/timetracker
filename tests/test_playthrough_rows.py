@@ -175,6 +175,8 @@ def _state_start(owned_user, run) -> None:
             started=ActStatement(TemporalValue.from_day(date(2026, 1, 2))),
             completed=None,
             note=run.note,
+            implies_played=False,
+            implies_completed=False,
         ),
         correlation_id=new_correlation_id(),
     )
@@ -189,6 +191,8 @@ def _state_completion(owned_user, run) -> None:
             started=None,
             completed=ActStatement(TemporalValue.from_day(date(2026, 2, 3))),
             note=run.note,
+            implies_played=False,
+            implies_completed=False,
         ),
         correlation_id=new_correlation_id(),
     )

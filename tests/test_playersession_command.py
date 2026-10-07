@@ -116,7 +116,9 @@ def a_corrected(**stated) -> CorrectedTiming:
 
 def record(library, actor, run, timing, *, key=None, **stated) -> PlayerSession:
     dispatch(
-        CreateSession(playthrough_id=run.pk, timing=timing, **stated),
+        CreateSession(
+            playthrough_id=run.pk, timing=timing, **({"implies_played": False} | stated)
+        ),
         actor=actor,
         library=library,
         idempotency_key=key or str(uuid.uuid7()),
@@ -127,7 +129,11 @@ def record(library, actor, run, timing, *, key=None, **stated) -> PlayerSession:
 def refused(library, actor, run, timing, **stated) -> CommandRejected:
     with pytest.raises(CommandRejected) as refusal:
         dispatch(
-            CreateSession(playthrough_id=run.pk, timing=timing, **stated),
+            CreateSession(
+                playthrough_id=run.pk,
+                timing=timing,
+                **({"implies_played": False} | stated),
+            ),
             actor=actor,
             library=library,
             idempotency_key=str(uuid.uuid7()),
@@ -140,7 +146,11 @@ def not_held(library, actor, run, timing, **stated) -> RowNotHeld:
     """A row this library does not hold; the boundary owns the answer."""
     with pytest.raises(RowNotHeld) as absent:
         dispatch(
-            CreateSession(playthrough_id=run.pk, timing=timing, **stated),
+            CreateSession(
+                playthrough_id=run.pk,
+                timing=timing,
+                **({"implies_played": False} | stated),
+            ),
             actor=actor,
             library=library,
             idempotency_key=str(uuid.uuid7()),
@@ -418,7 +428,9 @@ def test_it_refuses_a_zone_only_the_database_knows(
 
 
 def test_a_retry_of_one_statement_appends_nothing_more(owned_user, owned_library, run):
-    command = CreateSession(playthrough_id=run.pk, timing=a_timed())
+    command = CreateSession(
+        playthrough_id=run.pk, timing=a_timed(), implies_played=False
+    )
     dispatch(command, actor=owned_user, library=owned_library, idempotency_key="one")
 
     second = dispatch(
@@ -432,7 +444,9 @@ def test_a_retry_of_one_statement_appends_nothing_more(owned_user, owned_library
 def test_a_restated_duration_fingerprints_alike(owned_user, owned_library, run):
     dispatch(
         CreateSession(
-            playthrough_id=run.pk, timing=a_duration_only(duration=timedelta(hours=1))
+            playthrough_id=run.pk,
+            timing=a_duration_only(duration=timedelta(hours=1)),
+            implies_played=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -443,6 +457,7 @@ def test_a_restated_duration_fingerprints_alike(owned_user, owned_library, run):
         CreateSession(
             playthrough_id=run.pk,
             timing=a_duration_only(duration=timedelta(minutes=60)),
+            implies_played=False,
         ),
         actor=owned_user,
         library=owned_library,
@@ -455,7 +470,9 @@ def test_a_restated_duration_fingerprints_alike(owned_user, owned_library, run):
 def test_it_never_answers_unchanged(owned_user, owned_library, run):
     for key in ("one", "two"):
         result = dispatch(
-            CreateSession(playthrough_id=run.pk, timing=a_timed()),
+            CreateSession(
+                playthrough_id=run.pk, timing=a_timed(), implies_played=False
+            ),
             actor=owned_user,
             library=owned_library,
             idempotency_key=key,
@@ -485,7 +502,9 @@ def test_a_refusal_the_command_forgot_reaches_a_person_as_a_sentence(
     ):
         dispatch(
             CreateSession(
-                playthrough_id=run.pk, timing=a_duration_only(duration=-timedelta(1))
+                playthrough_id=run.pk,
+                timing=a_duration_only(duration=-timedelta(1)),
+                implies_played=False,
             ),
             actor=owned_user,
             library=owned_library,
@@ -2031,7 +2050,9 @@ def test_a_removed_session_refuses_every_statement(
 def test_the_way_back_is_run_then_session(owned_user, owned_library, game, run):
     """Each refusal names a step, and each step works."""
     dispatch(
-        CreatePlaythrough(game_id=game.pk),
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="second-run",
@@ -2149,7 +2170,9 @@ OUT_OF_RANGE = "That time is outside the range we can record."
     "construct",
     [
         lambda: CreateSession(
-            playthrough_id=uuid.uuid7(), timing=a_timed(started_at=BEYOND_UTC)
+            playthrough_id=uuid.uuid7(),
+            timing=a_timed(started_at=BEYOND_UTC),
+            implies_played=False,
         ),
         lambda: CorrectSessionTiming(
             session_id=uuid.uuid7(), timing=a_corrected(ended_at=BEYOND_UTC)
@@ -2218,7 +2241,7 @@ def test_a_command_with_two_keys_takes_them_by_name():
     with pytest.raises(TypeError):
         MoveSessionToPlaythrough(uuid.uuid7(), uuid.uuid7())  # type: ignore[misc]
     with pytest.raises(TypeError):
-        CreateSession(uuid.uuid7(), a_timed())  # type: ignore[misc]
+        CreateSession(uuid.uuid7(), a_timed(), implies_played=False)  # type: ignore[misc]
 
 
 def test_it_refuses_recording_a_session_on_the_bucket(owned_user, owned_library, run):

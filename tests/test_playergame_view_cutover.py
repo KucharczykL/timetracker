@@ -208,6 +208,54 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
     assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
 
 
+def _complete(owned_user, game) -> None:
+    record_facts(
+        owned_user,
+        game,
+        status=PlayerGameStatus.COMPLETED,
+        correlation_id=new_correlation_id(),
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_adding_a_session_keeps_completed(
+    logged_in, owned_user, owned_library, tracked_game
+):
+    _complete(owned_user, tracked_game)
+
+    logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
+
+    assert PlayerSession.objects.exists()
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_editing_a_session_keeps_completed(
+    logged_in, owned_user, owned_library, tracked_game
+):
+    session = session_row(tracked_game, started_at=timezone.now())
+    _complete(owned_user, tracked_game)
+
+    logged_in.post(
+        reverse("games:edit_session", args=[session.id]),
+        _session_payload(tracked_game),
+    )
+
+    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_and_its_played_are_one_dispatch(
+    logged_in, owned_library, tracked_game
+):
+    logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
+
+    created = LibraryEvent.objects.get(event_type="library.playersession.created")
+    status = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
+    assert status.idempotency_key == created.idempotency_key
+    assert status.sequence == created.sequence + 1
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_a_session_on_an_untracked_game_is_refused_on_the_run(logged_in, owned_library):

@@ -93,6 +93,7 @@ def test_a_stream_naming_a_device_it_never_created_is_refused(owned_library):
                 day=date(2024, 3, 1), duration=timedelta(hours=1)
             ),
             device_id=stray.pk,
+            implies_played=False,
         ),
         actor=owned_library.user,
         library=owned_library,

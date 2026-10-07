@@ -89,7 +89,11 @@ def run(owned_user, owned_library, game) -> Playthrough:
 @pytest.fixture
 def second_run(owned_user, owned_library, run) -> Playthrough:
     dispatch(
-        CreatePlaythrough(game_id=run.player_game.game_id),
+        CreatePlaythrough(
+            game_id=run.player_game.game_id,
+            implies_played=False,
+            implies_completed=False,
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="second",
@@ -111,7 +115,9 @@ def other_game_run(owned_user, owned_library) -> Playthrough:
 
 def a_session(library, actor, run, timing, *, key=None, **stated) -> PlayerSession:
     dispatch(
-        CreateSession(playthrough_id=run.pk, timing=timing, **stated),
+        CreateSession(
+            playthrough_id=run.pk, timing=timing, **({"implies_played": False} | stated)
+        ),
         actor=actor,
         library=library,
         idempotency_key=key or str(uuid.uuid7()),

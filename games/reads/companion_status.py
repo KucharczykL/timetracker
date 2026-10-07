@@ -1,6 +1,6 @@
 """Which status a lifecycle act may offer."""
 
-from games.models import Game, PlayerGameStatus, UserLibrary
+from games.models import Game, PlayerGameStatus, UserLibrary, status_implied_over
 from games.reads.playthrough_runs import tracked_game
 
 
@@ -14,4 +14,6 @@ def played_is_offered(library: UserLibrary, game: Game) -> bool:
     submit names.
     """
     tracked = tracked_game(library, game)
-    return tracked is None or tracked.status == PlayerGameStatus.UNPLAYED
+    return tracked is None or status_implied_over(
+        PlayerGameStatus(tracked.status), PlayerGameStatus.PLAYED
+    )

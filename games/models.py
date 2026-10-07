@@ -1473,6 +1473,19 @@ class PlayerGameStatus(models.TextChoices):
     ABANDONED = "abandoned", "Abandoned"
 
 
+def status_implied_over(held: PlayerGameStatus, implied: PlayerGameStatus) -> bool:
+    """Whether an act's implied status is stated.
+
+    Two equality rules, not an order: Completed
+    is stated over Retired, Shelved and Abandoned.
+    """
+    if implied is PlayerGameStatus.PLAYED:
+        return held == PlayerGameStatus.UNPLAYED
+    if implied is PlayerGameStatus.COMPLETED:
+        return held != PlayerGameStatus.COMPLETED
+    raise ValueError(f"No act implies {implied}.")
+
+
 #: Done with the game: completed or retired.
 DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
     PlayerGameStatus.COMPLETED,

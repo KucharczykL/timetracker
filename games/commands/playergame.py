@@ -25,7 +25,7 @@ from games.events.playergame import (
 from games.events.playthrough import playthrough_created
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Game, PlayerGame, PlayerGameStatus
+from games.models import Game, PlayerGame, PlayerGameStatus, status_implied_over
 from games.reads.calendar import calendar_today
 from timetracker.temporal import TemporalValue
 
@@ -33,6 +33,29 @@ from timetracker.temporal import TemporalValue
 def _stated_now(context: CommandContext) -> TemporalValue:
     """A change happens on the library's calendar."""
     return TemporalValue.from_day(calendar_today(context.library))
+
+
+def _status_change(
+    context: CommandContext, player_game_id: uuid.UUID, status: PlayerGameStatus
+) -> NewEvent:
+    return PLAYERGAME_STATUS_CHANGED.new(
+        aggregate_id=player_game_id,
+        #: A test pins Literal and choices equal.
+        payload={"status": cast("StatusValue", status.value)},
+        effective_time=_stated_now(context),
+    )
+
+
+def implied_status_change(
+    context: CommandContext,
+    player_game_id: uuid.UUID,
+    held: str,
+    implied: PlayerGameStatus,
+) -> NewEvent | None:
+    """The status an act implies, if stated."""
+    if not status_implied_over(PlayerGameStatus(held), implied):
+        return None
+    return _status_change(context, player_game_id, implied)
 
 
 class PlayerGameNotTracked(CommandRejected):
@@ -180,13 +203,21 @@ class RecordPlayerGameFacts(Command):
     mastered: bool | None = None
     excluded_from_unfinished: bool | None = None
     excluded_from_dropped: bool | None = None
+    #: Stated only where the rule says so.
+    implied_status: PlayerGameStatus | None = None
 
     def __post_init__(self) -> None:
+        if self.status is not None and self.implied_status is not None:
+            raise ValueError(
+                "RecordPlayerGameFacts states a status and an implied one. "
+                "The stated one always wins, so the implied one says nothing."
+            )
         if (
             self.status is None
             and self.mastered is None
             and self.excluded_from_unfinished is None
             and self.excluded_from_dropped is None
+            and self.implied_status is None
         ):
             raise ValueError(
                 "RecordPlayerGameFacts states no fact. A command that asks for "
@@ -199,14 +230,14 @@ class RecordPlayerGameFacts(Command):
         #: Under dispatch's lock: no concurrent duplicate.
         events: list[NewEvent] = []
         if self.status is not None and tracked.status != self.status:
-            events.append(
-                PLAYERGAME_STATUS_CHANGED.new(
-                    aggregate_id=tracked.pk,
-                    #: A test pins Literal and choices equal.
-                    payload={"status": cast("StatusValue", self.status.value)},
-                    effective_time=_stated_now(context),
-                )
+            events.append(_status_change(context, tracked.pk, self.status))
+        #: A removed game takes no implied status.
+        if self.implied_status is not None and tracked.removed_at is None:
+            implied = implied_status_change(
+                context, tracked.pk, tracked.status, self.implied_status
             )
+            if implied is not None:
+                events.append(implied)
         if self.mastered is not None and tracked.mastered != self.mastered:
             events.append(
                 PLAYERGAME_MASTERED_CHANGED.new(

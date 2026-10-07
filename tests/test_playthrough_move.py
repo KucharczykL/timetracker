@@ -105,7 +105,11 @@ def sole_run(library, game):
 
 def named_run(run, library, game, name):
     """A second run, named, so the first is not alone."""
-    run(CreatePlaythrough(game_id=game.pk))
+    run(
+        CreatePlaythrough(
+            game_id=game.pk, implies_played=False, implies_completed=False
+        )
+    )
     newest = live_runs(library, game)[-1]
     run(DescribePlaythrough(playthrough_id=newest.pk, name=name, note=None))
     newest.refresh_from_db()
@@ -119,6 +123,7 @@ def session_on(run, playthrough):
             timing=DurationOnlyTiming(
                 day=date(2024, 3, 1), duration=timedelta(hours=1)
             ),
+            implies_played=False,
         )
     )
 

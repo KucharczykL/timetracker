@@ -504,7 +504,7 @@ def tracked_run(library, actor, name: str) -> Playthrough:
 
 def a_session(library, actor, run, timing) -> None:
     dispatch(
-        CreateSession(playthrough_id=run.pk, timing=timing),
+        CreateSession(playthrough_id=run.pk, timing=timing, implies_played=False),
         actor=actor,
         library=library,
         idempotency_key=str(uuid.uuid7()),

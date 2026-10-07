@@ -25,6 +25,7 @@ from games.commands.libraryentry import (
     UndoEntryAccessEnd,
     VoidEntryAccessEnd,
 )
+from games.commands.playergame import RecordPlayerGameFacts
 from games.commands.playersession import (
     CorrectedTiming,
     CreateSession,
@@ -61,7 +62,7 @@ from games.commands.purchase import (
 from games.end_ways import EndWay
 from games.events.dispatch import Command, canonical_command_input
 from games.events.idempotency import fingerprint_command_input
-from games.models import HistoricalPlaytimeProvenance
+from games.models import HistoricalPlaytimeProvenance, PlayerGameStatus
 from timetracker.temporal import TemporalValue
 
 RUN = uuid.UUID("01890000-0000-7000-8000-000000000001")
@@ -76,8 +77,12 @@ MAY = TemporalValue.parse("2021-05")
 NOON = datetime(2021, 5, 1, 12, tzinfo=UTC)
 
 COMMANDS: dict[str, Command] = {
-    "start": StartPlaythrough(playthrough_id=RUN, when=MAY, note="began"),
-    "complete": CompletePlaythrough(playthrough_id=RUN, when=None, note=""),
+    "start": StartPlaythrough(
+        playthrough_id=RUN, when=MAY, note="began", implies_status=False
+    ),
+    "complete": CompletePlaythrough(
+        playthrough_id=RUN, when=None, note="", implies_status=False
+    ),
     "correct_start": CorrectPlaythroughStart(playthrough_id=RUN, when=MAY, note=""),
     "correct_completion": CorrectPlaythroughCompletion(
         playthrough_id=RUN, when=MAY, note="done"
@@ -93,6 +98,8 @@ COMMANDS: dict[str, Command] = {
         started=ActStatement(MAY, "began"),
         completed=ActStatement(None, ""),
         note="run",
+        implies_played=False,
+        implies_completed=False,
     ),
     "record_entry": RecordEntry(
         release_id=RELEASE,
@@ -163,10 +170,12 @@ COMMANDS: dict[str, Command] = {
     "create_timed_session": CreateSession(
         playthrough_id=RUN,
         timing=TimedTiming(started_at=NOON, day_zone="Europe/Prague"),
+        implies_played=False,
     ),
     "create_duration_only_session": CreateSession(
         playthrough_id=RUN,
         timing=DurationOnlyTiming(day=date(2021, 5, 1), duration=timedelta(hours=1)),
+        implies_played=False,
     ),
     "create_corrected_session": CreateSession(
         playthrough_id=RUN,
@@ -176,6 +185,10 @@ COMMANDS: dict[str, Command] = {
             duration=timedelta(hours=1),
             day_zone="Europe/Prague",
         ),
+        implies_played=False,
+    ),
+    "record_facts": RecordPlayerGameFacts(
+        game_id=GAME, mastered=True, implied_status=PlayerGameStatus.PLAYED
     ),
     "record_historical_playtime": RecordHistoricalPlaytime(
         statement=HistoricalPlaytimeStatement(
@@ -211,7 +224,7 @@ RECORDED: dict[str, str] = {
     "void_entry_access_end": (
         "d2313c5b75931be63e4b2f59028f51dad51ea0e297fb58fb026cad1f7de746d1"
     ),
-    "complete": "a383d10184a3fd5c8f7c128ad7c6540cffee5e05b5f329e2cc88f7a6ac398537",
+    "complete": "e2165e06d746af1d8fa9b40fe074f4fd7a3b8e51196bb16ef85ddc8d45644cf8",
     "correct_completion": (
         "0490e599e25fd92b2019a03e128c8596403b94e8c8911d31121ecdb9bdd30c03"
     ),
@@ -219,7 +232,7 @@ RECORDED: dict[str, str] = {
         "ba6497d9b1e8fcc785b0ebdb1a00f4419ece408e44b09ac449cb5a4bf2b3b25a"
     ),
     "correct_start": "9650f82546728f0150ebe080bcc5bbc78466123b8418e7029989c62205ff69da",
-    "create": "7fe8275a8295fdb9890df94ad28b34430a3dc384dd6c5c3a0cf127659a539d53",
+    "create": "acd159447fbc5ed886f4bfe06184c27d03d2c50eb2ab63443da80dc0bf86b7bd",
     "create_device": (
         "2bc2ba678e5fa0b358a78326139da09d621bd587ad0994b07a7663ac19ba5274"
     ),
@@ -227,7 +240,7 @@ RECORDED: dict[str, str] = {
     "record_entry": "44a4aac331629282fa27af861f0a83eb84df1a5783fd19a8bb417b046edf541d",
     "remove_entry": "21a157fa46b073a20091ca8e8a86bedd1e6fa8749ccbc35fb4dbe981bb7fd393",
     "restore_entry": "66fa174dd36166b0e374a7bbfe206a58c43e7814233162c82a7a6a1833f164d3",
-    "start": "89d10a7bcb9966145fbf794ecd8972584210c18e029986720af18bb06a5ff43a",
+    "start": "db1ca52065718e44fd5db5f68c39704d0dd1c4e4987ed9933f5c0188d8f212d7",
     "void_completion": (
         "31b02261fdd35cb1d88a85afb111029cf12964fb940dcfff270776cc1fb02c66"
     ),
@@ -266,13 +279,16 @@ RECORDED: dict[str, str] = {
         "888b5d7e18c2403242f9c9fe79cb530f86041fbe1f2b6647cc38616cf73a1983"
     ),
     "create_timed_session": (
-        "07510c52e199fb6bbc12f96791e329d714e15f2cbdfbec4611424de395b15fb1"
+        "d828b29a8d2139e4cddaa8c9fa2ffae569d4ac25ea55743f0ab0365f45faee66"
     ),
     "create_duration_only_session": (
-        "af2b3846e52d6ac1e6bfdc9a48989fd6fba19026388c75345cbc4631bcbc9bab"
+        "49e334739f27aca389386ee03db6c31594d0c8837f0c1903afe7122071d3ab78"
     ),
     "create_corrected_session": (
-        "538e8bde512e330ea5c74a7972d2064fce13a73f56c541fc67e060c8d84fe5d6"
+        "efddf580178a4d5f3892388f25f1d12b931122e967cb8fafd4a935aa2ff77964"
+    ),
+    "record_facts": (
+        "00f0fca56673dd67c163abd56e2b7cf117a62c5ed135ea5de44d7a793a7f8d78"
     ),
     "record_historical_playtime": (
         "8b944a87b58091b5244c42417916c81e76e67f9bcaed5ed51e0b1bb346f67c53"

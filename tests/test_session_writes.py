@@ -86,7 +86,10 @@ def test_recording_answers_the_new_rows_id(owned_user, owned_library, game):
     correlation_id = uuid.uuid7()
 
     session_id = record_session(
-        owned_user, _draft(run, note="first"), correlation_id=correlation_id
+        owned_user,
+        _draft(run, note="first"),
+        correlation_id=correlation_id,
+        implies_played=False,
     )
 
     row = PlayerSession.objects.get(pk=session_id)
@@ -99,10 +102,18 @@ def test_record_session_absorbs_a_repeat_under_one_key(owned_user, owned_library
     run = tracked_run(owned_library, game)
 
     first = record_session(
-        owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key="k-1"
+        owned_user,
+        _draft(run),
+        correlation_id=uuid.uuid7(),
+        idempotency_key="k-1",
+        implies_played=False,
     )
     second = record_session(
-        owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key="k-1"
+        owned_user,
+        _draft(run),
+        correlation_id=uuid.uuid7(),
+        idempotency_key="k-1",
+        implies_played=False,
     )
 
     assert first == second
@@ -115,7 +126,11 @@ def test_record_session_refuses_a_blank_key(owned_user, owned_library, game):
 
     with pytest.raises(ValueError):
         record_session(
-            owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key=""
+            owned_user,
+            _draft(run),
+            correlation_id=uuid.uuid7(),
+            idempotency_key="",
+            implies_played=False,
         )
 
     assert not PlayerSession.objects.filter(playthrough=run).exists()
@@ -130,6 +145,7 @@ def test_record_session_refuses_a_key_that_names_another_statement(
         _draft(run, note="first"),
         correlation_id=uuid.uuid7(),
         idempotency_key="k-1",
+        implies_played=False,
     )
 
     with pytest.raises(CommandFailed) as refusal:
@@ -138,6 +154,7 @@ def test_record_session_refuses_a_key_that_names_another_statement(
             _draft(run, note="second"),
             correlation_id=uuid.uuid7(),
             idempotency_key="k-1",
+            implies_played=False,
         )
 
     assert refusal.value.status_code == 409

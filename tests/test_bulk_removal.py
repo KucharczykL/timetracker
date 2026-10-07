@@ -127,6 +127,8 @@ def _one_run(actor, game, started: date) -> None:
             started=ActStatement(TemporalValue.from_day(started)),
             completed=ActStatement(None),
             note="",
+            implies_played=False,
+            implies_completed=False,
         ),
         correlation_id=new_correlation_id(),
     )
@@ -591,6 +593,8 @@ def test_an_endpoint_no_act_stated_reads_as_a_dash(
             #: Never finished, so no act to date.
             completed=None,
             note="",
+            implies_played=False,
+            implies_completed=False,
         ),
         correlation_id=new_correlation_id(),
     )

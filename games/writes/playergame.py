@@ -318,6 +318,7 @@ def record_facts(
     mastered: bool | None = None,
     excluded_from_unfinished: bool | None = None,
     excluded_from_dropped: bool | None = None,
+    implied_status: PlayerGameStatus | None = None,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
@@ -338,6 +339,7 @@ def record_facts(
         mastered=mastered,
         excluded_from_unfinished=excluded_from_unfinished,
         excluded_from_dropped=excluded_from_dropped,
+        implied_status=implied_status,
     )
     state = partial(
         _dispatch,

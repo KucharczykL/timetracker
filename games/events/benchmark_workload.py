@@ -242,6 +242,7 @@ def _record(library: UserLibrary, *, actor: User, run: Playthrough) -> None:
             timing=DurationOnlyTiming(
                 day=date(2024, 6, 1), duration=timedelta(minutes=30)
             ),
+            implies_played=False,
         ),
         actor=actor,
         library=library,
@@ -340,6 +341,7 @@ def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> uui
                 day=date(2024, 6, 1),
                 duration=timedelta(hours=REVIEW_THRESHOLD_HOURS),
             ),
+            implies_played=False,
         ),
         actor=actor,
         library=library,

@@ -2510,9 +2510,7 @@ class PlaythroughForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
             )
         self.state_opener_facts(facts)
         offered_game = self.stated("game", Game) or offered_game
-        #: The status decides the render. No game yet is
-        #: the Add form before one is picked, which offers
-        #: the box and asks again at clean time.
+        #: A render hint only: the command decides.
         if offered_game is not None and not played_is_offered(library, offered_game):
             del self.fields["also_mark_played"]
 
@@ -2558,19 +2556,13 @@ class PlaythroughForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
         return game
 
     def clean(self) -> dict[str, Any]:
-        """Drop a box this game offers no status.
+        """A box the render took out is False.
 
-        The Add form renders the Played box
-        before a game is picked, so a posted
-        one is decided here. A field the render
-        gate took out cleans to False alone.
+        The command decides the status, under the lock.
         """
         cleaned = super().clean() or {}
         cleaned.setdefault("also_mark_played", False)
         cleaned.setdefault("also_mark_completed", False)
-        game = cleaned.get("game")
-        if game is not None and not played_is_offered(self.library, game):
-            cleaned["also_mark_played"] = False
         return cleaned
 
 

@@ -44,7 +44,13 @@ def a_recorded_run(user, game, *, started, ended) -> Playthrough:
     record_run(
         user,
         game,
-        RunDraft(started=_act(started), completed=_act(ended), note=""),
+        RunDraft(
+            started=_act(started),
+            completed=_act(ended),
+            note="",
+            implies_played=False,
+            implies_completed=False,
+        ),
         correlation_id=new_correlation_id(),
     )
     #: The run the game was born with,
@@ -70,6 +76,8 @@ class TestRecordRun:
                 started=_act(date(2026, 1, 2)),
                 completed=_act(date(2026, 2, 3)),
                 note="12h",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -87,7 +95,13 @@ class TestRecordRun:
             record_run(
                 user,
                 game,
-                RunDraft(started=_act(day), completed=_act(day), note=""),
+                RunDraft(
+                    started=_act(day),
+                    completed=_act(day),
+                    note="",
+                    implies_played=False,
+                    implies_completed=False,
+                ),
                 correlation_id=new_correlation_id(),
             )
 
@@ -101,7 +115,13 @@ class TestRecordRun:
         recorded = record_run(
             user,
             game,
-            RunDraft(started=_act(None), completed=_act(None), note=""),
+            RunDraft(
+                started=_act(None),
+                completed=_act(None),
+                note="",
+                implies_played=False,
+                implies_completed=False,
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -116,7 +136,13 @@ class TestRecordRun:
         recorded = record_run(
             user,
             game,
-            RunDraft(started=_act(None), completed=_act(None), note=""),
+            RunDraft(
+                started=_act(None),
+                completed=_act(None),
+                note="",
+                implies_played=False,
+                implies_completed=False,
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -129,7 +155,13 @@ class TestRecordRun:
         record_run(
             user,
             game,
-            RunDraft(started=_act(None), completed=_act(None), note=""),
+            RunDraft(
+                started=_act(None),
+                completed=_act(None),
+                note="",
+                implies_played=False,
+                implies_completed=False,
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -151,6 +183,8 @@ class TestRecordRun:
                     started=_act(date(2026, 2, 3)),
                     completed=_act(date(2026, 1, 2)),
                     note="",
+                    implies_played=False,
+                    implies_completed=False,
                 ),
                 correlation_id=new_correlation_id(),
             )
@@ -173,6 +207,8 @@ class TestRestateRun:
                 started=_act(date(2026, 1, 3)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -185,7 +221,13 @@ class TestRestateRun:
     @pytest.mark.django_db(transaction=True)
     def test_a_resubmitted_edit_appends_nothing(self, user, game):
         run = a_recorded_run(user, game, started=date(2026, 1, 2), ended=None)
-        draft = RunDraft(started=_act(date(2026, 1, 2)), completed=_act(None), note="")
+        draft = RunDraft(
+            started=_act(date(2026, 1, 2)),
+            completed=_act(None),
+            note="",
+            implies_played=False,
+            implies_completed=False,
+        )
         restate_run(user, run, draft, correlation_id=new_correlation_id())
         before = LibraryEvent.objects.filter(library=user.library).count()
 
@@ -206,6 +248,8 @@ class TestRestateRun:
                 started=_act(date(2026, 1, 2)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -227,7 +271,13 @@ class TestRestateRun:
         restate_run(
             user,
             born,
-            RunDraft(started=None, completed=None, note="just a note"),
+            RunDraft(
+                started=None,
+                completed=None,
+                note="just a note",
+                implies_played=False,
+                implies_completed=False,
+            ),
             correlation_id=new_correlation_id(),
         )
 
@@ -255,6 +305,8 @@ class TestRestateRun:
                 started=_act(date(2026, 3, 1)),
                 completed=_act(date(2026, 3, 4)),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -276,6 +328,8 @@ class TestRestateRun:
                 started=_act(date(2026, 1, 2)),
                 completed=_act(date(2026, 1, 5)),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -299,6 +353,8 @@ class TestRestateRun:
                     started=_act(date(2026, 3, 4)),
                     completed=_act(date(2026, 3, 1)),
                     note="",
+                    implies_played=False,
+                    implies_completed=False,
                 ),
                 correlation_id=new_correlation_id(),
             )
@@ -318,6 +374,8 @@ class TestRestateRun:
                 started=_act(date(2026, 1, 5)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -350,6 +408,8 @@ class TestRemoveRun:
                 started=_act(date(2026, 3, 4)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -376,6 +436,8 @@ class TestRemoveRun:
                 started=_act(date(2026, 3, 4)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -400,6 +462,8 @@ class TestRemoveRun:
                 started=_act(date(2026, 3, 4)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )
@@ -439,6 +503,8 @@ class TestRemoveRun:
                 started=_act(date(2026, 3, 4)),
                 completed=_act(None),
                 note="",
+                implies_played=False,
+                implies_completed=False,
             ),
             correlation_id=new_correlation_id(),
         )

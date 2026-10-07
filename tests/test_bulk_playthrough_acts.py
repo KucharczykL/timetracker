@@ -202,7 +202,9 @@ def test_a_run_that_states_a_start_is_refused_by_row(
 ):
     stated = tracked_run(owned_library, game)
     dispatch(
-        StartPlaythrough(playthrough_id=stated.pk, when=OTHER_DAY, note=""),
+        StartPlaythrough(
+            playthrough_id=stated.pk, when=OTHER_DAY, note="", implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="by-hand",
@@ -224,7 +226,9 @@ def test_a_run_that_states_today_already_counts_as_already_so(
     run = tracked_run(owned_library, game)
     today = TemporalValue.from_day(calendar_today(owned_library))
     dispatch(
-        StartPlaythrough(playthrough_id=run.pk, when=today, note=""),
+        StartPlaythrough(
+            playthrough_id=run.pk, when=today, note="", implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="by-hand",
@@ -345,7 +349,8 @@ def test_an_undo_after_a_move_puts_the_old_game_s_status_back(
     run.refresh_from_db()
     assert run.completed is None
     assert _statused(game) == PlayerGameStatus.UNPLAYED
-    assert _statused(second_game) == PlayerGameStatus.UNPLAYED
+    #: The move stated it, not the batch.
+    assert _statused(second_game) == PlayerGameStatus.COMPLETED
 
 
 def test_an_undo_reads_the_game_the_batch_found(
@@ -450,7 +455,9 @@ def test_a_restated_endpoint_refuses_the_undo(
     token, _ = _run(client_in, START_URL, run)
     _undo(client_in, token)
     dispatch(
-        StartPlaythrough(playthrough_id=run.pk, when=OTHER_DAY, note=""),
+        StartPlaythrough(
+            playthrough_id=run.pk, when=OTHER_DAY, note="", implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="stated-again",
@@ -495,7 +502,9 @@ def test_a_row_of_another_batch_states_its_own_sentence(
 ):
     run = tracked_run(owned_library, game)
     dispatch(
-        StartPlaythrough(playthrough_id=run.pk, when=OTHER_DAY, note=""),
+        StartPlaythrough(
+            playthrough_id=run.pk, when=OTHER_DAY, note="", implies_status=False
+        ),
         actor=owned_user,
         library=owned_library,
         idempotency_key="by-hand",

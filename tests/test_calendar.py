@@ -69,7 +69,7 @@ def run(prague_owner, owned_library) -> Playthrough:
 
 def record(library, actor, run, timing) -> PlayerSession:
     result = dispatch(
-        CreateSession(playthrough_id=run.pk, timing=timing),
+        CreateSession(playthrough_id=run.pk, timing=timing, implies_played=False),
         actor=actor,
         library=library,
         idempotency_key=str(uuid.uuid7()),

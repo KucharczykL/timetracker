@@ -14,11 +14,11 @@ from django.http import HttpRequest
 
 from games.models import Game, Playthrough
 from games.writes.answers import CommandFailed, WriteAnswer
-from games.writes.implied_status import StatusRefused, StatusStated
 from games.writes.playthrough import (
     MovedRun,
     MovedThenFailed,
     RunDraft,
+    StatusStated,
     record_run,
     remove_run,
     restate_run,
@@ -69,15 +69,7 @@ def restate_run_for_request(
 
 
 def _toast_the_move(request: HttpRequest, moved: MovedRun) -> None:
-    """The move, then a status it could not state."""
     messages.info(request, moved_sentence(moved))
-    if isinstance(moved.status, StatusRefused):
-        #: Not the refusal's sentence: the move stands.
-        messages.error(
-            request,
-            f"{moved.target} could not be marked {moved.status.status.label}. "
-            "Set its status on the game's page.",
-        )
 
 
 def moved_sentence(moved: MovedRun) -> str:

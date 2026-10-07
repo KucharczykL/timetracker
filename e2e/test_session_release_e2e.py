@@ -92,6 +92,7 @@ def session(e2e_user, e2e_library, platforms) -> PlayerSession:
             release_id=None,
         ),
         correlation_id=new_correlation_id(),
+        implies_played=False,
     )
     return PlayerSession.objects.get(pk=session_id)
 

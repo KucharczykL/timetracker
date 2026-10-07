@@ -134,8 +134,8 @@ def test_a_completed_game_renders_no_played_box(owned_user, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
-def test_a_posted_played_box_is_dropped_for_a_completed_game(owned_user, owned_library):
-    """The Add form renders it unbound."""
+def test_a_posted_played_box_is_left_to_the_command(owned_user, owned_library):
+    """The command decides, under the lock."""
     game = _completed_game(owned_user, owned_library)
 
     form = PlaythroughForm(
@@ -152,7 +152,7 @@ def test_a_posted_played_box_is_dropped_for_a_completed_game(owned_user, owned_l
     )
 
     assert form.is_valid(), form.errors
-    assert form.cleaned_data["also_mark_played"] is False
+    assert form.cleaned_data["also_mark_played"] is True
     assert form.cleaned_data["also_mark_completed"] is True
 
 
