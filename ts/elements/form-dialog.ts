@@ -775,7 +775,7 @@ export class FormDialogElement extends HTMLElement {
             this.rebaseline(entry);
             this.unconfirmed(`the next answer had no kind (status ${route.status})`);
           } else {
-            this.refused(route.status);
+            this.refused(entry, route.status);
           }
           return;
         default:
@@ -853,7 +853,14 @@ export class FormDialogElement extends HTMLElement {
     errorToast(`The answer could not be shown. Reload the page to see it (error ${id}).`);
   }
 
-  private refused(status: number): void {
+  private refused(entry: OpenDialog, status: number): void {
+    if (status === 404) {
+      // Gone, not failed: the server logged it.
+      this.rebaseline(entry);
+      this.stale = true;
+      errorToast("This no longer exists. Close this to reload the page.");
+      return;
+    }
     const id = report(`the answer had no kind (status ${status})`);
     if (status < 400) {
       errorToast(
