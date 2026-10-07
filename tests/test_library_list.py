@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
-from purchases import record_purchase, request_run
+from purchases import record_purchase, refund_purchase, request_run
 
 from common.criteria import FilterError
 from games import tasks
@@ -309,3 +309,30 @@ def test_game_detail_shows_a_copys_note(logged_in, owned_library, graph):
 
     assert "<truncated-text" in html
     assert "boxed, with manual" in html
+
+
+def test_an_ended_copy_prints_its_refunded_purchase(logged_in, owned_library, graph):
+    entry = record_entry(owned_library, graph.release)
+    #: A game refund ends its copy.
+    refunded = refund_purchase(record_purchase(entry, amount=Decimal("7.25")), None)
+
+    html = logged_in.get(reverse("games:list_library")).content.decode()
+
+    assert ">7.25 EUR<" in html
+    assert f"entry-menu-{entry.pk}-purchase-{refunded.pk}" not in html
+
+
+def test_a_refunded_add_on_prints_plain_beside_its_copy(
+    logged_in, owned_library, graph
+):
+    entry = record_entry(owned_library, graph.release)
+    kept = record_purchase(entry, amount=Decimal("19.99"))
+    refunded = refund_purchase(
+        record_purchase(entry, kind="upgrade", amount=Decimal("4.50")), None
+    )
+
+    html = logged_in.get(reverse("games:list_library")).content.decode()
+
+    assert ">4.50 EUR<" in html
+    assert f"entry-menu-{entry.pk}-purchase-{kept.pk}" in html
+    assert f"entry-menu-{entry.pk}-purchase-{refunded.pk}" not in html

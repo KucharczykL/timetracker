@@ -116,8 +116,12 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     expect(rows).to_have_count(0)
     expect(section.get_by_text("Nothing in your library right now.")).to_be_visible()
     expect(
-        section.get_by_text("There is 1 more copy previously in your library")
+        section.get_by_text("There is 1 more copy previously in your library.")
     ).to_be_visible()
+
+    with page.expect_navigation():
+        section.get_by_role("link", name="1 more copy").click()
+    expect(page.locator(f'[id="entry-menu-{entry.pk}"]')).to_have_count(1)
 
 
 def test_one_click_gone_then_undo(authenticated_page: Page, live_server, e2e_library):

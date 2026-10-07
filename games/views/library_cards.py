@@ -30,7 +30,8 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.entries import copy_end, game_entries
-from games.reads.purchases import held_purchases
+from games.reads.previous_copies import previous_purchase_count
+from games.reads.purchases import copy_purchases, unrefunded
 from games.reads.releases import edition_words, game_releases, platform_words
 from games.views.entry_menu import entry_row_menu
 from games.views.purchase_menu import purchase_line
@@ -100,6 +101,8 @@ class CopyRows(NamedTuple):
     #: Copies, not rows: a group holds several.
     held: int
     ended: int
+    #: Purchases no card shows.
+    previous_purchases: int
 
 
 def copy_rows(
@@ -124,7 +127,7 @@ def copy_rows(
             continue
         held += 1
         by_version.setdefault(entry.release_id, []).append(entry)
-    purchases = held_purchases(
+    purchases = copy_purchases(
         library, (entry.pk for copies in by_version.values() for entry in copies)
     )
     rows = tuple(
@@ -137,14 +140,16 @@ def copy_rows(
                     origin,
                     csrf_token,
                     label="",
-                    purchases=purchases.get(entry.pk, ()),
+                    purchases=unrefunded(purchases.get(entry.pk, ())),
                 )
                 for entry in copies
             ],
         )
         for copies in by_version.values()
     )
-    return CopyRows(rows, held, ended)
+    #: No live copy, no live purchase.
+    previous = previous_purchase_count(library, game) if held or ended else 0
+    return CopyRows(rows, held, ended, previous)
 
 
 def library_add_control(
