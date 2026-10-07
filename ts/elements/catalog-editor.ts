@@ -6,16 +6,17 @@
  * hidden count inputs are the posted truth about how many rows there are,
  * so appending a row means bumping the count beside it.
  *
- * Removal never renumbers. The bin states the row's `removed` input and
- * hides the row, leaving it in the form. Renumbering here would have to
- * rewrite every later row's names, ids, labels and the mark's value, and
- * one miss silently writes the wrong row. A re-render numbers afresh; the
- * browser only ever appends.
+ * Removal never renumbers. The bin states the row's `removed` input,
+ * hides the row and shows the line after it; that line's Undo takes the
+ * bin back. Renumbering would have to rewrite every later row's names,
+ * ids, labels and the mark's value, and one miss silently writes the
+ * wrong row. A re-render numbers afresh; the browser only ever appends.
  *
  * A row's accessible names follow its value.
  */
 
 import {
+  CATALOG_CHOSEN_MARK_FIELD,
   CATALOG_NAME_KINDS,
   CATALOG_NAME_SLOT,
   type CatalogNameKind,
@@ -54,11 +55,35 @@ const MARK_INPUT = "input[data-choice-card]";
 // also goes out under the block that holds it.
 const ROW_SELECTORS = ["[data-catalog-release]", "[data-catalog-edition]"];
 
-/** Whether the bin has already taken the row this mark sits in. */
+// A binned row's line, right after it.
+const STUB = "[data-catalog-binned]";
+
+const CHOSEN_MARK = `input[name="${CATALOG_CHOSEN_MARK_FIELD}"]`;
+
+/** Whether this row states its own removal. */
+function statesRemoval(row: HTMLElement): boolean {
+  return row.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT)?.value === "on";
+}
+
+/** Whether the row this mark sits in is going. */
 function isGoing(mark: HTMLElement): boolean {
-  return ROW_SELECTORS.some(
-    (selector) => mark.closest<HTMLElement>(selector)?.hidden === true,
-  );
+  return ROW_SELECTORS.some((selector) => {
+    const row = mark.closest<HTMLElement>(selector);
+    return row !== null && statesRemoval(row);
+  });
+}
+
+/** The line this row leaves when binned, if drawn. */
+function stubOf(row: Element): HTMLElement | null {
+  const next = row.nextElementSibling;
+  return next instanceof HTMLElement && next.matches(STUB) ? next : null;
+}
+
+/** Hidden by attribute and inline display, as the server draws. */
+function setOutOfSight(element: HTMLElement, out: boolean): void {
+  // Inline display outranks a Tailwind display utility.
+  element.hidden = out;
+  element.style.display = out ? "none" : "";
 }
 
 /** Split, not `replace`, so `$` stays literal. */
@@ -91,6 +116,8 @@ function shown(control: HTMLInputElement | SearchSelectElement): string | null {
 class CatalogEditorElement extends HTMLElement {
   // A DOM move reconnects this node, and a second connect must not bind twice.
   private wired = false;
+  // Set while the element moves the mark itself.
+  private restating = false;
 
   connectedCallback(): void {
     // Chromium restores form values after upgrade.
@@ -102,6 +129,10 @@ class CatalogEditorElement extends HTMLElement {
     // Text fields fire `input`; pickers fire a change.
     this.addEventListener("input", this.onInput);
     this.addEventListener("search-select:change", this.onInput);
+    this.addEventListener("change", this.onChange);
+    if (!this.querySelector(CHOSEN_MARK)) {
+      console.error("<catalog-editor> has no chosen-mark input", this);
+    }
     this.restateNames();
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
@@ -132,9 +163,22 @@ class CatalogEditorElement extends HTMLElement {
     }
   }
 
-  /** One row's names of one kind. */
+  /** A person's pick of a mark is the chosen one. */
+  private onChange = (event: Event): void => {
+    const target = event.target;
+    if (this.restating || !(target instanceof HTMLInputElement)) return;
+    if (!target.matches(MARK_INPUT) || !target.checked) return;
+    const chosen = this.querySelector<HTMLInputElement>(CHOSEN_MARK);
+    if (chosen) chosen.value = target.value;
+  };
+
+  /** One row's names of one kind, its line's too. */
   private restateRow(row: HTMLElement, kind: CatalogNameKind): void {
-    const nodes = row.querySelectorAll<HTMLElement>(`[data-catalog-name-of="${kind}"]`);
+    const selector = `[data-catalog-name-of="${kind}"]`;
+    const nodes = [
+      ...row.querySelectorAll<HTMLElement>(selector),
+      ...(stubOf(row)?.querySelectorAll<HTMLElement>(selector) ?? []),
+    ];
     if (nodes.length === 0) return;
     const control = row.querySelector(FOLLOWED[kind].control);
     if (!control) {
@@ -175,7 +219,12 @@ class CatalogEditorElement extends HTMLElement {
       return;
     }
     const remove = target.closest<HTMLElement>("[data-catalog-remove]");
-    if (remove && this.contains(remove)) this.stateRemoved(remove);
+    if (remove && this.contains(remove)) {
+      this.stateRemoved(remove);
+      return;
+    }
+    const restore = target.closest<HTMLElement>("[data-catalog-restore]");
+    if (restore && this.contains(restore)) this.stateRestored(restore);
   };
 
   private template(kind: "edition" | "release"): HTMLTemplateElement | null {
@@ -189,7 +238,7 @@ class CatalogEditorElement extends HTMLElement {
     const blocks = this.querySelectorAll<HTMLElement>("[data-catalog-edition]");
     const last = blocks[blocks.length - 1];
     if (!template || !last) return;
-    last.insertAdjacentHTML(
+    (stubOf(last) ?? last).insertAdjacentHTML(
       "afterend",
       renumbered(template.innerHTML, { edition: blocks.length }),
     );
@@ -209,7 +258,7 @@ class CatalogEditorElement extends HTMLElement {
     const rows = block.querySelectorAll<HTMLElement>("[data-catalog-release]");
     const last = rows[rows.length - 1];
     if (!last || Number.isNaN(edition)) return;
-    last.insertAdjacentHTML(
+    (stubOf(last) ?? last).insertAdjacentHTML(
       "afterend",
       renumbered(template.innerHTML, { edition, release: rows.length }),
     );
@@ -229,29 +278,60 @@ class CatalogEditorElement extends HTMLElement {
       button.closest<HTMLElement>("[data-catalog-release]") ??
       button.closest<HTMLElement>("[data-catalog-edition]");
     if (!row) return;
+    // Seen and posted state never part.
     const removed = row.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT);
-    if (removed) removed.value = "on";
-    // `hidden` says what this is; the inline display says it in the one
-    // place a Tailwind grid/flex utility on the row cannot outrank.
-    row.hidden = true;
-    row.style.display = "none";
+    if (!removed) {
+      console.error("<catalog-editor> row has no removed input", row);
+      return;
+    }
+    removed.value = "on";
+    setOutOfSight(row, true);
+    const stub = stubOf(row);
+    const restore = stub?.querySelector<HTMLElement>("[data-catalog-restore]");
+    if (stub && restore) {
+      setOutOfSight(stub, false);
+      restore.focus();
+    } else {
+      console.error("<catalog-editor> binned row has no Undo", row);
+    }
     this.restateMark();
   }
 
-  /**
-   * The mark cannot sit on a row that is going, so it falls to one that
-   * stays — visibly, while the person is still looking at the page.
-   * `games/catalog_form.py` states the same rule for a post that
-   * reaches it with the mark on a row nobody can see.
-   */
+  /** Undo: the row posts as if never binned. */
+  private stateRestored(button: HTMLElement): void {
+    const stub = button.closest<HTMLElement>(STUB);
+    // Previous sibling: `closest` would find the Edition.
+    const row = stub?.previousElementSibling;
+    const removed = row?.querySelector<HTMLInputElement>(OWN_REMOVED_INPUT);
+    if (!stub || !(row instanceof HTMLElement) || !removed) {
+      console.error("<catalog-editor> Undo has no binned row", button);
+      return;
+    }
+    removed.value = "";
+    setOutOfSight(row, false);
+    setOutOfSight(stub, true);
+    row.querySelector<HTMLElement>("[data-catalog-remove]")?.focus();
+    this.restateMark();
+  }
+
+  /** Chosen if staying, else checked, else first. */
   private restateMark(): void {
     const staying = [
       ...this.querySelectorAll<HTMLInputElement>(MARK_INPUT),
     ].filter((mark) => !isGoing(mark));
-    const first = staying[0];
-    if (!first || staying.some((mark) => mark.checked)) return;
-    first.checked = true;
-    first.dispatchEvent(new Event("change", { bubbles: true }));
+    const chosenValue = this.querySelector<HTMLInputElement>(CHOSEN_MARK)?.value;
+    const target =
+      staying.find((mark) => chosenValue && mark.value === chosenValue) ??
+      staying.find((mark) => mark.checked) ??
+      staying[0];
+    if (!target || target.checked) return;
+    target.checked = true;
+    this.restating = true;
+    try {
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      this.restating = false;
+    }
   }
 }
 

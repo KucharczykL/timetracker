@@ -9,7 +9,11 @@ from django.http import QueryDict
 from django.urls import reverse
 
 from common.components import FormFieldGroup, FormFields
-from common.components.primitives import FIELD_BOX_SHAPE_CLASS, field_box_class
+from common.components.primitives import (
+    FIELD_BOX_SHAPE_CLASS,
+    FixedBox,
+    field_box_class,
+)
 from common.opener_facts import Fixed, OpenerFactsMixin, Refused, refusal_sentence
 from common.returns import action_url
 from games.models import Game
@@ -350,6 +354,14 @@ def test_errors_on_an_implied_field_join_the_form_errors(owner):
 def test_both_field_box_looks_share_their_size():
     for look in ("editable", "fixed"):
         assert field_box_class("full", look=look).startswith(FIELD_BOX_SHAPE_CLASS)
+
+
+def test_a_fixed_box_leads_with_its_icon_and_ends_with_its_children():
+    html = str(FixedBox("delete", tag="div")["Going", "Undo"])
+
+    assert html.startswith(f'<div class="{field_box_class("full", look="fixed")}">')
+    assert html.index("<svg") < html.index("Going") < html.index("Undo")
+    assert html.endswith("Undo</div>")
 
 
 def test_every_plus_states_what_its_form_takes():

@@ -19,6 +19,8 @@ from timetracker.temporal import TemporalValue
 pytestmark = pytest.mark.django_db(transaction=True)
 
 _MARK_TAG = re.compile(r'<input[^>]*name="in_library"[^>]*>')
+_STUB_TAG = re.compile(r"<div[^>]*data-catalog-binned[^>]*>")
+_CHOSEN_TAG = re.compile(r'<input[^>]*name="catalog-chosen-mark"[^>]*>')
 _VALUE = re.compile(r'value="([^"]*)"')
 
 
@@ -29,6 +31,18 @@ def live(body: str) -> str:
     before the first one is what a person is actually shown.
     """
     return body.split("<template data-catalog-template=")[0]
+
+
+def stubs_shown(body: str) -> list[bool]:
+    """Each binned line: in sight?"""
+    return ["display:none" not in tag for tag in _STUB_TAG.findall(body)]
+
+
+def chosen(body: str) -> str:
+    tag = _CHOSEN_TAG.search(body)
+    assert tag is not None
+    value = _VALUE.search(tag.group(0))
+    return value.group(1) if value else ""
 
 
 def marks(body: str) -> list[tuple[str, bool]]:
@@ -465,6 +479,8 @@ def test_a_binned_row_with_a_sentence_stays_in_sight(logged_in, plain_game):
     assert row is not None
     assert "display:none" not in row.group(0)
     assert "Enter a valid UUID." in body
+    # Release 0, release 1, then edition's line.
+    assert stubs_shown(body) == [True, False, False]
 
 
 def test_the_page_reads_no_more_rows_than_a_person_could_stand(logged_in, plain_game):
@@ -932,3 +948,91 @@ def test_add_game_states_the_exclusion(logged_in, owned_library, fact):
     assert response.status_code == 302
     game = Game.objects.get(library=owned_library, name="Endless Farm")
     assert getattr(PlayerGame.objects.get(game=game), fact) is True
+
+
+def _refused_post(edition, release) -> dict[str, str]:
+    """One release, refused for its blank name."""
+    return _one_release_post(edition, release, "") | {"name": "", "sort_name": ""}
+
+
+def test_a_live_row_hides_the_line_a_bin_leaves(logged_in, plain_game):
+    body = page(logged_in, plain_game)
+
+    # The release's line, then the edition's.
+    assert stubs_shown(live(body)) == [False, False]
+    assert ">Unspecified release will be removed</span>" in live(body)
+    assert 'aria-label="Undo removing the Unspecified release"' in live(body)
+    assert ">Unnamed edition will be removed</span>" in live(body)
+    assert 'aria-label="Undo removing the unnamed edition"' in live(body)
+
+
+def test_both_templates_carry_the_line_a_bin_leaves(logged_in, plain_game):
+    body = templates(page(logged_in, plain_game))
+
+    # Release template's, then edition template's two.
+    assert stubs_shown(body) == [False, False, False]
+
+
+def test_a_refused_page_shows_the_line_of_a_binned_row(logged_in, plain_game):
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        edit_url(plain_game),
+        _refused_post(edition, release)
+        | {
+            "edition-0-release-0-removed": "on",
+            "catalog-chosen-mark": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    assert stubs_shown(body) == [True, False]
+    assert chosen(body) == "edition-0-release-0"
+
+
+def test_the_chosen_mark_starts_at_the_stored_one(logged_in, plain_game):
+    assert chosen(live(page(logged_in, plain_game))) == "edition-0-release-0"
+
+
+def test_a_post_without_a_chosen_mark_keeps_the_posted_one(logged_in, plain_game):
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(edit_url(plain_game), _refused_post(edition, release))
+
+    assert response.status_code == 200
+    assert chosen(live(response.content.decode())) == "edition-0-release-0"
+
+
+def test_a_refused_page_shows_the_line_of_a_binned_edition(logged_in, plain_game):
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = Release.objects.get(edition=edition)
+
+    response = logged_in.post(
+        edit_url(plain_game),
+        {
+            "name": "",
+            "sort_name": "",
+            "status": "played",
+            "reference_wikidata": "",
+            "editions-count": "2",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "",
+            "edition-0-removed": "on",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": "",
+            "edition-1-edition_id": "",
+            "edition-1-name": "Remaster",
+            "edition-1-releases-count": "1",
+            "edition-1-release-0-release_id": "",
+            "edition-1-release-0-platform": "",
+            "in_library": "edition-1-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    # Edition 0's release, edition 0, edition 1's release, edition 1.
+    assert stubs_shown(live(response.content.decode())) == [False, True, False, False]

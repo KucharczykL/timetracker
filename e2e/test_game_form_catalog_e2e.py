@@ -285,6 +285,64 @@ def test_binning_the_marked_row_moves_the_mark_where_a_person_sees_it(
     assert [release.platform for release in releases if release.is_default] == [dos]
 
 
+def test_undo_takes_the_bin_back_and_the_mark_with_it(
+    signed_in, live_server, game, amiga, dos
+):
+    """An accidental bin leaves the graph as it was."""
+    Release.objects.create(
+        edition=default_edition(game),
+        platform=dos,
+        release_date=TemporalValue.from_year(1988),
+    )
+    page = signed_in
+    open_form(page, live_server, game)
+    marked = release_card(page, 0, 0)
+
+    marked.locator("[data-catalog-remove]").click()
+    expect(marked).to_be_hidden()
+    expect(release_card(page, 0, 1).locator("input[name='in_library']")).to_be_checked()
+    undo = page.get_by_role("button", name="Undo removing the Amiga release")
+    expect(undo).to_be_focused()
+
+    undo.click()
+    expect(marked).to_be_visible()
+    expect(undo).to_be_hidden()
+    expect(marked.locator("input[name='in_library']")).to_be_checked()
+    saved(page, live_server)
+
+    releases = live_releases(default_edition(game))
+    assert sorted(release.platform.name for release in releases) == ["Amiga", "DOS"]
+    assert [release.platform for release in releases if release.is_default] == [amiga]
+
+
+def test_undo_takes_back_the_bin_of_an_edition(
+    signed_in, live_server, game, amiga, dos
+):
+    """The block comes back, and the mark inside it."""
+    second = Edition.objects.create(game=game, name="Remaster")
+    Release.objects.create(
+        edition=second, platform=dos, release_date=TemporalValue.from_year(1990)
+    )
+    page = signed_in
+    open_form(page, live_server, game)
+    block = page.locator("[data-catalog-edition='0']")
+
+    block.locator(":scope > div [data-catalog-remove]").first.click()
+    expect(block).to_be_hidden()
+    undo = page.get_by_role("button", name="Undo removing the unnamed edition")
+    undo.click()
+    expect(block).to_be_visible()
+    expect(release_card(page, 0, 0).locator("input[name='in_library']")).to_be_checked()
+    saved(page, live_server)
+
+    editions = Edition.objects.filter(game=game, removed_at=None)
+    assert editions.count() == 2
+    assert [release.platform for release in live_releases(default_edition(game))] == [
+        amiga
+    ]
+    assert live_releases(default_edition(game))[0].is_default
+
+
 def test_a_cloned_block_adds_an_edition(signed_in, live_server, game, amiga, dos):
     """A second Edition, named, and the default did not move."""
     page = signed_in
