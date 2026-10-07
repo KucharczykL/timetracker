@@ -11,6 +11,7 @@ from games.commands.libraryentry import (
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
+    ResumeEntryAccess,
 )
 from games.end_ways import EndWay
 from games.events.append import SourceMetadata
@@ -138,6 +139,15 @@ def end_entry_access(
     _state(
         entry.library,
         EndEntryAccess(entry_id=entry.pk, statement=WayActStatement(ended, way, note)),
+    )
+    entry.refresh_from_db()
+    return entry
+
+
+def resume_entry_access(entry: LibraryEntry) -> LibraryEntry:
+    _state(
+        entry.library,
+        ResumeEntryAccess(entry_id=entry.pk, statement=ActStatement(None, "")),
     )
     entry.refresh_from_db()
     return entry

@@ -23,6 +23,7 @@ from django.db.models import (
 from django.db.models.expressions import Expression
 from django.db.models.functions import Coalesce, ExtractYear, NullIf
 
+from games.endpoints import PURCHASE_REFUND
 from games.events.dispatch import RowUnreadable
 from games.events.libraryentry import LIBRARYENTRY_REMOVED
 from games.events.purchase import PURCHASE_REFUND_EVENTS, PURCHASE_REMOVED
@@ -36,6 +37,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.calendar import calendar_day_zone
+from games.reads.endpoints import stated
 from games.reads.entries import END_STATEMENTS, EntryId, latest_end_act
 from games.reads.playthrough_completions import (
     PURCHASE_RUNS,
@@ -300,21 +302,30 @@ def cascaded_purchase_ids(library: UserLibrary, entry_id: EntryId) -> list[uuid.
 #: A purchase ``with_valuation`` annotated.
 type ValuedRow = Purchase
 #: Absent key means none: .get(pk, ()).
-type HeldPurchases = Mapping[EntryId, Sequence[ValuedRow]]
+type CopyPurchases = Mapping[EntryId, Sequence[ValuedRow]]
 
 
-def held_purchases(library: UserLibrary, entry_ids: Iterable[EntryId]) -> HeldPurchases:
-    """Each copy's live, unrefunded purchases, valued."""
+def copy_purchases(library: UserLibrary, entry_ids: Iterable[EntryId]) -> CopyPurchases:
+    """Each copy's live purchases, valued."""
     grouped: dict[EntryId, list[Purchase]] = {}
     purchases = with_valuation(
-        library_purchases(library).filter(
-            entry_id__in=list(entry_ids), refund_recorded_at__isnull=True
-        ),
-        library,
+        library_purchases(library).filter(entry_id__in=list(entry_ids)), library
     ).order_by(*PURCHASE_ORDER)
     for purchase in purchases:
         grouped.setdefault(purchase.entry_id, []).append(purchase)
     return grouped
+
+
+def unrefunded(purchases: Iterable[ValuedRow]) -> list[ValuedRow]:
+    """Purchases stating no refund."""
+    return [
+        purchase for purchase in purchases if stated(purchase, PURCHASE_REFUND) is None
+    ]
+
+
+def card_purchases(purchases: CopyPurchases, entry_id: EntryId) -> list[ValuedRow]:
+    """One copy's unrefunded purchases, for cards and menus."""
+    return unrefunded(purchases.get(entry_id, ()))
 
 
 #: What every purchase page reads.

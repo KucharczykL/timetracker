@@ -141,6 +141,11 @@ from games.reads.playtime import (
     playtime_matching_both,
     playtime_sort_key,
 )
+from games.reads.previous_copies import (
+    previous_copies_filter,
+    previous_copy_purchases_filter,
+    refunded_held_purchases_filter,
+)
 from games.reads.releases import UNSPECIFIED_PLATFORM
 from games.reads.sums import PlaytimeBreakdown
 from games.reference_form import ReferenceSetForm
@@ -164,6 +169,7 @@ from games.views.historical_playtime import (
 from games.views.library_cards import (
     EMPTY_LIBRARY,
     EMPTY_LIBRARY_NOW,
+    CopyRows,
     copy_rows,
     library_add_control,
 )
@@ -798,7 +804,7 @@ def _game_section(
     add_control: Node | None = None,
     surface: bool = False,
     view_all_title: str | None = None,
-    note: str | None = None,
+    note: Node | None = None,
 ) -> Node:
     """``add_control`` replaces Add; ``surface`` adds a panel."""
     buttons: list[Node] = [add_control] if add_control is not None else []
@@ -1348,19 +1354,44 @@ def _playthroughs_section(
     return Div(id_="playthroughs-container")[section]
 
 
-def _had_copies(had: int) -> str | None:
-    """One line counts copies no longer had."""
-    if not had:
-        return None
-    if had == 1:
-        return (
-            "There is 1 more copy previously in your library, "
-            "click View all to manage it."
+def _plural(count: int, singular: str, plural: str) -> str:
+    return f"{count} {singular if count == 1 else plural}"
+
+
+def _previous_note(game: Game, copies: CopyRows) -> Node | None:
+    """Counts what the cards leave out, linked."""
+    parts: list[Node | str] = []
+    if copies.ended:
+        parts.append(
+            Link(href=filter_url(previous_copies_filter(game)))[
+                _plural(copies.ended, "more copy", "more copies")
+            ]
         )
-    return (
-        f"There are {had} more copies previously in your library, "
-        "click View all to manage them."
-    )
+        if copies.ended_purchases:
+            parts += [
+                " (with ",
+                Link(href=filter_url(previous_copy_purchases_filter(game)))[
+                    _plural(copies.ended_purchases, "purchase", "purchases")
+                ],
+                ")",
+            ]
+    if copies.refunded_purchases:
+        if parts:
+            parts.append(" and ")
+        parts.append(
+            Link(href=filter_url(refunded_held_purchases_filter(game)))[
+                _plural(copies.refunded_purchases, "more purchase", "more purchases")
+            ]
+        )
+    if not parts:
+        return None
+    leading = copies.ended or copies.refunded_purchases
+    #: One inline run: the note's P is flex.
+    return Span()[
+        "There is " if leading == 1 else "There are ",
+        *parts,
+        " previously in your library.",
+    ]
 
 
 def _library_section(
@@ -1385,7 +1416,7 @@ def _library_section(
             surface=True,
             view_all_url=filter_url(LibraryEntryFilter.where(game=[game.id])),
             view_all_title="View all copies of this game",
-            note=_had_copies(copies.ended),
+            note=_previous_note(game, copies),
         )
     ]
 

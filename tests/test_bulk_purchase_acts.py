@@ -753,7 +753,8 @@ def test_the_library_tab_lists_each_purchase_price(logged_in, copy, first):
     assert "Season pass · <pop-over" in row
     assert ">9.99 EUR<" in row
     assert "Deluxe · <span>Unknown price</span>" in row
-    assert "Free" not in row
+    #: Refunded too: Access ended says so.
+    assert "<span>Free</span>" in row
 
 
 def test_a_copy_without_purchases_has_an_empty_cell(logged_in, copy):

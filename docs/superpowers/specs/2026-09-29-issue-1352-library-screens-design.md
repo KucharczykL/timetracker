@@ -21,8 +21,9 @@ version (`release_words`) share one name above their rows
 shows as a `Chip`, clipped to about four words.
 
 A copy that the person no longer has leaves the section. One centred line
-counts these copies and points at View all. View all opens the Library
-tab, filtered to the game.
+counts these copies, and each count links to its own list
+([#1468](2026-10-07-issue-1468-refunded-purchase-copy-screens-design.md)).
+View all opens the Library tab, filtered to the game.
 
 **Add to library** is a split button. The button adds a copy in one
 click: default version, Owned, Digital, today. The menu opens the Add

@@ -52,6 +52,6 @@ field.
 
 ## The Library tab
 
-The Purchases column lists one line per live, unrefunded purchase of the
-copy, from `held_purchases`. A line is the price. A purchase of another
+The Purchases column lists one line per live purchase of the copy,
+refunded included, from `copy_purchases` (#1468). A line is the price. A purchase of another
 kind than `game`, or a named one, puts its label first.

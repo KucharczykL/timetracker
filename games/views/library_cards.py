@@ -30,7 +30,11 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.entries import copy_end, game_entries
-from games.reads.purchases import held_purchases
+from games.reads.previous_copies import (
+    previous_copy_purchases_filter,
+    purchase_count,
+)
+from games.reads.purchases import card_purchases, copy_purchases, unrefunded
 from games.reads.releases import edition_words, game_releases, platform_words
 from games.views.entry_menu import entry_row_menu
 from games.views.purchase_menu import purchase_line
@@ -95,11 +99,19 @@ def _copy_row(
     )
 
 
+type CopyCount = int
+type PurchaseCount = int
+
+
 class CopyRows(NamedTuple):
     rows: tuple[Node, ...]
     #: Copies, not rows: a group holds several.
-    held: int
-    ended: int
+    held: CopyCount
+    ended: CopyCount
+    #: Purchases of the ended copies.
+    ended_purchases: PurchaseCount
+    #: Refunded purchases of held copies.
+    refunded_purchases: PurchaseCount
 
 
 def copy_rows(
@@ -124,7 +136,7 @@ def copy_rows(
             continue
         held += 1
         by_version.setdefault(entry.release_id, []).append(entry)
-    purchases = held_purchases(
+    purchases = copy_purchases(
         library, (entry.pk for copies in by_version.values() for entry in copies)
     )
     rows = tuple(
@@ -137,14 +149,28 @@ def copy_rows(
                     origin,
                     csrf_token,
                     label="",
-                    purchases=purchases.get(entry.pk, ()),
+                    purchases=card_purchases(purchases, entry.pk),
                 )
                 for entry in copies
             ],
         )
         for copies in by_version.values()
     )
-    return CopyRows(rows, held, ended)
+    #: Held copies' refunds the cards omit.
+    refunded_purchases = sum(
+        len(listed) - len(unrefunded(listed)) for listed in purchases.values()
+    )
+    return CopyRows(
+        rows=rows,
+        held=held,
+        ended=ended,
+        ended_purchases=(
+            purchase_count(library, previous_copy_purchases_filter(game))
+            if ended
+            else 0
+        ),
+        refunded_purchases=refunded_purchases,
+    )
 
 
 def library_add_control(

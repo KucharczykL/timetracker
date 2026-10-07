@@ -15,10 +15,12 @@ from purchases import (
     refund_purchase,
     remove_purchase,
     request_run,
+    void_refund,
 )
 
 from games import tasks
 from games.catalog_release import SHARED_GAME_RELEASE
+from games.filters import filter_url
 from games.models import (
     Edition,
     ExchangeRate,
@@ -26,6 +28,11 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
+)
+from games.reads.previous_copies import (
+    previous_copies_filter,
+    previous_copy_purchases_filter,
+    refunded_held_purchases_filter,
 )
 from timetracker.temporal import TemporalValue
 
@@ -44,6 +51,14 @@ def _page(client, game, query: str = "") -> str:
     response = client.get(game.get_absolute_url() + query)
     assert response.status_code == 200
     return response.content.decode()
+
+
+def _note(html: str) -> str:
+    """The Library note's words, markup stripped."""
+    start = html.index('id="library"')
+    match = re.search(r"There (?:is|are) .*?previously in your library\.", html[start:])
+    assert match is not None
+    return re.sub(r"<[^>]+>", "", match.group(0))
 
 
 def test_a_row_per_held_copy_with_its_acts(client, owned_user, owned_library, graph):
@@ -76,8 +91,10 @@ def test_a_copy_no_longer_had_leaves_and_one_line_counts_it(
     assert html.count("data-summary-row") == 1
     assert str(held.pk) in html
     assert str(ended.pk) not in html
-    assert "There is 1 more copy previously in your library" in html
+    assert _note(html) == "There is 1 more copy previously in your library."
     assert "View all copies of this game" in html
+    copies = filter_url(previous_copies_filter(graph.game)).replace("&", "&amp;")
+    assert f'href="{copies}"' in html
 
 
 def test_only_copies_no_longer_had_say_nothing_right_now(
@@ -91,7 +108,7 @@ def test_only_copies_no_longer_had_say_nothing_right_now(
 
     assert "data-summary-row" not in html
     assert "Nothing in your library right now." in html
-    assert "There are 2 more copies previously in your library" in html
+    assert _note(html) == "There are 2 more copies previously in your library."
 
 
 def test_copies_of_one_version_share_its_name(client, owned_user, owned_library, graph):
@@ -165,6 +182,8 @@ def test_the_query_count_holds_over_more_copies(
     client, owned_user, owned_library, graph
 ):
     record_entry(owned_library, graph.release)
+    #: Baseline includes the ended-purchase count.
+    end_entry_access(record_entry(owned_library, graph.release))
     client.force_login(owned_user)
     _page(client, graph.game)
     one = _count_queries(client, graph.game)
@@ -215,6 +234,61 @@ def test_a_copy_lists_its_live_unrefunded_purchases(
     assert "Gone back" not in html
     assert "Removed one" not in html
     assert str(refunded.pk) not in html
+    assert _note(html) == "There is 1 more purchase previously in your library."
+    purchases = filter_url(refunded_held_purchases_filter(graph.game))
+    assert f'href="{purchases.replace("&", "&amp;")}"' in html
+
+
+def test_a_refunded_copy_names_its_purchase(client, owned_user, owned_library, graph):
+    record_purchase(record_entry(owned_library, graph.release))
+    #: A game refund ends its copy.
+    refund_purchase(record_purchase(record_entry(owned_library, graph.release)), None)
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert _note(html) == (
+        "There is 1 more copy (with 1 purchase) previously in your library."
+    )
+    assert html.count("data-summary-row") == 1
+    tied = filter_url(previous_copy_purchases_filter(graph.game))
+    assert f'href="{tied.replace("&", "&amp;")}"' in html
+
+
+def test_a_held_refund_follows_the_tied_purchases(
+    client, owned_user, owned_library, graph
+):
+    held = record_entry(owned_library, graph.release)
+    refund_purchase(record_purchase(held, kind="upgrade"), None)
+    refund_purchase(record_purchase(record_entry(owned_library, graph.release)), None)
+    client.force_login(owned_user)
+
+    assert _note(_page(client, graph.game)) == (
+        "There is 1 more copy (with 1 purchase) and 1 more purchase "
+        "previously in your library."
+    )
+
+
+def test_two_previous_purchases_read_plural(client, owned_user, owned_library, graph):
+    for _ in range(2):
+        entry = record_entry(owned_library, graph.release)
+        record_purchase(entry)
+        end_entry_access(entry)
+    record_entry(owned_library, graph.release)
+    client.force_login(owned_user)
+
+    assert _note(_page(client, graph.game)) == (
+        "There are 2 more copies (with 2 purchases) previously in your library."
+    )
+
+
+def test_no_previous_copy_or_purchase_says_nothing(
+    client, owned_user, owned_library, graph
+):
+    record_purchase(record_entry(owned_library, graph.release))
+    client.force_login(owned_user)
+
+    assert "previously in your library" not in _page(client, graph.game)
 
 
 def test_a_copy_without_purchases_has_no_lines(
@@ -326,3 +400,27 @@ def test_the_library_tab_query_count_holds_over_more_purchases(
         client.get(url)
 
     assert len(four) == len(one)
+
+
+def test_refunds_alone_read_plural(client, owned_user, owned_library, graph):
+    held = record_entry(owned_library, graph.release)
+    for _ in range(2):
+        refund_purchase(record_purchase(held, kind="upgrade"), None)
+    client.force_login(owned_user)
+
+    assert _note(_page(client, graph.game)) == (
+        "There are 2 more purchases previously in your library."
+    )
+
+
+def test_a_voided_refund_returns_to_the_card(client, owned_user, owned_library, graph):
+    held = record_entry(owned_library, graph.release)
+    purchase = void_refund(
+        refund_purchase(record_purchase(held, kind="upgrade", name="Back"), None)
+    )
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert f"entry-menu-{held.pk}-purchase-{purchase.pk}" in html
+    assert "previously in your library" not in html
