@@ -1,49 +1,54 @@
-# A prefetch that never lands is asked again
+# A search that never lands is asked again
 
 Issue #1304.
 
 ## Rule
 
-A `SearchSelect` with a `prefetch` asks the server for its first window
-of rows when it opens. The flag `hasPrefetched` in
-`ts/elements/search-select.ts` records that the window is asked for. A
-later open reads the loaded rows and asks nothing.
+A `SearchSelect` with a `search-url` and a `prefetch` keeps two facts
+in `ts/elements/search-select.ts`:
 
-The flag means "the window is asked for and the request is not
-dropped". Two events drop the request:
+- `loadedQuery`: the query that the shown rows answer. `null` means no
+  answer is shown.
+- `pendingRequest`: the request in flight and its query (`PendingSearch`).
+  `null` means no request is in flight.
 
-- `cancelPendingSearch` aborts a pending request. Focus that leaves the
-  widget calls it, and so do the clear × and its focus. The abort clears
-  the flag.
-- The request fails: a status other than 2xx, or a network error. The
-  failure clears the flag.
+Only an answer that lands sets `loadedQuery`. A request that is sent
+sets nothing more than `pendingRequest`.
 
-The next open then asks for the window again. Without this, the panel
-stays empty until the person types.
+When the panel opens, the widget reads the query in the box. It sends a
+request for that query when neither fact matches it. Otherwise it
+filters the shown rows.
 
-A request that a newer request supersedes does not clear the flag. The
-newer request answers in its place.
+Thus:
 
-## Why at the drop, not at the answer
+- A blur, or focus on the clear ×, cancels a request before its answer
+  lands. The next open asks again.
+- A failed request, or one with a body that does not parse, sets no
+  `loadedQuery`. The next open asks again. The panel says
+  `Could not load results`, not the normal empty sentence.
+- A typed query that lands sets `loadedQuery` to that query. An open
+  with an empty box then asks for the window, not the old rows.
+- A refetch followed at once by a focus sends one request. The request
+  in flight matches the query, so the focus does not ask again.
 
-The flag is set when the request leaves, not when the answer lands.
-`_searchSelectRefetch` asks for the window and then the inline combobox
-focuses the box. A flag that waits for the answer would make that focus
-send a second request. Clearing the flag where the request is dropped
-keeps that one request.
+A newer request aborts the older one. The older request then changes
+nothing, also when its answer is a failure. Its rows are not awaited.
 
-Any abort clears the flag, also the abort of a typed query. The next
-open then asks for the window again, which costs one request and shows
-current rows.
+A dependency change, the clear ×, and a request with unfilled params
+set `loadedQuery` to `null`. The shown rows then answer nothing.
+
+## Why two facts, not one flag
+
+A flag that is set when the request leaves needs a reset on every path
+where the request does not land. A missed path leaves the panel empty
+until the person types. A fact that only the landed answer sets needs
+no reset. The request in flight stops the second request that a flag
+used to stop.
 
 ## Tests
 
-`ts/elements/search-select.prefetch.test.ts`:
-
-- Focus, blur before the answer, focus again: a second request goes out
-  and its rows show.
-- Focus, a failed answer, blur, focus again: the same.
-- Focus, the answer lands, blur, focus again: no second request.
+`ts/elements/search-select.prefetch.test.ts` covers each case above,
+and an answer that lands with no second request on the next open.
 
 ## Follow-up issues to file
 

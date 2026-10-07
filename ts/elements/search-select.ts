@@ -158,6 +158,15 @@ type FilterPillKind = "include" | "exclude";
 
 const DEBOUNCE_MS = 100;
 
+//: The panel's sentence when a search fails.
+const LOAD_FAILED = "Could not load results";
+
+//: A search's request and its query.
+interface PendingSearch {
+  controller: AbortController;
+  query: string;
+}
+
 // Monotonic source for per-widget listbox ids (issue #154). The ids backing
 // aria-controls / aria-activedescendant are assigned here at init — never
 // server-side — because the nested filter builder clones whole <search-select>
@@ -360,8 +369,10 @@ const initWidget = (containerElement: Element): boolean => {
 
   const noResults = options.querySelector<HTMLElement>("[data-search-select-no-results]");
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let pendingRequest: AbortController | null = null; // in-flight, so newer queries win
-  let hasPrefetched = false;
+  //: In flight; a newer query aborts it.
+  let pendingRequest: PendingSearch | null = null;
+  //: Query the shown rows answer; null: none.
+  let loadedQuery: string | null = null;
 
   // Untouched committed single-select: box shows the label but the query is
   // empty (show the full list). Once edited (dirty), the box text is the query.
@@ -946,20 +957,21 @@ const initWidget = (containerElement: Element): boolean => {
     } else {
       container._searchSelectClear?.();
     }
-    hasPrefetched = false;
+    loadedQuery = null;
     if (searchUrl) fetchFromServer(currentQuery());
   };
 
   // ── Fetch matching rows from the server. The previous in-flight request is
   //    aborted so a slower earlier response can never overwrite a newer one. ──
   const fetchFromServer = (query: string) => {
-    if (pendingRequest) pendingRequest.abort();
+    pendingRequest?.controller.abort();
     //: A param the route requires and the form has not filled in: the
     //: request would be refused, and an empty panel reads as an answer.
     //: The panel names the field to fill in instead.
     const unfilled = unfilledFields(container, params);
     if (unfilled.length) {
       pendingRequest = null;
+      loadedQuery = null;
       answering(() => {
         renderRows([]);
         if (createRow) createRow.hidden = true;
@@ -970,7 +982,8 @@ const initWidget = (containerElement: Element): boolean => {
       return;
     }
     setEmptyMessage(null);
-    pendingRequest = new AbortController();
+    const request: PendingSearch = { controller: new AbortController(), query };
+    pendingRequest = request;
     // Built via URL so a search-url that already carries a query string (e.g.
     // the preset picker's ?mode=games) composes instead of double-`?`ing.
     const url = new URL(searchUrl ?? "", window.location.origin);
@@ -980,16 +993,17 @@ const initWidget = (containerElement: Element): boolean => {
     });
     dependencyValues = dependencySignature(container, dependencyFields);
     if (prefetch && !query) url.searchParams.set("limit", String(prefetch));
-    const request = pendingRequest;
-    fetch(url.toString(), { credentials: "same-origin", signal: request.signal })
+    const signal = request.controller.signal;
+    fetch(url.toString(), { credentials: "same-origin", signal })
       .then(response => {
         if (!response.ok) throw new Error(`${response.status} from ${url.pathname}`);
         return response.json() as Promise<SearchSelectOption[]>;
       })
       .then(items => {
         //: An answer can land after its abort.
-        if (request.signal.aborted) return;
+        if (signal.aborted) return;
         pendingRequest = null;
+        loadedQuery = query;
         answering(() => {
           renderRows(items);
           // Re-apply the live query: the box may hold more text than was sent.
@@ -1003,10 +1017,13 @@ const initWidget = (containerElement: Element): boolean => {
         });
       })
       .catch(error => {
-        if (error?.name === "AbortError") return; // superseded
-        if (pendingRequest === request) pendingRequest = null;
-        hasPrefetched = false;
-        answering(() => setNoResults(true));
+        //: Superseded or cancelled; nothing awaits it.
+        if (error?.name === "AbortError" || signal.aborted) return;
+        pendingRequest = null;
+        answering(() => {
+          setEmptyMessage(LOAD_FAILED);
+          setNoResults(true);
+        });
         reportClientError("search-select[search]", String(error?.message ?? error));
       });
   };
@@ -1095,15 +1112,14 @@ const initWidget = (containerElement: Element): boolean => {
     if (freeText) {
       rebuildFreeTextRow(currentQuery());
     } else if (searchUrl) {
-      if (prefetch && !hasPrefetched) {
-        // Seed the window immediately on first open (not debounced).
-        hasPrefetched = true;
-        fetchFromServer("");
+      const query = currentQuery();
+      filterRows(query);
+      setNoResults(false);
+      if (prefetch && loadedQuery !== query && pendingRequest?.query !== query) {
+        //: Not debounced: an open asks at once.
+        fetchFromServer(query);
       } else {
-        // Show whatever is already loaded; the server decides no-results.
-        filterRows(currentQuery());
-        setNoResults(false);
-        autoHighlight(currentQuery());
+        autoHighlight(query);
       }
     } else {
       setNoResults(filterRows(currentQuery()) === 0);
@@ -1418,9 +1434,8 @@ const initWidget = (containerElement: Element): boolean => {
   };
 
   // Public refetch: re-request the prefetch window with a blank query. The box
-  // shows the held label again, never a stale query. Marks hasPrefetched so a
-  // following focus doesn't double-fetch (the combobox dropdown behavior calls
-  // this on dropdown:show, then focuses the input — issues #297/#94).
+  // shows the held label again, never a stale query. The request in flight
+  // keeps the focus that follows from asking again.
   container._searchSelectRefetch = () => {
     if (!searchUrl) return;
     //: A debounced search for the old query would answer after this one.
@@ -1428,7 +1443,6 @@ const initWidget = (containerElement: Element): boolean => {
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
-    hasPrefetched = true;
     search.value = multi ? "" : (container._searchSelectLabel ?? "");
     if (!multi) container._searchSelectDirty = false;
     syncUncommitted();
@@ -1629,12 +1643,8 @@ const initWidget = (containerElement: Element): boolean => {
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
-    if (pendingRequest) {
-      pendingRequest.abort();
-      pendingRequest = null;
-      //: The window may never land; refetch on focus.
-      hasPrefetched = false;
-    }
+    pendingRequest?.controller.abort();
+    pendingRequest = null;
   };
 
   // ── The clear ×: empties query and value, or holds none. ──
@@ -1660,7 +1670,7 @@ const initWidget = (containerElement: Element): boolean => {
         options
           .querySelectorAll("[data-search-select-option]")
           .forEach(row => row.remove());
-        hasPrefetched = false;
+        loadedQuery = null;
         if (!fromFocus && isPanelOpen()) fetchFromServer("");
       }
       filterRows("");
