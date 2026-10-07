@@ -640,6 +640,41 @@ def test_the_written_graph_hands_every_row_back_under_its_key(owned_library, gam
     ]
 
 
+def test_the_written_graph_hands_back_a_demoted_edition_unmarked(owned_library, game):
+    sibling = Edition.objects.create(game=game.game, name="Sibling")
+
+    written = state(
+        game.game,
+        owned_library,
+        one(edition=game.edition, is_default=False),
+        EditionState(key="edition-1", edition=sibling, name="Sibling", is_default=True),
+    )
+
+    demoted, promoted = (entry.edition for entry in written.editions)
+    assert (demoted.is_default, promoted.is_default) == (False, True)
+
+
+def test_the_written_graph_hands_back_a_demoted_release_unmarked(owned_library, game):
+    sibling = Release.objects.create(edition=game.edition, is_default=False)
+
+    written = state(
+        game.game,
+        owned_library,
+        one(
+            edition=game.edition,
+            releases=(
+                ReleaseState(key="edition-0-release-0", release=game.release),
+                ReleaseState(
+                    key="edition-0-release-1", release=sibling, is_default=True
+                ),
+            ),
+        ),
+    )
+
+    demoted, promoted = (entry.release for entry in written.editions[0].releases)
+    assert (demoted.is_default, promoted.is_default) == (False, True)
+
+
 def test_a_removed_row_is_not_handed_back(owned_library, game):
     sibling = Release.objects.create(edition=game.edition)
 
