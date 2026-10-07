@@ -146,13 +146,9 @@ _INPUT_LOOK = (
     "text-type-input focus:ring-brand focus:border-brand block w-full "
     f"px-3 min-h-control shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
-# No horizontal padding here: @tailwindcss/forms (base strategy) styles every
-# bare <select> with appearance:none, a chevron pinned to the right edge, AND the
-# right padding (~2.5rem/40px) that clears it. A px-*/pr-* utility can't win over
-# that plugin rule for the right side, and px-* *does* override it symmetrically —
-# pulling the right padding down so option text slides under the chevron (the old
-# px-3 did exactly this on narrow selects, e.g. the field-comparison operator
-# select). So set the shared control height and let the plugin own the horizontal.
+# Only the settings kit renders this look.
+# No horizontal padding: @tailwindcss/forms owns a select's,
+# and a px-* would pull text under its chevron.
 _SELECT_LOOK = (
     "w-full min-h-control bg-neutral-secondary-medium border border-default-medium "
     "text-heading text-type-input focus:ring-brand focus:border-brand "
@@ -170,9 +166,7 @@ _TEXTAREA_LOOK = (
 
 def native_control_class(widget: forms.Widget, shape: ButtonShape = "full") -> str:
     """A native control's classes, rounding ``shape``'s corners."""
-    if isinstance(widget, forms.Select):
-        look = _SELECT_LOOK
-    elif isinstance(widget, forms.Textarea):
+    if isinstance(widget, forms.Textarea):
         look = _TEXTAREA_LOOK
     else:
         look = _INPUT_LOOK
@@ -180,7 +174,7 @@ def native_control_class(widget: forms.Widget, shape: ButtonShape = "full") -> s
 
 
 INPUT_CLASS = native_control_class(forms.TextInput())
-SELECT_CLASS = native_control_class(forms.Select())
+SELECT_CLASS = f"{_SELECT_LOOK} {SHAPE_CLASSES['full']}".strip()
 TEXTAREA_CLASS = native_control_class(forms.Textarea())
 
 
@@ -214,7 +208,7 @@ def _holds_a_plain_select(field: forms.Field) -> TypeGuard[forms.ChoiceField]:
     return (
         isinstance(field, forms.ChoiceField)
         and not isinstance(field, (forms.ModelChoiceField, forms.MultipleChoiceField))
-        and type(field.widget) is forms.Select
+        and type(field.widget) is forms.ChoiceField.widget
     )
 
 
@@ -927,8 +921,8 @@ class UnsetWidget(forms.Widget):
 
     @choices.setter
     def choices(self, value) -> None:
-        # Only these read them.
-        if isinstance(self.widget, (forms.Select, ChoiceSearchSelectWidget)):
+        # Only the fixed-choice picker reads them.
+        if isinstance(self.widget, ChoiceSearchSelectWidget):
             self.widget.choices = value
 
     @property
@@ -1005,11 +999,6 @@ def _join_of(widget: forms.Widget) -> UnsetJoin | None:
     if isinstance(widget, _SearchSelectAdapter):
         return "picker"
     if isinstance(widget, forms.Textarea):
-        return "native"
-    if isinstance(widget, forms.Select):
-        # Its empty is a state.
-        if isinstance(widget, forms.NullBooleanSelect):
-            return None
         return "native"
     if isinstance(widget, forms.widgets.Input):
         return "native" if widget.input_type in _EMPTYABLE_INPUT_TYPES else None

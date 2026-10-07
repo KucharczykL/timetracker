@@ -8,6 +8,7 @@ from calendar_days import process_zone_off_the_calendar
 from django.db.models.signals import post_save
 from django.utils import timezone
 from graphs import default_graph
+from html_answers import html_answers_checked  # noqa: F401
 from icon_names import unknown_icon_names_fail  # noqa: F401
 
 from games.models import (

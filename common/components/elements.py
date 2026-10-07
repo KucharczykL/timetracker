@@ -133,9 +133,6 @@ Script = element_builder("script")
 # The <link> head element (stylesheets, icons) — not a hyperlink; see
 # primitives.Link for those.
 LinkTag = element_builder("link")
-Select = element_builder("select")
-Option = element_builder("option")
-Optgroup = element_builder("optgroup")
 Noscript = element_builder("noscript")
 Dl = element_builder("dl")
 Dt = element_builder("dt")

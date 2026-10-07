@@ -35,11 +35,9 @@ export type { ComparisonRow };
 export type { ComparableColumn };
 export type Column = ComparableColumn;
 
-// The two operands are searchable SearchSelect comboboxes (#282 review): the
-// option lists (own + FK + multi-valued blocks) outgrew a plain <select>. Each is
-// wrapped in a `[data-fc-left]` / `[data-fc-right]` marker; the <search-select>
-// element inside carries the committed value in a hidden input and exposes
-// setSelected / setOptions / clearSelection.
+// Each operand's picker sits in a `[data-fc-left]` / `[data-fc-right]`
+// wrapper; the <search-select> inside carries the committed value in a hidden
+// input and exposes setSelected / setOptions / clearSelection.
 type OperandMarker = "data-fc-left" | "data-fc-right";
 
 function operandElement(row: HTMLElement, marker: OperandMarker): SearchSelectElement | null {

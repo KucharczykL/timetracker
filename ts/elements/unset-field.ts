@@ -6,9 +6,9 @@ import { isUnsetTarget, type UnsetTarget } from "./unset-target.js";
 const DEFINE_TIMEOUT_MS = 5_000;
 
 /** Visible native controls. */
-const NATIVE = "input:not([type=hidden]), textarea, select";
+const NATIVE = "input:not([type=hidden]), textarea";
 
-type Control = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+type Control = HTMLInputElement | HTMLTextAreaElement;
 
 export interface UnsetFieldChangeDetail {
   name: UnsetFieldProps["name"];

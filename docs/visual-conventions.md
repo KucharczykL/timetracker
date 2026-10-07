@@ -142,8 +142,8 @@ follow-up items — the `mb-3` strip and these strays landed in #412.
 ### Control height (#436)
 
 The container-query control tier above (`px-3 py-2 → @md:px-5 @md:py-2.5`) is **superseded**.
-Every interactive row-control — `ControlButton` (all variants), native inputs/selects
-(`INPUT_CLASS`/`SELECT_CLASS`), `SearchSelect`, the field picker, the String/Number filter
+Every interactive row-control — `ControlButton` (all variants), native inputs
+(`INPUT_CLASS`; `SELECT_CLASS` only on the settings kit), `SearchSelect`, the field picker, the String/Number filter
 inputs, dropdown triggers, `YearPicker` — floors to **one shared height**:
 `min-h-control` (42px, from the `--height-control` theme token).
 

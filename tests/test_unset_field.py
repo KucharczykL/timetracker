@@ -390,17 +390,10 @@ def test_zero_is_a_value_not_keep():
     assert form.cleaned_data["count"] == 0
 
 
-def test_a_native_select_gets_its_choices_and_shape():
-    field = forms.ChoiceField(
-        required=False,
-        choices=LETTERS,
-        widget=UnsetWidget(forms.Select(), none_label="No letter"),
-    )
-    html = _render(field)
-    select = re.search(r"<select[^>]*>", html)
-    assert select is not None
-    assert "rounded-s-base" in select.group(0)
-    assert "Bravo" in html
+@pytest.mark.parametrize("select", [forms.Select, forms.NullBooleanSelect])
+def test_a_native_select_is_refused(select):
+    with pytest.raises(TypeError, match="Select"):
+        UnsetWidget(select(), none_label="No letter")
 
 
 def test_the_mixin_leaves_one_corner_class():

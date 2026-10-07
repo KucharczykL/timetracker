@@ -174,8 +174,7 @@ that never saw the `DECLARE`. No first-party code calls `iterator()`:
 over an index and holds no connection state.
 
 Django opens cursors of its own that cannot be rewritten:
-`ModelChoiceIterator` (one plain `<select>` here —
-`LibraryPreferencesForm.default_device`), `dumpdata` (`make dumpgames`) and the
+`ModelChoiceIterator` (a model field's choices, as a checkbox list renders them), `dumpdata` (`make dumpgames`) and the
 serializers it uses, and `serialize_db_to_string` in the test database.
 `DISABLE_SERVER_SIDE_CURSORS=true` turns those off. It is not free: without a
 cursor, psycopg receives every row on `execute()` and
