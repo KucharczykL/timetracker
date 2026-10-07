@@ -69,6 +69,12 @@ def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
     assert "hidden max-sm:block" in SENTINEL.search(html).group(0)  # type: ignore[union-attr]
 
 
+def test_a_dropdown_sheet_rises_above_the_keyboard():
+    html = dropdown(sheet_title="Day")
+    assert "mb-[var(--sheet-keyboard-inset,0px)]" in html
+    assert "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]" in html
+
+
 def test_the_section_sheet_keeps_its_own_shape():
     html = str(
         BottomSheet(

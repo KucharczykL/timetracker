@@ -1325,15 +1325,19 @@ _SHEET_PANEL_MOTION_CLASS = (
 
 
 #: Section sheet cap; calendars need more.
-_SECTION_SHEET_HEIGHT_CLASS = "max-h-[min(80dvh,32rem)]"
-_DROPDOWN_SHEET_HEIGHT_CLASS = "max-h-[90dvh]"
+_SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
+#: Lifted over, and capped beside, the keyboard.
+_DROPDOWN_SHEET_SIZE_CLASS = (
+    "mb-[var(--sheet-keyboard-inset,0px)] "
+    "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+)
 
 
 def _sheet_dialog(
     dialog_attributes: Attributes,
     *,
     header: Element,
-    height_class: str,
+    size_class: str,
     children: Children = None,
 ) -> Element:
     """The sheet's dialog, panel and scrolling body."""
@@ -1345,7 +1349,7 @@ def _sheet_dialog(
         ModalPanel(
             [(SHEET_ATTRIBUTES["panel"], "")],
             class_=(
-                f"flex w-full {height_class} flex-col "
+                f"flex w-full {size_class} flex-col "
                 "overflow-hidden rounded-t-base border border-default-medium "
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
@@ -1381,7 +1385,7 @@ def BottomSheet(
     target = _sheet_dialog(
         [("data-bottom-sheet", ""), titled.labelled_by],
         header=titled.header,
-        height_class=_SECTION_SHEET_HEIGHT_CLASS,
+        size_class=_SECTION_SHEET_SIZE_CLASS,
         children=children,
     )
     return _assemble(
@@ -1409,7 +1413,7 @@ def dropdown_sheet(title: Child) -> Fragment:
         _sheet_dialog(
             [(SHEET_ATTRIBUTES["sheet"], "")],
             header=header,
-            height_class=_DROPDOWN_SHEET_HEIGHT_CLASS,
+            size_class=_DROPDOWN_SHEET_SIZE_CLASS,
         ),
         # Missing CSS keeps the anchored panel.
         Span(
