@@ -10,10 +10,11 @@ from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Model, QuerySet
+from django.db.models import Model, Q
 
 from common.naming import NameKey, name_key
 from games.events.dispatch import RowNotHeld
+from games.ids import EditionId, PlatformId, ReleaseId
 from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -112,8 +113,113 @@ class WrittenGraph:
     editions: tuple[WrittenEdition, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class GraphRows:
+    """One Game's rows, removed included; written in place.
+
+    An absent pk is another Game's row or none. The
+    instances are the ones the write stamps and saves:
+    `removed_at` stays current, `is_default` does not
+    once the old defaults step down.
+    """
+
+    editions: Mapping[EditionId, Edition]
+    releases: Mapping[ReleaseId, Release]
+
+    @classmethod
+    def of(cls, owner: Game) -> GraphRows:
+        """Two reads; relations wired for `clean()`."""
+        editions = {row.pk: row for row in Edition.objects.filter(game_id=owner.pk)}
+        for edition in editions.values():
+            edition.game = owner
+        #: A kept mark's save validates its Platform.
+        releases = {
+            row.pk: row
+            for row in Release.objects.filter(edition__game_id=owner.pk).select_related(
+                "platform"
+            )
+        }
+        for release in releases.values():
+            release.edition = editions[release.edition_id]
+        return cls(editions=editions, releases=releases)
+
+    def live_editions(self) -> list[Edition]:
+        """Own mark: the constraints read it."""
+        return [row for row in self.editions.values() if row.removed_at is None]
+
+    def live_releases(self, edition: Edition) -> list[Release]:
+        return [
+            row
+            for row in self.releases.values()
+            if row.edition_id == edition.pk and row.removed_at is None
+        ]
+
+
+def _first_by_pk[Row: Model](rows: Sequence[Row]) -> Row | None:
+    return min(rows, key=lambda row: row.pk, default=None)
+
+
+def _newly_named(row: ReleaseState, stored: Release | None) -> PlatformId | None:
+    """None when absent, unsaved or already stored."""
+    platform = row.platform
+    if platform is None or platform.pk is None:
+        return None
+    #: A stored removed Platform stays editable.
+    if stored is not None and stored.platform_id == platform.pk:
+        return None
+    return platform.pk
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformLocks:
+    """Newly named Platforms, and the live ones locked."""
+
+    wanted: frozenset[PlatformId]
+    locked: frozenset[PlatformId]
+
+    @classmethod
+    def of(
+        cls,
+        library: UserLibrary,
+        editions: Sequence[EditionState],
+        stored_releases: StoredReleases,
+    ) -> PlatformLocks:
+        """One read, locked by pk.
+
+        The pk order gives writers on different Games one
+        lock order; the lock makes a removal in flight wait.
+        """
+        wanted = frozenset(
+            platform
+            for state in editions
+            if not state.removed
+            for row in state.releases
+            if not row.removed
+            and (platform := _newly_named(row, stored_releases[row.key])) is not None
+        )
+        if not wanted:
+            return cls(wanted=wanted, locked=frozenset())
+        locked = (
+            Platform.objects.select_for_update(no_key=True)
+            .filter(Q(library__isnull=True) | Q(library=library))
+            .filter(pk__in=wanted, removed_at__isnull=True)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        return cls(wanted=wanted, locked=frozenset(locked))
+
+    def holds(self, platform: PlatformId) -> bool:
+        """Whether the read locked it."""
+        if platform not in self.wanted:
+            raise LookupError(f"Platform {platform} was never asked for.")
+        return platform in self.locked
+
+
 def _refuse_platform(
-    library: UserLibrary, row: ReleaseState, stored: Release | None
+    library: UserLibrary,
+    row: ReleaseState,
+    stored: Release | None,
+    locks: PlatformLocks,
 ) -> None:
     """Shared or own; live unless already stored."""
     platform = row.platform
@@ -121,17 +227,11 @@ def _refuse_platform(
         return
     if platform.library_id not in (None, library.pk):
         raise GraphRefused(FOREIGN_PLATFORM, key=row.key)
-    #: A stored removed Platform stays editable.
-    if stored is not None and stored.platform_id == platform.pk:
-        return
-    #: Locked: a removal in flight waits.
-    removal_marks = list(
-        Platform.objects.select_for_update(no_key=True)
-        .filter(pk=platform.pk)
-        .values_list("removed_at", flat=True)
-    )
-    #: Missing or removed.
-    if not removal_marks or removal_marks[0] is not None:
+    if platform.pk is None:
+        raise GraphRefused(REMOVED_PLATFORM, key=row.key)
+    #: Not locked: missing, removed or foreign.
+    newly = _newly_named(row, stored)
+    if newly is not None and not locks.holds(newly):
         raise GraphRefused(REMOVED_PLATFORM, key=row.key)
 
 
@@ -151,36 +251,13 @@ def _writable_game(game_id, library: UserLibrary) -> Game:
     return game
 
 
-def _live_editions(game_id) -> QuerySet[Edition]:
-    """One Game's Editions, by their own mark.
-
-    The row's own mark, not `alive()`: the constraints here are
-    conditional on it.
-    """
-    return Edition.objects.filter(game_id=game_id, removed_at__isnull=True)
-
-
-def _clear_default_edition(game_id) -> None:
-    """The old default steps down before the new one stands."""
-    _live_editions(game_id).filter(is_default=True).update(is_default=False)
-
-
-def _live_releases(edition_id) -> QuerySet[Release]:
-    """One Edition's Releases, by their own mark."""
-    return Release.objects.filter(edition_id=edition_id, removed_at__isnull=True)
-
-
-def _clear_default_release(edition_id) -> None:
-    """The old default steps down before the new one stands."""
-    _live_releases(edition_id).filter(is_default=True).update(is_default=False)
-
-
-def _resolved_edition(owner: Game, state: EditionState) -> Edition | None:
+def _resolved_edition(rows: GraphRows, state: EditionState) -> Edition | None:
     """The stored row a state names."""
     if state.edition is None:
         return None
-    stored = Edition.objects.filter(pk=state.edition.pk).first()
-    if stored is None or stored.game_id != owner.pk:
+    #: Missing or another Game's: not mapped.
+    stored = rows.editions.get(state.edition.pk)
+    if stored is None:
         raise GraphRefused(FOREIGN_ROW, key=state.key)
     #: A stated removal of a row already gone states what is true.
     if stored.removed_at is not None and not state.removed:
@@ -188,11 +265,13 @@ def _resolved_edition(owner: Game, state: EditionState) -> Edition | None:
     return stored
 
 
-def _resolved_release(parent: Edition | None, state: ReleaseState) -> Release | None:
+def _resolved_release(
+    rows: GraphRows, parent: Edition | None, state: ReleaseState
+) -> Release | None:
     """The stored Release a state names."""
     if state.release is None:
         return None
-    stored = Release.objects.filter(pk=state.release.pk).first()
+    stored = rows.releases.get(state.release.pk)
     if stored is None or parent is None or stored.edition_id != parent.pk:
         raise GraphRefused(FOREIGN_ROW, key=state.key)
     if stored.removed_at is not None and not state.removed:
@@ -226,16 +305,17 @@ def _refuse_taken_names(
 
 
 def _refuse_the_set(
-    owner: Game,
+    rows: GraphRows,
     library: UserLibrary,
     editions: Sequence[EditionState],
     stored_editions: StoredEditions,
     stored_releases: StoredReleases,
+    locks: PlatformLocks,
 ) -> None:
     """Everything the statement can be wrong about."""
     surviving = [state for state in editions if not state.removed]
-    named = [stored.pk for stored in stored_editions.values() if stored is not None]
-    untouched = list(_live_editions(owner.pk).exclude(pk__in=named))
+    named = {stored.pk for stored in stored_editions.values() if stored is not None}
+    untouched = [row for row in rows.live_editions() if row.pk not in named]
     #: No key: every stated row is one this refusal is about, and a
     #: sentence on a row the caller is removing is a sentence nobody
     #: sees.
@@ -246,12 +326,12 @@ def _refuse_the_set(
         raise GraphRefused(TWO_DEFAULT_EDITIONS, key=marked[1].key)
     _refuse_taken_names(surviving, untouched)
     for state in surviving:
-        rows = [row for row in state.releases if not row.removed]
-        marked_rows = [row for row in rows if row.is_default]
+        stated = [row for row in state.releases if not row.removed]
+        marked_rows = [row for row in stated if row.is_default]
         if len(marked_rows) > 1:
             raise GraphRefused(TWO_DEFAULT_RELEASES, key=marked_rows[1].key)
-        for row in rows:
-            _refuse_platform(library, row, stored_releases[row.key])
+        for row in stated:
+            _refuse_platform(library, row, stored_releases[row.key], locks)
 
 
 def _written_release(
@@ -293,18 +373,18 @@ def _written_edition(
         edition.kind = state.kind or stored.kind
         edition.is_default = False
         edition.save(update_fields=("name", "kind", "is_default"))
-    rows = tuple(
+    written_releases = tuple(
         WrittenRelease(
             row.key, _written_release(edition, row, stored_releases[row.key])
         )
         for row in state.releases
         if not row.removed
     )
-    return WrittenEdition(key=state.key, edition=edition, releases=rows)
+    return WrittenEdition(key=state.key, edition=edition, releases=written_releases)
 
 
 def _edition_to_mark(
-    owner: Game,
+    rows: GraphRows,
     surviving: Sequence[EditionState],
     written: Sequence[WrittenEdition],
     standing: Edition | None,
@@ -313,30 +393,30 @@ def _edition_to_mark(
     for state, entry in zip(surviving, written, strict=True):
         if state.is_default:
             return entry.edition
-    if standing is not None:
-        kept = _live_editions(owner.pk).filter(pk=standing.pk).first()
-        if kept is not None:
-            return kept
+    #: `remove()` stamped the map's own instance.
+    if standing is not None and standing.removed_at is None:
+        return standing
     if written:
         return written[0].edition
-    return _live_editions(owner.pk).order_by("pk").first()
+    return _first_by_pk(rows.live_editions())
 
 
 def _release_to_mark(
-    state: EditionState, entry: WrittenEdition, standing: Release | None
+    rows: GraphRows,
+    state: EditionState,
+    entry: WrittenEdition,
+    standing: Release | None,
 ) -> Release | None:
     """The same rule, one level down."""
     stated = [row for row in state.releases if not row.removed]
     for row, written in zip(stated, entry.releases, strict=True):
         if row.is_default:
             return written.release
-    if standing is not None:
-        kept = _live_releases(entry.edition.pk).filter(pk=standing.pk).first()
-        if kept is not None:
-            return kept
+    if standing is not None and standing.removed_at is None:
+        return standing
     if entry.releases:
         return entry.releases[0].release
-    return _live_releases(entry.edition.pk).order_by("pk").first()
+    return _first_by_pk(rows.live_releases(entry.edition))
 
 
 @transaction.atomic
@@ -355,39 +435,47 @@ def state_catalog_graph(
     if game._state.adding:
         raise ValueError(f"state_catalog_graph takes a saved Game; {game} is unsaved.")
     owner = _writable_game(game.pk, library)
+    rows = GraphRows.of(owner)
     stored_editions: StoredEditions = {
-        state.key: _resolved_edition(owner, state) for state in editions
+        state.key: _resolved_edition(rows, state) for state in editions
     }
     stored_releases: StoredReleases = {
-        row.key: _resolved_release(stored_editions[state.key], row)
+        row.key: _resolved_release(rows, stored_editions[state.key], row)
         for state in editions
         for row in state.releases
     }
     _refuse_repeated_rows(stored_editions)
     _refuse_repeated_rows(stored_releases)
-    _refuse_the_set(owner, library, editions, stored_editions, stored_releases)
+    locks = PlatformLocks.of(library, editions, stored_releases)
+    _refuse_the_set(rows, library, editions, stored_editions, stored_releases, locks)
 
     surviving = [state for state in editions if not state.removed]
-    standing_edition = _live_editions(owner.pk).filter(is_default=True).first()
+    standing_edition = next(
+        (row for row in rows.live_editions() if row.is_default), None
+    )
     standing_releases: dict[RowKey, Release | None] = {}
+    surviving_stored: list[Edition] = []
     for state in surviving:
         stored = stored_editions[state.key]
         if stored is not None:
-            standing_releases[state.key] = (
-                _live_releases(stored.pk).filter(is_default=True).first()
+            surviving_stored.append(stored)
+            standing_releases[state.key] = next(
+                (row for row in rows.live_releases(stored) if row.is_default), None
             )
 
     #: 1. Every live default steps down first. Both constraints
     #: permit at most one, thus zero is legal and the rest is free.
-    _clear_default_edition(owner.pk)
-    for state in surviving:
-        stored = stored_editions[state.key]
-        if stored is not None:
-            _clear_default_release(stored.pk)
+    Edition.objects.filter(
+        game_id=owner.pk, removed_at__isnull=True, is_default=True
+    ).update(is_default=False)
+    if surviving_stored:
+        Release.objects.filter(
+            edition_id__in=[stored.pk for stored in surviving_stored],
+            removed_at__isnull=True,
+            is_default=True,
+        ).update(is_default=False)
 
-    #: 2. A removal is a stamp, and every stated row is read,
-    #: removed Editions too, thus putting one back brings back
-    #: exactly the rows nobody removed.
+    #: 2. A removal stamps each stated row alone.
     for state in editions:
         for row in state.releases:
             stored_release = stored_releases[row.key]
@@ -401,24 +489,30 @@ def state_catalog_graph(
 
     #: 3. A name being given up is freed before it is taken. The
     #: empty name claims no slot, thus two Editions can exchange.
-    for state in surviving:
-        stored = stored_editions[state.key]
-        if stored is not None and stored.name.strip() != state.name.strip():
-            Edition.objects.filter(pk=stored.pk).update(name="")
+    renamed = [
+        stored.pk
+        for state in surviving
+        if (stored := stored_editions[state.key]) is not None
+        and stored.name.strip() != state.name.strip()
+    ]
+    if renamed:
+        Edition.objects.filter(pk__in=renamed).update(name="")
 
-    #: 4 and 5. The stored rows, then the new ones.
+    #: 4 and 5. Each surviving row, in statement order.
     written = [
         _written_edition(owner, state, stored_editions[state.key], stored_releases)
         for state in surviving
     ]
 
     #: 6. One mark at each level, once everything else stands.
-    winner = _edition_to_mark(owner, surviving, written, standing_edition)
+    winner = _edition_to_mark(rows, surviving, written, standing_edition)
     if winner is not None:
         winner.is_default = True
         winner.save(update_fields=("is_default",))
     for state, entry in zip(surviving, written, strict=True):
-        marked_row = _release_to_mark(state, entry, standing_releases.get(state.key))
+        marked_row = _release_to_mark(
+            rows, state, entry, standing_releases.get(state.key)
+        )
         if marked_row is not None:
             marked_row.is_default = True
             marked_row.save(update_fields=("is_default",))

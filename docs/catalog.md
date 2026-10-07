@@ -247,10 +247,13 @@ written, and each carries the caller's own name for the row that caused it, so
 a sentence reaches the row a person typed into.
 
 A named row is read again under the Game's lock. The Edition or Release a
-caller passes is identity only: the verb resolves each after
-`select_for_update()` and refuses one that is removed, or that hangs from
-another Game or Edition. Every caller reads its rows before the lock, so no
-caller can act on a stale one.
+caller passes is identity only: after `select_for_update()` the verb reads the
+Game's Editions and Releases once, removed ones included, resolves each stated
+row from that read, and refuses one that is removed, or that hangs from
+another Game or Edition. The Platforms a statement newly names are locked in
+one read, in pk order. Without removals, the reads do not grow with the
+statement; each removal reads the previous mark of its row. Every caller reads
+its rows before the lock, so no caller can act on a stale one.
 
 ## What a constraint says
 
