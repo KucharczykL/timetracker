@@ -8,7 +8,7 @@ from games.models import Game, PlayerGame
 from games.reads.playthrough_runs import completed_run_count
 from games.writes.playergame import new_correlation_id, track_game
 
-#: The Undo reads the stream, so the game is tracked through the command.
+#: Tracked by command: the Undo reads events.
 pytestmark = pytest.mark.untracked_games
 
 

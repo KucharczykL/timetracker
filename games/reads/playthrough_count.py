@@ -34,10 +34,7 @@ def bare_runs(library: UserLibrary, player_game: PlayerGame) -> QuerySet[Playthr
 def dateless_runs(
     library: UserLibrary, player_game: PlayerGame
 ) -> QuerySet[Playthrough]:
-    """Played-through runs stating nothing else, newest first.
-
-    What a count made, and what a lower takes back.
-    """
+    """Played-through runs stating nothing else, newest first."""
     return unnamed_runs(
         _blank(live_ordinary_runs(library, player_game)).filter(
             start_recorded_at__isnull=False,

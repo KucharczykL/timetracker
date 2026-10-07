@@ -629,14 +629,7 @@ def _game_fact(game: Game) -> LinkFacts | None:
 
 
 def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
-    """'Played N times' split button.
-
-    `played` counts runs whose completion is stated.
-
-    The day may be unknown and still count.
-
-    A tracked game also offers stating the count.
-    """
+    """'Played N times' split button; completed runs."""
     from common.components import (
         ControlButton,
         DropdownLinkItem,

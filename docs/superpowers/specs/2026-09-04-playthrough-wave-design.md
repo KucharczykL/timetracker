@@ -363,6 +363,16 @@ beside these rows.
 `Session` holds no reference to a run, so the recency #1033 reads is the game's.
 #700 and #701 narrow it to the run, recorded in the Sessions handoff below.
 
+### #1024 — state times played
+
+A count is a target total over completed runs, never a stored number. A raise
+adds runs stating both acts with no day; a lower removes only such runs, and
+only where no row of the library names them, removed rows included. Undo
+inverts one statement's events, so it needs each touched row's history: a
+`PlayerGame` with no creation event cannot read its status before, and a test
+of the Undo tracks its game through the command. Contract is
+[Times played](2026-10-07-issue-1024-times-played-design.md).
+
 ### #688 — the gate
 
 Unchanged. Empty-database replay, current-state parity, and idempotency across

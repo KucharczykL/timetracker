@@ -323,7 +323,14 @@ docs/           — Additional documentation
   by `games/reads/playthrough_numbering.py`, and its edit and remove routes name
   the run rather than the legacy row. `Played N times` beside it counts only the
   runs whose completion is stated, which is the number the legacy row meant; the
-  section badge counts every row it renders. #1013 gives the list page same
+  section badge counts every row it renders. #1024's "Set times played…"
+  states that number: `StatePlaythroughCount` adds runs stating both acts
+  and no day (filling a sole bare run first, then Completed) or removes
+  dateless runs newest first (`games/reads/playthrough_count.py`), refused
+  whole where too few; `UndoPlaythroughCount` inverts one statement's
+  events, keyed by its correlation id
+  ([spec](docs/superpowers/specs/2026-10-07-issue-1024-times-played-design.md)).
+  #1013 gives the list page same
   rows: it reads projection, and so do filter (`PlaythroughFilter` over twelve
   fields, each endpoint compared as interval its two bound columns state),
   sorts, quick facets and saved presets, whose stored `ended` a one-time pass

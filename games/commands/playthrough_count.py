@@ -92,10 +92,7 @@ def _played_through(run_id: uuid.UUID) -> list[NewEvent]:
 
 @dataclass(frozen=True, slots=True)
 class StatePlaythroughCount(Command):
-    """State how many runs were completed.
-
-    Adds or removes runs stating no day.
-    """
+    """State how many runs were completed."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_STATE_COUNT
     game_id: uuid.UUID
@@ -130,7 +127,7 @@ class StatePlaythroughCount(Command):
             events += _played_through(runs[0].pk)
             added -= 1
         for _ in range(added):
-            #: Minted here: the build reads no new row.
+            #: The build reads no new row.
             run_id = uuid.uuid7()
             events.append(playthrough_created(tracked.pk, playthrough_id=run_id))
             events += _played_through(run_id)
@@ -283,7 +280,7 @@ class UndoPlaythroughCount(Command):
 
 
 def _inverse(event: LibraryEvent, created: list[uuid.UUID]) -> NewEvent | None:
-    """One event taken back; None where removal covers it."""
+    """One event's inverse; None where removal covers."""
     run_id = event.aggregate_id
     match event.event_type:
         case PLAYTHROUGH_CREATED.event_type:

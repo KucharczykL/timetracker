@@ -894,7 +894,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     counted = Game.objects.create(library=library, name="Celeste")
     run(TrackGame(game_id=counted.pk), "track-counted")
     run(StatePlaythroughCount(game_id=counted.pk, count=3), "count-raise")
-    #: To zero: removals beside the kept run's voids.
+    #: To zero: removes runs, voids the last.
     lowered = run(StatePlaythroughCount(game_id=counted.pk, count=0), "count-lower")
     run(
         UndoPlaythroughCount(

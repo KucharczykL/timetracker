@@ -12,7 +12,7 @@ from games.reads.playthrough_runs import completed_run_count
 from games.views.returns import ORIGIN_AWARE
 from games.writes.playergame import new_correlation_id, track_game
 
-#: Tracked by command, so the Undo reads events.
+#: Tracked by command: the Undo reads events.
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
 

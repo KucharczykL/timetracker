@@ -35,7 +35,7 @@ def run(tracked) -> Playthrough:
 
 
 def _played_through(run: Playthrough, **columns: object) -> Playthrough:
-    """Both acts, no day; columns written by hand."""
+    """Both acts, no day, written by hand."""
     stamp = timezone.now()
     Playthrough.objects.filter(pk=run.pk).update(
         start_recorded_at=stamp, completion_recorded_at=stamp, **columns
