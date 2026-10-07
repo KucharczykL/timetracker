@@ -246,14 +246,15 @@ export function attachNarrowSheet(
     cancelRetry = whenSettled(() => {
       cancelRetry = null;
       if (state.kind !== "closed") return;
-      if (isNarrow() && !openSheet(opener)) {
+      if (!isNarrow()) {
+        //: Widened during the leave: open anchored.
+        present(opener);
+      } else if (!openSheet(opener)) {
         reportClientError("narrow-sheet", "a retried open was refused again", {
           toast: false,
         });
         return;
       }
-      //: Widened during the leave: open anchored.
-      if (!isNarrow()) present(opener);
       if (isOpen()) window.addEventListener("resize", queueCheck);
     });
   }

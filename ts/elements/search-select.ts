@@ -1826,7 +1826,6 @@ const initWidget = (containerElement: Element): boolean => {
     });
   }
   if (face && faceOpen) {
-    const open = faceOpen;
     const fieldName =
       search.labels?.[0]?.textContent?.trim() ||
       search.getAttribute("aria-label")?.trim() ||
@@ -1842,11 +1841,11 @@ const initWidget = (containerElement: Element): boolean => {
 
     //: Code writes the box's state directly.
     const mirrorBox = () => {
-      open.disabled = search.disabled;
+      faceOpen.disabled = search.disabled;
       for (const attribute of ["aria-invalid", "aria-describedby"]) {
         const value = search.getAttribute(attribute);
-        if (value === null) open.removeAttribute(attribute);
-        else open.setAttribute(attribute, value);
+        if (value === null) faceOpen.removeAttribute(attribute);
+        else faceOpen.setAttribute(attribute, value);
       }
     };
     mirrorBox();
@@ -1856,9 +1855,9 @@ const initWidget = (containerElement: Element): boolean => {
     });
 
     const openSheet = () => {
-      if (!open.disabled) dropdownHost?.open(open);
+      if (!faceOpen.disabled) dropdownHost?.open(faceOpen);
     };
-    open.addEventListener("click", openSheet);
+    faceOpen.addEventListener("click", openSheet);
     //: The label's box is hidden below sm.
     for (const label of Array.from(search.labels ?? [])) {
       label.addEventListener("click", (event) => {
@@ -1873,7 +1872,7 @@ const initWidget = (containerElement: Element): boolean => {
       const fromFocus = document.activeElement === faceClear;
       clearButton?.click();
       //: The × hides; focus needs a home.
-      if (fromFocus) open.focus();
+      if (fromFocus) faceOpen.focus();
     });
   }
 

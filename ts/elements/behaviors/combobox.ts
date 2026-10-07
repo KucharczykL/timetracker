@@ -50,7 +50,7 @@ registerBehavior("combobox", {
     };
     //: Code sets silently; a change is a person's.
     const onChange = (event: Event) => {
-      if (event.target !== widget || !widget) return;
+      if (!widget || event.target !== widget) return;
       if (widget.getAttribute("multi") === "true" || widget.getAttribute("filter-mode") === "true") {
         return;
       }

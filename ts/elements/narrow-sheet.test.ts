@@ -557,7 +557,7 @@ describe("a lent sheet that fails", () => {
     const insert = home.insertBefore.bind(home);
     let broken = true;
     home.insertBefore = (<T extends Node>(node: T, child: Node | null): T => {
-      if (broken && node === lent) throw new DOMException("no", "HierarchyRequestError");
+      if (broken && (node as Node) === lent) throw new DOMException("no", "HierarchyRequestError");
       return insert(node, child);
     }) as typeof home.insertBefore;
     host.close();
