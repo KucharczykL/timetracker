@@ -97,6 +97,8 @@ class CommandName(CommandVocabulary):
     PLAYTHROUGH_REMOVE = "library.playthrough.remove"
     PLAYTHROUGH_RESTORE = "library.playthrough.restore"
     PLAYTHROUGH_MOVE = "library.playthrough.move"
+    PLAYTHROUGH_STATE_COUNT = "library.playthrough.state_count"
+    PLAYTHROUGH_UNDO_COUNT = "library.playthrough.undo_count"
     PLAYERSESSION_CREATE = "library.playersession.create"
     PLAYERSESSION_END = "library.playersession.end"
     PLAYERSESSION_CORRECT_TIMING = "library.playersession.correct_timing"

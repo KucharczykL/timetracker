@@ -685,7 +685,7 @@ def _refuse_under_a_removed_game(run: Playthrough) -> None:
         )
 
 
-def _refuse_a_foreign_referrer(run: Playthrough) -> None:
+def refuse_a_foreign_referrer(run: Playthrough) -> None:
     """Refuse a foreign row naming the run."""
     foreign = foreign_referrer(run)
     if foreign is None:
@@ -757,7 +757,7 @@ class RemovePlaythrough(Command):
                 "be found.",
                 sentence=blocker.sentence,
             )
-        _refuse_a_foreign_referrer(run)
+        refuse_a_foreign_referrer(run)
         return [playthrough_removed(run.pk)]
 
 

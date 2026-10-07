@@ -76,6 +76,10 @@ from games.commands.playthrough import (
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
 )
+from games.commands.playthrough_count import (
+    StatePlaythroughCount,
+    UndoPlaythroughCount,
+)
 from games.commands.purchase import (
     CorrectPurchaseRefund,
     DescribePurchase,
@@ -886,6 +890,18 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RecordPurchase(kind="game", copy=cascaded_copy), "record-purchase-to-cascade")
     #: Left removed with its purchase.
     run(RemoveEntry(entry_id=cascaded_copy), "remove-copy-and-purchase")
+
+    counted = Game.objects.create(library=library, name="Celeste")
+    run(TrackGame(game_id=counted.pk), "track-counted")
+    run(StatePlaythroughCount(game_id=counted.pk, count=3), "count-raise")
+    #: To zero: removals beside the kept run's voids.
+    lowered = run(StatePlaythroughCount(game_id=counted.pk, count=0), "count-lower")
+    run(
+        UndoPlaythroughCount(
+            game_id=counted.pk, statement=lowered.correlation_id, stated=0
+        ),
+        "count-undo",
+    )
 
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
