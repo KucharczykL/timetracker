@@ -43,7 +43,7 @@ function mount(): HTMLElement {
       <button data-date-range-next></button>
       <div data-date-range-grid></div>
       <button data-date-range-clear></button>
-      <button data-date-range-done></button>
+      <button data-date-range-close></button>
     </div>`;
   dropdown.appendChild(picker);
   document.body.appendChild(dropdown); // connectedCallback → initPicker
@@ -248,7 +248,7 @@ describe("date-picker calendar", () => {
   });
 });
 
-describe("date-picker Done", () => {
+describe("date-picker Close", () => {
   it("closes the calendar and keeps the value", () => {
     const picker = mount();
     picker
@@ -257,7 +257,7 @@ describe("date-picker Done", () => {
     const calendar = picker.querySelector("[data-date-range-calendar]")!;
     expect(calendar.hasAttribute("hidden")).toBe(false);
     picker
-      .querySelector<HTMLElement>("[data-date-range-done]")!
+      .querySelector<HTMLElement>("[data-date-range-close]")!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(calendar.hasAttribute("hidden")).toBe(true);
   });

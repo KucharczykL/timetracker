@@ -28,7 +28,7 @@ from common.components.date_range_picker import (
     date_calendar_shell,
     footer_button,
     segment_group,
-    sheet_done_button,
+    sheet_close_button,
 )
 from common.components.primitives import (
     ControlButton,
@@ -189,7 +189,7 @@ def DateTimeCalendar(*, input_name_prefix: str) -> Node:
         footer_buttons=[
             footer_button("now", "Now"),
             footer_button("clear", "Clear"),
-            sheet_done_button(),
+            sheet_close_button(),
         ],
     )
 

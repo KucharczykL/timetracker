@@ -334,7 +334,7 @@ export function bindSingleSelectCalendar(options: {
   }
 
   popup
-    .querySelector<HTMLElement>("[data-date-range-done]")
+    .querySelector<HTMLElement>("[data-date-range-close]")
     ?.addEventListener("click", () => host.close());
 
   // Clear: empty the value but keep the popup open (the single-select footer

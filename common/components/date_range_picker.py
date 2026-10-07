@@ -367,11 +367,11 @@ def _calendar_nav_button(direction: str, glyph: str, label: str) -> Node:
     )[Icon(glyph, decorative=True)]
 
 
-def sheet_done_button() -> Node:
-    """Done, shown only in a sheet."""
+def sheet_close_button() -> Node:
+    """Close, shown only in a sheet."""
     #: The anchored popup closes on an outside press.
     return Span(class_="hidden group-data-[dropdown-host=sheet]/dropdown:contents")[
-        footer_button("done", "Done", color="blue")
+        footer_button("close", "Close")
     ]
 
 

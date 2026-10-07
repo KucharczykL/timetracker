@@ -111,7 +111,7 @@ def test_every_quick_facet_carries_a_sheet():
 
 
 @pytest.mark.parametrize(
-    ("picker", "has_done"),
+    ("picker", "has_close"),
     [
         (DatePicker(presentation=PRESENTATION, label="Day", name="day"), True),
         (DateTimePicker(presentation=PRESENTATION, label="Start", name="start"), True),
@@ -124,15 +124,15 @@ def test_every_quick_facet_carries_a_sheet():
     ],
     ids=["date", "datetime", "range"],
 )
-def test_a_single_date_calendar_offers_done_in_the_sheet_alone(picker, has_done):
+def test_a_single_date_calendar_offers_close_in_the_sheet_alone(picker, has_close):
     html = str(picker)
-    done = re.search(
+    close = re.search(
         r'<span class="hidden group-data-\[dropdown-host=sheet\]/dropdown:contents">'
-        r"<button[^>]*data-date-range-done",
+        r"<button[^>]*data-date-range-close",
         html,
     )
-    assert bool(done) is has_done
-    assert html.count("data-date-range-done") == int(has_done)
+    assert bool(close) is has_close
+    assert html.count("data-date-range-close") == int(has_close)
 
 
 @pytest.mark.django_db

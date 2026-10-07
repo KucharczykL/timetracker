@@ -22,7 +22,7 @@ from common.components.date_range_picker import (
     date_calendar_shell,
     date_segment_group,
     footer_button,
-    sheet_done_button,
+    sheet_close_button,
 )
 from common.components.primitives import (
     ControlButton,
@@ -102,7 +102,7 @@ def DatePickerCalendar(*, input_name_prefix: str) -> Node:
     return date_calendar_shell(
         input_name_prefix=input_name_prefix,
         presets=None,
-        footer_buttons=[footer_button("clear", "Clear"), sheet_done_button()],
+        footer_buttons=[footer_button("clear", "Clear"), sheet_close_button()],
     )
 
 
