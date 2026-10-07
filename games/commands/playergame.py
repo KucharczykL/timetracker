@@ -91,6 +91,7 @@ class HeldGame(NamedTuple):
 
 
 def implied_if(implies: bool, status: ImpliedStatus) -> ImpliedStatus | None:
+    """The status, where the act implies it."""
     return status if implies else None
 
 

@@ -195,16 +195,16 @@ def _state_endpoint(
     endpoint = statement.endpoint
     stated = endpoint.reads(run)
     note = "" if stated is None else stated.note
-    command = (
-        endpoint.first(
+    command: Command
+    if isinstance(endpoint_move(stated, act), Act):
+        command = endpoint.first(
             playthrough_id=run.pk,
             when=act.when,
             note=note,
             implies_status=statement.implies_status,
         )
-        if isinstance(endpoint_move(stated, act), Act)
-        else endpoint.correction(playthrough_id=run.pk, when=act.when, note=note)
-    )
+    else:
+        command = endpoint.correction(playthrough_id=run.pk, when=act.when, note=note)
     _dispatch(
         command,
         actor=actor,
@@ -412,12 +412,12 @@ def _move(
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
-        stated_status=stated_status(events),
+        stated_status=_stated_status(events),
         cleared_releases=_live_rows_cleared(actor.library, events),
     )
 
 
-def stated_status(events: list[AppendedEvent]) -> PlayerGameStatus | None:
+def _stated_status(events: list[AppendedEvent]) -> PlayerGameStatus | None:
     """The status a dispatch appended, if any.
 
     One at most: with_implied_status appends one.

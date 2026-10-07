@@ -61,6 +61,17 @@ def _start(owned_user, run, *, implies_status=True, key=None, when=DAY):
     )
 
 
+def _complete(owned_user, run, *, key=None):
+    return complete_run(
+        owned_user,
+        run,
+        DAY,
+        implies_status=True,
+        correlation_id=new_correlation_id(),
+        idempotency_key=key,
+    )
+
+
 @pytest.mark.django_db(transaction=True)
 def test_a_start_states_played_last_in_its_own_dispatch(owned_user, run, game):
     result = _start(owned_user, run)
@@ -101,13 +112,7 @@ def test_a_start_never_walks_a_status_back(owned_user, run, game, held):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_completion_states_completed(owned_user, run, game):
-    complete_run(
-        owned_user,
-        run,
-        DAY,
-        implies_status=True,
-        correlation_id=new_correlation_id(),
-    )
+    _complete(owned_user, run)
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
 
@@ -121,13 +126,7 @@ def test_a_completion_completes_over_abandoned(owned_user, run, game):
         correlation_id=new_correlation_id(),
     )
 
-    complete_run(
-        owned_user,
-        run,
-        DAY,
-        implies_status=True,
-        correlation_id=new_correlation_id(),
-    )
+    _complete(owned_user, run)
 
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
 
@@ -167,17 +166,6 @@ def test_a_refused_endpoint_rises(owned_user, run, game):
 
     with pytest.raises(CommandFailed):
         _start(owned_user, run, when=OTHER_DAY)
-
-
-def _complete(owned_user, run, *, key=None):
-    return complete_run(
-        owned_user,
-        run,
-        DAY,
-        implies_status=True,
-        correlation_id=new_correlation_id(),
-        idempotency_key=key,
-    )
 
 
 @pytest.mark.django_db(transaction=True)
