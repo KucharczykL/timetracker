@@ -1,6 +1,7 @@
 """A game's history off the event stream."""
 
 from datetime import timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from django.utils import timezone
@@ -8,6 +9,7 @@ from django.utils import timezone
 from games.events.playergame import PLAYERGAME_STATUS_CHANGED
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
 from games.reads.playergame_history import StatusEntry, status_history
+from games.views.game import _game_history
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 pytestmark = pytest.mark.untracked_games
@@ -176,3 +178,13 @@ def test_a_library_reads_only_its_own_transitions(
         PlayerGameStatus.COMPLETED,
         PlayerGameStatus.ABANDONED,
     ]
+
+
+def test_a_history_line_reads_as_secondary_text():
+    html = str(
+        _game_history(
+            [StatusEntry(None, PlayerGameStatus.UNPLAYED, PlayerGameStatus.PLAYED)],
+            MagicMock(),
+        )
+    )
+    assert '<li class="text-body-subtle">' in html

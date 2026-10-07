@@ -468,7 +468,10 @@ class DropdownWrapperTest(unittest.TestCase):
         primary = html[html.index("<button") : html.index("</button>")]
         self.assertIn("rounded-s-base", primary)
         self.assertNotIn("rounded-base", primary)
-        self.assertIn("rounded-e-base", html[html.index("<drop-down") :])
+        caret = html[html.index("<drop-down") :]
+        self.assertIn("rounded-e-base", caret)
+        # The join line follows the caret's text colour.
+        self.assertIn("border-l-current/30", caret)
 
 
 class DropdownMenuItemTest(unittest.TestCase):

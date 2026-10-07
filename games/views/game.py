@@ -783,7 +783,7 @@ def _game_history(
         else:
             prefix = "At some point changed"
         items.append(
-            Li(class_="text-slate-500")[
+            Li(class_="text-body-subtle")[
                 f"{prefix} status from",
                 GameStatus(status=entry.previous, children=[entry.previous.label]),
                 "to",
@@ -861,7 +861,7 @@ def _game_section(
         else "mb-6 flex flex-col gap-4"
     )[
         header,
-        table if count else empty_message,
+        table if count else P(class_="text-type-body text-body-subtle")[empty_message],
         P(
             class_=(
                 "flex items-center justify-center gap-2 text-type-body text-body-subtle"
@@ -1079,9 +1079,9 @@ def _game_header(
     else:
         playrange = "N/A"
     title_span = Span(class_="text-balance max-w-120")[
-        Span(class_="text-type-title font-serif")[game.name],
+        Span(class_="text-type-title font-serif text-heading")[game.name],
     ]
-    stats_row = Div(class_="flex gap-4 text-type-body dark:text-slate-400 mb-3")[
+    stats_row = Div(class_="flex gap-4 text-type-body mb-3")[
         _stat_popover(
             "popover-hours",
             "Total hours played",
@@ -1467,7 +1467,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         referenced.append(entry.edition)
         referenced.extend(entry.releases)
     references = references_for(referenced)
-    content = Div(class_="dark:text-white")[
+    content = Div()[
         _game_header(
             game,
             request,

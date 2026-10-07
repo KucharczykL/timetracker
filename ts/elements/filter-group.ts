@@ -141,8 +141,8 @@ type ChipState = "connective-and" | "connective-or" | "negate-off" | "negate-on"
 // OR=orange) so the card frame echoes the connective chip. `border-l-4` +
 // `border-l-<color>` thicken and recolor the left side of CARD_CLASS's box border
 // into a colored accent; the stacked ancestor rails also read as a depth ruler.
-const GROUP_AND_EDGE_CLASS = "border-l-4 border-l-teal-400 dark:border-l-teal-500/70"; // color-ok: categorical AND hue (logic-chip palette)
-const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange-500/70"; // color-ok: categorical OR hue (logic-chip palette)
+const GROUP_AND_EDGE_CLASS = "border-l-4 border-l-teal-400 dark:border-l-teal-500/70"; // color-ok: teal AND hue (logic-chip palette)
+const GROUP_OR_EDGE_CLASS = "border-l-4 border-l-orange-400 dark:border-l-orange-500/70"; // color-ok: orange OR hue (logic-chip palette)
 // Relation-descent cue (component 5, #193): the ↳ arrow + "of [relation] where"
 // header carry a slim indigo hue (the Game→Session model-switch signal). The card
 // itself follows the neutral depth parity like any group — no tinted block.

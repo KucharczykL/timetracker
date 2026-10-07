@@ -591,7 +591,7 @@ CASES = [
         4.5,
     ),
     (
-        "nav-link hover accent (blue-700 on white)",
+        "nav-link hover accent (fg-brand: blue-700 on white)",
         "light",
         "blue-700",
         col("blue-700"),
@@ -745,7 +745,7 @@ CASES = [
         4.5,
     ),
     (
-        "nav-link hover accent (blue-500 on gray-900 navbar)",
+        "nav-link hover accent (fg-brand: blue-500 on gray-900 navbar)",
         "dark",
         "blue-500",
         col("blue-500"),

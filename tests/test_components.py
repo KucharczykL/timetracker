@@ -2,7 +2,7 @@ import datetime
 import re
 import unittest
 from typing import ClassVar, get_args
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import django
@@ -702,15 +702,12 @@ class IconTest(unittest.TestCase):
         self.assertIn("<title>Play</title>", result)
         self.assertNotIn('title="Play"', result)
 
-    def test_icon_overrides_snippet_class_and_keeps_viewbox(self):
-        # The snippet's baked class is replaced by the central icon classes (so
-        # all icons restyle in one place); a passed class appends as an override.
-        # viewBox must survive — dropping it clips the paths to a sliver.
+    def test_icon_states_central_class_and_keeps_viewbox(self):
+        # A passed class appends; viewBox must survive.
         from common.components.primitives import ICON_SIZE_CLASS
 
         result = str(components.Icon("arrowdownlong", [("class", "rotate-180")]))
         self.assertIn(f'class="{ICON_SIZE_CLASS} rotate-180"', result)
-        self.assertNotIn("w-3 h-3 rotate-180", result)  # snippet size dropped
         self.assertIn("viewBox=", result)
 
     def test_icon_size_override_replaces_default(self):
@@ -727,9 +724,7 @@ class IconTest(unittest.TestCase):
         self.assertIn("&amp;", result)
         self.assertNotIn("<&", result)
 
-    def test_icon_without_attributes_still_overrides_class(self):
-        # Even with no attributes every icon is restyled by the central classes
-        # (overriding the snippet's baked class); viewBox is kept.
+    def test_icon_without_attributes_states_central_class(self):
         from common.components.primitives import ICON_SIZE_CLASS
 
         result = str(components.Icon("arrowdownlong"))
@@ -770,6 +765,27 @@ class IconCodegenFaithfulnessTest(unittest.TestCase):
                 source = ElementTree.fromstring(raw_html)
                 rendered = ElementTree.fromstring(str(get_icon_node(name)))
                 self.assertEqual(self._normalize(source), self._normalize(rendered))
+
+    def test_codegen_refuses_a_root_class(self):
+        from django.core.management.base import CommandError
+
+        from games.management.commands import gen_icons
+
+        snippet = '<svg xmlns="http://www.w3.org/2000/svg" class="rotate-90"/>'
+        with (
+            patch.object(
+                gen_icons, "iter_icon_sources", return_value=[("turned", snippet)]
+            ),
+            self.assertRaisesRegex(CommandError, "icons/turned.html"),
+        ):
+            gen_icons.render_icons_module()
+
+    def test_no_generated_root_carries_a_class(self):
+        from common.components.icons_generated import ICON_NODES
+
+        for name, node in ICON_NODES.items():
+            with self.subTest(icon=name):
+                self.assertNotIn("class", [key for key, _ in node.attributes])
 
 
 class EllipsisTriggerTest(SimpleTestCase):
@@ -1208,10 +1224,8 @@ class ControlButtonTest(SimpleTestCase):
         self.assertIn("focus:ring-2", html)
 
     def test_button_variants_share_one_sizing_scale(self):
-        # ALL button-shaped variants floor to the one control-height token; only
-        # the nav-link plain variant keeps its navbar layout. Height is now
-        # container-independent — no @md step, so a button is 42px in every row.
-        for variant in ("filled", "segmented", "outline"):
+        # Every variant floors to one control height.
+        for variant in ("filled", "segmented", "outline", "ghost"):
             with self.subTest(variant=variant):
                 html = str(components.ControlButton(variant=variant)["x"])
                 self.assertIn("min-h-control", html)
@@ -1219,15 +1233,13 @@ class ControlButtonTest(SimpleTestCase):
                 self.assertNotIn("@md:", html)  # height no longer container-stepped
                 self.assertNotIn("text-xs", html)
 
-    def test_plain_variant_is_the_navbar_nav_link_look(self):
-        html = str(components.ControlButton(variant="plain")["x"])
-        self.assertIn("md:hover:text-blue-700", html)
-        self.assertIn("justify-between", html)
-        # the nav-link layout survives untouched: no centering or inline-flex
-        # from the filled/segmented base, no color table
-        self.assertNotIn("justify-center", html)
-        self.assertNotIn("inline-flex", html)
-        self.assertNotIn("bg-brand", html)
+    def test_green_text_takes_the_on_success_token(self):
+        for variant in ("filled", "segmented"):
+            with self.subTest(variant=variant):
+                html = str(
+                    components.ControlButton(color="green", variant=variant)["x"]
+                )
+                self.assertIn("text-fg-on-success", html)
 
     def test_toggle_variants_ignore_color(self):
         default = str(components.ControlButton(variant="outline")["x"])
@@ -1256,12 +1268,6 @@ class ControlButtonTest(SimpleTestCase):
                 self.assertIn("text-start", html)
                 self.assertNotIn("justify-center", html)
                 self.assertNotIn("text-center", html)
-
-    def test_plain_variant_ignores_align(self):
-        # The navbar nav-link owns its own layout (justify-between).
-        html = str(components.ControlButton(variant="plain", align="start")["x"])
-        self.assertNotIn("justify-start", html)
-        self.assertIn("justify-between", html)
 
     def test_outline_variant_takes_a_shape(self):
         """The shape parameter is the route; the caller-class route is refused
@@ -1380,7 +1386,7 @@ class ControlButtonTest(SimpleTestCase):
         never omits the first. Nothing else in the suite would catch either."""
         from common.components.primitives import SHAPE_CLASSES, control_button_class
 
-        for variant in ("filled", "segmented", "outline", "ghost", "plain"):
+        for variant in ("filled", "segmented", "outline", "ghost"):
             for shape, expected in SHAPE_CLASSES.items():
                 with self.subTest(variant=variant, shape=shape):
                     emitted = {

@@ -167,8 +167,7 @@ _UNCOMMITTED_SEARCH_CLASS = (
     "[[data-uncommitted]:not(:focus-within)_&]:italic"
 )
 # The pencil glyph: hidden except when its container is uncommitted at rest.
-# Icon() drops the snippet's baked color classes, so text-body must ride here
-# (sizing stays Icon()'s default ICON_SIZE_CLASS).
+# Icons carry no colour, so text-body rides here.
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 #: Ends the row; box shows mouse focus.
 _BOX_BUTTON_CLASS = (
