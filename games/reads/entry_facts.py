@@ -3,6 +3,7 @@
 import uuid
 from dataclasses import dataclass
 
+from games.events.dispatch import RowUnreadable
 from games.events.libraryentry import (
     LIBRARYENTRY_ACCESS_CHANGED,
     LIBRARYENTRY_CREATED,
@@ -10,7 +11,8 @@ from games.events.libraryentry import (
     LIBRARYENTRY_NOTE_CHANGED,
     LIBRARYENTRY_RELEASE_CHANGED,
 )
-from games.models import EntryAccess, EntryFormat, UserLibrary
+from games.ids import ReleaseId
+from games.models import EntryAccess, EntryFormat, LibraryEvent, UserLibrary
 from games.reads.fact_change import Fact, FactChange, fact_change, payload_fact
 
 
@@ -26,14 +28,18 @@ def _note(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _release(value: object) -> uuid.UUID | None:
-    """A recorded Reference's key."""
-    if not isinstance(value, dict) or not isinstance(value.get("id"), str):
-        return None
-    try:
-        return uuid.UUID(value["id"])
-    except ValueError:
-        return None
+def _release(event: LibraryEvent) -> ReleaseId:
+    """The recorded Reference's key, or a defect."""
+    reference = event.payload.get("release")
+    if isinstance(reference, dict) and isinstance(reference.get("id"), str):
+        try:
+            return uuid.UUID(reference["id"])
+        except ValueError:
+            pass
+    raise RowUnreadable(
+        f"event {event.pk} ({event.event_type}) of library {event.library_id} "
+        f"states release {reference!r}"
+    )
 
 
 _ACCESS = Fact(
@@ -45,11 +51,7 @@ _FORMAT = Fact(
 _NOTE = Fact(
     LIBRARYENTRY_CREATED, LIBRARYENTRY_NOTE_CHANGED, payload_fact("note", _note)
 )
-_RELEASE = Fact(
-    LIBRARYENTRY_CREATED,
-    LIBRARYENTRY_RELEASE_CHANGED,
-    payload_fact("release", _release),
-)
+_RELEASE = Fact(LIBRARYENTRY_CREATED, LIBRARYENTRY_RELEASE_CHANGED, _release)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +61,7 @@ class EntryFactChanges:
     access: FactChange[EntryAccess] | None
     format: FactChange[EntryFormat] | None
     note: FactChange[str] | None
-    release: FactChange[uuid.UUID] | None
+    release: FactChange[ReleaseId] | None
 
     @property
     def changed_any(self) -> bool:

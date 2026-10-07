@@ -1,6 +1,7 @@
 """Copies edited and removed in bulk, and the Undo of each."""
 
 import json
+import logging
 import uuid
 
 import pytest
@@ -19,6 +20,7 @@ from games.bulk_entry_edit import (
     ENTRY_EDIT,
     ENTRY_REMOVED,
     NO_RELEASE_ON_PLATFORM,
+    NOT_EDITED_BY_THIS_BATCH,
     NOTHING_STATED,
     PLATFORM_REMOVED,
     SEVERAL_RELEASES_ON_PLATFORM,
@@ -27,6 +29,7 @@ from games.bulk_entry_edit import (
 )
 from games.bulk_parts import Control, EventRows, RowOutcome
 from games.bulk_removal import REMOVE_ENTRY
+from games.catalog_form import PLATFORM_GONE
 from games.events.dispatch import CommandRejected
 from games.models import (
     EntryAccess,
@@ -193,7 +196,9 @@ def test_settling_refuses_a_form_that_states_nothing(owned_library):
 def test_settling_states_a_cleared_note(owned_library):
     settled = _settle(owned_library, unset_note="1")
 
-    assert EntryEditStatement.decode(settled) == EntryEditStatement(None, None, "")
+    assert EntryEditStatement.decode(settled) == EntryEditStatement(
+        access=None, format=None, note="", platform=None
+    )
 
 
 @pytest.mark.parametrize(
@@ -373,9 +378,21 @@ def on_switch(graph, switch):
     return Release.objects.create(edition=graph.edition, platform=switch)
 
 
+def _platform_alone(platform_id) -> EntryEditStatement:
+    return EntryEditStatement(
+        access=None, format=None, note=None, platform=StatedPlatform(platform_id)
+    )
+
+
 def _release(entry) -> Release:
     entry.refresh_from_db()
     return entry.release
+
+
+def _move(owned_user, entry, release) -> None:
+    describe_entry(
+        owned_user, entry, release_id=release.pk, correlation_id=new_correlation_id()
+    )
 
 
 def test_the_platform_leads_the_control(owned_library, first):
@@ -392,9 +409,7 @@ def test_the_platform_leads_the_control(owned_library, first):
 def test_the_platform_keeps_mixed_across_platforms(
     owned_library, first, second, on_switch, owned_user
 ):
-    describe_entry(
-        owned_user, second, release_id=on_switch.pk, correlation_id=new_correlation_id()
-    )
+    _move(owned_user, second, on_switch)
     rows = ENTRY_EDIT.resolve(owned_library, [first.pk, second.pk]).rows
 
     markup = str(ENTRY_EDIT.choice.offer(owned_library, rows, CHOICE_FIELD).node)
@@ -405,9 +420,7 @@ def test_the_platform_keeps_mixed_across_platforms(
 def test_settling_states_a_platform_alone(owned_library, switch):
     settled = _settle(owned_library, platform=str(switch.pk))
 
-    assert EntryEditStatement.decode(settled) == EntryEditStatement(
-        None, None, None, StatedPlatform(switch.pk)
-    )
+    assert EntryEditStatement.decode(settled) == _platform_alone(switch.pk)
 
 
 def test_settling_states_unspecified(owned_library):
@@ -468,7 +481,17 @@ def test_a_game_with_no_release_there_is_refused(
     batch = newest_batch(owned_library)
     assert (batch.done, batch.unchanged, batch.refused) == (0, 1, 1)
     assert batch.reasons == [NO_RELEASE_ON_PLATFORM]
-    assert _release(first) == first.release
+
+
+def test_two_refused_copies_give_one_reason(
+    logged_in, owned_library, first, second, switch
+):
+    _edit(logged_in, first, second, platform=str(switch.pk))
+
+    batch = newest_batch(owned_library)
+    assert batch.refused == 2
+    assert batch.reasons == [NO_RELEASE_ON_PLATFORM]
+    assert _release(first) == _release(second)
 
 
 def test_two_releases_there_are_refused(logged_in, owned_library, first, graph, switch):
@@ -478,6 +501,7 @@ def test_two_releases_there_are_refused(logged_in, owned_library, first, graph, 
     _edit(logged_in, first, platform=str(switch.pk))
 
     assert newest_batch(owned_library).reasons == [SEVERAL_RELEASES_ON_PLATFORM]
+    assert _release(first) == graph.release
 
 
 def test_a_platform_removed_after_the_press_is_refused(
@@ -489,35 +513,34 @@ def test_a_platform_removed_after_the_press_is_refused(
         ENTRY_EDIT.run(
             owned_user,
             first,
-            choice=EntryEditStatement(
-                None, None, None, StatedPlatform(switch.pk)
-            ).encode(),
+            choice=_platform_alone(switch.pk).encode(),
             idempotency_key=str(uuid.uuid7()),
             correlation_id=uuid.uuid7(),
         )
 
 
 def test_a_row_run_again_under_its_key_is_done(owned_user, first, on_switch):
-    choice = EntryEditStatement(
-        None, None, None, StatedPlatform(on_switch.platform_id)
-    ).encode()
+    run = _runs_under_one_key(owned_user, first, on_switch.platform_id)
+
+    assert run() is RowOutcome.MOVED
+    assert run() is RowOutcome.MOVED
+
+
+def _runs_under_one_key(owned_user, entry, platform_id):
+    """Each call runs the freshly resolved row."""
+    choice = _platform_alone(platform_id).encode()
     key, batch = str(uuid.uuid7()), uuid.uuid7()
 
-    def run():
+    def run() -> RowOutcome:
         return ENTRY_EDIT.run(
             owned_user,
-            _fresh(first),
+            ENTRY_EDIT.resolve(entry.library, [entry.pk]).rows[0],
             choice=choice,
             idempotency_key=key,
             correlation_id=batch,
         )
 
-    assert run() is RowOutcome.MOVED
-    assert run() is RowOutcome.MOVED
-
-
-def _fresh(entry):
-    return ENTRY_EDIT.resolve(entry.library, [entry.pk]).rows[0]
+    return run
 
 
 def test_undo_puts_the_earlier_release_back(logged_in, first, graph, on_switch):
@@ -537,3 +560,103 @@ def test_an_undo_refuses_a_release_removed_since(
     with pytest.raises(CommandFailed):
         _edit_back(owned_user, first, token)
     assert _release(first) == on_switch
+
+
+def test_a_platform_removed_between_runs_keeps_the_moved_row_done(
+    owned_user, first, on_switch, switch
+):
+    run = _runs_under_one_key(owned_user, first, switch.pk)
+
+    assert run() is RowOutcome.MOVED
+    remove(switch)
+    assert run() is RowOutcome.MOVED
+
+
+def test_edit_moves_a_copy_to_unspecified(logged_in, first, graph):
+    unspecified = Release.objects.create(edition=graph.edition, platform=None)
+
+    _edit(logged_in, first, unset_platform="1")
+
+    assert _release(first) == unspecified
+
+
+def test_a_copy_already_unspecified_counts_unchanged(
+    logged_in, owned_user, owned_library, first, graph
+):
+    unspecified = Release.objects.create(edition=graph.edition, platform=None)
+    _move(owned_user, first, unspecified)
+
+    _edit(logged_in, first, unset_platform="1")
+
+    batch = newest_batch(owned_library)
+    assert (batch.done, batch.unchanged) == (0, 1)
+
+
+def test_the_placeholder_keeps_unspecified(owned_user, owned_library, first, graph):
+    unspecified = Release.objects.create(edition=graph.edition, platform=None)
+    _move(owned_user, first, unspecified)
+    rows = ENTRY_EDIT.resolve(owned_library, [first.pk]).rows
+
+    markup = str(ENTRY_EDIT.choice.offer(owned_library, rows, CHOICE_FIELD).node)
+
+    assert "Keep: Unspecified" in markup
+
+
+def test_an_undo_of_a_row_left_on_its_platform_is_not_this_batchs(
+    logged_in, owned_user, first, graph
+):
+    token = _edit(logged_in, first, platform=str(graph.release.platform_id))
+
+    with pytest.raises(CommandFailed, match=NOT_EDITED_BY_THIS_BATCH):
+        _edit_back(owned_user, first, token)
+
+
+def test_an_undo_overwrites_a_later_move(
+    logged_in, owned_user, first, graph, on_switch, capture_games_logger
+):
+    token = _edit(logged_in, first, platform=str(on_switch.platform_id))
+    later = Release.objects.create(edition=graph.edition, platform=None)
+    _move(owned_user, first, later)
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        _undo(logged_in, token)
+
+    assert _release(first) == graph.release
+    assert any(
+        f"states release {graph.release.pk} over {later.pk}" in record.getMessage()
+        for record in captured.records
+    )
+
+
+def test_settling_refuses_another_librarys_platform(owned_library, django_user_model):
+    stranger = django_user_model.objects.create_user("stranger").library
+    theirs = Platform.objects.create(name="Theirs", group="X", library=stranger)
+
+    with pytest.raises(CommandRejected) as refused:
+        _settle(owned_library, platform=str(theirs.pk))
+
+    assert PLATFORM_GONE in (refused.value.sentence or "")
+
+
+def test_settling_refuses_a_removed_platform(owned_library, switch):
+    remove(switch)
+
+    with pytest.raises(CommandRejected) as refused:
+        _settle(owned_library, platform=str(switch.pk))
+
+    assert PLATFORM_GONE in (refused.value.sentence or "")
+
+
+def test_a_carried_statement_refuses_a_platform_not_offered(
+    owned_library, django_user_model
+):
+    stranger = django_user_model.objects.create_user("stranger").library
+    theirs = Platform.objects.create(name="Theirs", group="X", library=stranger)
+    post = QueryDict(mutable=True)
+    post[CHOICE_FIELD] = _platform_alone(theirs.pk).encode()
+
+    with pytest.raises(CommandRejected) as refused:
+        EDIT_CHOICE.settle(owned_library, post)
+
+    assert refused.value.sentence == PLATFORM_GONE

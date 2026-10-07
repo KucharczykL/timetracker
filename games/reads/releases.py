@@ -12,7 +12,7 @@ from games.models import (
     Edition,
     EditionKind,
     Game,
-    LibraryEntry,
+    Platform,
     Release,
     UserLibrary,
     game_display_order_through,
@@ -62,39 +62,50 @@ def held_game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
 
 @dataclass(frozen=True, slots=True)
 class OnPlatform:
-    """The one Release a copy moves to."""
+    """The one Release a copy names there."""
 
     release: Release
 
 
 @dataclass(frozen=True, slots=True)
+class PlatformRemoved:
+    """The stated platform has a removal mark."""
+
+
+@dataclass(frozen=True, slots=True)
 class NoRelease:
-    """The game has none on that platform."""
+    """No live same-kind Release there."""
 
 
 @dataclass(frozen=True, slots=True)
 class SeveralReleases:
-    """The game has several; none is picked."""
+    """Several candidates; none is picked."""
 
 
-type PlatformRelease = OnPlatform | NoRelease | SeveralReleases
+type CopyRelease = OnPlatform | PlatformRemoved | NoRelease | SeveralReleases
 
 
-def release_on_platform(
-    library: UserLibrary, entry: LibraryEntry, platform_id: PlatformId | None
-) -> PlatformRelease:
-    """Own Edition first, then same-kind Editions."""
-    held = entry.release
+def copy_release_on(
+    library: UserLibrary, game: Game, held: Release, platform_id: PlatformId | None
+) -> CopyRelease:
+    """Held Release, own Edition, then same kind."""
     if held.platform_id == platform_id:
         return OnPlatform(held)
-    on_platform = (
-        Q(platform__isnull=True)
-        if platform_id is None
-        else Q(platform_id=platform_id, platform__removed_at__isnull=True)
-    )
+    if (
+        platform_id is not None
+        and Platform.objects.filter(
+            Q(library__isnull=True) | Q(library=library),
+            pk=platform_id,
+            removed_at__isnull=False,
+        ).exists()
+    ):
+        return PlatformRemoved()
     candidates = list(
-        game_releases(library, entry.player_game.game).filter(
-            on_platform, edition__kind=held.edition.kind
+        game_releases(library, game).filter(
+            Q(platform__isnull=True)
+            if platform_id is None
+            else Q(platform_id=platform_id),
+            edition__kind=held.edition.kind,
         )
     )
     own = [release for release in candidates if release.edition_id == held.edition_id]

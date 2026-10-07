@@ -56,7 +56,7 @@ from games.forms import (
     UnsetWidget,
     platform_options,
 )
-from games.ids import PlatformId
+from games.ids import PlatformId, ReleaseId
 from games.models import (
     EntryAccess,
     EntryFormat,
@@ -69,9 +69,10 @@ from games.reads.releases import (
     UNSPECIFIED_PLATFORM,
     NoRelease,
     OnPlatform,
+    PlatformRemoved,
     SeveralReleases,
+    copy_release_on,
     platform_words,
-    release_on_platform,
 )
 from games.writes.answers import answered
 from games.writes.libraryentry import SUBJECT, describe_entry
@@ -83,7 +84,7 @@ class EntryEditJson(TypedDict, total=False):
     access: str
     format: str
     note: str
-    #: Null is Unspecified.
+    #: Absent keeps; null is Unspecified.
     platform: str | None
 
 
@@ -95,7 +96,7 @@ NOT_EDITED_BY_THIS_BATCH = (
 )
 ENTRY_REMOVED = "That copy is removed. Restore it first."
 PLATFORM_REMOVED = "That platform is removed."
-NO_RELEASE_ON_PLATFORM = "A copy's game has no release on that platform."
+NO_RELEASE_ON_PLATFORM = "A copy's game has no release of that kind on that platform."
 SEVERAL_RELEASES_ON_PLATFORM = (
     "A copy's game has several releases on that platform. "
     "Choose one on the copy's own edit form."
@@ -107,19 +108,19 @@ _KEPT_NOTE_LENGTH = 40
 
 @dataclass(frozen=True, slots=True)
 class StatedPlatform:
-    """A platform, or None: Unspecified."""
+    """A platform or Unspecified; statement only."""
 
     platform_id: PlatformId | None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class EntryEditStatement:
     """What one batch states; None leaves alone."""
 
     access: EntryAccess | None
     format: EntryFormat | None
     note: str | None
-    platform: StatedPlatform | None = None
+    platform: StatedPlatform | None
 
     def __post_init__(self) -> None:
         if (
@@ -161,10 +162,10 @@ class EntryEditStatement:
         )
         try:
             return cls(
-                None if access is None else EntryAccess(access),
-                None if format is None else EntryFormat(format),
-                note,
-                platform,
+                access=None if access is None else EntryAccess(access),
+                format=None if format is None else EntryFormat(format),
+                note=note,
+                platform=platform,
             )
         except ValueError as empty:
             raise statement_unreadable(f"{raw!r} states nothing") from empty
@@ -173,24 +174,30 @@ class EntryEditStatement:
 def _stated_platform(raw: ChoiceValue, value: object) -> StatedPlatform:
     if value is None:
         return StatedPlatform(None)
+    unreadable = f"{raw!r} states a platform that is no key"
     if not isinstance(value, str):
-        raise statement_unreadable(f"{raw!r} states a platform that is no key")
+        raise statement_unreadable(unreadable)
     try:
         return StatedPlatform(uuid.UUID(value))
-    except ValueError as unreadable:
-        raise statement_unreadable(
-            f"{raw!r} states a platform that is no key"
-        ) from unreadable
+    except ValueError as malformed:
+        raise statement_unreadable(unreadable) from malformed
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class EntryFacts:
     """What one dispatch states; None leaves alone."""
 
     access: EntryAccess | None
     format: EntryFormat | None
     note: str | None
-    release_id: uuid.UUID | None
+    release_id: ReleaseId | None
+
+    @property
+    def states_nothing(self) -> bool:
+        return all(
+            fact is None
+            for fact in (self.access, self.format, self.note, self.release_id)
+        )
 
 
 # ── The question ─────────────────────────────────────────────────────────────
@@ -283,10 +290,10 @@ class BulkEntryEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         note: str | Keep = self.cleaned_data["note"]
         platform: Platform | None | Keep = self.cleaned_data["platform"]
         return EntryEditStatement(
-            self.cleaned_data["access"],
-            self.cleaned_data["format"],
-            None if note is KEEP else normalised_note(note),
-            None
+            access=self.cleaned_data["access"],
+            format=self.cleaned_data["format"],
+            note=None if note is KEEP else normalised_note(note),
+            platform=None
             if platform is KEEP
             else StatedPlatform(None if platform is None else platform.pk),
         )
@@ -311,11 +318,26 @@ def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
 
     carried = post.get(CHOICE_FIELD, "")
     if carried:
-        return EntryEditStatement.decode(carried).encode()
+        statement = EntryEditStatement.decode(carried)
+        _refuse_a_platform_not_offered(library, statement.platform)
+        return statement.encode()
     form = BulkEntryEditForm(post, library=library, prefix=CHOICE_FIELD)
     if not form.is_valid():
         raise form_refusal(form, labelled=True)
     return form.statement().encode()
+
+
+def _refuse_a_platform_not_offered(
+    library: UserLibrary, stated: StatedPlatform | None
+) -> None:
+    """The form's own check, for a carried statement."""
+    if stated is None or stated.platform_id is None:
+        return
+    if not Platform.objects.visible_to(library).filter(pk=stated.platform_id).exists():
+        raise CommandRejected(
+            f"platform {stated.platform_id} is not offered to library {library.pk}",
+            sentence=PLATFORM_GONE,
+        )
 
 
 EDIT_CHOICE: BulkChoice[LibraryEntry] = BulkChoice(offer=offer_edit, settle=settle_edit)
@@ -354,7 +376,7 @@ def _state(
 
 def _release_id(
     library: UserLibrary, entry: LibraryEntry, stated: StatedPlatform
-) -> uuid.UUID:
+) -> ReleaseId:
     """The copy's Release there, else a refusal.
 
     A copy already there states its own Release, so a re-run
@@ -364,16 +386,13 @@ def _release_id(
         f"LibraryEntry {entry.pk} of library {library.pk}, "
         f"game {entry.player_game.game_id}, platform {stated.platform_id}"
     )
-    if (
-        stated.platform_id is not None
-        and Platform.objects.filter(
-            pk=stated.platform_id, removed_at__isnull=False
-        ).exists()
+    match copy_release_on(
+        library, entry.player_game.game, entry.release, stated.platform_id
     ):
-        raise CommandRejected(f"{described}: removed", sentence=PLATFORM_REMOVED)
-    match release_on_platform(library, entry, stated.platform_id):
         case OnPlatform(release):
             return release.pk
+        case PlatformRemoved():
+            raise CommandRejected(f"{described}: removed", sentence=PLATFORM_REMOVED)
         case NoRelease():
             raise CommandRejected(
                 f"{described}: no Release", sentence=NO_RELEASE_ON_PLATFORM
@@ -408,7 +427,12 @@ def edit_one(
     return _state(
         actor,
         entry,
-        EntryFacts(statement.access, statement.format, statement.note, release_id),
+        EntryFacts(
+            access=statement.access,
+            format=statement.format,
+            note=statement.note,
+            release_id=release_id,
+        ),
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,
     )
@@ -437,12 +461,12 @@ def edit_back(
         held_access = EntryAccess(entry.access)
         held_format = EntryFormat(entry.format)
         restatement = EntryFacts(
-            restated(changes.access, held_access),
-            restated(changes.format, held_format),
-            restated(changes.note, entry.note),
-            restated(changes.release, entry.release_id),
+            access=restated(changes.access, held_access),
+            format=restated(changes.format, held_format),
+            note=restated(changes.note, entry.note),
+            release_id=restated(changes.release, entry.release_id),
         )
-        if restatement == EntryFacts(None, None, None, None):
+        if restatement.states_nothing:
             #: Every changed fact is back already.
             return RowOutcome.UNCHANGED
         if entry.removed_at is not None:

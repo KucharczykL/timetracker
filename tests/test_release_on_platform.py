@@ -1,4 +1,4 @@
-"""Which Release a copy moves to on a platform."""
+"""Which Release a copy takes on a platform."""
 
 import pytest
 from entries import record_entry
@@ -7,8 +7,9 @@ from games.models import Edition, EditionKind, Game, Platform, Release
 from games.reads.releases import (
     NoRelease,
     OnPlatform,
+    PlatformRemoved,
     SeveralReleases,
-    release_on_platform,
+    copy_release_on,
 )
 from games.removal import remove
 
@@ -38,8 +39,11 @@ def copy(owned_library, graph):
 
 
 def _answer(owned_library, copy, platform):
-    return release_on_platform(
-        owned_library, copy, None if platform is None else platform.pk
+    return copy_release_on(
+        owned_library,
+        copy.player_game.game,
+        copy.release,
+        None if platform is None else platform.pk,
     )
 
 
@@ -104,9 +108,36 @@ def test_a_removed_release_is_not_a_candidate(owned_library, copy, graph, switch
     assert _answer(owned_library, copy, switch) == NoRelease()
 
 
-def test_a_removed_platform_has_no_candidate(owned_library, copy, graph, switch):
+def test_a_removed_platform_answers_removed(owned_library, copy, graph, switch):
     Release.objects.create(edition=graph.edition, platform=switch)
     remove(switch)
+
+    assert _answer(owned_library, copy, switch) == PlatformRemoved()
+
+
+def test_a_copy_on_a_removed_platform_keeps_its_release(
+    owned_library, copy, graph, ps5
+):
+    remove(ps5)
+
+    assert _answer(owned_library, copy, ps5) == OnPlatform(graph.release)
+
+
+def test_a_prerelease_copy_takes_the_prerelease_release(owned_library, graph, switch):
+    demo = Edition.objects.create(game=graph.game, kind=EditionKind.PRERELEASE)
+    demo_ps5 = Release.objects.create(edition=demo, platform=graph.release.platform)
+    Release.objects.create(edition=graph.edition, platform=switch)
+    demo_switch = Release.objects.create(edition=demo, platform=switch)
+    copy = record_entry(owned_library, demo_ps5)
+
+    assert _answer(owned_library, copy, switch) == OnPlatform(demo_switch)
+
+
+def test_a_prerelease_copy_ignores_a_full_release(owned_library, graph, switch):
+    demo = Edition.objects.create(game=graph.game, kind=EditionKind.PRERELEASE)
+    demo_ps5 = Release.objects.create(edition=demo, platform=graph.release.platform)
+    Release.objects.create(edition=graph.edition, platform=switch)
+    copy = record_entry(owned_library, demo_ps5)
 
     assert _answer(owned_library, copy, switch) == NoRelease()
 

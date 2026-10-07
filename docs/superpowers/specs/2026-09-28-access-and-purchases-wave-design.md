@@ -1015,7 +1015,8 @@ inside a member says so in its body and closes with it.
   row states the row's held value where nothing moves: the runner
   re-runs a row under its key, and a statement that differs from the
   first run's answers `IdempotencyKeyMismatch`. A per-row refusal
-  sentence names no row, because the toast prints each distinct one.
+  sentence names no row, because the batch keeps each distinct
+  sentence once and the toast prints them all.
 - **#1344** swaps the device's `endpoint_events(...)` for
   `resumable_endpoint_events(..., resumed="library.device.access_resumed")`
   and `Endpoint.over` for `ResumableEndpoint.resuming`, no primitive work;
