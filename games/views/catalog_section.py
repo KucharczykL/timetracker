@@ -25,6 +25,7 @@ from common.components import (
     ControlButton,
     Div,
     FieldErrors,
+    FixedBox,
     Fragment,
     Icon,
     Input,
@@ -36,6 +37,7 @@ from common.components import (
 )
 from common.components.primitives import bound_control, field_label_id
 from games.catalog_form import (
+    CHOSEN_MARK_FIELD,
     EDITION_COUNT_FIELD,
     EDITION_PLACEHOLDER,
     MARK_FIELD,
@@ -134,6 +136,14 @@ _EDITION_NAME: Final = _Name("{}", "name", "Unnamed edition")
 _EDITION_BIN_NAME: Final = _Name(
     "Remove the {} edition", "name", "Remove the unnamed edition"
 )
+_RELEASE_GOING_NAME: Final = _Name("{} release will be removed", "platform")
+_RELEASE_UNDO_NAME: Final = _Name("Undo removing the {} release", "platform")
+_EDITION_GOING_NAME: Final = _Name(
+    "{} edition will be removed", "name", "Unnamed edition will be removed"
+)
+_EDITION_UNDO_NAME: Final = _Name(
+    "Undo removing the {} edition", "name", "Undo removing the unnamed edition"
+)
 
 
 def _row_hooks(
@@ -150,6 +160,28 @@ def _row_hooks(
     if removal_stated(form) and not form.errors:
         return hooks + _OUT_OF_SIGHT
     return hooks
+
+
+def _binned_stub(form: BaseForm, value: str, going: _Name, undo: _Name) -> Node:
+    """A binned row's line and its Undo.
+
+    A sibling: the row hides whole, and would hide it. Shown while
+    the row states removal, in sight or not.
+    """
+    undo_name = undo.text(value)
+    return Div([] if removal_stated(form) else _OUT_OF_SIGHT, data_catalog_binned="")[
+        FixedBox("delete")[
+            Span(going.hooks())[going.text(value)],
+            ControlButton(
+                undo.hooks(),
+                variant="ghost",
+                type="button",
+                class_="ms-auto",
+                aria_label=undo_name,
+                data_catalog_restore="",
+            )["Undo"],
+        ]
+    ]
 
 
 def _hidden_errors(form: BaseForm) -> list[Node]:
@@ -234,6 +266,28 @@ def _edition_name(block: EditionBlock) -> str:
     return str(block.form["name"].value() or "").strip()
 
 
+def _release_row(
+    row: ReleaseRowForm,
+    *,
+    index: RowIndex,
+    value: str,
+    chosen: bool,
+    platforms: PlatformNames,
+) -> Node:
+    """The card, then its binned line."""
+    return Fragment(
+        _release_card(
+            row, index=index, value=value, chosen=chosen, platforms=platforms
+        ),
+        _binned_stub(
+            row,
+            _platform_name(row, platforms),
+            _RELEASE_GOING_NAME,
+            _RELEASE_UNDO_NAME,
+        ),
+    )
+
+
 def _release_card(
     row: ReleaseRowForm,
     *,
@@ -297,7 +351,7 @@ def _edition_block(
     platforms: PlatformNames,
 ) -> Node:
     rows = [
-        _release_card(
+        _release_row(
             row,
             index=row_index,
             value=release_prefix(index, row_index),
@@ -326,6 +380,24 @@ def _edition_block(
     ]
 
 
+def _edition_row(
+    block: EditionBlock,
+    index: RowIndex,
+    mark: str,
+    platforms: PlatformNames,
+) -> Node:
+    """The block, then its binned line."""
+    return Fragment(
+        _edition_block(block, index, mark, platforms),
+        _binned_stub(
+            block.form,
+            _edition_name(block),
+            _EDITION_GOING_NAME,
+            _EDITION_UNDO_NAME,
+        ),
+    )
+
+
 def _templates(graph: CatalogGraphForm, platforms: PlatformNames) -> Node:
     """The two blank rows the browser numbers and appends.
 
@@ -335,7 +407,7 @@ def _templates(graph: CatalogGraphForm, platforms: PlatformNames) -> Node:
     """
     return Fragment(
         Template(data_catalog_template="release")[
-            _release_card(
+            _release_row(
                 graph.blank_row(),
                 index=RELEASE_PLACEHOLDER,
                 value=release_prefix(EDITION_PLACEHOLDER, RELEASE_PLACEHOLDER),
@@ -344,7 +416,7 @@ def _templates(graph: CatalogGraphForm, platforms: PlatformNames) -> Node:
             )
         ],
         Template(data_catalog_template="edition")[
-            _edition_block(
+            _edition_row(
                 graph.blank_block(), EDITION_PLACEHOLDER, mark="", platforms=platforms
             )
         ],
@@ -363,8 +435,9 @@ def editions_area(graph: CatalogGraphForm) -> Node:
             Span(class_="text-type-subheading text-heading")["Editions"],
             *errors,
             _count_input(EDITION_COUNT_FIELD, len(graph.blocks)),
+            Input(type="hidden", name=CHOSEN_MARK_FIELD, value=graph.chosen_mark),
             *(
-                _edition_block(block, index, graph.mark, platforms)
+                _edition_row(block, index, graph.mark, platforms)
                 for index, block in enumerate(graph.blocks)
             ),
             Div()[_add_button("edition", "Add edition")],

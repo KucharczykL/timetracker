@@ -58,6 +58,8 @@ RELEASE_PLACEHOLDER: Final[str] = "__release__"
 
 #: One radio group over the whole Game; its value is a release prefix.
 MARK_FIELD: Final[str] = "in_library"
+#: The person's pick; falls never move it.
+CHOSEN_MARK_FIELD: Final[str] = "catalog-chosen-mark"
 
 #: Unprefixed name, thus unique on the page.
 ORIGINAL_RELEASE_SOURCE: Final[TemporalCopySource] = TemporalCopySource(
@@ -340,6 +342,10 @@ class CatalogGraphForm:
         else:
             self.blocks = self._blocks_from_post(data)
             self.mark = data.get(MARK_FIELD, "")
+        #: Echoed to the browser; writes ignore it.
+        self.chosen_mark: str = (
+            self.mark if data is None else data.get(CHOSEN_MARK_FIELD, self.mark)
+        )
 
     def _read_storage(self) -> None:
         """The stored graph, and the two maps a posted id is read through."""
@@ -606,11 +612,7 @@ class CatalogGraphForm:
                 valid = False
         valid = self._validate_names(surviving) and valid
         valid = self._validate_releases(surviving) and valid
-        #: Binning the marked row states a removal, not a mistake. The
-        #: mark falls to a row that stays, which is what the browser
-        #: does as the person watches; the same rule here states it for
-        #: a post the browser never touched. A statement that keeps no
-        #: row at all is already refused above.
+        #: The mark falls off a going row.
         if self.marked() is None:
             self.mark = self._first_surviving()
         return valid

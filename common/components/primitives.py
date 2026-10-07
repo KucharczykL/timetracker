@@ -2097,15 +2097,56 @@ def _fact_carrier(field) -> Node:
     )
 
 
+#: A fact's ``dd``, or a row.
+type FixedBoxTag = Literal["div", "dd"]
+
+
+class FixedBox(BaseComponent):
+    """Dashed field box: icon, then children."""
+
+    def __init__(
+        self,
+        icon: str,
+        *,
+        tag: FixedBoxTag = "div",
+        attributes: Attributes | None = None,
+        _children: Children = None,
+    ) -> None:
+        self.icon = icon
+        self.tag = tag
+        self.attributes = attributes
+        self._children = as_children(_children)
+
+    def __getitem__(self, children: Children) -> FixedBox:
+        return FixedBox(
+            self.icon, tag=self.tag, attributes=self.attributes, _children=children
+        )
+
+    def render(self) -> Node:
+        return Element(
+            self.tag,
+            [
+                ("class", field_box_class("full", look="fixed")),
+                *as_attributes(self.attributes),
+            ],
+            [
+                Icon(
+                    self.icon,
+                    [("class", "mr-1 text-body")],
+                    "size-4",
+                    decorative=True,
+                ),
+                *self._children,
+            ],
+        )
+
+
 def _stated_row(field, statement: Statement) -> Node:
     """A stated fact, in its field's place."""
     children: list[Node] = [
         Dl()[
             Dt(class_=FORM_LABEL_CLASS)[str(field.label)],
-            Dd(class_=field_box_class("full", look="fixed"))[
-                Icon("lock", [("class", "mr-1 text-body")], "size-4", decorative=True),
-                statement,
-            ],
+            FixedBox("lock", tag="dd")[statement],
         ],
         _fact_carrier(field),
     ]

@@ -49,6 +49,7 @@ describe("renumbered", () => {
 const PAGE = `
 <catalog-editor>
   <input type="hidden" name="editions-count" value="1">
+  <input type="hidden" name="catalog-chosen-mark" value="edition-0-release-0">
   <fieldset data-catalog-edition="0">
     <input type="hidden" name="edition-0-removed">
     <input type="hidden" name="edition-0-releases-count" value="1">
@@ -58,8 +59,10 @@ const PAGE = `
       <input type="hidden" name="edition-0-release-0-removed">
       <button type="button" data-catalog-remove></button>
     </div>
+    <div data-catalog-binned hidden style="display:none"><button type="button" data-catalog-restore>Undo</button></div>
     <button type="button" data-catalog-add="release">Add release</button>
   </fieldset>
+  <div data-catalog-binned hidden style="display:none"><button type="button" data-catalog-restore>Undo</button></div>
   <button type="button" data-catalog-add="edition">Add edition</button>
   <template data-catalog-template="release">
     <div data-catalog-release="__release__">
@@ -70,6 +73,7 @@ const PAGE = `
         <input data-search-select-search id="id_edition-__edition__-release-__release__-platform">
       </search-select>
     </div>
+    <div data-catalog-binned hidden style="display:none"><button type="button" data-catalog-restore>Undo</button></div>
   </template>
   <template data-catalog-template="edition">
     <fieldset data-catalog-edition="__edition__">
@@ -78,8 +82,12 @@ const PAGE = `
       <input name="edition-__edition__-name">
       <div data-catalog-release="0">
         <input type="radio" data-choice-card name="in_library" value="edition-__edition__-release-0">
+        <input type="hidden" name="edition-__edition__-release-0-removed">
+        <button type="button" data-catalog-remove></button>
       </div>
+      <div data-catalog-binned hidden style="display:none"><button type="button" data-catalog-restore>Undo</button></div>
     </fieldset>
+    <div data-catalog-binned hidden style="display:none"><button type="button" data-catalog-restore>Undo</button></div>
   </template>
 </catalog-editor>`;
 
@@ -193,6 +201,9 @@ it("moves the mark off a row the server drew out of sight", () => {
     '<div data-catalog-release="0">',
     '<div data-catalog-release="0" hidden style="display:none">',
   ).replace(
+    '<input type="hidden" name="edition-0-release-0-removed">',
+    '<input type="hidden" name="edition-0-release-0-removed" value="on">',
+  ).replace(
     '<button type="button" data-catalog-add="release">Add release</button>',
     '<div data-catalog-release="1">' +
       '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1">' +
@@ -207,6 +218,163 @@ it("leaves the mark alone when the row it sits on stays", () => {
   click('[data-catalog-release="1"] [data-catalog-remove]');
 
   expect(marked()).toBe("edition-0-release-0");
+});
+
+describe("undo", () => {
+  const releaseBin = '[data-catalog-release="0"] [data-catalog-remove]';
+
+  function stubAfter(selector: string): HTMLElement {
+    return document.querySelector(selector)!.nextElementSibling as HTMLElement;
+  }
+
+  function undo(selector: string): void {
+    stubAfter(selector).querySelector<HTMLElement>("[data-catalog-restore]")!.click();
+  }
+
+  function pick(markValue: string): void {
+    const mark = document.querySelector<HTMLInputElement>(
+      `input[data-choice-card][value="${markValue}"]`,
+    )!;
+    mark.checked = true;
+    mark.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  it("shows the line a binned row leaves and focuses its undo", () => {
+    click(releaseBin);
+
+    const stub = stubAfter('[data-catalog-release="0"]');
+    expect(stub.hidden).toBe(false);
+    expect(stub.style.display).toBe("");
+    expect(document.activeElement).toBe(stub.querySelector("[data-catalog-restore]"));
+  });
+
+  it("posts an undone row as if it was never binned", () => {
+    click(releaseBin);
+    undo('[data-catalog-release="0"]');
+
+    const row = document.querySelector<HTMLElement>('[data-catalog-release="0"]')!;
+    expect(value("edition-0-release-0-removed")).toBe("");
+    expect(row.hidden).toBe(false);
+    expect(row.style.display).toBe("");
+    expect(stubAfter('[data-catalog-release="0"]').hidden).toBe(true);
+    expect(document.activeElement).toBe(row.querySelector("[data-catalog-remove]"));
+  });
+
+  it("gives the mark back to the row that held it", () => {
+    click('[data-catalog-add="release"]');
+    click(releaseBin);
+    expect(marked()).toBe("edition-0-release-1");
+
+    undo('[data-catalog-release="0"]');
+
+    expect(marked()).toBe("edition-0-release-0");
+  });
+
+  it("ends on the never-binned mark in any order of undo", () => {
+    click('[data-catalog-add="release"]');
+    click('[data-catalog-add="release"]');
+    click(releaseBin);
+    click('[data-catalog-release="1"] [data-catalog-remove]');
+    expect(marked()).toBe("edition-0-release-2");
+
+    undo('[data-catalog-release="0"]');
+    undo('[data-catalog-release="1"]');
+
+    expect(marked()).toBe("edition-0-release-0");
+  });
+
+  it("keeps a mark the person picked after the bin", () => {
+    click('[data-catalog-add="release"]');
+    click('[data-catalog-add="release"]');
+    click(releaseBin);
+    pick("edition-0-release-2");
+
+    undo('[data-catalog-release="0"]');
+
+    expect(marked()).toBe("edition-0-release-2");
+    expect(value("catalog-chosen-mark")).toBe("edition-0-release-2");
+  });
+
+  it("leaves a release binned on its own when its edition comes back", () => {
+    click('[data-catalog-add="edition"]');
+    click(releaseBin);
+    click("fieldset > [data-catalog-remove]");
+    expect(marked()).toBe("edition-1-release-0");
+
+    undo('[data-catalog-edition="0"]');
+
+    expect(value("edition-0-removed")).toBe("");
+    expect(value("edition-0-release-0-removed")).toBe("on");
+    expect(marked()).toBe("edition-1-release-0");
+  });
+
+  it("gives the mark back to an edition's release when the edition comes back", () => {
+    click('[data-catalog-add="edition"]');
+    click("fieldset > [data-catalog-remove]");
+
+    undo('[data-catalog-edition="0"]');
+
+    expect(marked()).toBe("edition-0-release-0");
+  });
+
+  it("appends after the line a binned last row leaves", () => {
+    click(releaseBin);
+    click('[data-catalog-add="release"]');
+
+    const added = document.querySelector('[data-catalog-release="1"]')!;
+    expect(added.previousElementSibling).toBe(stubAfter('[data-catalog-release="0"]'));
+    expect(stubAfter('[data-catalog-release="1"]').matches("[data-catalog-binned]")).toBe(true);
+  });
+
+  it("appends an edition after the line a binned edition leaves", () => {
+    click('[data-catalog-add="edition"]');
+
+    const added = document.querySelector('[data-catalog-edition="1"]')!;
+    expect(added.previousElementSibling).toBe(stubAfter('[data-catalog-edition="0"]'));
+  });
+
+  it("gives a chosen mark back across a refused page", () => {
+    // Server echoes the pick; posted mark fell.
+    document.body.innerHTML = PAGE.replace(
+      '<div data-catalog-release="0">',
+      '<div data-catalog-release="0" hidden style="display:none">',
+    )
+      .replace(
+        '<input type="hidden" name="edition-0-release-0-removed">',
+        '<input type="hidden" name="edition-0-release-0-removed" value="on">',
+      )
+      .replace(
+        'value="edition-0-release-0" checked>',
+        'value="edition-0-release-0">',
+      )
+      .replace(
+        '<button type="button" data-catalog-add="release">Add release</button>',
+        '<div data-catalog-release="1">' +
+          '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1" checked>' +
+          "</div>",
+      );
+    expect(marked()).toBe("edition-0-release-1");
+
+    undo('[data-catalog-release="0"]');
+
+    expect(marked()).toBe("edition-0-release-0");
+  });
+
+  it("keeps the mark off a going row the server left in sight", () => {
+    document.body.innerHTML = PAGE.replace(
+      '<input type="hidden" name="edition-0-release-0-removed">',
+      '<input type="hidden" name="edition-0-release-0-removed" value="on">',
+    )
+      .replace('value="edition-0-release-0" checked>', 'value="edition-0-release-0">')
+      .replace(
+        '<button type="button" data-catalog-add="release">Add release</button>',
+        '<div data-catalog-release="1">' +
+          '<input type="radio" data-choice-card name="in_library" value="edition-0-release-1" checked>' +
+          "</div>",
+      );
+
+    expect(marked()).toBe("edition-0-release-1");
+  });
 });
 
 describe("filled", () => {
@@ -366,6 +534,34 @@ describe("names", () => {
       "Unnamed edition",
     );
     expect(bin(edition).title).toBe("Remove the unnamed edition");
+  });
+
+  it("names the line a binned row leaves", () => {
+    const releaseStub =
+      '<div data-catalog-binned hidden><span data-catalog-name="{} release will be removed" ' +
+      'data-catalog-name-of="platform">Amiga release will be removed</span>' +
+      '<button type="button" data-catalog-restore aria-label="Undo removing the Amiga release" ' +
+      'data-catalog-name="Undo removing the {} release" data-catalog-name-of="platform">Undo</button></div>';
+    const editionStub =
+      '<div data-catalog-binned hidden><span data-catalog-name="{} edition will be removed" ' +
+      'data-catalog-name-of="name" data-catalog-name-empty="Unnamed edition will be removed">' +
+      "Gold edition will be removed</span></div>";
+    mountNamed(
+      "a",
+      NAMED.replace("<span data-platform-picker></span>\n    </div>", `<span data-platform-picker></span>\n    </div>${releaseStub}`)
+        .replace("</fieldset>", `</fieldset>${editionStub}`),
+    );
+
+    choose("d");
+    typeName("");
+
+    const stubs = document.querySelectorAll("[data-catalog-binned]");
+    expect(stubs[0].querySelector("span")!.textContent).toBe("DOS release will be removed");
+    expect(stubs[0].querySelector("button")!.getAttribute("aria-label")).toBe(
+      "Undo removing the DOS release",
+    );
+    expect(stubs[0].querySelector("button")!.textContent).toBe("Undo");
+    expect(stubs[1].textContent).toBe("Unnamed edition will be removed");
   });
 
   it("ignores input on a row's other fields", () => {

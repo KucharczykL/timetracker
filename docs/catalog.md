@@ -126,9 +126,12 @@ hides a button to dodge a 409 either: a refusal the service states comes back on
 the row that caused it, in the form, where the value that caused it still is.
 Promoting a sibling is how the mark moves; see [The default](#the-default).
 
-The mark is never lost. A person who bins the row holding it stated a removal,
-not a mistake, so the mark falls to the first row that stays: in the browser
-while they watch, and again in `CatalogGraphForm` for a post the browser never
+The mark is never lost. A bin leaves a line in the row's place, and its Undo
+puts the row back as if it was never binned. The browser keeps the person's own
+pick apart from where the mark stands (`catalog-chosen-mark`, posted and echoed
+on a refused page). While the picked row stays, the mark sits on it; a bin on it
+makes the mark fall to the first row that stays, and its Undo brings the mark
+back. `CatalogGraphForm` states the same fall for a post the browser never
 touched. A statement that keeps no row at all is refused for that, not for its
 mark.
 
