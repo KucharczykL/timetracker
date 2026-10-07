@@ -3251,7 +3251,7 @@ def beyond_bound_handler(
     *,
     unless: Q | None = None,
 ) -> FieldHandler:
-    """The day lies below or above one bound.
+    """The day lies beyond one bound.
 
     False is the plain negation, and safe: Django guards a negated
     lookup whose right side is a column with ``IS NOT NULL``, so a

@@ -490,7 +490,7 @@ class QuickFilterBarRenderingTest(TestCase):
 
 
 class RunFacetsTest(TestCase):
-    """The facets that ask about a session's run."""
+    """Facets asking about a session's run."""
 
     def test_the_sessions_row_carries_every_trigger(self):
         html = str(QuickFilterBar(mode="sessions", builder_url="/x"))

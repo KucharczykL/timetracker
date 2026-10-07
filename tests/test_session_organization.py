@@ -50,8 +50,7 @@ def _bucket_run(library, name):
 
 @pytest.fixture
 def population(owned_library):
-    """One day before the start, one after the completion, one inside, one
-    bucketed."""
+    """Before start, after completion, inside, bucketed."""
     run = _dated_run(owned_library, "Dated")
     duration_only_row(run, date(2021, 12, 30), AN_HOUR)
     duration_only_row(run, date(2024, 7, 1), AN_HOUR)
@@ -93,7 +92,7 @@ def test_the_link_opens_the_session_list_on_the_same_filter(builder):
 def test_hiding_prerelease_play_moves_no_before_start_count(
     owned_library, stated_graph, set_user_setting
 ):
-    """The field leaves demo play out whatever the setting says."""
+    """Demo play is out either way."""
     graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
     record_entry(owned_library, graph.release)
     demo = prerelease_release(owned_library, graph.release)

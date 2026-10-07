@@ -6459,7 +6459,7 @@ def _answered(library, field, value):
     )
 
 
-#: The cases each side flags; every other row answers no.
+#: Cases each side flags; others answer no.
 BEFORE_START_CASES = frozenset(
     {"before_a_stated_start", "before_a_lone_start", "before_an_imprecise_start"}
 )
@@ -6467,7 +6467,7 @@ AFTER_COMPLETION_CASES = frozenset(
     {"after_a_stated_completion", "after_a_lone_completion"}
 )
 
-#: Rows whose run states no bound on that side.
+#: Rows with no bound on that side.
 UNBOUNDED_BELOW = frozenset(
     {
         "on_a_run_stating_neither",

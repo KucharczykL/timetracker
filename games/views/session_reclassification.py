@@ -234,7 +234,7 @@ def _review_prose(waiting: int) -> tuple[Node, ...]:
 
 
 def _before_start_prose() -> Node:
-    """What the Before start count means, and its three remedies."""
+    """The Before start count, and its remedies."""
     return P(class_="text-type-body text-body mb-3")[
         "Before start counts sessions dated before the start of their "
         "playthrough. A session can only happen once its playthrough has "

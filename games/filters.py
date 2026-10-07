@@ -558,7 +558,7 @@ class PlayerSessionFilter(OperatorFilter):
     timing_mode: ChoiceCriterion | None = None
     is_running: BoolCriterion | None = None  # Timed, and no end yet
     playthrough_kind: ChoiceCriterion | None = None  # the run's kind
-    #: The day before the run's start, or after its completion.
+    #: Day before the start, or after completion.
     before_playthrough_start: BoolCriterion | None = None
     after_playthrough_completion: BoolCriterion | None = None
     release: UUIDMultiCriterion | None = None  # filters on release_id
