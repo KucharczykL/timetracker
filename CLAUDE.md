@@ -989,8 +989,8 @@ Submodules re-exported via `common/components/__init__.py`:
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
 - **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
   (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto),
-  `NameWithIcon()`, `PriceConverted()`, `PurchaseName()`, `PurchaseAmount()`
-  (refuses a row without its valuation alias)
+  `NameWithIcon()`, `PurchaseName()`, `PurchaseAmount()` (one price, the
+  stated one in a `Popover`; refuses a row without its valuation alias)
 - **`filters.py`** — filter widget layer: criterion-blob parse helpers
   (`_*_from_field`, `_choice_from_raw`, `parse_filter_dict`), widget builders
   (`StringFilter`, `NumberFilter`, `_bool_control`, the `FilterSelect` adapters),

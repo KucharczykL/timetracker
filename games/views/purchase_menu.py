@@ -20,6 +20,7 @@ from common.temporal_presentation import TemporalText
 from games.endpoints import PURCHASE_REFUND
 from games.models import Purchase, PurchaseKind
 from games.reads.endpoints import stated
+from games.reads.purchases import ValuedRow
 from games.views.submission import submission_input
 
 
@@ -53,7 +54,7 @@ def purchase_summary(purchase: Purchase, presentation: DateTimePresentation) -> 
 
 
 def purchase_line(purchase: Purchase, presentation: DateTimePresentation) -> Node:
-    """Label, day, the valued amount."""
+    """Label, day, the amount."""
     return Div(class_="flex min-w-0 flex-wrap items-center gap-x-2")[
         Span()[purchase_label(purchase)],
         Span(aria_hidden="true")["·"],
@@ -63,15 +64,21 @@ def purchase_line(purchase: Purchase, presentation: DateTimePresentation) -> Nod
     ]
 
 
-def price_line(purchase: Purchase) -> Node:
-    """The valued amount, led by kind or name."""
+def _amount(purchase: ValuedRow) -> Node:
+    if purchase.amount is None:
+        return Span()["Unknown price"]
+    return PurchaseAmount(purchase)
+
+
+def price_line(purchase: ValuedRow) -> Node:
+    """The amount, led by kind or name."""
     if purchase.kind == PurchaseKind.GAME and not purchase.name:
-        return PurchaseAmount(purchase)
-    return Fragment(f"{purchase_label(purchase)} · ", PurchaseAmount(purchase))
+        return _amount(purchase)
+    return Fragment(f"{purchase_label(purchase)} · ", _amount(purchase))
 
 
-def price_lines(purchases: Sequence[Purchase]) -> Node:
-    """One line per purchase."""
+def price_lines(purchases: Sequence[ValuedRow]) -> Node:
+    """One line per valued purchase."""
     return Div(class_="flex flex-col items-start")[
         *(Span()[price_line(purchase)] for purchase in purchases)
     ]

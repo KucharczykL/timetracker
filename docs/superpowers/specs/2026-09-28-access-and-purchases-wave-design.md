@@ -780,7 +780,7 @@ standalone page.
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
 game, or product · game), Kind, Amount (Free and Unknown as words, else
 one price: the valuation, the stated amount in a popover; a foreign
-amount not valued yet shows itself, its popover saying so; #1463; the
+amount without a valuation shows itself, its popover saying so; #1463; the
 Library tab's Purchases column and Game detail read the same
 `PurchaseAmount`), Purchased, Refunded, Finished, Created. Facets kind,
 amount, price state (Paid, Free, Unknown), purchased, refunded, and access

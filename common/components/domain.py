@@ -313,7 +313,7 @@ def PurchaseName(purchase: Purchase) -> Node:
 
 
 def PurchaseAmount(purchase: Purchase) -> Node:
-    """Free, Unknown, or one price; the stated one revealed."""
+    """Free, Unknown, or the valuation; price in popover."""
     if purchase.amount is None:
         return Span()["Unknown"]
     if purchase.amount == 0:
@@ -325,24 +325,28 @@ def PurchaseAmount(purchase: Purchase) -> Node:
             "read it through annotated_for_filtering(library)"
         )
     valuation = cast("ValuedPurchase", purchase)
-    #: Keyed on the purchase: two equal prices share content.
-    popover_id = f"purchase-amount-{purchase.pk}"
+    #: Already in the target currency.
     if valuation.valuation_currency == purchase.currency:
         return Span(class_="whitespace-nowrap")[stated]
+    #: Content-hashed ids collide on equal prices.
+    popover_id = f"purchase-amount-{purchase.pk}"
     if valuation.valuation_amount is None:
+        target = valuation.valuation_currency
         return Popover(
-            "Not valued yet",
+            f"No {target} valuation" if target else "No valuation",
             wrapped_content=stated,
             wrapped_classes="whitespace-nowrap",
             id=popover_id,
+            trigger_label="Valuation",
         )
     return Popover(
-        TooltipDefinitionList([TooltipDefinition("Paid", stated)]),
+        TooltipDefinitionList([TooltipDefinition("Price", stated)]),
         wrapped_content=(
             f"{valuation.valuation_amount} {valuation.valuation_currency}"
         ),
         wrapped_classes="whitespace-nowrap",
         id=popover_id,
+        trigger_label="Price",
     )
 
 

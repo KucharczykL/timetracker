@@ -2,12 +2,15 @@
 
 import json
 import uuid
+from decimal import Decimal
 
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from purchases import record_purchase, request_run
 
 from common.criteria import FilterError
+from games import tasks
 from games.end_ways import EndWay
 from games.filters import (
     LibraryEntryFilter,
@@ -16,7 +19,7 @@ from games.filters import (
     parse_entry_filter,
 )
 from games.list_columns import state_shown_columns
-from games.models import Game, LibraryEntry, Platform
+from games.models import ExchangeRate, Game, LibraryEntry, Platform
 from games.reads.entries import library_entries
 from games.views.entry_menu import entry_row_menu
 from games.views.library_list import ENTRY_COLUMNS
@@ -158,33 +161,32 @@ def test_the_tab_lists_live_copies_of_this_library_alone(
 
 
 def test_the_purchases_column_shows_the_valuation(logged_in, owned_library, graph):
-    from decimal import Decimal
-
-    from purchases import record_purchase, request_run
-
-    from games import tasks
-    from games.models import ExchangeRate
-
     ExchangeRate.objects.update_or_create(
         currency_from="USD",
         currency_to="EUR",
         year=2021,
         defaults={"rate": Decimal("0.5")},
     )
-    purchase = record_purchase(
-        record_entry(owned_library, graph.release),
-        amount=Decimal(10),
-        currency="USD",
-        purchased=TemporalValue.parse("2021-03-01"),
-    )
+    entry = record_entry(owned_library, graph.release)
+    purchases = [
+        record_purchase(
+            entry,
+            amount=Decimal(10),
+            currency="USD",
+            purchased=TemporalValue.parse("2021-03-01"),
+        )
+        for _ in range(2)
+    ]
     tasks.convert_library_prices(
         str(owned_library.pk), request_run(owned_library, "EUR")
     )
 
     html = logged_in.get(reverse("games:list_library")).content.decode()
 
-    assert f'id="purchase-amount-{purchase.pk}"' in html
-    assert "5.00 EUR" in html
+    #: Equal prices, one popover each.
+    for purchase in purchases:
+        assert html.count(f'id="purchase-amount-{purchase.pk}"') == 1
+    assert html.count(">5.00 EUR<") == 2
 
 
 def test_both_tabs_render_the_tab_row(logged_in):

@@ -42,8 +42,7 @@ Two orthogonal signals, one meaning each, freely composable: a linked duration i
 text *and* an ⓘ. Dotted underline is retired from every `Popover` — once the ⓘ carries "there's
 more", it has no job left there.
 
-No dotted underline remains in the app: #1463 states a purchase's conversion through a
-`Popover`.
+No dotted underline remains in the app; a purchase's converted price is a `Popover` (#1463).
 
 **Symbol carve-out.** When a popover trigger's entire visible content is a non-text symbol — an
 icon, or a single-character badge like the filter builder's `!` — that symbol *is* the

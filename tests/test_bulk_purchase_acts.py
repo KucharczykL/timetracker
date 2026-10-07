@@ -747,10 +747,12 @@ def test_the_library_tab_lists_each_purchase_price(logged_in, copy, first):
 
     row = _purchases_cell(logged_in, copy)
 
-    assert "19.99 EUR" in row
+    #: Unvalued: EUR against the seeded CZK target.
+    assert row.count("No CZK valuation") == 2
+    assert ">19.99 EUR<" in row
     assert "Season pass · <pop-over" in row
-    assert "9.99 EUR" in row
-    assert "Deluxe · <span>Unknown</span>" in row
+    assert ">9.99 EUR<" in row
+    assert "Deluxe · <span>Unknown price</span>" in row
     assert "Free" not in row
 
 
