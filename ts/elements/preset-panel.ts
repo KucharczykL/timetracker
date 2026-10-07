@@ -84,7 +84,6 @@ export class PresetPanelElement extends HTMLElement {
     }
     // A kept selection would pin a stale row.
     this.widget()?.clearSelection?.();
-    this.closest("drop-down")?.close();
   };
 
   private onCreate = (event: Event): void => {

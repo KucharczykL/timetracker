@@ -131,4 +131,36 @@ describe("combobox dropdown behavior (#297)", () => {
     expect(document.activeElement).not.toBe(inputOf(host));
     expect(nested.querySelector<HTMLElement>("[data-search-select-panel]")!.hidden).toBe(true);
   });
+
+  it("closes on a person's single-select pick, not on a clear", () => {
+    const host = mountComboboxDropdown();
+    toggleOf(host).click();
+    const widget = host.querySelector("search-select")!;
+    const change = (detail: object) =>
+      widget.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true, detail }));
+
+    change({ name: "preset", values: [], last: null, none: false });
+    expect(host.isOpen()).toBe(true);
+
+    change({ name: "preset", values: ["1"], last: { value: "1", label: "A", data: {} }, none: false });
+    expect(host.isOpen()).toBe(false);
+
+    toggleOf(host).click();
+    change({ name: "preset", values: [], last: null, none: true });
+    expect(host.isOpen()).toBe(false);
+  });
+
+  it("stays open over a multi-select or filter pick", () => {
+    const host = mountComboboxDropdown();
+    const widget = host.querySelector("search-select")!;
+    widget.setAttribute("multi", "true");
+    toggleOf(host).click();
+    widget.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "preset", values: ["1"], last: { value: "1", label: "A", data: {} }, none: false },
+      }),
+    );
+    expect(host.isOpen()).toBe(true);
+  });
 });

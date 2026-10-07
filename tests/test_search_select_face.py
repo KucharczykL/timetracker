@@ -151,3 +151,6 @@ def test_the_time_zone_row_opens_as_a_sheet():
         )
     )
     assert len(SHEET.findall(html)) == 1
+    assert re.search(
+        r"<h2[^>]*data-dropdown-sheet-title[^>]*>Start time zone</h2>", html
+    )

@@ -14,7 +14,9 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 //   server-fresh with zero bespoke fetch code here,
 // - keeps Enter inside the search input from implicitly submitting an ancestor
 //   <form> (the filter bar renders its action row inside one); the widget's own
-//   Enter-pick handling has already run by the time this listener fires.
+//   Enter-pick handling has already run by the time this listener fires,
+// - closes on a person's single-select pick or none; a clear, a pill or
+//   a value set from code emits no such change.
 //
 // The widget methods are duck-typed so this module never imports search-select
 // (keeps drop-down.js's transitive graph lean; the element upgrades on its own).
@@ -32,7 +34,7 @@ registerBehavior("combobox", {
   sheetFocus: (menu) =>
     menu.querySelector(PANEL_PICKER)?.querySelector<HTMLElement>("[data-search-select-search]") ??
     null,
-  wire: ({ host, menu }) => {
+  wire: ({ host, menu, controller }) => {
     // Only the panel's own picker; nested ones stay shut.
     const widget = menu.querySelector<ComboboxWidget>(PANEL_PICKER);
     const searchInput =
@@ -46,10 +48,21 @@ registerBehavior("combobox", {
     const onSearchKeydown = (event: KeyboardEvent) => {
       if (event.key === "Enter") event.preventDefault();
     };
+    //: Code sets values silently; a change is a person's.
+    const onChange = (event: Event) => {
+      if (event.target !== widget || !widget) return;
+      if (widget.getAttribute("multi") === "true" || widget.getAttribute("filter-mode") === "true") {
+        return;
+      }
+      const { last, none } = (event as CustomEvent<{ last: unknown; none: boolean }>).detail ?? {};
+      if (last || none) controller.close();
+    };
     host.addEventListener("dropdown:show", onShow);
+    host.addEventListener("search-select:change", onChange);
     searchInput?.addEventListener("keydown", onSearchKeydown);
     return () => {
       host.removeEventListener("dropdown:show", onShow);
+      host.removeEventListener("search-select:change", onChange);
       searchInput?.removeEventListener("keydown", onSearchKeydown);
     };
   },

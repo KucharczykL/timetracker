@@ -1316,7 +1316,7 @@ def ComboboxDropdown(
     config: dict[str, str] | None = None,
     panel_width: str = "w-72",
     applied: bool = False,
-    sheet: bool = False,
+    sheet_title: str | None = None,
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
@@ -1335,8 +1335,8 @@ def ComboboxDropdown(
     ``w-auto``.
 
     ``applied`` puts a dot in the trigger's corner and "(applied)" in
-    its accessible name. ``sheet``: a bottom sheet titled ``label``
-    on narrow viewports.
+    its accessible name. ``sheet_title``: names the narrow-viewport
+    sheet; none, no sheet.
     """
     mark: list[Node] = []
     if applied:
@@ -1359,7 +1359,7 @@ def ComboboxDropdown(
         id=id,
         behavior="combobox",
         config=config,
-        sheet_title=label if sheet else None,
+        sheet_title=sheet_title,
     )
 
 
