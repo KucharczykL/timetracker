@@ -558,3 +558,36 @@ Still open:
 - A workflow or Makefile change is a code change for the gate: the suite
   outgrew a hosted runner during this wave, so CI runs the static half
   alone and the local full `make check` is the only gate.
+
+## Lessons
+
+Learned during this wave, for the next one.
+
+- **Keep a running log apart from the timeless body from day one.** This
+  document grew to 1,249 lines of dated rulings, and the close-out was a
+  rewrite rather than a deletion. The epic's follow-up list lagged the
+  same way, so "is it filed?" was asked more than once.
+- **Read every member specification for the rulings nobody asked.** A
+  sentence like "statuses do not move" is a wave-level decision; #1466's
+  held one, and the first real move found it (#1476).
+- **The person's first real use is a wave step.** One day of use after the
+  deploy found four issues (#1463, #1466, #1468, the review list's rule).
+  Budget it, file each on the spot, and walk the screens for a refund, a
+  DLC and an upgrade before the deploy.
+- **A measurement beats a precedent.** The organizer ruled the squash
+  "two PRs, as the last squash went"; the implementer measured that the
+  conversion tooling dies the moment the squashed file is on disk, and was
+  right. A ruling from precedent says so and invites the measurement.
+- **A deploy in the middle splits a stack into PRs and an issue.** #1472
+  was the right shape; a branch held across a deploy only accumulates
+  rebases.
+- **Tell every in-flight session when `main` moves**, before its gate run,
+  or the conflict is found at the gate.
+- **Watch the test suite's wall time as it grows.** 2,507 tests became
+  9,910 in five weeks and a hosted run went from 12 to 38 minutes; CI now
+  runs the static half alone and the local full `make check` is the one
+  gate. The decision came after it hurt, and the fix itself put `main` red
+  for an hour because a workflow edit was gated as if it were not code.
+- **When two of our own documents disagree, the external model decides.**
+  The catalog document and the charter disagreed on remasters; IGDB's
+  shape settled it in one line.
