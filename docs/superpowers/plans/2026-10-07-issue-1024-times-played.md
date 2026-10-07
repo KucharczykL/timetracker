@@ -44,7 +44,9 @@ Files: `games/commands/playthrough_count.py` (new), `games/events/dispatch.py`
 - Raise: if exactly one live ordinary run and it is bare → started+completed
   (no day, no note) on it; then `playthrough_created` + started + completed
   per new run, ids minted in order with `uuid.uuid7()`. Then #1034's
-  `with_implied_status(..., PlayerGameStatus.COMPLETED)`.
+  `with_implied_status(context, acts, HeldGame(tracked),
+  PlayerGameStatus.COMPLETED)`, both from `games/commands/playergame.py`
+  (`HeldGame` wraps the PlayerGame row; `ImpliedStatus` in `games/models.py`).
 - Lower: take `d` from `dateless_runs`; foreign referrer check →
   `RowUnreadable`; if `d` covers every live ordinary run, keep the last of the
   slice (oldest) and append `void` events for completion then start
