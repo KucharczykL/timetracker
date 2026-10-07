@@ -109,8 +109,8 @@ def state_times_played_view(request: HttpRequest, game_id: UUID) -> HttpResponse
     )
 
 
-def _undone(answer: list[UndoneCount]) -> str:
-    if answer and answer[0].status_kept:
+def _undone(answers: list[UndoneCount]) -> str:
+    if answers and answers[0].status_kept:
         return "Times played undone. The status you set since was kept."
     return "Times played undone."
 
@@ -118,7 +118,7 @@ def _undone(answer: list[UndoneCount]) -> str:
 @login_required
 @require_POST
 def undo_times_played_view(
-    request: HttpRequest, game_id: UUID, statement_id: UUID, stated: int
+    request: HttpRequest, game_id: UUID, statement_id: UUID, stated: TimesPlayedCount
 ) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library

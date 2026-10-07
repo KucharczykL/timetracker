@@ -92,6 +92,10 @@ def _tracked(context: CommandContext, game_id: GameId) -> PlayerGame:
     return tracked
 
 
+def _is_status_change(event: LibraryEvent) -> bool:
+    return event.event_type == PLAYERGAME_STATUS_CHANGED.event_type
+
+
 def _played_through(run_id: uuid.UUID) -> list[NewEvent]:
     """Both acts, no day, no note."""
     return [
@@ -189,9 +193,7 @@ class UndoPlaythroughCount(Command):
         events = list(batch_events(context.library, self.statement_id))
         run_ids = list(
             dict.fromkeys(
-                event.aggregate_id
-                for event in events
-                if event.event_type != PLAYERGAME_STATUS_CHANGED.event_type
+                event.aggregate_id for event in events if not _is_status_change(event)
             )
         )
         self._refuse_another_statement(context, tracked, events, run_ids)
@@ -229,9 +231,7 @@ class UndoPlaythroughCount(Command):
             library=context.library, player_game=tracked, pk__in=run_ids
         ).count()
         foreign = {
-            event.aggregate_id
-            for event in events
-            if event.event_type == PLAYERGAME_STATUS_CHANGED.event_type
+            event.aggregate_id for event in events if _is_status_change(event)
         } - {tracked.pk}
         not_a_count = any(event.idempotency_key != key for event in events)
         if not events or not_a_count or held != len(run_ids) or foreign:
