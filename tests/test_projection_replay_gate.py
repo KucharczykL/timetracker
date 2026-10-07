@@ -259,7 +259,8 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             playthrough_id=first_run.pk,
             when=TemporalValue.from_day(date(2024, 1, 1)),
             note="Began here",
-            implies_status=False,
+            #: A two-aggregate dispatch replays too.
+            implies_status=True,
         ),
         "start-first-run",
     )
@@ -268,7 +269,8 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             playthrough_id=first_run.pk,
             when=TemporalValue.from_day(date(2024, 2, 1)),
             note="Ended here",
-            implies_status=False,
+            #: A two-aggregate dispatch replays too.
+            implies_status=True,
         ),
         "complete-first-run",
     )

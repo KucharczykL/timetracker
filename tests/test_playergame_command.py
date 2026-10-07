@@ -993,6 +993,8 @@ def test_a_removed_game_takes_no_implied_status(owned_user, owned_library):
     )
 
     assert result.outcome is CommandOutcome.UNCHANGED
+    assert result.reason is not None
+    assert "removed" in result.reason
     assert status_events(owned_library) == 0
 
 

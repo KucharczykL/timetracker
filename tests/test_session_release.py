@@ -439,6 +439,7 @@ def test_an_edit_moving_games_states_the_targets_release_after_the_move(
         session,
         a_draft(other_run, other_graph.release),
         correlation_id=correlation_id,
+        implies_played=False,
     )
 
     session.refresh_from_db()
@@ -461,7 +462,11 @@ def test_an_edit_that_keeps_the_release_states_nothing_about_it(
     correlation_id = uuid.uuid7()
 
     restate_session(
-        owned_user, session, a_draft(run, graph.release), correlation_id=correlation_id
+        owned_user,
+        session,
+        a_draft(run, graph.release),
+        correlation_id=correlation_id,
+        implies_played=False,
     )
 
     assert not LibraryEvent.objects.filter(correlation_id=correlation_id).exists()
@@ -1026,6 +1031,7 @@ def test_an_edit_whose_release_refuses_writes_nothing(
             session,
             a_draft(other_run, uncopied, note="moved"),
             correlation_id=uuid.uuid7(),
+            implies_played=False,
         )
 
     assert refused.value.message == NO_COPY_OF_RELEASE

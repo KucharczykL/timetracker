@@ -324,7 +324,8 @@ row states which run it acts on. The selector is untouched and stays immediate.
 dispatches, because a restatement states each endpoint separately. A single
 command over both aggregates would have to replace that path and could not
 serve the form at all. The pair shares a `correlation_id`, which is what
-`_record_completed` shipped for.
+`_record_completed` shipped for. Superseded by #1034: each act now states
+its status in its dispatch.
 
 ### #1033 — Playing and Dormant runs
 

@@ -1,8 +1,12 @@
-"""Which status an act implies over the held one."""
+"""Which implied status is stated over which."""
+
+import uuid
 
 import pytest
 
-from games.models import PlayerGameStatus, status_implied_over
+from games.commands.playergame import RecordPlayerGameFacts, held_status
+from games.events.dispatch import RowUnreadable
+from games.models import PlayerGame, PlayerGameStatus, status_implied_over
 
 PLAYED = PlayerGameStatus.PLAYED
 COMPLETED = PlayerGameStatus.COMPLETED
@@ -47,6 +51,14 @@ def test_completed_is_stated_wherever_it_is_not_held(held, stated):
         PlayerGameStatus.ABANDONED,
     ],
 )
-def test_no_act_implies_another_status(implied):
-    with pytest.raises(ValueError, match="implies"):
-        status_implied_over(PlayerGameStatus.UNPLAYED, implied)
+def test_no_command_implies_another_status(implied):
+    with pytest.raises(ValueError, match="no act implies"):
+        RecordPlayerGameFacts(game_id=uuid.uuid7(), implied_status=implied)
+
+
+@pytest.mark.django_db
+def test_an_unknown_held_word_is_a_defect(owned_library):
+    row = PlayerGame(library=owned_library, status="mastered")
+
+    with pytest.raises(RowUnreadable, match="mastered"):
+        held_status(row)

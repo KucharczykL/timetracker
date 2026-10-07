@@ -21,7 +21,6 @@ from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playthrough import (
     MovedThenFailed,
     RunDraft,
-    StatusStated,
     restate_run,
 )
 from timetracker.temporal import TemporalValue
@@ -128,7 +127,7 @@ def test_a_completed_run_completes_the_target(owned_user, base, dlc):
 
     assert _status(owned_user, dlc) == PlayerGameStatus.COMPLETED
     assert moved is not None
-    assert moved.status == StatusStated(PlayerGameStatus.COMPLETED)
+    assert moved.stated_status == PlayerGameStatus.COMPLETED
 
 
 def test_the_source_keeps_its_status(owned_user, base, dlc):
@@ -147,7 +146,7 @@ def test_a_started_run_plays_an_unplayed_target(owned_user, base, dlc):
 
     assert _status(owned_user, dlc) == PlayerGameStatus.PLAYED
     assert moved is not None
-    assert moved.status == StatusStated(PlayerGameStatus.PLAYED)
+    assert moved.stated_status == PlayerGameStatus.PLAYED
 
 
 def test_a_started_run_leaves_a_stronger_status(owned_user, base, dlc):
@@ -158,11 +157,11 @@ def test_a_started_run_leaves_a_stronger_status(owned_user, base, dlc):
 
     assert _status(owned_user, dlc) == PlayerGameStatus.ABANDONED
     assert moved is not None
-    assert moved.status is None
+    assert moved.stated_status is None
 
 
 def test_a_completed_run_completes_over_a_stronger_status(owned_user, base, dlc):
-    """The completion states Completed every time."""
+    """Completed is stated wherever not held."""
     _set_status(owned_user, dlc, PlayerGameStatus.ABANDONED)
     run = _run_at(owned_user, base, completed="2024-02-03")
 
@@ -178,7 +177,7 @@ def test_a_run_without_endpoints_implies_nothing(owned_user, base, dlc):
 
     assert _status(owned_user, dlc) == PlayerGameStatus.UNPLAYED
     assert moved is not None
-    assert moved.status is None
+    assert moved.stated_status is None
     assert not LibraryEvent.objects.filter(event_type=STATUS_CHANGED).exists()
 
 
@@ -189,7 +188,7 @@ def test_a_target_already_completed_states_nothing(owned_user, base, dlc):
     moved = _move(owned_user, run, dlc)
 
     assert moved is not None
-    assert moved.status is None
+    assert moved.stated_status is None
     assert _status_events(dlc).count() == 1
 
 
@@ -261,7 +260,7 @@ def test_a_target_already_played_states_nothing(owned_user, base, dlc):
     moved = _move(owned_user, run, dlc)
 
     assert moved is not None
-    assert moved.status is None
+    assert moved.stated_status is None
     assert _status_events(dlc).count() == 1
 
 
@@ -340,4 +339,4 @@ def test_a_refused_restatement_after_the_move_carries_it(owned_user, base, dlc):
         )
 
     assert refused.value.moved.target == dlc
-    assert refused.value.moved.status == StatusStated(PlayerGameStatus.PLAYED)
+    assert refused.value.moved.stated_status == PlayerGameStatus.PLAYED

@@ -276,10 +276,11 @@ docs/           — Additional documentation
   still latest of that endpoint's family — statement, correction and void
   are one family — then puts back status batch changed,
   read from its own `playergame.status_changed`. An act states the
-  status it implies in its own dispatch, last (#1034): `implies_status`
+  status it implies in the act's dispatch, last (#1034): `implies_status`
   on start/completion, `implies_played`/`implies_completed` on
   `CreatePlaythrough`, `implies_played` on `CreateSession`, always on a
-  move; `RecordPlayerGameFacts.implied_status` where no act is stated.
+  move; `RecordPlayerGameFacts.implied_status` (a session edit) where no
+  act is stated.
   One rule, `status_implied_over` (`games/models.py`): Played over
   Unplayed alone, Completed wherever not held; `played_is_offered` is
   the render hint over it. Contract is
@@ -458,7 +459,8 @@ docs/           — Additional documentation
   #702's cutover: every session write is a command and every read the
   projection. `games/writes/playersession.py` is request-free half —
   `record_session`, `restate_session` (timing, then description of differing
-  facts, then move, one `correlation_id`), `end_session`, `reset_session`
+  facts, then move, then implied Played, one `correlation_id`),
+  `end_session`, `reset_session`
   (refuses row not running), `remove_session`, `clone_session` (game's latest
   live ordinary run, calendar zone; `resumed_device`: last session's held
   device or none, else the default, with a notice; `held_devices`) — each under `answered("session")`.

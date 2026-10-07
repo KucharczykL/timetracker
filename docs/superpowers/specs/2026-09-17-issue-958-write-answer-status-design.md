@@ -12,8 +12,7 @@ that is behind. `DEFECT_STATUS` is 500 for a fault of ours.
 
 Six request-shaped wrappers answer `WriteAnswer`. Two are in
 `games/views/playergame_writes.py`. Four are in
-`games/views/playthrough_writes.py`. `record_completed` in
-`games/views/playthrough.py` passes the same type through.
+`games/views/playthrough_writes.py`.
 
 `WriteAnswer` has one field. The field holds the refusal, or `None`. `__bool__`
 answers true when the write landed. Thus a caller that only asks whether the

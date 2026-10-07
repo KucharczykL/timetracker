@@ -56,7 +56,6 @@ from games.list_columns import column_choice
 from games.models import (
     Device,
     Game,
-    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     UserLibrary,
@@ -76,7 +75,6 @@ from games.sorting import (
     parse_find_filter,
 )
 from games.views.filtering import warn_unknown_sort
-from games.views.playergame_writes import record_facts_for_request
 from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
 from games.views.session_menu import session_row_menu
@@ -420,27 +418,18 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     )
     refused_status = 200
     if form.is_valid():
-        game = form.cleaned_data["game"]
-        correlation_id = new_correlation_id()
         try:
             restate_session(
                 cast(User, request.user),
                 session,
                 _session_draft(form, library),
-                correlation_id=correlation_id,
+                implies_played=bool(form.cleaned_data.get("mark_as_played")),
+                correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
             messages.error(request, failure.message)
             refused_status = failure.status_code
         else:
-            #: An edit states no act.
-            if form.cleaned_data.get("mark_as_played"):
-                record_facts_for_request(
-                    request,
-                    game,
-                    implied_status=PlayerGameStatus.PLAYED,
-                    correlation_id=correlation_id,
-                )
             return redirect(return_url(request, fallback="games:list_sessions"))
     return _render_session_form(request, form, "Edit Session", status=refused_status)
 

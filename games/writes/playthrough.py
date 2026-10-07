@@ -71,7 +71,7 @@ class RunDraft:
     started: ActStatement | None
     completed: ActStatement | None
     note: str
-    #: The boxes: each act's implied status.
+    #: Each first act's implied status.
     implies_played: bool
     implies_completed: bool
     #: The run's catalog game; None states none.
@@ -123,7 +123,11 @@ class EndpointCommand(Protocol):
 
 
 class FirstActCommand(Protocol):
-    """Builds an endpoint's first act."""
+    """Builds an endpoint's first act.
+
+    Apart from EndpointCommand: a correction implies
+    no status, so it takes none.
+    """
 
     def __call__(
         self,
@@ -150,7 +154,7 @@ _COMPLETION = EndpointStatement(
 
 
 class Statement(NamedTuple):
-    """One endpoint, its act, and its box."""
+    """One endpoint, its act, its implication."""
 
     endpoint: EndpointStatement
     act: ActStatement | None
@@ -185,9 +189,10 @@ def _state_endpoint(
     A correction carries the note the endpoint already
     states, or it states a note nobody wrote.
     """
-    endpoint, act, implies_status = statement
+    act = statement.act
     if act is None:
         return
+    endpoint = statement.endpoint
     stated = endpoint.reads(run)
     note = "" if stated is None else stated.note
     command = (
@@ -195,7 +200,7 @@ def _state_endpoint(
             playthrough_id=run.pk,
             when=act.when,
             note=note,
-            implies_status=implies_status,
+            implies_status=statement.implies_status,
         )
         if isinstance(endpoint_move(stated, act), Act)
         else endpoint.correction(playthrough_id=run.pk, when=act.when, note=note)
@@ -310,16 +315,6 @@ def _statement_order(run: Playthrough, draft: RunDraft) -> tuple[Statement, Stat
     return (start, completion)
 
 
-class StatusStated(NamedTuple):
-    """The game now holds this status."""
-
-    status: PlayerGameStatus
-
-
-#: None: nothing implied, or the game held it.
-type StatusAnswer = StatusStated | None
-
-
 class MovedRun(NamedTuple):
     """What a move did beside the run."""
 
@@ -328,8 +323,8 @@ class MovedRun(NamedTuple):
     tracked_the_target: bool
     removed_a_placeholder: bool
     minted_a_placeholder: bool
-    #: The status the endpoints implied on the target.
-    status: StatusAnswer
+    #: The status the move stated, if any.
+    stated_status: PlayerGameStatus | None
     #: Live rows whose Release the move cleared.
     cleared_releases: int = 0
 
@@ -417,16 +412,19 @@ def _move(
         tracked_the_target=PLAYERGAME_CREATED.event_type in appended,
         removed_a_placeholder=PLAYTHROUGH_REMOVED.event_type in appended,
         minted_a_placeholder=PLAYTHROUGH_CREATED.event_type in appended,
-        status=stated_status(events),
+        stated_status=stated_status(events),
         cleared_releases=_live_rows_cleared(actor.library, events),
     )
 
 
-def stated_status(events: list[AppendedEvent]) -> StatusAnswer:
-    """The status a dispatch appended, if any."""
+def stated_status(events: list[AppendedEvent]) -> PlayerGameStatus | None:
+    """The status a dispatch appended, if any.
+
+    One at most: with_implied_status appends one.
+    """
     for event_type, _, payload in events:
         if event_type == PLAYERGAME_STATUS_CHANGED.event_type:
-            return StatusStated(PlayerGameStatus(str(payload["status"])))
+            return PlayerGameStatus(str(payload["status"]))
     return None
 
 

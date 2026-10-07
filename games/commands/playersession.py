@@ -11,12 +11,12 @@ from zoneinfo import ZoneInfo
 from django.db import connection
 
 from common.date_time_presentation import zone_or_none
+from games.commands.playergame import HeldGame, implied_if, with_implied_status
 from games.commands.playthrough import (
     PlaythroughNotHeld,
     _live_run,
     library_playthrough,
     refuse_unless_live,
-    with_implied_status,
 )
 from games.commands.scope import (
     Refusal,
@@ -613,9 +613,8 @@ class CreateSession(Command):
                     emulated=self.emulated,
                 )
             ],
-            run.player_game_id,
-            run.player_game.status,
-            PlayerGameStatus.PLAYED if self.implies_played else None,
+            HeldGame(run.player_game),
+            implied_if(self.implies_played, PlayerGameStatus.PLAYED),
         )
 
 

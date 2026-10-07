@@ -325,7 +325,7 @@ def test_a_session_leaves_a_finished_game_alone(
 
     logged_in.post(reverse("games:add_session"), _session_payload(tracked_game))
 
-    #: The guard reads the projection, as every read now does.
+    #: The command declines, under the lock.
     assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
 
 

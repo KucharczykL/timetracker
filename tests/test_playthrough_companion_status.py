@@ -85,7 +85,7 @@ def test_a_first_start_states_played(logged_in, owned_library, game):
     assert status_of(owned_library) == PlayerGameStatus.PLAYED
 
 
-def test_the_pair_shares_one_correlation(logged_in, owned_library, game):
+def test_the_pair_is_one_dispatch(logged_in, owned_library, game):
     logged_in.post(
         reverse("games:add_playthrough"),
         {
@@ -97,18 +97,20 @@ def test_the_pair_shares_one_correlation(logged_in, owned_library, game):
         },
     )
 
-    correlations = set(
-        LibraryEvent.objects.filter(library=owned_library).values_list(
-            "correlation_id", flat=True
-        )
+    status = LibraryEvent.objects.get(
+        library=owned_library, event_type="library.playergame.status_changed"
     )
-    assert len(correlations) == 1
+    started = LibraryEvent.objects.get(
+        library=owned_library, event_type="library.playthrough.started"
+    )
+    assert status.idempotency_key == started.idempotency_key
+    assert status.sequence > started.sequence
 
 
 def test_a_start_on_a_completed_game_states_nothing(
     owned_user, logged_in, owned_library, tracked
 ):
-    """Never rendered, so a posted one drops."""
+    """A posted box is declined by the rule."""
     state(owned_user, tracked, PlayerGameStatus.COMPLETED)
 
     logged_in.post(
@@ -199,6 +201,23 @@ def test_a_note_edit_on_a_finished_run_states_no_status(
     run.refresh_from_db()
     assert run.note == "gave up in the tower"
     assert status_of(owned_library) == PlayerGameStatus.ABANDONED
+
+
+def test_an_edit_stating_a_first_start_states_played(logged_in, owned_library, tracked):
+    run = Playthrough.objects.get(player_game__game=tracked)
+
+    logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked.pk),
+            "started": "2026-01-02",
+            "ended": "",
+            "note": "",
+            "also_mark_played": "on",
+        },
+    )
+
+    assert status_of(owned_library) == PlayerGameStatus.PLAYED
 
 
 def test_adding_a_run_with_no_end_day_finishes_nothing(logged_in, owned_library, game):

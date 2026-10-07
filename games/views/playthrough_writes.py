@@ -18,7 +18,6 @@ from games.writes.playthrough import (
     MovedRun,
     MovedThenFailed,
     RunDraft,
-    StatusStated,
     record_run,
     remove_run,
     restate_run,
@@ -80,8 +79,8 @@ def moved_sentence(moved: MovedRun) -> str:
         sentence = f"Moved to {moved.target}."
     if moved.removed_a_placeholder:
         sentence += " Its empty playthrough was removed."
-    if isinstance(moved.status, StatusStated):
-        sentence += f" {moved.target} is now {moved.status.status.label}."
+    if moved.stated_status is not None:
+        sentence += f" {moved.target} is now {moved.stated_status.label}."
     if moved.minted_a_placeholder:
         sentence += (
             f" {moved.source} got an empty playthrough, since every tracked "

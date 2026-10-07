@@ -1,4 +1,4 @@
-"""One endpoint, and the status the act implies."""
+"""One endpoint and the status it implies."""
 
 from datetime import date
 
@@ -134,7 +134,7 @@ def test_a_completion_completes_over_abandoned(owned_user, run, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_an_unchanged_endpoint_states_no_status(owned_user, run, game):
-    """A run already stating that day implies nothing."""
+    """A restated day implies nothing."""
     _start(owned_user, run)
     record_facts(
         owned_user,
@@ -167,3 +167,38 @@ def test_a_refused_endpoint_rises(owned_user, run, game):
 
     with pytest.raises(CommandFailed):
         _start(owned_user, run, when=OTHER_DAY)
+
+
+def _complete(owned_user, run, *, key=None):
+    return complete_run(
+        owned_user,
+        run,
+        DAY,
+        implies_status=True,
+        correlation_id=new_correlation_id(),
+        idempotency_key=key,
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_completion_states_completed_last(owned_user, run, game):
+    result = _complete(owned_user, run)
+
+    types = list(dispatched_events(result).values_list("event_type", flat=True))
+    assert types == ["library.playthrough.completed", STATUS_CHANGED]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unchanged_completion_states_no_status(owned_user, run, game):
+    _complete(owned_user, run)
+    record_facts(
+        owned_user,
+        game,
+        status=PlayerGameStatus.ABANDONED,
+        correlation_id=new_correlation_id(),
+    )
+
+    result = _complete(owned_user, run)
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert PlayerGame.objects.get().status == PlayerGameStatus.ABANDONED

@@ -19,9 +19,11 @@ from games.commands.endpoint import (
     void_endpoint,
 )
 from games.commands.playergame import (
-    implied_status_change,
+    HeldGame,
+    implied_if,
     tracked_game,
     tracking_event,
+    with_implied_status,
 )
 from games.commands.scope import Refusal, library_row, visible_row
 from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START, Endpoint
@@ -51,6 +53,7 @@ from games.models import (
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeRun,
+    ImpliedStatus,
     PlayerGame,
     PlayerGameStatus,
     PlayerSession,
@@ -86,27 +89,6 @@ def refuse_name_the_column_cannot_hold(name: str) -> None:
             f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
         ),
     )
-
-
-def with_implied_status(
-    context: CommandContext,
-    acts: Sequence[NewEvent] | Unchanged,
-    player_game_id: uuid.UUID,
-    held: str,
-    implied: PlayerGameStatus | None,
-) -> Sequence[NewEvent] | Unchanged:
-    """The acts, then the status they imply.
-
-    Last: created_aggregate_id reads the first.
-    """
-    if isinstance(acts, Unchanged) or implied is None:
-        return acts
-    change = implied_status_change(context, player_game_id, held, implied)
-    return acts if change is None else [*acts, change]
-
-
-def _implied_if(implies: bool, status: PlayerGameStatus) -> PlayerGameStatus | None:
-    return status if implies else None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -183,11 +165,9 @@ class CreatePlaythrough(Command):
                     run_id, when=self.completed.when, note=self.completed.note
                 )
             )
-        return with_implied_status(
-            context, events, tracked.pk, tracked.status, self._implied()
-        )
+        return with_implied_status(context, events, HeldGame(tracked), self._implied())
 
-    def _implied(self) -> PlayerGameStatus | None:
+    def _implied(self) -> ImpliedStatus | None:
         """Completed over Played: one status at most."""
         if self.implies_completed and self.completed is not None:
             return PlayerGameStatus.COMPLETED
@@ -352,9 +332,8 @@ class StartPlaythrough(Command):
         return with_implied_status(
             context,
             acts,
-            run.player_game_id,
-            run.player_game.status,
-            _implied_if(self.implies_status, PlayerGameStatus.PLAYED),
+            HeldGame(run.player_game),
+            implied_if(self.implies_status, PlayerGameStatus.PLAYED),
         )
 
 
@@ -390,9 +369,8 @@ class CompletePlaythrough(Command):
         return with_implied_status(
             context,
             acts,
-            run.player_game_id,
-            run.player_game.status,
-            _implied_if(self.implies_status, PlayerGameStatus.COMPLETED),
+            HeldGame(run.player_game),
+            implied_if(self.implies_status, PlayerGameStatus.COMPLETED),
         )
 
 
@@ -823,20 +801,6 @@ SHARED_REMOVED_RECORD = (
 )
 
 
-class HeldTarget(NamedTuple):
-    """A game this library tracks already."""
-
-    row: PlayerGame
-
-    @property
-    def player_game_id(self) -> PlayerGameId:
-        return self.row.pk
-
-    @property
-    def status(self) -> str:
-        return self.row.status
-
-
 class NewlyTracked(NamedTuple):
     """A game this dispatch starts tracking."""
 
@@ -847,12 +811,12 @@ class NewlyTracked(NamedTuple):
         return self.tracking.aggregate_id
 
     @property
-    def status(self) -> str:
+    def status(self) -> PlayerGameStatus:
         """A newly tracked game holds Unplayed."""
         return PlayerGameStatus.UNPLAYED
 
 
-type MoveTarget = HeldTarget | NewlyTracked
+type MoveTarget = HeldGame | NewlyTracked
 
 
 def _move_target(context: CommandContext, game_id: GameId) -> MoveTarget:
@@ -868,7 +832,7 @@ def _move_target(context: CommandContext, game_id: GameId) -> MoveTarget:
                 "until it is restored.",
                 sentence=TARGET_REMOVED,
             )
-        return HeldTarget(tracked)
+        return HeldGame(tracked)
     game = visible_row(
         context,
         Game.objects.alive(),
@@ -981,18 +945,16 @@ class MovePlaythroughToGame(Command):
             )
             for record in records
         )
-        if isinstance(target, HeldTarget):
+        if isinstance(target, HeldGame):
             placeholder = placeholder_run(context.library, target.row)
             if placeholder is not None:
                 events.append(playthrough_removed(placeholder.pk))
         if not _other_live_ordinary_runs(context, run).exists():
             events.append(playthrough_created(run.player_game_id))
-        return with_implied_status(
-            context, events, target.player_game_id, target.status, _implied_by(run)
-        )
+        return with_implied_status(context, events, target, _implied_by(run))
 
 
-def _implied_by(run: Playthrough) -> PlayerGameStatus | None:
+def _implied_by(run: Playthrough) -> ImpliedStatus | None:
     """The status a run's endpoints imply."""
     if stated_completion(run) is not None:
         return PlayerGameStatus.COMPLETED

@@ -9,7 +9,11 @@ from django.test.utils import isolate_apps
 from django.utils import timezone
 
 from games.commands.endpoint import certainly_reversed
-from games.commands.playergame import PlayerGameNotTracked, TrackGame
+from games.commands.playergame import (
+    PlayerGameNotTracked,
+    RecordPlayerGameFacts,
+    TrackGame,
+)
 from games.commands.playersession import (
     CreateSession,
     MoveSessionToPlaythrough,
@@ -45,6 +49,7 @@ from games.models import (
     HistoricalPlaytimeRun,
     LibraryEvent,
     PlayerGame,
+    PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -2440,7 +2445,7 @@ def test_a_creation_with_both_boxes_states_completed_alone(
     assert types[-1] == "library.playergame.status_changed"
     assert types.count("library.playergame.status_changed") == 1
     assert PlayerGame.objects.get().status == "completed"
-    #: The created run is still the first event.
+    #: The created run stays first.
     assert created_aggregate_id(result) == Playthrough.objects.latest("pk").pk
 
 
@@ -2476,3 +2481,69 @@ def test_a_creation_without_boxes_states_no_status(owned_user, owned_library, ga
 
     assert "library.playergame.status_changed" not in _status_types(result)
     assert PlayerGame.objects.get().status == "unplayed"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "held",
+    ["played", "retired", "shelved", "abandoned", "completed"],
+)
+def test_a_creation_never_walks_a_status_back(owned_user, owned_library, game, held):
+    _track(owned_user, owned_library, game)
+    dispatch(
+        RecordPlayerGameFacts(game_id=game.pk, status=PlayerGameStatus(held)),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="held",
+    )
+
+    _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        implies_played=True,
+        implies_completed=False,
+    )
+
+    assert PlayerGame.objects.get().status == held
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_with_both_acts_and_the_played_box_states_played(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+
+    _create(
+        owned_user,
+        owned_library,
+        game,
+        started=DAY_ACT,
+        completed=DAY_ACT,
+        implies_played=True,
+        implies_completed=False,
+    )
+
+    assert PlayerGame.objects.get().status == "played"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_key_with_another_implication_is_refused(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    def start(implies_status):
+        return dispatch(
+            StartPlaythrough(
+                playthrough_id=run.pk, when=None, note="", implies_status=implies_status
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="one-start",
+        )
+
+    start(False)
+
+    with pytest.raises(IdempotencyKeyMismatch):
+        start(True)

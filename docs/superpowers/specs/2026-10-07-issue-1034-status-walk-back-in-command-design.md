@@ -1,4 +1,4 @@
-# An act states its status in its own dispatch
+# An act and its status share one dispatch
 
 Issue #1034. Part of #601.
 
@@ -35,25 +35,30 @@ it, dated on the library's calendar.
 | `CreateSession` | `implies_played` | Played |
 | `MovePlaythroughToGame` | none | the run's endpoints, on the target |
 
-No field has a default. A creation states one status at most, and only
-for an act it states. A move states its status always. A newly tracked
-target holds Unplayed.
+No carrier field in the table has a default. A creation states one
+status at most, and only for an act it states. A move states its status
+always. A newly tracked target holds Unplayed.
 
-A session edit states no act. It dispatches
-`RecordPlayerGameFacts(implied_status=PLAYED)`. That field obeys the
-same rule. It is refused beside `status`. A removed game takes no
-implied status. A bulk Edit does not state it.
+The implied status is `ImpliedStatus`: Played or Completed. A carrier
+reads the held status through `HeldGame`, a `StatusHolder`. A stored word
+that no `PlayerGameStatus` names is `RowUnreadable`.
+
+A session edit states no act. `restate_session(implies_played=True)`
+dispatches `RecordPlayerGameFacts(implied_status=PLAYED)` last, under the
+edit's correlation. That field obeys the same rule. Construction refuses
+it beside `status`. A removed game takes no implied status. A bulk Edit
+does not state it.
 
 ## Callers
 
 - `RunDraft` carries both boxes. A correction carries no box.
-- `record_session` takes `implies_played`.
+- `record_session` and `restate_session` take `implies_played`.
 - The batch start and completion pass `True`.
 - The API, resume and the benchmark pass `False`.
-- `MovedRun.status` reads the move's own status event.
+- `MovedRun.stated_status` reads the move's status event.
 
-A refused status refuses the act too. An act needs no second dispatch
-and no `-status` key. Batch Undo still finds the batch's status by
+An act and its status land or fail together. An act needs no second
+dispatch and no `-status` key. Batch Undo still finds the batch's status by
 `correlation_id`. It does not put back a status that a later move
 stated.
 
