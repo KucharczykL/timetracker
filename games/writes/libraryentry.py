@@ -161,6 +161,7 @@ def describe_entry(
     access: EntryAccess | None = None,
     format: EntryFormat | None = None,
     note: str | None = None,
+    release_id: uuid.UUID | None = None,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
@@ -168,7 +169,13 @@ def describe_entry(
     """One description; None states nothing."""
     with answered(SUBJECT):
         return _dispatch(
-            DescribeEntry(entry_id=entry.pk, access=access, format=format, note=note),
+            DescribeEntry(
+                entry_id=entry.pk,
+                access=access,
+                format=format,
+                note=note,
+                release_id=release_id,
+            ),
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
