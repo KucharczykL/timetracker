@@ -1249,10 +1249,12 @@ def _assemble(
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
     sheet_title: Child | None = None,
+    sheet_searchable: bool = False,
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url).
-    ``sheet_title``: a bottom sheet on narrow viewports."""
+    ``sheet_title``: a bottom sheet on narrow viewports.
+    ``sheet_searchable``: it holds a search; its height stays."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
@@ -1271,7 +1273,9 @@ def _assemble(
         Fragment(
             _stamp_trigger_contract(trigger, id),
             _stamp_target_contract(target, id, initially_hidden=behavior != "sheet"),
-            None if sheet_title is None else dropdown_sheet(sheet_title),
+            None
+            if sheet_title is None
+            else dropdown_sheet(sheet_title, searchable=sheet_searchable),
         )
     ]
 
@@ -1286,6 +1290,7 @@ def Dropdown(
     config: dict[str, str] | None = None,
     full_width: bool = False,
     sheet_title: Child | None = None,
+    sheet_searchable: bool = False,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
     stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
@@ -1306,6 +1311,7 @@ def Dropdown(
         behavior=behavior,
         config=config,
         sheet_title=sheet_title,
+        sheet_searchable=sheet_searchable,
     )
 
 
@@ -1330,6 +1336,10 @@ _SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
 _DROPDOWN_SHEET_SIZE_CLASS = (
     "mb-[var(--sheet-keyboard-inset,0px)] "
     "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+)
+#: Filtering shrinks the list, not the sheet.
+_SEARCHABLE_SHEET_HEIGHT_CLASS = (
+    "h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
 )
 
 
@@ -1399,10 +1409,11 @@ def BottomSheet(
     )
 
 
-def dropdown_sheet(title: Child) -> Fragment:
+def dropdown_sheet(title: Child, *, searchable: bool = False) -> Fragment:
     """A dropdown's narrow-viewport sheet and sentinel.
 
     Ids are stamped on connect: templates clone.
+    ``searchable``: a fixed height, so the box stays.
     """
     header = ModalPanelHeader(
         title,
@@ -1413,7 +1424,9 @@ def dropdown_sheet(title: Child) -> Fragment:
         _sheet_dialog(
             [(SHEET_ATTRIBUTES["sheet"], "")],
             header=header,
-            size_class=_DROPDOWN_SHEET_SIZE_CLASS,
+            size_class=f"{_DROPDOWN_SHEET_SIZE_CLASS} {_SEARCHABLE_SHEET_HEIGHT_CLASS}"
+            if searchable
+            else _DROPDOWN_SHEET_SIZE_CLASS,
         ),
         # Missing CSS keeps the anchored panel.
         Span(

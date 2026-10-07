@@ -1680,7 +1680,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   lends the whole `<search-select>` (`sheetLent`), so its focus checks
   hold. While stamped, a code commit keeps the sheet open; a person's
   single-select pick or none closes it, as do Escape and the backdrop.
-  The leave work runs on `dropdown:hide`, not on a host change. The
+  The leave work runs on `dropdown:hide`, not on a host change. A sheet
+  that searches passes `searchable`/`sheet_searchable` and keeps its
+  height, so filtering never moves the box. The
   `combobox` behavior closes a "Label ▾" panel on such a pick. E2E: `with
   picker_opened(picker):` (`e2e/helpers.py`) waits out the sheet, which
   holds the page inert while it leaves. Contract is

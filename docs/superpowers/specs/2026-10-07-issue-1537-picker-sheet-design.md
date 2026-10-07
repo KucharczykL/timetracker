@@ -43,7 +43,7 @@ While the widget has the stamp:
   × also close it.
 - `focusout` does nothing. The leave work (revert, pending search) runs once
   on the host's `dropdown:hide`, but not when the sheet only changes hosts.
-- The sheet controls the list height, and the search box stays at the top.
+- The sheet has a fixed height, so a filter does not move the box.
 - The + of the box is hidden.
 
 ## The switch
@@ -53,7 +53,8 @@ for an open with no opener (`sheetOpener`). If the modal layer refuses an
 open because a modal is closing, the switch tries again one time when the
 layer is stable (`whenSettled`). While a sheet is open, it writes
 `--sheet-keyboard-inset` and `--sheet-visible-height` from `visualViewport`.
-The sheet panel uses them as its bottom margin and its height limit.
+The sheet panel uses them as its bottom margin and its height. A
+sheet that holds a search (`searchable`) keeps that height.
 
 ## Label panels
 

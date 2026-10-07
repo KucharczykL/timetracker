@@ -184,3 +184,12 @@ def test_a_combobox_sheet_needs_a_title():
 def test_a_held_face_names_its_value():
     with pytest.raises(ValueError):
         _FaceValue.held([""])
+
+
+STEADY = " h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+
+
+def test_a_picker_sheet_keeps_its_height():
+    assert STEADY in str(SearchSelect(name="game", search_url="/x"))
+    member = presets_member(api_url="/api/presets/", mode="games", id="presets")
+    assert STEADY in str(member["opens"](Button(type="button")["Presets"]))

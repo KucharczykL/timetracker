@@ -47,6 +47,7 @@ def TimeZoneRow(
             ghost=True,
             # The value changes; the name does not.
             sheet_title=label,
+            sheet_searchable=True,
         )
     ]
     element = _TimeZoneRow(

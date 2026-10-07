@@ -992,7 +992,7 @@ def _inline_combobox_host(widget: Node, face: Node) -> Node:
         placement="bottom-start",
         submenu="false",
         behavior="inline-combobox",
-    )[face, widget, dropdown_sheet("")]
+    )[face, widget, dropdown_sheet("", searchable=True)]
 
 
 def _filter_value_pill(
@@ -1337,6 +1337,7 @@ def ComboboxDropdown(
     panel_width: str = "w-72",
     applied: bool = False,
     sheet_title: SheetTitle | None = None,
+    sheet_searchable: bool = False,
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
@@ -1356,7 +1357,7 @@ def ComboboxDropdown(
 
     ``applied`` puts a dot in the trigger's corner and "(applied)" in
     its accessible name. ``sheet_title``: names the narrow-viewport
-    sheet; none, no sheet.
+    sheet; none, no sheet. ``sheet_searchable``: its height stays.
     """
     if sheet_title == "":
         raise ValueError("a sheet needs a title; pass None for none")
@@ -1382,6 +1383,7 @@ def ComboboxDropdown(
         behavior="combobox",
         config=config,
         sheet_title=sheet_title,
+        sheet_searchable=sheet_searchable,
     )
 
 
@@ -1416,6 +1418,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
             placement="bottom-end",
             behavior="combobox",
             sheet_title=PRESETS_LABEL,
+            sheet_searchable=True,
         )
 
     return {

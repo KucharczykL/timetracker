@@ -76,6 +76,14 @@ def test_a_dropdown_sheet_rises_above_the_keyboard():
     assert "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]" in html
 
 
+STEADY = " h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+
+
+def test_only_a_searchable_sheet_keeps_its_height():
+    assert STEADY not in dropdown(sheet_title="Day")
+    assert STEADY in dropdown(sheet_title="Game", sheet_searchable=True)
+
+
 def test_the_section_sheet_keeps_its_own_shape():
     html = str(
         BottomSheet(
