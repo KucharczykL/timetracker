@@ -25,7 +25,7 @@ import json
 from collections.abc import Collection
 from typing import NamedTuple, cast
 
-from common.components.core import BaseComponent, Element, Node
+from common.components.core import BaseComponent, Element, Fragment, Node
 from common.components.custom_elements import (
     CLEAR_FILTER_LABEL,
     FILTER_ACTS_LABEL,
@@ -46,6 +46,7 @@ from common.components.primitives import (
     AppliedDot,
     ButtonGroup,
     ButtonGroupMember,
+    ControlButton,
     Div,
     EllipsisTrigger,
     FilterJson,
@@ -313,6 +314,14 @@ _QUICK_PILL_CLASS = (
 )
 
 
+def _facet_apply() -> Node:
+    """A facet panel's Apply."""
+    # Submits the bar's form.
+    return Div(class_="flex justify-end mt-2 pt-2 border-t border-default-medium")[
+        ControlButton(type="submit", color="blue", data_quick_facet_apply="")["Apply"]
+    ]
+
+
 class QuickFilterBar(BaseComponent):
     """The quick facet bar for one list mode.
 
@@ -439,12 +448,14 @@ class QuickFilterBar(BaseComponent):
             label = facet.label
             content: Node = self._group_content(filter_cls, facet)
             panel_width = "w-72"
+            own_footer = False
         else:
             label = _facet_label(filter_cls, facet)
             content = self._widget(filter_cls, facet)
             kind = _field_meta(filter_cls, facet.field)["kind"]
             # Calendars size themselves; lists keep w-72.
             panel_width = "w-auto" if kind == "date" else "w-72"
+            own_footer = kind == "date"
         # Stamped for the bar's spill order.
         applied = any(field in self.existing for field in facet.fields)
         config = {"data_quick_facet": ""}
@@ -452,7 +463,8 @@ class QuickFilterBar(BaseComponent):
             config["data_quick_facet_applied"] = ""
         return ComboboxDropdown(
             label=label,
-            content=content,
+            # A calendar's footer holds its own Apply.
+            content=content if own_footer else Fragment(content, _facet_apply()),
             id=f"quick-{facet.key}-dropdown",
             ghost=True,
             panel_width=panel_width,
@@ -461,6 +473,7 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
+            sheet=True,
         )
 
     def _group_content(self, filter_cls: type, group: QuickFacetGroup) -> Node:

@@ -29,6 +29,9 @@ registerBehavior("combobox", {
   menuOptions: () => ({
     itemSelector: "[data-combobox-no-items]",
   }),
+  sheetFocus: (menu) =>
+    menu.querySelector(PANEL_PICKER)?.querySelector<HTMLElement>("[data-search-select-search]") ??
+    null,
   wire: ({ host, menu }) => {
     // Only the panel's own picker; nested ones stay shut.
     const widget = menu.querySelector<ComboboxWidget>(PANEL_PICKER);

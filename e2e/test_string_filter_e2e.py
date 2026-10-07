@@ -96,7 +96,9 @@ def test_string_filter_defaults_and_toggles(live_server, page):
     pick_choice(page, "quick-name-modifier", "INCLUDES")
 
     with page.expect_navigation():
-        page.locator('quick-filter-bar button[type="submit"]').click()
+        page.locator(
+            'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+        ).click()
     parsed = _filter_from_url(page.url)
     assert parsed["name"] == {"value": "PlayStation", "modifier": "INCLUDES"}
 
@@ -165,7 +167,9 @@ def test_string_filter_serializes_the_empty_string(live_server, page):
     page.locator('input[name="quick-name"]').fill("")
 
     with page.expect_navigation():
-        page.locator('quick-filter-bar button[type="submit"]').click()
+        page.locator(
+            'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+        ).click()
     # An empty box states no criterion.
     #
     # The bar drops the key rather than narrowing to the rows holding "".

@@ -110,7 +110,9 @@ def _choose_modifier(page, modifier: str):
 
 def _submit(page):
     with page.expect_navigation():
-        page.locator('quick-filter-bar button[type="submit"]').click()
+        page.locator(
+            'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+        ).click()
 
 
 @pytest.mark.django_db

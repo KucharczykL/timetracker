@@ -19,6 +19,17 @@ beforeEach(() => {
 });
 
 describe("changedForms", () => {
+  it("leaves a nested dialog's forms to that dialog", () => {
+    const body = mount(`
+      <form><input name="name" value="Deck"></form>
+      <dialog><form><input name="undo" value=""></form></dialog>`);
+    const baseline = snapshotForms(body);
+    input(body, "undo").value = "token";
+    expect(changedForms(body, baseline)).toEqual([]);
+    input(body, "name").value = "Deck OLED";
+    expect(changedForms(body, baseline)).toEqual([body.querySelector("form")]);
+  });
+
   it("reads a typed value as a change, typed back as none", () => {
     const body = mount(`<form><input name="name" value="Deck"></form>`);
     const baseline = snapshotForms(body);

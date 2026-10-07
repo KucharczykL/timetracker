@@ -1654,6 +1654,15 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   show through), and fills the top modal's trail and `aria-describedby`.
   Content that renames a dialog calls `refreshModalStack()`. Contract is
   [Stacked depth](docs/superpowers/specs/2026-10-06-issue-1514-stacked-modal-depth-design.md)
+- **A dropdown panel becomes a bottom sheet below `sm`** (#516): pass
+  a sheet title (`Dropdown(sheet_title=)`, `ComboboxDropdown(sheet=True)`,
+  or `dropdown_sheet(label)` inside a raw `_Dropdown`). `attachNarrowSheet`
+  (`ts/elements/narrow-sheet.ts`) lends the one panel node to the sheet;
+  `attachMenu` routes its toggle opens through `presenter`. A panel styles
+  its sheet look on itself with `data-[dropdown-host=sheet]:` and
+  `group-data-[dropdown-host=sheet]/dropdown:`; `sheetFocus` names the first
+  focus. Every calendar and quick-bar facet opts in. Contract is
+  [Bottom sheet](docs/superpowers/specs/2026-10-07-issue-516-calendar-bottom-sheet-design.md)
 - **A form page opens in a modal by marking its link**, opt-in per link (#1384):
   `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no
   header. `<form-dialog>` fetches in dialog mode (`X-Form-Dialog`):

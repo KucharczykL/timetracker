@@ -100,7 +100,9 @@ def test_the_access_facet_narrows_the_list(
         '[data-search-select-option][data-label="Borrowed"] '
         '[data-search-select-action="include"]'
     ).click()
-    page.locator('quick-filter-bar button[type="submit"]').click()
+    page.locator(
+        'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+    ).click()
 
     page.wait_for_url("**filter=**")
     rows = page.locator("tbody tr")
@@ -231,7 +233,9 @@ def test_the_games_tabs_access_facet_reads_copies(
         '[data-search-select-option][data-label="Borrowed"] '
         '[data-search-select-action="include"]'
     ).click()
-    page.locator('quick-filter-bar button[type="submit"]').click()
+    page.locator(
+        'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+    ).click()
 
     page.wait_for_url("**filter=**")
     rows = page.locator("tbody tr")

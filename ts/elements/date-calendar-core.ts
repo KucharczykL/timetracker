@@ -24,6 +24,7 @@ import {
 } from "../generated/calendar-classes.js";
 import { calendarWeekdayLabels, formatCalendarMonthYear } from "../date-time-presentation.js";
 import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
+import type { DropdownElement } from "./drop-down.js";
 // Defines the host a calendar opens.
 import "./drop-down.js";
 
@@ -164,8 +165,8 @@ let calendarIdCounter = 0;
  * stamping (the widget owns these under `inlineTrigger`, not attachMenu —
  * see date-calendar.ts), open()/close() delegated to the closest
  * `<drop-down>`, the toggle's click handler, and resyncing aria-expanded
- * when attachMenu closes the popup for a reason this element didn't
- * initiate (outside press, Escape, Tab, another panel opening).
+ * when the host opens or closes on its own (outside press, Escape,
+ * Tab, a move between hosts).
  *
  * `staticAlways` (the DateRangePanel variant) skips the host entirely — it
  * lives inside a DIFFERENT, unrelated `<drop-down>` (the quick-facet's own
@@ -182,7 +183,7 @@ export function bindCalendarPopupHost(options: {
   beforeOpen: () => void;
   render: () => void;
 }): CalendarPopupHost {
-  const dropdownHost = options.staticAlways
+  const dropdownHost: DropdownElement | null = options.staticAlways
     ? null
     : options.picker.closest("drop-down");
 
@@ -193,8 +194,7 @@ export function bindCalendarPopupHost(options: {
   }
 
   const isOpen = (): boolean =>
-    Boolean(options.staticAlways) ||
-    (dropdownHost ? !options.popup.hasAttribute("hidden") : false);
+    Boolean(options.staticAlways) || (dropdownHost?.isOpen() ?? false);
 
   const syncExpanded = (): void => {
     options.toggleButton?.setAttribute("aria-expanded", isOpen() ? "true" : "false");
@@ -202,10 +202,10 @@ export function bindCalendarPopupHost(options: {
 
   const open = (): void => {
     options.beforeOpen();
-    // Render before opening: attachMenu unhides then measures scrollHeight
-    // for its flip decision, so stale (or empty) grid content must never be it.
+    // Render first: the host shows what is there.
     options.render();
-    dropdownHost?.open();
+    // Safari does not focus a tapped button.
+    dropdownHost?.open(options.toggleButton ?? undefined);
     syncExpanded();
   };
 
@@ -219,7 +219,9 @@ export function bindCalendarPopupHost(options: {
     else open();
   });
 
+  // A move between hosts fires both.
   dropdownHost?.addEventListener("dropdown:hide", syncExpanded);
+  dropdownHost?.addEventListener("dropdown:show", syncExpanded);
 
   return { isOpen, open, close };
 }
@@ -329,6 +331,10 @@ export function bindSingleSelectCalendar(options: {
       .querySelector<HTMLElement>("[data-date-range-now]")
       ?.addEventListener("click", options.onNow);
   }
+
+  popup
+    .querySelector<HTMLElement>("[data-date-range-close]")!
+    .addEventListener("click", () => host.close());
 
   // Clear: empty the value but keep the popup open (the single-select footer
   // has no Cancel/Select, only Clear — and, for the datetime field, Now).

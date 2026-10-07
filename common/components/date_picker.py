@@ -16,12 +16,13 @@ by ``ts/elements/date-picker.ts``.
 """
 
 from common.components.core import Node
-from common.components.custom_elements import _DatePicker, _Dropdown
+from common.components.custom_elements import _DatePicker, _Dropdown, dropdown_sheet
 from common.components.date_range_picker import (
     FIELD_CONTAINER_CLASS,
     date_calendar_shell,
     date_segment_group,
     footer_button,
+    sheet_close_button,
 )
 from common.components.primitives import (
     ControlButton,
@@ -101,7 +102,7 @@ def DatePickerCalendar(*, input_name_prefix: str) -> Node:
     return date_calendar_shell(
         input_name_prefix=input_name_prefix,
         presets=None,
-        footer_buttons=[footer_button("clear", "Clear")],
+        footer_buttons=[footer_button("clear", "Clear"), sheet_close_button()],
     )
 
 
@@ -140,4 +141,4 @@ def DatePicker(
         placement="bottom-start",
         submenu="false",
         behavior="date-calendar",
-    )[picker]
+    )[picker, dropdown_sheet(label)]

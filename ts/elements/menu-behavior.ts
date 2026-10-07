@@ -62,10 +62,17 @@ export interface MenuOptions {
   // Keep the panel open while Tab moves between its native controls. The
   // focus-leave listener closes it once focus exits the panel.
   keepOpenOnTab?: boolean;
+  /** What the toggle drives; defaults to this.
+   *
+   * It must wrap this controller and never
+   * dispatch a toggle click itself.
+   */
+  presenter?: () => MenuController;
 }
 
 export interface MenuController {
-  open: () => void;
+  /** `opener` may take focus back on close. */
+  open: (opener?: HTMLElement) => void;
   /** Idempotent; a sheet may finish later. */
   close: () => void;
   isOpen: () => boolean;
@@ -162,8 +169,11 @@ export function attachMenu(
     menu.style.top = `${rect.top - firstItemInset}px`;
   };
 
+  let opened = false;
+  let opener: HTMLElement | null = null;
+
   const reposition = (): void => {
-    if (!menu.hidden) positionMenu();
+    if (opened) positionMenu();
   };
 
   // The panel is `fixed` (pinFixed), so it does not auto-follow the toggle the
@@ -175,8 +185,8 @@ export function attachMenu(
   const resizeObserver =
     typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
 
-  // Only the top-layer helpers write hidden.
-  const isOpen = (): boolean => !menu.hidden;
+  // The panel may sit unhidden in a sheet.
+  const isOpen = (): boolean => opened;
 
   // Hover never scrolls; keyboard steps do.
   const setActive = (index: number, { scroll = true } = {}): void => {
@@ -196,13 +206,15 @@ export function attachMenu(
     kind: "panel",
     close: () => close(),
     restoreFocus: () => {
-      if (menu.contains(document.activeElement)) toggle.focus();
+      if (menu.contains(document.activeElement)) (opener ?? toggle).focus();
     },
   };
 
-  const open = (): void => {
+  const open = (openedBy?: HTMLElement): void => {
     if (isOpen()) return;
     if (!showInTopLayer(menu)) return;
+    opened = true;
+    opener = openedBy ?? null;
     positionMenu();
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "true");
     window.addEventListener("scroll", reposition, true);
@@ -221,6 +233,8 @@ export function attachMenu(
     if (!isOpen()) return;
     // Nested surfaces close before this panel hides.
     removeSurface(surface);
+    opened = false;
+    opener = null;
     hideFromTopLayer(menu);
     clearAnchoredPosition(menu);
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "false");
@@ -244,7 +258,8 @@ export function attachMenu(
     if (item.getAttribute("aria-haspopup")) return;
     const role = item.getAttribute("role");
     if (role !== "menuitemcheckbox" && role !== "menuitemradio") {
-      close();
+      // A pick closes whichever host shows it.
+      presenter().close();
       toggle.focus();
     }
   };
@@ -269,6 +284,9 @@ export function attachMenu(
     }
   };
 
+  const self: MenuController = { open, close, isOpen, focusFirst };
+  const presenter = (): MenuController => options.presenter?.() ?? self;
+
   // Inline triggers: focus opens, widget owns keys.
   if (!inlineTrigger) {
     toggle.addEventListener("click", (event) => {
@@ -278,11 +296,12 @@ export function attachMenu(
       // without grabbing focus so hover drives the single highlight. A submenu opens
       // idempotently (hover-opened on mouse, so the click must not toggle it closed).
       const fromKeyboard = event.detail === 0;
-      if (isSubmenu || !isOpen()) {
-        open();
-        if (fromKeyboard) setActive(0);
+      const target = isSubmenu ? self : presenter();
+      if (isSubmenu || !target.isOpen()) {
+        target.open(toggle);
+        if (fromKeyboard) target.focusFirst();
       } else {
-        close();
+        target.close();
       }
     });
 
@@ -290,15 +309,16 @@ export function attachMenu(
       // Arrow open/roving applies to a top-level toggle only. A submenu toggle is a
       // menuitem in its parent menu, so ArrowDown/Up must bubble up to the parent's
       // roving (it opens via ArrowRight / Enter — handled elsewhere), not open here.
-      if (!isSubmenu && event.key === "ArrowDown") {
-        event.preventDefault();
-        if (!isOpen()) open();
-        setActive(0);
-      } else if (!isSubmenu && event.key === "ArrowUp") {
-        event.preventDefault();
-        if (!isOpen()) open();
-        setActive(-1);
+      if (isSubmenu || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+      event.preventDefault();
+      const target = presenter();
+      if (!target.isOpen()) target.open(toggle);
+      // Only the anchored panel roves here.
+      if (target !== self) {
+        target.focusFirst();
+        return;
       }
+      setActive(event.key === "ArrowDown" ? 0 : -1);
     });
   }
 
@@ -423,9 +443,9 @@ export function attachMenu(
     if (role === "menuitemcheckbox" || role === "menuitemradio") {
       toggleChecked(item);
     } else {
-      close();
+      presenter().close();
     }
   });
 
-  return { open, close, isOpen, focusFirst };
+  return self;
 }

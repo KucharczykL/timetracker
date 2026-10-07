@@ -22,6 +22,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.db.models import Q, QuerySet
 from django.forms.models import ModelChoiceIterator
+from django.forms.utils import pretty_name
 from django.http import QueryDict
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -1638,7 +1639,7 @@ class SessionForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
             zone_resolver = partial(self._resolved_field_zone, zone_field_name)
             self.fields[field_name].widget = DateTimeFieldWidget(
                 presentation=presentation,
-                label=str(self.fields[field_name].label or field_name),
+                label=str(self.fields[field_name].label or pretty_name(field_name)),
                 copy_target=copy_target,
                 zone_field_name=zone_field_name,
                 zone_resolver=zone_resolver,
@@ -2505,7 +2506,7 @@ class PlaythroughForm(OpenerFactsMixin, PrimitiveWidgetsMixin, forms.Form):
         for field_name in ("started", "ended"):
             self.fields[field_name].widget = DatePickerWidget(
                 presentation=presentation,
-                label=str(self.fields[field_name].label or field_name),
+                label=str(self.fields[field_name].label or pretty_name(field_name)),
             )
         self.state_opener_facts(facts)
         offered_game = self.stated("game", Game) or offered_game

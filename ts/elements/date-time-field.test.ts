@@ -79,6 +79,7 @@ function markup(
           <div data-date-range-grid></div>
           <button data-date-range-now></button>
           <button data-date-range-clear></button>
+      <button data-date-range-close></button>
         </div>
       </date-time-field>
     </drop-down>`;

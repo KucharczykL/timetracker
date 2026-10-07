@@ -202,6 +202,28 @@ export function hideFromTopLayer(panel: HTMLElement): void {
   panel.hidden = true;
 }
 
+/** Out of the top layer, shown in flow. */
+export function releaseFromTopLayer(panel: HTMLElement): void {
+  if (panel.hasAttribute("popover") && isShowing(panel)) {
+    try {
+      panel.hidePopover();
+    } catch (error) {
+      if (!isInvalidState(error)) throw error;
+      reportClientError("surface-stack", `hidePopover refused: ${String(error)}`, {
+        toast: false,
+      });
+    }
+  }
+  panel.removeAttribute("popover");
+  panel.hidden = false;
+}
+
+/** Back to a closed manual popover. */
+export function returnToTopLayer(panel: HTMLElement): void {
+  panel.setAttribute("popover", "manual");
+  panel.hidden = true;
+}
+
 export function openSurfaces(): readonly Surface[] {
   return [...surfaces];
 }

@@ -77,7 +77,9 @@ def test_the_provenance_facet_narrows_the_list(
         '[data-search-select-option][data-label="Externally measured"] '
         '[data-search-select-action="include"]'
     ).click()
-    page.locator('quick-filter-bar button[type="submit"]').click()
+    page.locator(
+        'quick-filter-bar [aria-label="Filter actions"] button[type="submit"]'
+    ).click()
 
     page.wait_for_url("**filter=**")
     expect(

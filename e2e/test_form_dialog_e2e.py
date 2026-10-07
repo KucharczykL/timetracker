@@ -484,7 +484,7 @@ def _panel_width(page: Page, live_server, url: str) -> float:
         url,
     )
     page.get_by_role("link", name="Open here").click()
-    panel = page.locator("dialog[data-modal][open] [data-modal-panel]")
+    panel = page.locator("dialog[data-modal][open] > [data-modal-panel]")
     expect(panel.locator("form").first).to_be_visible()
     box = panel.bounding_box()
     assert box is not None

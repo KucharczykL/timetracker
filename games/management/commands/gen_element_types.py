@@ -9,7 +9,14 @@ from django.core.management.base import BaseCommand
 # Importing the components package triggers element registration at import time.
 import common.components
 import common.criteria
-from common.components.custom_elements import TypedDictClass, render_props_module
+from common.components.custom_elements import (
+    SHEET_ATTRIBUTES,
+    SHEET_HOST_VALUE,
+    SheetAttribute,
+    SheetRole,
+    TypedDictClass,
+    render_props_module,
+)
 from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
@@ -207,6 +214,18 @@ class Command(BaseCommand):
                         dict[ModalAttributeRole, str],
                         dict(MODAL_ATTRIBUTES),
                     ),
+                ],
+            ),
+            # The sheets read and stamp these.
+            output_dir / "sheet-attributes.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant(
+                        "SHEET_ATTRIBUTES",
+                        dict[SheetRole, SheetAttribute],
+                        dict(SHEET_ATTRIBUTES),
+                    ),
+                    TsConstant("SHEET_HOST_VALUE", str, SHEET_HOST_VALUE),
                 ],
             ),
             # The form dialog's wire contract.

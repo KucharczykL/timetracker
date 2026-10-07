@@ -18,12 +18,17 @@ import re
 from typing import NamedTuple
 
 from common.components.core import Node
-from common.components.custom_elements import _DateTimeField, _Dropdown
+from common.components.custom_elements import (
+    _DateTimeField,
+    _Dropdown,
+    dropdown_sheet,
+)
 from common.components.date_range_picker import (
     FIELD_CONTAINER_CLASS,
     date_calendar_shell,
     footer_button,
     segment_group,
+    sheet_close_button,
 )
 from common.components.primitives import (
     ControlButton,
@@ -184,6 +189,7 @@ def DateTimeCalendar(*, input_name_prefix: str) -> Node:
         footer_buttons=[
             footer_button("now", "Now"),
             footer_button("clear", "Clear"),
+            sheet_close_button(),
         ],
     )
 
@@ -227,4 +233,4 @@ def DateTimePicker(
         placement="bottom-start",
         submenu="false",
         behavior="date-calendar",
-    )[field]
+    )[field, dropdown_sheet(label)]
