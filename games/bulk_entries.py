@@ -46,7 +46,7 @@ def entry_resolution(
     rows = tuple(
         library_entries(library)
         .filter(pk__in=wanted)
-        .select_related("player_game__game", "release__platform")
+        .select_related("player_game__game", "release__platform", "release__edition")
         .annotate(
             **{
                 PURCHASES_TAKEN: counted(

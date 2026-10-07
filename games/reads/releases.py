@@ -1,16 +1,18 @@
 """Release reads: catalog, held, played."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import NamedTuple
 
 from django.db.models import Q, QuerySet
 
 from games.end_ways import EndWay
-from games.ids import ReleaseId
+from games.ids import PlatformId, ReleaseId
 from games.models import (
     Edition,
     EditionKind,
     Game,
+    Platform,
     Release,
     UserLibrary,
     game_display_order_through,
@@ -56,6 +58,64 @@ def held_releases(library: UserLibrary) -> QuerySet[Release]:
 def held_game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
     """One Game's Releases a live copy names."""
     return game_releases(library, game).filter(pk__in=held_releases(library))
+
+
+@dataclass(frozen=True, slots=True)
+class OnPlatform:
+    """The one Release a copy names there."""
+
+    release: Release
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformRemoved:
+    """The stated platform has a removal mark."""
+
+
+@dataclass(frozen=True, slots=True)
+class NoRelease:
+    """No live same-kind Release there."""
+
+
+@dataclass(frozen=True, slots=True)
+class SeveralReleases:
+    """Several candidates; none is picked."""
+
+
+type CopyRelease = OnPlatform | PlatformRemoved | NoRelease | SeveralReleases
+
+
+def copy_release_on(
+    library: UserLibrary, game: Game, held: Release, platform_id: PlatformId | None
+) -> CopyRelease:
+    """Held Release, own Edition, then same kind."""
+    if held.platform_id == platform_id:
+        return OnPlatform(held)
+    if (
+        platform_id is not None
+        and Platform.objects.filter(
+            Q(library__isnull=True) | Q(library=library),
+            pk=platform_id,
+            removed_at__isnull=False,
+        ).exists()
+    ):
+        return PlatformRemoved()
+    candidates = list(
+        game_releases(library, game).filter(
+            Q(platform__isnull=True)
+            if platform_id is None
+            else Q(platform_id=platform_id),
+            edition__kind=held.edition.kind,
+        )
+    )
+    own = [release for release in candidates if release.edition_id == held.edition_id]
+    match own or candidates:
+        case [release]:
+            return OnPlatform(release)
+        case []:
+            return NoRelease()
+        case _:
+            return SeveralReleases()
 
 
 class LatestEnd(NamedTuple):

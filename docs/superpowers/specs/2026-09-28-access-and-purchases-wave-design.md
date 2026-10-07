@@ -1009,8 +1009,14 @@ inside a member says so in its body and closes with it.
   `UndoDeviceAccessEnd` on the same guard and declares its act on
   `AccessEndQuestion(DEVICE_WAYS)`, whose form leads with a blank
   required way. **A platform across many copies** is #1382, which
-  resolves each game's Release on the platform and refuses a row whose
-  game holds none, never creating one.
+  resolves each game's Release on the platform, own Edition first and
+  same Edition kind only, and refuses a row whose game holds none or
+  several, never creating one. A bulk act that resolves a target per
+  row states the row's held value where nothing moves: the runner
+  re-runs a row under its key, and a statement that differs from the
+  first run's answers `IdempotencyKeyMismatch`. A per-row refusal
+  sentence names no row, because the batch keeps each distinct
+  sentence once and the toast prints them all.
 - **#1344** swaps the device's `endpoint_events(...)` for
   `resumable_endpoint_events(..., resumed="library.device.access_resumed")`
   and `Endpoint.over` for `ResumableEndpoint.resuming`, no primitive work;

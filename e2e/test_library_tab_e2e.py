@@ -138,6 +138,32 @@ def test_two_copies_are_edited_and_the_undo_puts_theirs_back(
     assert _formats() == ["digital", "digital"]
 
 
+def test_two_copies_move_onto_one_platform(
+    authenticated_page: Page, live_server, copies
+):
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+    for copy in copies:
+        Release.objects.create(edition=copy.release.edition, platform=switch)
+    page = authenticated_page
+    listed = f"{live_server.url}{reverse('games:list_library')}"
+    page.goto(listed)
+    boxes = page.locator("tbody [data-selection-checkbox]")
+    boxes.nth(0).click()
+    boxes.nth(1).click()
+    page.get_by_role("button", name="Edit…").first.click()
+    page.wait_for_load_state()
+
+    platform_picker = page.locator("search-select[name='choice-platform']")
+    platform_picker.locator("[data-search-select-search]").fill("Swi")
+    platform_picker.get_by_role("option", name="Switch").click()
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    assert sorted(
+        LibraryEntry.objects.values_list("release__platform__name", flat=True)
+    ) == ["Switch", "Switch"]
+
+
 def _ended() -> list[str | None]:
     return sorted(
         LibraryEntry.objects.values_list("access_end_way", flat=True),

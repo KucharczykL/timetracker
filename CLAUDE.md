@@ -880,6 +880,11 @@ carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
 imports no act, and `FactChange` is `games/reads/fact_change.py`,
 whose `Fact.read` takes the whole event (`payload_fact` reads one key).
+#1382's `entry.edit` states a platform too: each row takes its game's
+Release there through `copy_release_on` (`games/reads/releases.py`:
+own Edition first, same Edition kind), refusing none or several, and
+states its own Release when already there, so a re-run fingerprints alike
+([spec](docs/superpowers/specs/2026-10-07-issue-1382-entry-edit-platform-design.md)).
 #1355's `entry.end` ends access on selected copies, one
 `WayActStatement` for all (`AccessEndQuestion` in
 `games/bulk_access_end.py`, over a `ways` tuple); a `caution` counts
