@@ -1,5 +1,7 @@
 # Sessions outside their playthrough's dates
 
+#1358 splits this field; see [Sessions before their playthrough's start](2026-09-29-issue-1358-before-start-design.md).
+
 `PlayerSessionFilter` states two facts about the run a session names.
 
 ## The run's kind

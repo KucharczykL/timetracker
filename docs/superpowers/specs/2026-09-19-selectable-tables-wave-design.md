@@ -25,7 +25,7 @@ repeat it.
 | #714 | Bulk move to a playthrough, the aggregate reader, the bucket removed when emptied. Its act later moved into Edit (#1310) | [Bulk move](2026-09-21-issue-714-bulk-move-design.md) |
 | #715 | The organizer: the Playthrough column and sort on the session list, Organize on Game detail | [Session organizer](2026-09-21-issue-715-session-organizer-design.md) |
 | #1241 | The stacked summary on the other four selectable tables | [Table summaries](2026-09-21-issue-1241-other-table-summaries-design.md) |
-| #717 | `outside_playthrough_dates`, `playthrough_kind`, the Library page's three cards | [Outside run dates](2026-09-21-issue-717-outside-run-dates-design.md) |
+| #717 | `outside_playthrough_dates`, `playthrough_kind`, the Library page's three cards. #1358 later split the first into Before start and After completion ([spec](2026-09-29-issue-1358-before-start-design.md)) | [Outside run dates](2026-09-21-issue-717-outside-run-dates-design.md) |
 | #718 | Five Actions columns retired into the tray and the row's ⋯ menu, Finish as a tray act, `EllipsisTrigger` | [The row menu](2026-09-22-issue-718-row-menu-design.md) |
 | #1256 | Started today and Completed today as tray acts, with void commands as inverses | [Bulk endpoint acts](2026-09-22-issue-1256-bulk-endpoint-acts-design.md) |
 | #1245 | The columns a list shows, per person and mode, with the picker in the row-menu slot | [Column choice](2026-09-22-issue-1245-column-choice-design.md) |

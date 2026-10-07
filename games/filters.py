@@ -56,6 +56,7 @@ from common.criteria import (
     StringCriterion,
     UUIDMultiCriterion,
     _Criterion,
+    beyond_bound_handler,
     bool_isnull_handler,
     bool_running_handler,
     calendar_day_handler,
@@ -65,7 +66,6 @@ from common.criteria import (
     field_metadata,
     filter_from_json,
     filter_to_json,
-    outside_interval_handler,
     relation_to_q,
     search_q,
     temporal_interval_handler,
@@ -558,8 +558,9 @@ class PlayerSessionFilter(OperatorFilter):
     timing_mode: ChoiceCriterion | None = None
     is_running: BoolCriterion | None = None  # Timed, and no end yet
     playthrough_kind: ChoiceCriterion | None = None  # the run's kind
-    #: The day the run's own dates do not cover.
-    outside_playthrough_dates: BoolCriterion | None = None
+    #: Day before the start, or after completion.
+    before_playthrough_start: BoolCriterion | None = None
+    after_playthrough_completion: BoolCriterion | None = None
     release: UUIDMultiCriterion | None = None  # filters on release_id
     edition_kind: ChoiceCriterion | None = None  # the Release's Edition
     day: DateCriterion | None = None  # effective_day, the library's calendar
@@ -592,15 +593,24 @@ class PlayerSessionFilter(OperatorFilter):
             label="Running",
         ),
         "playthrough_kind": FilterField("playthrough__kind", label="Playthrough"),
-        "outside_playthrough_dates": FilterField(
-            handler=outside_interval_handler(
+        "before_playthrough_start": FilterField(
+            handler=beyond_bound_handler(
                 "effective_day",
                 "playthrough__started_lower",
-                "playthrough__completed_upper",
+                "below",
                 #: Demo play is not the run's.
                 unless=PRERELEASE_PLAY,
             ),
-            label="Outside dates",
+            label="Before start",
+        ),
+        "after_playthrough_completion": FilterField(
+            handler=beyond_bound_handler(
+                "effective_day",
+                "playthrough__completed_upper",
+                "above",
+                unless=PRERELEASE_PLAY,
+            ),
+            label="After completion",
         ),
         "release": FilterField("release_id", search_url=PLAYED_RELEASE_SEARCH_URL),
         "edition_kind": FilterField("release__edition__kind", label="Edition kind"),

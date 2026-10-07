@@ -332,9 +332,9 @@ def test_priority_plus_overflow_collapses_and_restores(
         "drop-down[data-quick-facet]:has(#quick-duration_hours-dropdown)"
     )
 
-    # Wide: the two rightmost facets spill.
+    # Wide: the four rightmost facets spill.
     expect(overflow).to_be_visible()
-    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(2)
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(4)
     expect(
         overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)
@@ -342,7 +342,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     # Narrow: every facet spills.
     page.set_viewport_size({"width": 520, "height": 900})
     expect(overflow).to_be_visible()
-    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(7)
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(8)
     expect(
         overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)
@@ -372,13 +372,14 @@ def test_priority_plus_overflow_collapses_and_restores(
         "quick-game-dropdownLink",
         "quick-day-dropdownLink",
         "quick-playthrough_kind-dropdownLink",
-        "quick-outside_playthrough_dates-dropdownLink",
+        "quick-before_playthrough_start-dropdownLink",
         "quick-duration_hours-dropdownLink",
     ]
     menu_triggers = page.locator(
         "[data-quick-overflow-items] > [data-quick-facet] > [data-toggle]"
     )
     assert [trigger.get_attribute("id") for trigger in menu_triggers.all()] == [
+        "quick-after_playthrough_completion-dropdownLink",
         "quick-device-dropdownLink",
         "quick-timing_mode-dropdownLink",
     ]
@@ -390,18 +391,18 @@ def test_an_applied_facet_stays_inline_and_marked(
     """An applied facet stays inline, marked."""
     page = authenticated_page
     page.set_viewport_size({"width": 2000, "height": 900})
-    stated = json.dumps({"outside_playthrough_dates": {"value": True}})
+    stated = json.dumps({"before_playthrough_start": {"value": True}})
     page.goto(
         f"{live_server.url}{reverse('games:list_sessions')}"
         f"?filter={urllib.parse.quote(stated)}"
     )
 
     facet = page.locator(
-        "[data-quick-row] > drop-down:has(#quick-outside_playthrough_dates-dropdown)"
+        "[data-quick-row] > drop-down:has(#quick-before_playthrough_start-dropdown)"
     )
     expect(facet).to_have_attribute("data-quick-facet-applied", "")
-    trigger = page.locator("#quick-outside_playthrough_dates-dropdownLink")
-    expect(trigger).to_have_accessible_name("Outside dates (applied)")
+    trigger = page.locator("#quick-before_playthrough_start-dropdownLink")
+    expect(trigger).to_have_accessible_name("Before start (applied)")
     overflow_trigger = page.locator("[data-quick-overflow-trigger]")
     expect(overflow_trigger).to_have_attribute("aria-label", "More filters")
 
@@ -409,7 +410,7 @@ def test_an_applied_facet_stays_inline_and_marked(
     expect(
         page.locator(
             "[data-quick-overflow-items] > "
-            "drop-down:has(#quick-outside_playthrough_dates-dropdown)"
+            "drop-down:has(#quick-before_playthrough_start-dropdown)"
         )
     ).to_have_count(1)
     expect(overflow_trigger).to_have_attribute(

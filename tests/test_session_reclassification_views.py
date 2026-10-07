@@ -28,6 +28,8 @@ from games.models import (
     PlaythroughKind,
 )
 from games.views.bulk import STATEMENT_FIELD
+
+BEFORE_START_PROSE = "dated before the start of their playthrough"
 from games.views.session_reclassification import (
     review_filter,
     review_url,
@@ -299,9 +301,34 @@ def test_the_panel_counts_three_populations(logged_in, three_populations):
     assert _cards(html) == {
         "To review": "1",
         "Imported history": "1",
-        "Outside dates": "1",
+        "Before start": "1",
     }
     assert "hours or longer" in html
+    assert BEFORE_START_PROSE in html
+
+
+def test_the_before_start_card_groups_its_rows_by_run(logged_in, three_populations):
+    panel = _playtime_panel(logged_in.get(reverse("games:library")).content.decode())
+
+    link = re.search(r'<a\b[^>]*aria-label="1 Before start"[^>]*>', panel)
+    assert link is not None
+    assert "sort=playthrough" in link.group(0)
+
+
+def test_play_after_the_completion_draws_no_card(logged_in, owned_library):
+    """Post-game play is the run's own."""
+    dated = Game.objects.create(library=owned_library, name="Dated")
+    dated_run = tracked_run(owned_library, dated)
+    dated_run.completed = TemporalValue.from_day(date(2022, 4, 1))
+    dated_run.completion_recorded_at = timezone.now()
+    dated_run.save()
+    duration_only_row(dated_run, date(2024, 7, 1), timedelta(hours=1))
+
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert _cards(html) == {}
+    assert "Nothing to review" in html
+    assert BEFORE_START_PROSE not in html
 
 
 def test_an_empty_population_states_no_card(logged_in, session):
@@ -311,7 +338,7 @@ def test_an_empty_population_states_no_card(logged_in, session):
     assert set(cards) == {"To review"}
 
 
-def test_the_paragraphs_give_way_when_nothing_waits_for_review(
+def test_a_card_beside_an_empty_review_states_no_nothing(
     logged_in, owned_library, game
 ):
     bucket = Playthrough.objects.create(
@@ -326,8 +353,9 @@ def test_the_paragraphs_give_way_when_nothing_waits_for_review(
     html = logged_in.get(reverse("games:library")).content.decode()
 
     assert set(_cards(html)) == {"Imported history"}
-    assert "Nothing to review" in html
+    assert "Nothing to review" not in html
     assert "hours or longer" not in html
+    assert BEFORE_START_PROSE not in html
 
 
 def test_the_review_has_no_route_of_its_own(logged_in):

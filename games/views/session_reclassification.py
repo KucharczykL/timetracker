@@ -42,9 +42,9 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.session_organization import (
+    before_start_filter,
     bucket_sessions_filter,
     organization_counts,
-    outside_dates_filter,
 )
 from games.views.removal import restore_and_return
 from games.views.returns import return_url
@@ -185,7 +185,11 @@ def PlaytimeReviewPanel(library: UserLibrary) -> Node:
                 counts.bucket,
                 filter_url(bucket_sessions_filter()),
             ),
-            ("Outside dates", counts.outside, filter_url(outside_dates_filter())),
+            (
+                "Before start",
+                counts.before_start,
+                filter_url(before_start_filter(), sort="playthrough"),
+            ),
         )
         if value
     ]
@@ -193,7 +197,8 @@ def PlaytimeReviewPanel(library: UserLibrary) -> Node:
         return _nothing_to_review()
     return Fragment(
         Div(class_="mb-4")[StatisticGrid(*cards)],
-        *_review_prose(waiting),
+        *(_review_prose(waiting) if waiting else ()),
+        _before_start_prose() if counts.before_start else None,
     )
 
 
@@ -209,9 +214,7 @@ def _nothing_to_review() -> Node:
 
 
 def _review_prose(waiting: int) -> tuple[Node, ...]:
-    """What the review is, or why there is none."""
-    if not waiting:
-        return (_nothing_to_review(),)
+    """What the review is."""
     return (
         P(class_="text-type-body text-body mb-3")[
             f"{waiting} of your play sessions are {REVIEW_THRESHOLD_HOURS} hours "
@@ -228,3 +231,16 @@ def _review_prose(waiting: int) -> tuple[Node, ...]:
             "your longest session and your busiest day tell the truth again."
         ],
     )
+
+
+def _before_start_prose() -> Node:
+    """The Before start count, and its remedies."""
+    return P(class_="text-type-body text-body mb-3")[
+        "Before start counts sessions dated before the start of their "
+        "playthrough. A session can only happen once its playthrough has "
+        "started, so either the session or the playthrough has the wrong "
+        "date. If the sessions were an earlier attempt, select one game's "
+        "sessions, choose Edit, and create a new playthrough for them. If a "
+        "session's day is wrong, correct the session. If the playthrough "
+        "started earlier than it says, correct its start on the game's page."
+    ]

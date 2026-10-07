@@ -17,7 +17,7 @@ class OrganizationCounts(NamedTuple):
     """How many sessions each question answers."""
 
     bucket: int
-    outside: int
+    before_start: int
 
 
 def bucket_sessions_filter() -> PlayerSessionFilter:
@@ -30,9 +30,9 @@ def bucket_sessions_filter() -> PlayerSessionFilter:
     )
 
 
-def outside_dates_filter() -> PlayerSessionFilter:
-    """The sessions whose day their run's own dates do not cover."""
-    return PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=True))
+def before_start_filter() -> PlayerSessionFilter:
+    """The sessions dated before their run's start."""
+    return PlayerSessionFilter(before_playthrough_start=BoolCriterion(value=True))
 
 
 def organization_counts(library: UserLibrary) -> OrganizationCounts:
@@ -41,5 +41,5 @@ def organization_counts(library: UserLibrary) -> OrganizationCounts:
     sessions = shown_sessions(library)
     return OrganizationCounts(
         bucket=sessions.filter(bucket_sessions_filter().to_q(context)).count(),
-        outside=sessions.filter(outside_dates_filter().to_q(context)).count(),
+        before_start=sessions.filter(before_start_filter().to_q(context)).count(),
     )

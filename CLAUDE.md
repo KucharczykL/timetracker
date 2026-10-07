@@ -1127,10 +1127,14 @@ structured filtering.
   `started`/`ended` (instants' dates, null on Duration-only row),
   `duration_hours` (`effective_duration`), `created_at`, `game` (through run),
   `device`, `emulated`, `note`, `search`, `game_filter`, `device_filter`, plus
-  two the run states: `playthrough_kind` (`playthrough__kind`, the bucket's
-  word) and `outside_playthrough_dates` (the day below `started_lower` or
-  above `completed_upper`, through `outside_interval_handler`; a run stating
-  no endpoint answers no, a demo session never). Both are quick facets;
+  three the run states: `playthrough_kind` (`playthrough__kind`, the
+  bucket's word), `before_playthrough_start` (the day below
+  `started_lower`) and `after_playthrough_completion` (above
+  `completed_upper`), both through `beyond_bound_handler` with
+  `unless=PRERELEASE_PLAY`; a run stating no bound on that side answers
+  no, a demo session never. All three are quick facets; the Library page
+  counts Before start alone, since play after a completion is post-game
+  play (#1358, [spec](docs/superpowers/specs/2026-09-29-issue-1358-before-start-design.md)).
   `release` and `edition_kind` are builder only. Mode
   key stays `sessions`; model key is `playersession` wherever one is spelled
   (`FILTER_MODE_MODELS`, builder URL, fixtures' `"model"`). `GameFilter`'s
