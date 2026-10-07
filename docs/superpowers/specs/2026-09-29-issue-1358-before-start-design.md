@@ -26,6 +26,13 @@ date intact. Legacy data holds a few replays among these rows, because a
 `PlayEvent` could only mark a completion and a later replay had no run of its
 own. Those are found once and moved; no count needs to keep asking.
 
+The Add Playthrough page reads play after the last completion as a candidate
+next run: it seeds the new run's start one day after it and sums that play
+(`_seeded_run`, `games/views/playthrough.py`). That seed is a suggestion a
+person confirms, and this design does not change it. Both readings stand:
+play after a completion is the run's own until the person says it starts
+another.
+
 The 2026-09-28 dump states the split: 113 sessions over 29 runs are
 outside. 102 are after the completion and 11 before the start. Every one of
 the 29 games holds exactly one run, so no existing run covers any of the 113.
@@ -45,7 +52,15 @@ Each is one side of the old handler. False is the plain negation, and Django's
 states no bound on that side in the False answer. That is the property #717
 pinned for the two-sided field, and each field keeps it for its own side. A
 bound column is the widest the endpoint permits, so a start stated as `2022`
-flags no day in 2022.
+flags no day in 2022, and an open start ("before 2022") has no lower bound and
+flags nothing.
+
+`effective_day` of a Timed or Corrected session is its start read in the
+calendar's `day_zone`; a run's bounds are calendar days with no zone. A session
+just after midnight on the stated start day, read in a zone east of the one the
+run was dated in, can flag by one day. That is rare and accepted: the handler
+does not widen by a day, because a widened bound would hide a real one-day
+contradiction.
 
 `outside_interval_handler` in `common/criteria.py` has one caller. It becomes
 `beyond_bound_handler(day_field, bound_field, side, *, unless=None)`, where
@@ -110,7 +125,8 @@ paragraphs, in card order:
 > session or the playthrough has the wrong date. If the sessions were an
 > earlier attempt, select one game's sessions, choose Edit, and create a new
 > playthrough for them. If a session's day is wrong, correct the session. If
-> the playthrough started earlier than it says, correct its start.
+> the playthrough started earlier than it says, correct its start on the
+> game's page.
 
 The wording is final in review, not here; the three remedies and their order
 are the design. The order puts the move first, because it is the remedy the
@@ -119,6 +135,10 @@ bulk runner already carries: bulk Edit's Playthrough picker creates a run
 under one game, and `refuse_another_game` refuses a move across games, so the
 move is one game at a time. The link's `sort=playthrough` puts each game's rows
 together.
+
+A session's own Edit is in its row menu. A run's start is corrected from Game
+detail, reached through the row's game link: the row's Playthrough cell is
+plain text, and linking it is out of scope.
 
 The `Nothing to review` state speaks only about long typed-in totals. It shows
 only where no card shows. Where the review counts zero and another card shows,
@@ -160,7 +180,8 @@ of, so the person adds a copy of the demo first.
   single field-comparison equivalence per field.
 - `tests/test_session_organization.py`: the population's before-start row
   counts and its after-completion row does not (`before_start=1`); the
-  link-parity test names `before_start_filter`. A new test counts the same
+  link-parity test names `before_start_filter`. A bucket row counts under
+  `bucket` and never under `before_start`: the two cards are disjoint. A new test counts the same
   population with `SHOW_PRERELEASE_PLAY` set to show and to hide, and the two
   counts are equal.
 - `tests/test_session_reclassification_views.py`: the cards read `Before
@@ -193,3 +214,6 @@ and the selectable-tables wave, get one line pointing here.
 
 - A per-run statement that post-game play was reviewed. The after-completion
   sweep is one pass over legacy data, and a facet is enough for it.
+- A tolerance, such as "before the start by more than N days". It would be a
+  new field with a handler, no migration, if a count ever needs one.
+- A link from a session row's Playthrough cell to its run.
