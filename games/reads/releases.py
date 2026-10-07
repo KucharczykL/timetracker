@@ -83,11 +83,7 @@ type PlatformRelease = OnPlatform | NoRelease | SeveralReleases
 def release_on_platform(
     library: UserLibrary, entry: LibraryEntry, platform_id: PlatformId | None
 ) -> PlatformRelease:
-    """Own Edition first, then same-kind Editions.
-
-    None is Unspecified. A copy already there keeps its own
-    Release; a candidate on a removed platform is none.
-    """
+    """Own Edition first, then same-kind Editions."""
     held = entry.release
     if held.platform_id == platform_id:
         return OnPlatform(held)

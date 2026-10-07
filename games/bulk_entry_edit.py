@@ -1,4 +1,4 @@
-"""Platform, access, format or note on many copies."""
+"""Platform, access, format or note, in bulk."""
 
 import json
 import uuid
@@ -355,7 +355,7 @@ def _state(
 def _release_id(
     library: UserLibrary, entry: LibraryEntry, stated: StatedPlatform
 ) -> uuid.UUID:
-    """The copy's Release on that platform, or a refusal.
+    """The copy's Release there, else a refusal.
 
     A copy already there states its own Release, so a re-run
     under the row's key fingerprints as the first run did.
