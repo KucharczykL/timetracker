@@ -1360,7 +1360,7 @@ def _sheet_dialog(
             [(SHEET_ATTRIBUTES["panel"], "")],
             class_=(
                 f"flex w-full {size_class} flex-col "
-                "overflow-hidden rounded-t-base border border-default-medium "
+                "overflow-hidden rounded-t-base border border-b-0 border-default-medium "
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
             ),
         )[
