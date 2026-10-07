@@ -16,9 +16,9 @@ export interface NarrowSheetOptions {
   /** Its `aria-expanded` follows the sheet. */
   expandedToggle?: HTMLElement;
   sheetFocus?: (menu: HTMLElement) => HTMLElement | null;
-  /** The node the sheet holds; default the menu. */
+  /** Node the sheet holds; default: menu. */
   lent?: HTMLElement;
-  /** Focus returns here when no opener is stated. */
+  /** Focus return when no opener is stated. */
   opener?: () => HTMLElement | null;
 }
 
@@ -88,7 +88,7 @@ export function attachNarrowSheet(
     if (next && next.parentNode === parent) parent.insertBefore(lent, next);
     else parent.appendChild(lent);
     returnToTopLayer(menu);
-    // After the move: its blur reads the stamp.
+    // Removed after the move; blurs read it.
     menu.removeAttribute(SHEET_ATTRIBUTES.host);
     lent.removeAttribute(SHEET_ATTRIBUTES.host);
   };
@@ -154,7 +154,7 @@ export function attachNarrowSheet(
     state = { kind: "sheet", opener, place };
     let opened = false;
     try {
-      // Before the move: its blur reads the stamp.
+      // Stamped before the move; blurs read it.
       lent.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       menu.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       body.appendChild(lent);

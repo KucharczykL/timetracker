@@ -582,7 +582,7 @@ const initWidget = (containerElement: Element): boolean => {
     // always-visible panels, which stay open, still lose their phantom active
     // option after a commit). clearHighlight also removes aria-activedescendant.
     clearHighlight();
-    //: A lent widget closes on a person's pick.
+    //: Lent: only a person's pick closes.
     if (!alwaysVisible && !lent()) dropdownHost?.close();
     syncExpanded();
   };
@@ -1803,7 +1803,7 @@ const initWidget = (containerElement: Element): boolean => {
     }
   });
 
-  // ── The face: name, mirrored state, its own ×. ──
+  // ── The face ──
   if (face && faceOpen) {
     const open = faceOpen;
     const fieldName =

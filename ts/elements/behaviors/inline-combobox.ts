@@ -21,8 +21,7 @@ import { ownChild } from "../own-child.js";
 //   <form> (the widget's own Enter-pick handling has already run by the time
 //   this listener fires).
 //
-// Below sm the whole widget is lent to the sheet, so its focus and
-// containment checks hold; the face's open button takes focus back.
+// Below sm the whole widget moves to the sheet.
 //
 // attachMenu and the stack do the rest.
 

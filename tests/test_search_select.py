@@ -1107,7 +1107,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         # attachMenu hosting hooks are excluded: the field layout carries them on
         # its own inline-combobox drop-down, while the panel layout's live on the
         # ComboboxDropdown that wraps it a level up — orthogonal to the serializer.
-        # The face and the sheet sit beside the widget, outside what it reads.
+        # Face and sheet sit beside the widget.
         host_hooks = {
             "data-toggle",
             "data-menu",

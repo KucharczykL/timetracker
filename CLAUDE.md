@@ -1667,14 +1667,22 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   Content that renames a dialog calls `refreshModalStack()`. Contract is
   [Stacked depth](docs/superpowers/specs/2026-10-06-issue-1514-stacked-modal-depth-design.md)
 - **A dropdown panel becomes a bottom sheet below `sm`** (#516): pass
-  a sheet title (`Dropdown(sheet_title=)`, `ComboboxDropdown(sheet=True)`,
+  a sheet title (`Dropdown(sheet_title=)`, `ComboboxDropdown(sheet_title=)`,
   or `dropdown_sheet(label)` inside a raw `_Dropdown`). `attachNarrowSheet`
   (`ts/elements/narrow-sheet.ts`) lends the one panel node to the sheet;
   `attachMenu` routes its toggle opens through `presenter`. A panel styles
   its sheet look on itself with `data-[dropdown-host=sheet]:` and
   `group-data-[dropdown-host=sheet]/dropdown:`; `sheetFocus` names the first
   focus. Every calendar and quick-bar facet opts in. Contract is
-  [Bottom sheet](docs/superpowers/specs/2026-10-07-issue-516-calendar-bottom-sheet-design.md)
+  [Bottom sheet](docs/superpowers/specs/2026-10-07-issue-516-calendar-bottom-sheet-design.md).
+  A field picker (#1537) shows a face below `sm`, its own field box with
+  a button for text; a tap lends the whole `<search-select>`
+  (`sheetLent`), so its focus checks hold. While stamped, only a person's
+  single-select pick closes it, and the leave work runs on
+  `dropdown:hide`. The `combobox` behavior closes a "Label ▾" panel on
+  such a pick. E2E: `open_picker`/`wait_for_sheet_to_close`
+  (`e2e/helpers.py`); a leaving sheet holds the page inert. Contract is
+  [Picker sheet](docs/superpowers/specs/2026-10-07-issue-1537-picker-sheet-design.md)
 - **A form page opens in a modal by marking its link**, opt-in per link (#1384):
   `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no
   header. `<form-dialog>` fetches in dialog mode (`X-Form-Dialog`):

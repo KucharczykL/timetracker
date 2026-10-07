@@ -15,8 +15,7 @@ import { registerBehavior } from "../dropdown-behaviors.js";
 // - keeps Enter inside the search input from implicitly submitting an ancestor
 //   <form> (the filter bar renders its action row inside one); the widget's own
 //   Enter-pick handling has already run by the time this listener fires,
-// - closes on a person's single-select pick or none; a clear, a pill or
-//   a value set from code emits no such change.
+// - closes on a single-select pick or none.
 //
 // The widget methods are duck-typed so this module never imports search-select
 // (keeps drop-down.js's transitive graph lean; the element upgrades on its own).
@@ -48,7 +47,7 @@ registerBehavior("combobox", {
     const onSearchKeydown = (event: KeyboardEvent) => {
       if (event.key === "Enter") event.preventDefault();
     };
-    //: Code sets values silently; a change is a person's.
+    //: Code sets silently; a change is a person's.
     const onChange = (event: Event) => {
       if (event.target !== widget || !widget) return;
       if (widget.getAttribute("multi") === "true" || widget.getAttribute("filter-mode") === "true") {

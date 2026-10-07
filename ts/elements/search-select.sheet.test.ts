@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Below sm: the face, and the widget lent to the sheet.
+// Below sm: the face and the lent widget.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./search-select.js";
 import type { SearchSelectElement } from "./search-select.js";
