@@ -4,11 +4,11 @@ import re
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, ViewportSize, expect
 
 LOGIN = ("tester", "secret123")
-PHONE = {"width": 375, "height": 812}
-DESKTOP = {"width": 1280, "height": 800}
+PHONE = ViewportSize(width=375, height=812)
+DESKTOP = ViewportSize(width=1280, height=800)
 STARTED = 'drop-down:has(input[name="started"][data-date-picker-hidden])'
 SHEET = "dialog[data-dropdown-sheet][open]"
 
