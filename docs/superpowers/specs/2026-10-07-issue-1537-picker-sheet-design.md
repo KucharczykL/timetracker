@@ -22,8 +22,8 @@ the look of the widget's field box, and its text area is a button. Its own ×
 presses the box's ×, and its own + gives its created row to the widget. A
 `FilterSelect` face has no × and no +. The server writes the held label, or
 `none_label`, or the placeholder. The widget keeps the face current: the
-held value, a typed draft in the uncommitted look, or the placeholder. It copies `disabled`,
-`aria-invalid` and `aria-describedby` from the search box. A hidden span
+held value, a typed draft in the uncommitted look, or the placeholder. It
+copies `disabled`, `aria-invalid` and `aria-describedby` from the search box. A hidden span
 gives the field name, so the button name is "Field, value". The widget also
 writes the field name into the empty sheet title. A click on the field label
 opens the sheet.
@@ -51,7 +51,7 @@ While the widget has the stamp:
 `attachNarrowSheet` takes the node to move (`sheetLent`) and a focus target
 for an open with no opener (`sheetOpener`). If the modal layer refuses an
 open because a modal is closing, the switch tries again one time when the
-layer is stable (`whenSettled`). While a sheet is open, it writes
+layer is stable (`whenSettled`), anchored if the viewport became wide. While a sheet is open, it writes
 `--sheet-keyboard-inset` and `--sheet-visible-height` from `visualViewport`.
 The sheet panel uses them as its bottom margin and its height. A
 sheet that holds a search (`searchable`) keeps that height.
@@ -60,10 +60,12 @@ sheet that holds a search (`searchable`) keeps that height.
 
 The `combobox` behavior closes its dropdown when its own single-select
 picker reports a pick or none. `ComboboxDropdown` takes a `sheet_title`, so
-a title does not include a value.
+a title does not include a value, and `sheet_searchable` for the Presets
+panel, `TimeZoneRow` and set facets. In a sheet, a panel's list stops above
+its footer, so a facet's Apply stays in view.
 
 ## Tests
 
 Vitest, pytest and 375 px e2e tests cover the switch, the face, the lent
 widget and the markup. The e2e helpers wait for a closing sheet. A manual
-iOS Safari test covers the keyboard.
+iOS Safari test covered the keyboard.
