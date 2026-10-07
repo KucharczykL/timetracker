@@ -48,10 +48,18 @@ bound column is the widest the endpoint permits, so a start stated as `2022`
 flags no day in 2022.
 
 `outside_interval_handler` in `common/criteria.py` has one caller. It becomes
-`beyond_bound_handler(day_field, bound_field, side)`, where `side` is a
-`BoundSide = Literal["below", "above"]` alias. It answers `day < bound` or
-`day > bound`, and False is the negation. The two fields call it; nothing else
-did.
+`beyond_bound_handler(day_field, bound_field, side, *, unless=None)`, where
+`side` is a `BoundSide = Literal["below", "above"]` alias. True answers
+`day < bound` or `day > bound`, less the `unless` rows; False is the plain
+negation, so an `unless` row answers False. That is the shape the two-sided
+handler has today, cut to one side. The two fields call it; nothing else did.
+
+Both fields pass `unless=PRERELEASE_PLAY` (`games/reads/prerelease_play.py`),
+as `outside_playthrough_dates` does. Play on a prerelease Edition is not the
+run's play, so it is never before the run's start or after its completion. A
+session that names no Release still counts. `PRERELEASE_PLAY` is a constant,
+not the owner's `SHOW_PRERELEASE_PLAY` setting, so neither field reads that
+setting.
 
 The old key is removed, not aliased. `from_json` refuses a key it does not
 know. The session list reads its filter through `apply_structured_filter`,
@@ -72,6 +80,11 @@ read-only pill when a key has no facet, and the card's link carries
 `OrganizationCounts.outside` becomes `before_start`. The Library page gives the
 same object to `filter_url`, so the count and its link still compile one
 predicate. A session after its run's completion is not counted.
+
+`organization_counts` counts over `shown_sessions(library)`, which drops
+prerelease play when the owner hides it. Before start excludes that play
+through `unless` in every case, so its count is the same under both settings.
+The count and its list therefore agree whatever the setting says.
 
 The card reads **Before start**. Its link also states `sort=playthrough`, so
 the session list groups the rows by game, then by run: the rows a person moves
@@ -119,16 +132,14 @@ correction stays one row at a time.
 
 A session of a game's demo is often dated before the full game's run starts,
 sometimes by a year. Correcting the run's start to cover it is wrong: a demo is
-a different version of the game. A demo is an Edition of kind `demo` (#1353),
-with a Release per platform. A session is demo play through the Release it
-names, which #1354 lets it state.
+a different version of the game. A demo is an Edition of kind `prerelease`
+(#1353), with a Release per platform, and a session is demo play through the
+Release it names (#1354). Both fields exclude such a session through `unless`,
+above.
 
-Until #1354 lands, a demo session under Before start is one nobody has placed
-on its demo Release yet. The remedy is #1354's bulk Edit Release field, never a
-start correction. Once #1354 gives the join, `before_playthrough_start` gains a
-clause that reads only sessions on full editions, because a demo precedes the
-game by nature. The rule this design states does not change; #1361 hides demo
-play elsewhere.
+A demo session that names no Release yet still counts under Before start. The
+remedy is bulk Edit's Release field, which places it on the demo Release; never
+a start correction.
 
 ## Tests
 
@@ -146,6 +157,10 @@ play elsewhere.
   review` renders only where no card does.
 - `tests/test_quick_filter_bar.py`, `e2e/test_quick_filter_e2e.py`: the facet
   lists and the applied-facet test name the two new keys.
+- `tests/test_session_release.py`: the demo test states both fields. A
+  session on the demo Release answers False for each, a session on the game's
+  Release and one naming none answer True for Before start, and
+  `organization_counts(...).before_start == 2`.
 - A stored filter naming `outside_playthrough_dates` is refused with
   `FilterError`.
 
@@ -157,6 +172,5 @@ of what those issues decided, each with one line pointing here.
 
 ## Out of scope
 
-- Demo play (above): #1354 adds the full-editions clause.
 - A per-run statement that post-game play was reviewed. The after-completion
   sweep is one pass over legacy data, and a facet is enough for it.
