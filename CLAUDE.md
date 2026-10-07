@@ -1667,8 +1667,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   Content that renames a dialog calls `refreshModalStack()`. Contract is
   [Stacked depth](docs/superpowers/specs/2026-10-06-issue-1514-stacked-modal-depth-design.md)
 - **A dropdown panel becomes a bottom sheet below `sm`** (#516): pass
-  a sheet title (`Dropdown(sheet_title=)`, `ComboboxDropdown(sheet_title=)`,
-  or `dropdown_sheet(label)` inside a raw `_Dropdown`). `attachNarrowSheet`
+  a `SheetSpec(title)` (`Dropdown(sheet=)`, `ComboboxDropdown(sheet=)`,
+  or `dropdown_sheet(SheetSpec(label))` inside a raw `_Dropdown`). `attachNarrowSheet`
   (`ts/elements/narrow-sheet.ts`) lends the one panel node to the sheet;
   `attachMenu` routes its toggle opens through `presenter`. A panel styles
   its sheet look on itself with `data-[dropdown-host=sheet]:` and
@@ -1681,9 +1681,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   hold. While stamped, a code commit keeps the sheet open; a person's
   single-select pick or none closes it, as do Escape and the backdrop.
   The leave work runs on `dropdown:hide`, not on a host change. A sheet
-  that searches passes `searchable`/`sheet_searchable` and keeps its
-  height, so filtering never moves the box. The
-  `combobox` behavior closes a "Label ▾" panel on such a pick. E2E: `with
+  that searches states `SheetSpec(..., searchable=True)` and keeps its
+  height, so filtering never moves the box. A host whose sheet fails is
+  stamped `data-dropdown-sheetless` and shows the box. Every person's
+  single-select pick emits `search-select:pick`; the `combobox` behavior
+  closes a "Label ▾" panel on it. E2E: `with
   picker_opened(picker):` (`e2e/helpers.py`) waits out the sheet, which
   holds the page inert while it leaves. Contract is
   [Picker sheet](docs/superpowers/specs/2026-10-07-issue-1537-picker-sheet-design.md)

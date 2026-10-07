@@ -276,6 +276,7 @@ describe("a dropdown sheet's edges", () => {
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("narrow sentinel"));
     expect(host.querySelector("#panel")!.parentElement).toBe(host);
     expect(host.isOpen()).toBe(true);
+    expect(host.hasAttribute("data-dropdown-sheetless")).toBe(true);
   });
 
   it("reports a sheet beside its own controller", () => {
@@ -545,8 +546,11 @@ describe("a lent sheet that fails", () => {
       menuOptions: () => ({ itemSelector: "[data-none]", inlineTrigger: true }),
       sheetLent: (host) => host.querySelector<HTMLElement>("[data-face]")!,
     });
-    mountLent(lentFixture().replace('behavior="test-lent"', 'behavior="test-bad-lent"'));
+    const { host } = mountLent(
+      lentFixture().replace('behavior="test-lent"', 'behavior="test-bad-lent"'),
+    );
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("must hold the menu"));
+    expect(host.hasAttribute("data-dropdown-sheetless")).toBe(true);
   });
 
   it("opens again after a return that threw", () => {
@@ -592,5 +596,19 @@ describe("the keyboard inset, more", () => {
     viewport.dispatchEvent(new Event("scroll"));
     vi.advanceTimersToNextFrame();
     expect(dialog.style.getPropertyValue("--sheet-keyboard-inset")).toBe("0px");
+  });
+});
+
+describe("a move back to the anchored host", () => {
+  it("puts focus on the behavior's first focus", () => {
+    registerBehavior("test-sheet-focus", {
+      sheetFocus: (menu) => menu.querySelector<HTMLElement>("[data-inside]"),
+    });
+    const { host, toggle, panel } = mount("test-sheet-focus");
+    mouseClick(toggle);
+    narrow = false;
+    resize();
+    expect(host.isOpen()).toBe(true);
+    expect(document.activeElement).toBe(panel.querySelector("[data-inside]"));
   });
 });

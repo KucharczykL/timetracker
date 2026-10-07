@@ -204,3 +204,23 @@ def test_a_panel_listbox_fills_the_sheet_above_its_footer():
     assert (
         "group-data-[dropdown-host=sheet]/dropdown:max-h-[calc(var(--sheet-visible-height,100dvh)*0.9-13rem)]!"
     ) in listbox
+
+
+def test_the_sheet_stamp_lands_on_the_listbox_group():
+    html = str(SearchSelect(name="game", search_url="/x"))
+    [panel] = tag_with(html, "data-search-select-panel")
+    assert "data-menu" in panel
+    assert "group/dropdown" in panel
+
+
+def test_the_time_zone_sheet_keeps_its_height():
+    html = str(
+        TimeZoneRow(
+            field_name="zone",
+            label="Start time zone",
+            stored_zone="",
+            display_zone="Europe/Prague",
+            capture_default=True,
+        )
+    )
+    assert STEADY in html

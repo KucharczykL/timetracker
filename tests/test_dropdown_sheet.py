@@ -123,6 +123,50 @@ def test_the_year_picker_carries_a_sheet():
     assert sheet_title(html) == "Year"
 
 
+class FacetSheets(HTMLParser):
+    """Per facet: searches, and its own sheet steady."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[dict] = []
+        self.facets: list[tuple[bool, bool]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        named = dict(attrs)
+        if tag == "drop-down":
+            self.stack.append(
+                {
+                    "facet": "data-quick-facet" in named,
+                    "searches": False,
+                    "steady": False,
+                }
+            )
+        elif tag == "search-select" and named.get("filter-mode") == "true":
+            if named.get("always-visible") == "true":
+                self.stack[-1]["searches"] = True
+        elif tag == "div" and "data-sheet-panel" in named:
+            self.stack[-1]["steady"] = STEADY in f" {named.get('class', '')}"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "drop-down":
+            frame = self.stack.pop()
+            if frame["facet"]:
+                self.facets.append((frame["searches"], frame["steady"]))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
+def test_only_a_set_facet_sheet_keeps_its_height(mode):
+    parser = FacetSheets()
+    parser.feed(str(QuickFilterBar(mode=mode, presentation=PRESENTATION)))
+    assert parser.facets
+    for searches, steady in parser.facets:
+        assert searches == steady
+    if mode == "games":
+        #: Platform is a set facet.
+        assert any(steady for _, steady in parser.facets)
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("mode", sorted(QUICK_FACETS))
 def test_every_quick_facet_carries_a_sheet(mode):

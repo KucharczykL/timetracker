@@ -50,12 +50,12 @@ def open_facet(page: Page, field: str) -> None:
 
 @contextmanager
 def picker_opened(picker: Locator) -> Iterator[None]:
-    """Open a picker; on exit, its sheet has closed.
+    """Open a picker; on a clean exit, its sheet has closed.
 
     Below sm, the face opens a sheet; a leaving
     sheet still holds the page inert.
     """
-    host = picker.locator("xpath=..")
+    host = picker.locator("xpath=ancestor::drop-down[1]")
     face = host.locator(
         ":scope > [data-search-select-face] [data-search-select-face-open]"
     )

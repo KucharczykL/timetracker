@@ -1052,7 +1052,7 @@ describe("created", () => {
     );
   });
 
-  it("tells the person when a picker's face declines", async () => {
+  it("tells the person when no listener takes a face's row", async () => {
     const main = document.getElementById("main-container")!;
     main.insertAdjacentHTML(
       "beforeend",

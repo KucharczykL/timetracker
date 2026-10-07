@@ -374,7 +374,7 @@ describe("the face, more", () => {
   });
 
   it("is named by the box's aria-label, else its placeholder", () => {
-    const named = mount({ label: false, attributes: {} , tweak: (host) =>
+    const named = mount({ label: false, tweak: (host) =>
       host.querySelector("[data-search-select-search]")!.setAttribute("aria-label", "Console") });
     expect(named.host.querySelector("[data-search-select-face-name]")!.textContent).toBe("Console, ");
     const placeheld = mount({ label: false });

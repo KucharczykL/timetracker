@@ -4,8 +4,9 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 
-from e2e.helpers import held_choice, pick_choice
+from e2e.helpers import held_choice, open_facet, pick_choice
 from e2e.tracked_games import create_tracked_game
+from games.models import Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -188,4 +189,53 @@ def test_a_picker_sheet_stacks_over_a_form_dialog(signed_in: Page, live_server, 
         " [data-search-select-face-open]"
     )
     expect(kind_face).to_be_focused()
+    assert errors == []
+
+
+def test_a_long_set_facet_keeps_apply_in_view(
+    signed_in: Page, live_server, e2e_library, errors
+):
+    for index in range(30):
+        Platform.objects.create(library=e2e_library, name=f"Platform {index:02}")
+    page = signed_in
+    page.set_viewport_size(PHONE)
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    open_facet(page, "platform")
+    sheet = page.locator(SHEET)
+    expect(sheet).to_be_visible()
+    apply = sheet.locator("[data-quick-facet-apply]")
+    expect(apply).to_be_in_viewport()
+    listbox = sheet.locator('[role="listbox"]')
+    assert listbox.evaluate("list => list.scrollHeight > list.clientHeight")
+    assert errors == []
+
+
+def test_a_facet_picker_opens_a_second_sheet(signed_in: Page, live_server, errors):
+    page = signed_in
+    page.set_viewport_size(PHONE)
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    open_facet(page, "name")
+    expect(page.locator(SHEET)).to_have_count(1)
+
+    pick_choice(page, "quick-name-modifier", "INCLUDES")
+
+    expect(page.locator(SHEET)).to_have_count(1)
+    expect(held_choice(page, "quick-name-modifier")).to_have_value("INCLUDES")
+    assert errors == []
+
+
+def test_escape_drops_a_typed_draft(signed_in: Page, live_server, errors):
+    page = signed_in
+    page.set_viewport_size(PHONE)
+    page.goto(f"{live_server.url}{reverse('games:add_game')}")
+    kind = page.locator(
+        "drop-down[behavior='inline-combobox']:has(search-select[name='kind'])"
+    )
+    held = kind.locator("[data-search-select-face-value]").inner_text()
+    kind.locator("[data-search-select-face-open]").click()
+    page.locator(SHEET).locator("[data-search-select-search]").press_sequentially("zz")
+    page.keyboard.press("Escape")
+
+    expect(page.locator(SHEET)).to_have_count(0)
+    expect(kind.locator("[data-search-select-face-value]")).to_have_text(held)
     assert errors == []
