@@ -66,7 +66,12 @@ know. The session list reads its filter through `apply_structured_filter`,
 which fails open: a stale link shows the whole list and the toast "Ignored
 invalid filter". The bulk runner and the preset save refuse it outright. That
 is the list's rule for every unknown key, and this change adds no exception.
-The dump holds no preset naming the old key.
+`OperatorFilter.renamed_fields` renames a key that maps onto one new key, as
+`ended` became `completed`. The old key here maps onto two keys with a
+different meaning, so a rename would widen a stored filter in silence, and the
+key is refused instead. The 2026-09-28 dump holds no preset naming it. A fresh
+dump is checked again before deploy, because the facet has offered Presets
+since it shipped.
 
 Both fields replace the old one in `QUICK_FACETS["sessions"]`, in its place:
 Before start, then After completion. The quick bar degrades a filter to a
@@ -88,7 +93,9 @@ The count and its list therefore agree whatever the setting says.
 
 The card reads **Before start**. Its link also states `sort=playthrough`, so
 the session list groups the rows by game, then by run: the rows a person moves
-together sit together. No builder for "after completion" exists in this module,
+together sit together. The sort lives where the panel builds the href,
+`filter_url(before_start_filter(), sort="playthrough")`, not in the builder:
+the builder is the predicate the count shares. No builder for "after completion" exists in this module,
 because the Library page counts no such thing.
 
 A card counting zero is not shown, as today.
@@ -116,8 +123,9 @@ together.
 The `Nothing to review` state speaks only about long typed-in totals. It shows
 only where no card shows. Where the review counts zero and another card shows,
 the review states nothing, so no "nothing" sits beside a count asking for
-work. Today's panel has that clash with the Outside dates card; this change
-ends it.
+work. Today's panel has that clash with every card, Imported history included,
+and a test pins it; this change inverts that test. A panel showing only the
+Imported history card then carries the card and no prose.
 
 ## No new act
 
@@ -139,7 +147,8 @@ above.
 
 A demo session that names no Release yet still counts under Before start. The
 remedy is bulk Edit's Release field, which places it on the demo Release; never
-a start correction.
+a start correction. The field offers only Releases the library holds a copy
+of, so the person adds a copy of the demo first.
 
 ## Tests
 
@@ -151,12 +160,20 @@ a start correction.
   single field-comparison equivalence per field.
 - `tests/test_session_organization.py`: the population's before-start row
   counts and its after-completion row does not (`before_start=1`); the
-  link-parity test names `before_start_filter` and reads `sort=playthrough`.
+  link-parity test names `before_start_filter`. A new test counts the same
+  population with `SHOW_PRERELEASE_PLAY` set to show and to hide, and the two
+  counts are equal.
 - `tests/test_session_reclassification_views.py`: the cards read `Before
-  start`; the paragraph renders exactly when that card does; `Nothing to
-  review` renders only where no card does.
-- `tests/test_quick_filter_bar.py`, `e2e/test_quick_filter_e2e.py`: the facet
-  lists and the applied-facet test name the two new keys.
+  start`, and its rendered href carries `sort=playthrough`; the paragraph
+  renders exactly when that card does; `Nothing to review` renders only where
+  no card does, so `test_the_paragraphs_give_way_when_nothing_waits_for_review`
+  is inverted.
+- `tests/test_quick_filter_bar.py`: `RunFacetsTest`, the editable test and
+  `FacetOrderTest` name the two new keys.
+- `e2e/test_quick_filter_e2e.py`: the applied-facet test names
+  `before_playthrough_start`. The sessions bar goes from seven facets to
+  eight, so the width-dependent priority test's row count and overflow list
+  are measured again, not loosened.
 - `tests/test_session_release.py`: the demo test states both fields. A
   session on the demo Release answers False for each, a session on the game's
   Release and one naming none answer True for Before start, and
@@ -167,8 +184,10 @@ a start correction.
 ## Documents
 
 `CLAUDE.md`'s `PlayerSessionFilter` paragraph names the old field and handler
-and is rewritten. The #717 and selectable-tables wave specs stay as records
-of what those issues decided, each with one line pointing here.
+and is rewritten. Every older spec naming the old key (#717, the
+selectable-tables wave, #1254, #1354, #1361, the Access and Purchases wave)
+stays as a record of what it decided. Only the two that define the field, #717
+and the selectable-tables wave, get one line pointing here.
 
 ## Out of scope
 
