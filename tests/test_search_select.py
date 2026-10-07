@@ -1205,7 +1205,7 @@ class ClearableSearchSelectTest(unittest.TestCase):
         self.assertIn('aria-describedby="id_device_label"', self._clear_tag(html))
 
     def test_follows_the_search_box(self):
-        html = str(SearchSelect(name="device", clearable=True))
+        html = _own_element(str(SearchSelect(name="device", clearable=True)))
         self.assertLess(
             html.index("data-search-select-search"),
             html.index("data-search-select-clear"),

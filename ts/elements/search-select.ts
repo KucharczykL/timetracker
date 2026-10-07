@@ -486,13 +486,15 @@ const initWidget = (containerElement: Element): boolean => {
     return pills.querySelector(HELD_VALUE_INPUTS) ? (container._searchSelectLabel ?? "") : "";
   };
   const syncFace = () => {
-    const text = faceText();
+    const held = faceText();
+    //: Typed, not picked: shown as a draft.
+    const draft = held || multi || isFilter ? "" : search.value.trim();
     if (faceValue) {
-      faceValue.textContent = text || search.placeholder;
-      faceValue.toggleAttribute("data-placeholder", !text);
+      faceValue.textContent = held || draft || search.placeholder;
+      faceValue.toggleAttribute("data-placeholder", !held && !draft);
+      faceValue.toggleAttribute("data-draft", draft !== "");
     }
-    //: A draft query is not on the face.
-    if (faceClear && clearButton) faceClear.hidden = clearButton.hidden || !text;
+    if (faceClear && clearButton) faceClear.hidden = clearButton.hidden;
   };
 
   //: Also syncs the face.

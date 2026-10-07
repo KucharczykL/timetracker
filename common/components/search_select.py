@@ -82,6 +82,7 @@ from common.components.modal import ElementId
 from common.components.primitives import (
     CLOSED_POPOVER,
     AppliedDot,
+    Button,
     ButtonColor,
     ButtonGroupMember,
     ButtonShape,
@@ -194,9 +195,20 @@ _LENT_BOX_CLASS = (
 #: The sheet, not the rows, caps the list.
 _LENT_LISTBOX_CLASS = "group-data-[dropdown-host=sheet]/dropdown:max-h-none!"
 #: The phone's stand-in for the box.
-_FACE_CLASS = "hidden max-sm:flex items-center gap-1"
-_FACE_OPEN_CLASS = "peer flex-1 min-w-0"
-_FACE_VALUE_CLASS = "flex-1 min-w-0 truncate text-left data-[placeholder]:text-body data-[placeholder]:italic"
+#: Shown below sm; ``max-sm:`` beats the box's flex.
+_FACE_CLASS = "hidden max-sm:flex"
+#: The box's text area, as the search box.
+_FACE_OPEN_CLASS = (
+    "peer flex min-w-0 flex-1 -my-1 self-stretch items-center gap-2 py-1 "
+    "cursor-pointer text-start text-type-input text-heading "
+    "focus:outline-hidden disabled:cursor-not-allowed"
+)
+#: A draft wears the box's uncommitted look.
+_FACE_DRAFT_BOX_CLASS = "has-[[data-draft]]:border-dashed"
+_FACE_VALUE_CLASS = (
+    "grow truncate data-[placeholder]:text-body "
+    "data-[draft]:text-body data-[draft]:italic"
+)
 #: Prefixes an excluded value on the face.
 FACE_EXCLUDED_PREFIX = "not "
 #: Joins a multi value on the face.
@@ -349,8 +361,9 @@ class ClearControl:
     described_by: ElementId | None = None
 
 
-def _clear_button(clear: ClearControl) -> Node:
+def _clear_button(clear: ClearControl, attributes: Attributes = ()) -> Node:
     return ControlButton(
+        attributes,
         variant="ghost",
         size="compact",
         data_search_select_clear="",
@@ -377,13 +390,18 @@ def _dialog_create_button(create: DialogCreate, attributes: Attributes) -> Node:
     )[Icon("plus", [("aria-hidden", "true"), ("class", "size-4")])]
 
 
-def _dialog_create_link(create: DialogCreate) -> Node:
-    """The divider and the +."""
+def _dialog_create_link(create: DialogCreate, *, face: bool = False) -> Node:
+    """The divider and the +.
+
+    The box's pair hides while lent.
+    """
+    lent_class = "" if face else f" {_HIDDEN_WHEN_LENT_CLASS}"
+    attributes: list[HTMLAttribute] = [("class", f"{_DIALOG_CREATE_CLASS}{lent_class}")]
+    if face:
+        attributes.append(("data-search-select-face-create", ""))
     return Fragment(
-        Span(aria_hidden="true", class_=f"{_DIVIDER_CLASS} {_HIDDEN_WHEN_LENT_CLASS}"),
-        _dialog_create_button(
-            create, [("class", f"{_DIALOG_CREATE_CLASS} {_HIDDEN_WHEN_LENT_CLASS}")]
-        ),
+        Span(aria_hidden="true", class_=f"{_DIVIDER_CLASS}{lent_class}"),
+        _dialog_create_button(create, attributes),
     )
 
 
@@ -403,16 +421,18 @@ def _search_select_face(
     dialog_create: DialogCreate | None = None,
     shape: ButtonShape = "full",
 ) -> Node:
-    """The phone's face: value, ×, +.
+    """The phone's face: the box, its value a button.
 
-    The widget names, mirrors and opens it.
+    × and + are the box's own. The widget names,
+    mirrors and opens it.
     """
-    return Div(data_search_select_face="", class_=_FACE_CLASS)[
-        ControlButton(
+    return Div(
+        data_search_select_face="",
+        class_=f"{field_box_class(shape)} {_FACE_CLASS} {_FACE_DRAFT_BOX_CLASS}",
+    )[
+        Button(
+            type="button",
             data_search_select_face_open="",
-            variant="outline",
-            align="start",
-            shape=shape,
             aria_haspopup="dialog",
             aria_expanded="false",
             class_=_FACE_OPEN_CLASS,
@@ -424,26 +444,12 @@ def _search_select_face(
                 data_placeholder="" if value.placeholder else None,
                 class_=_FACE_VALUE_CLASS,
             )[value.text],
-            Icon("arrowdown"),
+            Icon("arrowdown", [("class", "text-body")]),
         ],
-        ControlButton(
-            data_search_select_face_clear="",
-            variant="ghost",
-            size="compact",
-            aria_label="Clear",
-            title="Clear",
-            aria_describedby=clear.described_by,
-            hidden=not clear.shown,
-            class_="peer-disabled:hidden",
-        )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
+        _clear_button(clear, [("data-search-select-face-clear", "")])
         if clear
         else None,
-        _dialog_create_button(
-            dialog_create,
-            [("data-search-select-face-create", ""), ("class", "peer-disabled:hidden")],
-        )
-        if dialog_create
-        else None,
+        _dialog_create_link(dialog_create, face=True) if dialog_create else None,
     ]
 
 

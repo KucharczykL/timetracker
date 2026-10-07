@@ -134,11 +134,17 @@ describe("the face", () => {
     expect(faceClear.hidden).toBe(true);
   });
 
-  it("offers no × for a draft query alone", () => {
-    const { box, open, faceClear } = mount();
+  it("shows a typed draft as a draft, with its ×", () => {
+    const { box, open, value, faceClear } = mount();
     open.click();
     type(box, "Sw");
-    expect(faceClear.hidden).toBe(true);
+    expect(value.textContent).toBe("Sw");
+    expect(value.hasAttribute("data-draft")).toBe(true);
+    expect(value.hasAttribute("data-placeholder")).toBe(false);
+    expect(faceClear.hidden).toBe(false);
+    row(box.closest("search-select")!, "2").click();
+    expect(value.textContent).toBe("Switch");
+    expect(value.hasAttribute("data-draft")).toBe(false);
   });
 
   it("joins a multi-select's labels", () => {
