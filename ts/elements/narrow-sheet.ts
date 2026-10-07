@@ -1,8 +1,7 @@
 /** A dropdown panel opens as a sheet when narrow.
  *
- * One panel node: the sheet borrows it on open and
- * returns it before `dropdown:hide`. The sentinel shows
- * only when narrow; CSS alone holds the breakpoint.
+ * One panel node moves between hosts.
+ * CSS alone holds the breakpoint.
  */
 import { DROPDOWN_SHEET_ATTRIBUTES } from "../generated/dropdown-sheet-attributes.js";
 import type { MenuController } from "./menu-behavior.js";
@@ -48,7 +47,7 @@ export function attachNarrowSheet(
   }
   nameSheet(dialog);
 
-  // Where the panel lives while it is lent.
+  // The panel's home while lent.
   let place: PanelPlace | null = null;
   let opener: HTMLElement | undefined;
   let pendingMove = false;

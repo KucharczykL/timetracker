@@ -17,9 +17,8 @@ import "./behaviors/sheet.js";
 
 // The one generic dropdown element. A registered behavior may provide its own
 // controller (the modal sheet does); otherwise attachMenu owns the usual
-// open/close/position/keyboard behavior. An own dropdown sheet and sentinel
-// make the panel a sheet on narrow viewports. The element reads no
-// type-specific attribute.
+// open/close/position/keyboard behavior. A dropdown sheet serves narrow
+// viewports. The element reads no type-specific attribute.
 export class DropdownElement extends HTMLElement {
   private controller?: MenuController;
 

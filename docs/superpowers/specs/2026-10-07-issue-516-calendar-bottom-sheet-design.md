@@ -1,178 +1,70 @@
-# A dropdown panel becomes a bottom sheet on narrow viewports (#516)
+# A dropdown panel opens as a bottom sheet on narrow viewports
 
-Part of #1485. #1537 reuses the switch for the form pickers.
-
-## Decisions
-
-Settled with the user (UI) and the modal epic organizer (shape), 2026-10-07.
-
-1. **The switch is a `<drop-down>` opt-in, not a behavior.** Scope, from
-   the user: every calendar and every quick-bar facet. A builder that
-   passes a sheet title renders two extra children inside the `<drop-down>`
-   host: a sheet dialog and a narrow sentinel. A dropdown without one renders
-   neither and behaves as today.
-2. **Breakpoint: below `sm` (640 px).** The sentinel is
-   `Span(data_dropdown_narrow="", class_="hidden max-sm:block")`. JavaScript
-   reads `getClientRects().length > 0` and never repeats the breakpoint. A
-   rect means the sheet. A stylesheet without the rule keeps the anchored
-   panel, today's presentation.
-3. **One panel node, two hosts.** The `[data-menu]` panel stays one node.
-   An open while the sentinel is hidden records the panel's parent and next
-   sibling, moves the panel into the sheet body, calls
-   `releaseFromTopLayer(panel)`, sets `data-dropdown-host="sheet"` on it, and
-   opens the sheet. If the modal layer refuses the open (it answers false) or
-   throws, the switch puts the panel back in a `finally`: the tap is dropped,
-   never answered with an anchored popup. When the sheet closes, the switch
-   puts the panel back, calls `returnToTopLayer(panel)` and removes
-   `data-dropdown-host`, before `dropdown:hide` is dispatched.
-   `releaseFromTopLayer` and `returnToTopLayer` (`surface-stack.ts`) remove
-   and restore `popover="manual"` and `hidden`, so only top-layer helpers
-   write `hidden`. The attribute returns before any later `hidePopover`,
-   which throws on an element with no `popover`.
-4. **The mode is chosen at open.** While the dropdown is open, a window
-   `resize` that changes the sentinel moves the panel: the switch closes the
-   open host and, on that host's `dropdown:hide`, reads the sentinel again
-   and opens the host it names. A `close()` or a disconnect while a move is
-   pending drops the move. The iOS keyboard changes only `visualViewport`,
-   not the layout width, so it never moves the panel.
-5. **`attachSheet` splits.** `attachSheetCore(host, dialog, options)` owns
-   the modal-layer seat, the slide, `data-sheet-state` and the
-   `dropdown:show`/`dropdown:hide` events. It binds no toggle and writes no
-   `aria-expanded`. Its `open(opener)` passes the opener to the modal layer,
-   because Safari does not focus a tapped button and the date field's
-   `[data-toggle]` is a `<div>`. Options: `initialFocus`; `beforeHide`, run
-   on close before `dropdown:hide`; `afterHide`, run after it. The `sheet`
-   behavior's `attachSheet` keeps today's order on top: toggle click,
-   `aria-expanded="false"` in `beforeHide`, same-page navigation in
-   `afterHide`.
-6. **The opener reaches the switch.** `MenuController.open(opener?)` and
-   `DropdownElement.open(opener?)` take an optional opener;
-   `bindCalendarPopupHost` passes its calendar button. Focus returns there
-   from the sheet, and from the anchored popup too: `attachMenu`'s
-   `restoreFocus` focuses the opener, else the toggle. Today Escape on the
-   anchored calendar drops focus to the body, because the toggle is a
-   `<div>`.
-7. **Initial focus in the sheet** is the selected day, else today, else the
-   sheet's ×. Today is in the grid only when the view shows its month. A behavior states it with `sheetFocus(menu)` in its
-   `DropdownBehavior`; `date-calendar` does. #1537 states its search box the
-   same way.
-8. **The panel carries its own sheet look.** Its classes state the sheet
-   look under `data-[dropdown-host=sheet]:` and
-   `group-data-[dropdown-host=sheet]/calendar:` variants. Nothing outside
-   the panel styles it.
-
-## What the switch catches
-
-Every open. `DropdownElement` builds the wrapper and passes it to
-`attachMenu` as `presenter`, a getter for the controller the toggle drives.
-`attachMenu`'s own toggle click and ArrowDown/ArrowUp open, close and focus
-through `presenter()`, which defaults to `attachMenu`'s own controller. When
-the panel sits in the sheet and the behavior binds its toggle (no
-`inlineTrigger`), the wrapper writes the toggle's `aria-expanded`, which
-`attachMenu` writes for the anchored panel. #1537 is left with the picker
-work: the search box and the keyboard.
+Part of #1485. Issue #516. #1537 uses the same switch for the form pickers.
 
 ## Users
 
-- `DatePicker`, `DateTimePicker`, `DateRangePicker` and `YearPicker` pass
-  their label. `YearPicker`'s grid is 224 px wide and fits a phone, but
-  every calendar opens the same way.
-- Every quick-bar facet passes its label through `ComboboxDropdown`'s
-  `sheet_title`. The date facet's `DateRangePanel` is about 440 px wide and
-  overflows a 375 px phone; the set, number, string and bool facets follow
-  for one presentation per bar. A facet in the "⋯" overflow opens its sheet
-  above that menu: the sheet is inside the menu's DOM, so neither focus nor
-  a press in the sheet closes the menu. The time zone row's
-  `ComboboxDropdown` passes nothing; #1537 decides it.
+Every calendar (`DatePicker`, `DateTimePicker`, `DateRangePicker`,
+`YearPicker`) and every quick-bar facet opens its panel as a bottom sheet
+below 640 px. Above 640 px, the panel stays an anchored popup.
 
-## Shape
+## Markup
 
-- **Python.** `BottomSheet` keeps its markup. Its dialog and panel move into
-  `sheet_dialog(...)`, which also builds the dropdown sheet with an empty
-  `[data-sheet-body]`, `data-dropdown-sheet` and no `data-bottom-sheet`
-  (section-nav and two e2e files select that attribute alone). Its height
-  cap is `max-h-[90dvh]`, so the range calendar's footer stays in view; the
-  section sheet keeps `max-h-[min(80dvh,32rem)]`. `dropdown_sheet(title)`
-  answers the dialog and the sentinel as one `Fragment`.
-  `ModalPanelHeader` and `titled_header` take `title_id=None`, which omits
-  the id and `aria-labelledby` (an attribute value is never `None`). The
-  dropdown sheet uses it: the switch stamps a counter id on the title and
-  the dialog's `aria-labelledby` at connect, so the filter builder's cloned
-  templates never share one. `DatePicker`, `DateTimePicker` and
-  `DateRangePicker` and `YearPicker` call
-  `_Dropdown(...)[picker, dropdown_sheet(label)]`, the sheet after the
-  picker. The sentinel is `absolute` and zero-sized, so it changes no
-  layout and no facet width the bar measures. `sheet_dialog` stays in `custom_elements.py`, the module
-  `tests/test_modal_dialog.py` admits for `ModalDialog(`.
-- **Attribute names are generated.** `DROPDOWN_SHEET_ATTRIBUTES` in
-  `custom_elements.py` names `data-dropdown-sheet`, `data-dropdown-narrow`,
-  `data-dropdown-host` and `data-sheet-body`; `make gen-element-types`
-  writes `ts/generated/dropdown-sheet-attributes.ts`, as it writes the modal
-  attributes.
-- **TypeScript.** `DropdownElement.connectedCallback` builds the behavior's
-  controller as today. When it finds an own `[data-dropdown-sheet]` and an
-  own `[data-dropdown-narrow]`, it wraps the controller with
-  `attachNarrowSheet` (`ts/elements/narrow-sheet.ts`), which answers the
-  same `MenuController`. A behavior with `createController` and a sheet is
-  a defect, reported with `reportClientError`. `DropdownElement` gains
-  `isOpen()`.
-- **In the sheet the panel is outside the picker element.** Every panel
-  reference is captured at init; a later `picker.querySelector` for a part
-  of the panel finds nothing.
-- **`attachMenu` keeps its own open state.** `isOpen()` and `reposition`
-  read a flag `open()` and `close()` set, not `menu.hidden`. Reason: the
-  panel in the sheet is unhidden while the anchored controller is closed;
-  its `focusout` and Tab handlers must not hide it there.
-- **`bindCalendarPopupHost`** reads `dropdownHost.isOpen()`, not the panel's
-  `hidden`, and syncs `aria-expanded` on `dropdown:show` as well as on
-  `dropdown:hide`, because a move fires both.
-- **Form dialog baseline.** `formsOf` in `form-dialog/unsaved.ts` counts only
-  forms whose nearest dialog is the form dialog. A toast moves into the top
-  modal, and a sheet inside the page form would otherwise add its Undo form.
-- **Panel look in the sheet.** Every `[data-menu]` panel the switch moves
-  carries `group/dropdown`. `DropdownPanel` drops its border, shadow,
-  surface, blur and width (`w-full`) under `data-[dropdown-host=sheet]:`.
-  Content inside keys on `group-data-[dropdown-host=sheet]/dropdown:`.
-- **Calendar look in the sheet.** The popup shell and the static calendar
-  inside a facet drop their surfaces the same way. The shell drops its border, corners,
-  surface and blur, and stacks its children in a column. The grid takes
-  `w-full`, a definite width, so Firefox does not shrink its tracks. The
-  weekday header and day cells take `w-auto` and fill seven equal tracks.
-  The client overwrites every cell's classes from the generated
-  `CALENDAR_DAY_CLASSES` and `CALENDAR_WEEKDAY_CLASS`, so the variant goes
-  into `_DAY_CELL_GEOMETRY_CLASS` and the weekday string, and
-  `make gen-element-types` runs.
-  Range presets wrap as one row above the grid (`w-auto` each), with a
-  bottom divider instead of the end divider.
+A builder opts in with a sheet title: `_assemble(sheet_title=...)`,
+`Dropdown(sheet_title=...)`, `ComboboxDropdown(sheet=True)`, or
+`dropdown_sheet(title)` beside the picker inside `_Dropdown`. The host then
+contains two extra nodes:
 
-## Out of scope
+- A sheet dialog, `[data-dropdown-sheet]`, with an empty body. The client
+  gives its title an id on connect, because the filter builder clones
+  templates.
+- A sentinel, `[data-dropdown-narrow]`, with the classes
+  `hidden max-sm:block`. A rect on the sentinel means "narrow". If the
+  stylesheet does not have the rule, the dropdown keeps the anchored popup.
 
-- The form pickers (`SearchSelect`, fixed-choice pickers), the time zone
-  row, the search box at the sheet top, closing on an item pick, and
-  `visualViewport` sizing: #1537.
-- Touch-friendly time entry.
+`DROPDOWN_SHEET_ATTRIBUTES` names these attributes. The codegen writes them
+to TypeScript.
 
-## Tests
+## Switch
 
-- Python: the four calendars and every quick-bar facet render one
-  `[data-dropdown-sheet]` titled by the label and one sentinel; `Dropdown`
-  without `sheet_title` renders neither;
-  `BottomSheet` markup is unchanged.
-- Vitest: `attachNarrowSheet` opens anchored or in the sheet by the
-  sentinel; the panel moves and returns with its attributes; a refused open
-  puts it back; a resize while open moves it and a close drops the pending
-  move; ids are stamped per instance. `attachMenu.isOpen()` stays false
-  while the panel sits unhidden in the sheet. The sheet core keeps
-  `attachSheet`'s order.
-- e2e at 375 px and desktop width: a date field opens a sheet or the popup;
-  a day pick commits and closes; focus returns to the calendar button; the
-  range sheet shows its footer; a date field in a form dialog stacks a
-  sheet over the dialog; a resize keeps an open calendar open. Locators
-  scope by `drop-down`, not by the picker. A quick-bar date facet and a
-  set facet open as sheets on the phone, and a facet from the "⋯"
-  overflow opens its sheet over the menu; Apply still reads their values. The 390 px touch-target test now
-  measures the sheet.
+`DropdownElement` wraps the controller of the behavior with
+`attachNarrowSheet` (`ts/elements/narrow-sheet.ts`).
 
-## Follow-up issues to file
+- The switch reads the sentinel when the panel opens.
+- If narrow, the switch moves the panel node into the sheet body. The
+  panel is out of the top layer while it is in the sheet
+  (`releaseFromTopLayer`). Then the switch opens the sheet.
+- If the modal layer refuses the open or throws, the switch puts the panel
+  back at once.
+- When the sheet closes, the switch puts the panel back before
+  `dropdown:hide`, and the panel becomes a closed manual popover again
+  (`returnToTopLayer`).
+- If a window resize moves the viewport across the breakpoint while the
+  panel is open, the switch moves the panel to the other host. The panel
+  stays open. A close cancels a pending move.
+- `attachMenu` keeps its own open state, because the panel is visible in the
+  sheet while the anchored controller is closed.
+- `attachMenu` sends its toggle click and its arrow-key opens through
+  `presenter`, so the switch decides each open.
 
-None.
+`attachSheetCore` is a sheet with no toggle. It does not write
+`aria-expanded`. Its hooks run in this order: `beforeShow`, `dropdown:show`,
+`beforeHide`, `dropdown:hide`, `afterHide`. The `sheet` behavior adds its
+toggle and same-page navigation on top of the core. The opener goes through
+`open(opener)`. Safari does not focus a tapped button, so focus returns to
+the opener. `sheetFocus` on a behavior gives the first focus in the sheet:
+the selected day for a calendar, the search box for a facet.
+
+## Look and actions
+
+A panel in a sheet has `data-dropdown-host="sheet"` and the class
+`group/dropdown`. The variants on its own classes remove its surface. In a
+calendar, the day grid fills the width, and the range presets wrap in a row
+above the grid.
+
+The date and date-time calendars show Close in the sheet only. The anchored
+popup closes on an outside press. Every facet panel ends with Apply, which
+submits the bar. A date facet puts Apply in the footer of its calendar.
+
+A form dialog counts only its own forms. It ignores a form in a nested
+dialog, for example the Undo form of a toast.

@@ -839,7 +839,7 @@ _Dropdown = custom_element_builder("drop-down")
 
 # The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = "bg-surface-overlay text-type-body dark:backdrop-blur-xl"
-#: A panel lent to a sheet sheds its own surface.
+#: A sheet-hosted panel drops its surface.
 SHEET_HOSTED_PANEL_CLASS = (
     "group/dropdown data-[dropdown-host=sheet]:w-full "
     "data-[dropdown-host=sheet]:rounded-none data-[dropdown-host=sheet]:border-0 "
@@ -1321,7 +1321,7 @@ _SHEET_PANEL_MOTION_CLASS = (
 )
 
 
-#: The section sheet's cap; a calendar needs more.
+#: Section sheet cap; calendars need more.
 _SECTION_SHEET_HEIGHT_CLASS = "max-h-[min(80dvh,32rem)]"
 _DROPDOWN_SHEET_HEIGHT_CLASS = "max-h-[90dvh]"
 
@@ -1393,9 +1393,9 @@ def BottomSheet(
 
 
 def dropdown_sheet(title: Child) -> Fragment:
-    """A dropdown's narrow-viewport sheet and its sentinel.
+    """A dropdown's narrow-viewport sheet and sentinel.
 
-    Ids are stamped on connect: templates clone this.
+    Ids are stamped on connect: templates clone.
     """
     header = ModalPanelHeader(
         title,
