@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gzip
 from collections.abc import Mapping
-from io import StringIO
 from pathlib import Path
 from typing import NamedTuple
 
@@ -160,10 +159,7 @@ class Command(BaseCommand):
             )
             self._reject_primary_key_collisions(loadable)
             try:
-                for deserialized in serializers.deserialize(
-                    "yaml",
-                    StringIO(yaml.safe_dump(loadable, sort_keys=False)),
-                ):
+                for deserialized in serializers.deserialize("python", loadable):
                     deserialized.save(force_insert=True)
                 #: Deferred keys hold before the replay.
                 connection.check_constraints()
@@ -189,6 +185,8 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
+            #: Unanalyzed, the stale read below plans for minutes.
+            analyze_tables(loaded_tables())
             if (
                 state.requested_version != state.published_version
                 or stale_purchases(library).exists()
@@ -206,7 +204,7 @@ class Command(BaseCommand):
                     f"{refusal.messages[0]}"
                 ) from refusal
             #: Before the commit queues the task.
-            analyze_tables(loaded_tables())
+            analyze_tables((ExternalReference,))
 
         if backfilled.taken:
             self.stdout.write(
@@ -240,10 +238,10 @@ class Command(BaseCommand):
         try:
             if FIXTURE_PATH.suffix == ".gz":
                 with gzip.open(FIXTURE_PATH, "rt") as fixture:
-                    records = yaml.safe_load(fixture)
+                    records = yaml.load(fixture, Loader=yaml.CSafeLoader)
             else:
                 with FIXTURE_PATH.open() as fixture:
-                    records = yaml.safe_load(fixture)
+                    records = yaml.load(fixture, Loader=yaml.CSafeLoader)
         except (OSError, yaml.YAMLError) as error:
             raise CommandError(
                 f"Sample fixture is unreadable: {FIXTURE_PATH}"
@@ -454,8 +452,7 @@ class Command(BaseCommand):
         translation here is load-bearing: without it every game and release
         would dangle.
 
-        Values are strings because the prepared records are re-serialized with
-        `yaml.safe_dump` before deserialization, which cannot represent a UUID.
+        Values are strings, like every key the fixture states.
         """
         platform_uuids = {}
         renamed_icons = 0
