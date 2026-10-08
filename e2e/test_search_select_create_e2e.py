@@ -4,21 +4,9 @@ One submit: the name is typed, the create row is pressed, and the
 form records a session on what came back.
 """
 
-import pytest
 from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
 
 START_FIELD = 'date-time-field[field-name="started_at"]'
 

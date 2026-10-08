@@ -4,15 +4,8 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
+from e2e.helpers import log_in
 from games.models import Platform, PlayerGame
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def test_two_games_are_removed_and_the_undo_puts_them_back(
@@ -21,7 +14,7 @@ def test_two_games_are_removed_and_the_undo_puts_them_back(
     games = [
         create_tracked_game(e2e_library, name) for name in ("Outer Wilds", "Tunic")
     ]
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = f"{live_server.url}{reverse('games:list_games')}"
     page.goto(listed)
@@ -59,7 +52,7 @@ def test_each_row_checkbox_names_its_game_alone(live_server, page: Page, e2e_lib
     create_tracked_game(
         e2e_library, "The Witness", platform=platform, sort_name="Witness, The"
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 

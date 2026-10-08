@@ -13,7 +13,7 @@ the builder UI (the debounce/cancel/stale logic is unit-tested in vitest).
 
 from django.http import HttpResponse
 from django.test import override_settings
-from django.urls import path, reverse
+from django.urls import path
 from playwright.sync_api import Page, expect
 
 from common.components import FilterCount, FilterGroup
@@ -29,6 +29,7 @@ from common.components.primitives import (
     Title,
 )
 from common.date_time_presentation import date_time_presentation_for_request
+from e2e.helpers import log_in
 from games.models import Game, Platform
 from timetracker.urls import urlpatterns as base_urlpatterns
 
@@ -81,11 +82,7 @@ urlpatterns = [*base_urlpatterns, path("filter-count-test/", filter_count_view)]
 
 
 def _login_and_open(page: Page, live_server, query: str = "") -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     page.goto(f"{live_server.url}/filter-count-test/{query}")
 
 

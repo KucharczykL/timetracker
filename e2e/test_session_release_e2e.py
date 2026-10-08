@@ -18,16 +18,6 @@ from games.writes.playergame import new_correlation_id
 from games.writes.playersession import SessionDraft, record_session
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
 def _held_game(user, library, name: str, platforms: list[Platform]) -> Release:
     """A tracked game whose first platform's Release a copy holds."""
     game = create_tracked_game(library, name)

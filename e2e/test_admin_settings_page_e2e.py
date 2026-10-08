@@ -7,9 +7,11 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import held_choice, pick_choice
+from e2e.helpers import Credentials, held_choice, log_in, pick_choice
 from timetracker import config as config_module
 from timetracker import settings_resolver
+
+ADMIN_LOGIN = Credentials("settings-admin", "secret123")
 
 SITE_SETTING_KEYS = (
     "DEFAULT_PURCHASE_CURRENCY",
@@ -50,14 +52,9 @@ def superuser_page(
     editable_site_setting_sources,
 ) -> Page:
     django_user_model.objects.create_superuser(
-        username="settings-admin",
-        password="secret123",
+        username=ADMIN_LOGIN.username, password=ADMIN_LOGIN.password
     )
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.get_by_label("Username").fill("settings-admin")
-    page.get_by_label("Password").fill("secret123")
-    page.get_by_role("button", name="Login", exact=True).click()
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server, ADMIN_LOGIN)
     return page
 
 

@@ -2,8 +2,34 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import NamedTuple
 
+from django.urls import reverse
 from playwright.sync_api import Locator, Page, expect
+
+
+class Credentials(NamedTuple):
+    """One user's login form values."""
+
+    username: str
+    password: str
+
+
+E2E_LOGIN = Credentials("tester", "secret123")
+
+
+def log_in(page: Page, live_server, credentials: Credentials = E2E_LOGIN) -> None:
+    """Sign in through the form; land on ``/tracker``.
+
+    Enter, not a click: a click parks the virtual mouse on the
+    button, and the next page opens whatever hovers under it.
+    """
+    page.goto(f"{live_server.url}{reverse('login')}")
+    page.fill('input[name="username"]', credentials.username)
+    page.fill('input[name="password"]', credentials.password)
+    page.press('input[name="password"]', "Enter")
+    page.wait_for_url(f"{live_server.url}/tracker**")
+
 
 TABLES_SETTLED = """
 () => [...document.querySelectorAll('responsive-table')].every(

@@ -11,16 +11,6 @@ from games.models import Game, Platform
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
-@pytest.fixture
 def stats_data(e2e_library) -> None:
     platform = Platform.objects.create(
         library=e2e_library, name="PC", icon="steam", group="PC"

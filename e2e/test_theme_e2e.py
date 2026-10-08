@@ -4,7 +4,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, expect
 
-from e2e.helpers import held_choice, pick_choice
+from e2e.helpers import Credentials, held_choice, log_in, pick_choice
 from games.models import SiteSetting, UserPreferences
 from timetracker import settings_resolver
 
@@ -26,14 +26,6 @@ def _install_first_frame_probe(page: Page) -> None:
 def _first_frame(page: Page) -> dict:
     page.wait_for_function("window.__themeAtFirstFrame !== null")
     return page.evaluate("window.__themeAtFirstFrame")
-
-
-def _login(page: Page, live_server, username: str, password: str = "pw") -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', username)
-    page.fill('input[name="password"]', password)
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _set_user_theme(user, theme: str) -> None:
@@ -93,7 +85,7 @@ def test_account_menu_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
 ):
     user = django_user_model.objects.create_user(username="theme-user", password="pw")
     page.emulate_media(color_scheme="light")
-    _login(page, live_server, user.username)
+    log_in(page, live_server, Credentials(user.username, "pw"))
     page.get_by_role("button", name="Open account menu for theme-user").click()
     toggle = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
@@ -204,7 +196,7 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
     )
     _set_user_theme(user, "light")
     page.emulate_media(color_scheme="light")
-    _login(page, live_server, user.username)
+    log_in(page, live_server, Credentials(user.username, "pw"))
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     page.get_by_role("button", name="Open account menu for settings-user").click()
     theme = held_choice(page, "theme")
@@ -256,8 +248,8 @@ def test_second_browser_reconciles_account_theme_on_navigation(
     first = first_context.new_page()
     second = second_context.new_page()
     try:
-        _login(first, live_server, user.username)
-        _login(second, live_server, user.username)
+        log_in(first, live_server, Credentials(user.username, "pw"))
+        log_in(second, live_server, Credentials(user.username, "pw"))
         first.goto(f"{live_server.url}{reverse('games:settings')}")
         second.goto(f"{live_server.url}{reverse('games:settings')}")
         expect(second.locator("html")).to_have_attribute(
@@ -289,7 +281,7 @@ def test_clearing_personal_theme_commits_the_inherited_value(
     _set_user_theme(user, "light")
     SiteSetting.objects.create(key="THEME", value="dark")
     settings_resolver.clear_cache()
-    _login(page, live_server, user.username)
+    log_in(page, live_server, Credentials(user.username, "pw"))
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = held_choice(page, "theme")
 
@@ -312,7 +304,7 @@ def test_failed_theme_save_restores_system_state_then_allows_retry(
     SiteSetting.objects.create(key="THEME", value="system")
     settings_resolver.clear_cache()
     page.emulate_media(color_scheme="dark")
-    _login(page, live_server, user.username)
+    log_in(page, live_server, Credentials(user.username, "pw"))
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     page.get_by_role("button", name="Open account menu for rollback-user").click()
     theme = held_choice(page, "theme")

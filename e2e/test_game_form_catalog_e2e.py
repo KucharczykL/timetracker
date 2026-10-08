@@ -16,7 +16,7 @@ from entries import record_entry
 from graphs import default_graph
 from playwright.sync_api import Locator, Page, expect
 
-from e2e.helpers import held_choice, pick_choice, picker_opened
+from e2e.helpers import held_choice, log_in, pick_choice, picker_opened
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
 from games.models import Edition, Game, Platform, PlayerGame, Release
@@ -27,11 +27,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 @pytest.fixture
 def signed_in(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     return page
 
 

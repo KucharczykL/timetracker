@@ -152,16 +152,6 @@ def populated(e2e_user, e2e_library) -> None:
     )
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
 LIST_PAGES = [
     "games:list_sessions",
     "games:list_games",

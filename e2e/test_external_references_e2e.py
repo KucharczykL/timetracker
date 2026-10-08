@@ -4,6 +4,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import log_in
 from games.external_references import KEY_TAKEN, state_external_references
 from games.models import ExternalReference, Game
 
@@ -15,11 +16,7 @@ SUBMIT = "#add-form button[type=submit]"
 
 @pytest.fixture
 def signed_in(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     return page
 
 

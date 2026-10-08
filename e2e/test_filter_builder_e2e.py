@@ -26,7 +26,6 @@ import re
 import urllib.parse
 from datetime import UTC, date, datetime
 
-import pytest
 from devices import create_device
 from django.urls import reverse
 from entries import record_entry
@@ -46,20 +45,6 @@ from games.models import (
 from timetracker.temporal import TemporalValue
 
 # ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    _login(page, live_server)
-    return page
 
 
 # ── filter JSON helpers ────────────────────────────────────────────────────────
@@ -337,7 +322,7 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
 
 
 def test_load_set_field_preset_reflects_field_without_crash(
-    authenticated_page: Page, live_server, django_user_model, e2e_library
+    authenticated_page: Page, live_server, django_user_model, e2e_library, e2e_user
 ) -> None:
     """Loading a preset whose filter contains a set-field criterion (session's
     ``game`` field) must not throw and must reflect the field in the picker.
@@ -360,8 +345,7 @@ def test_load_set_field_preset_reflects_field_without_crash(
         e2e_library, "SpyGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
-    # Obtain the user created by the authenticated_page fixture (username="tester").
-    user = django_user_model.objects.get(username="tester")
+    user = e2e_user
 
     # A session preset whose object_filter contains a set-field criterion for
     # the session's ``game`` field.  This is the exact shape that triggered the
@@ -974,13 +958,13 @@ def test_comparison_left_operand_survives_keystroke(
 
 
 def test_preset_removal_flow_takes_the_row_out(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, django_user_model, e2e_user
 ) -> None:
     """The per-row × : confirm → DELETE /api/presets/{id} → the row
     vanishes on the refetch and the preset leaves the library (#297). The
     panel must survive the native confirm() — it stays open with focus in
     the search box, showing the remaining preset."""
-    user = django_user_model.objects.get(username="tester")
+    user = e2e_user
     keep = FilterPreset.objects.create(
         library=user.library, mode="games", name="keepme"
     )
@@ -1014,13 +998,13 @@ def test_preset_removal_flow_takes_the_row_out(
 
 
 def test_removing_the_last_picked_preset_does_not_bring_it_back(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, django_user_model, e2e_user
 ) -> None:
     """Pick a preset, then delete that same preset on the next open: the row
     must NOT reappear after the refetch. Guards the transient-pick design —
     a lingering committed selection would pin the stale row through
     renderRows' selected-value preservation (#297 review finding)."""
-    user = django_user_model.objects.get(username="tester")
+    user = e2e_user
     FilterPreset.objects.create(
         library=user.library,
         mode="games",
@@ -1060,12 +1044,12 @@ def test_removing_the_last_picked_preset_does_not_bring_it_back(
 
 
 def test_preset_keyboard_pick_and_empty_enter(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, django_user_model, e2e_user
 ) -> None:
     """Keyboard path: Enter on the toggle opens the dialog with focus in the
     search box; Enter on a held name picks the preset into the tree. A
     non-matching query offers Save, and Enter saves without navigating."""
-    user = django_user_model.objects.get(username="tester")
+    user = e2e_user
     FilterPreset.objects.create(
         library=user.library,
         mode="games",
@@ -1155,11 +1139,11 @@ def test_typing_over_a_picked_field_keeps_the_typed_text(
 
 
 def test_a_saved_preset_states_the_edited_leaf(
-    authenticated_page: Page, live_server, django_user_model
+    authenticated_page: Page, live_server, django_user_model, e2e_user
 ) -> None:
     """Save reads the live widgets: a leaf changed after the page loaded saves
     its new value, not the one the tree was loaded with."""
-    user = django_user_model.objects.get(username="tester")
+    user = e2e_user
     filter_param = _encode_filter({"name": {"modifier": "INCLUDES", "value": "old"}})
     page = authenticated_page
     page.goto(

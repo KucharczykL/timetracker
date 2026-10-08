@@ -8,12 +8,11 @@ both the confirm and cancel paths.
 
 import datetime as dt
 
-import pytest
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, expect
 from session_rows import session_row
 
-from e2e.helpers import open_row_menu
+from e2e.helpers import log_in, open_row_menu
 from games.models import Game, Platform, PlayerSession
 from games.reads.calendar import calendar_day_zone
 
@@ -25,16 +24,6 @@ def _row(game, **columns):
 
 
 STARTED_AT = dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC)
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 def _make_running_session(library) -> PlayerSession:
@@ -97,11 +86,7 @@ def test_reset_stamps_the_browser_zone(
     context = browser.new_context(timezone_id="Pacific/Honolulu")
     try:
         page = context.new_page()
-        page.goto(f"{live_server.url}{reverse('login')}")
-        page.fill('input[name="username"]', "tester")
-        page.fill('input[name="password"]', "secret123")
-        page.click('button:has-text("Login")')
-        page.wait_for_url(f"{live_server.url}/tracker**")
+        log_in(page, live_server)
 
         page.goto(
             f"{live_server.url}{reverse('games:reset_session', args=[session.id])}"

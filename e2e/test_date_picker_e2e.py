@@ -24,16 +24,6 @@ from timetracker.temporal import TemporalValue
 # ── Real-app tests: add/edit Playthrough ────────────────────────────────────
 
 
-@pytest.fixture
-def authenticated_page(live_server, page, e2e_user):
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page, e2e_user
-
-
 def _select_first_game(page):
     games = page.locator('search-select[name="games"], search-select[name="game"]')
     games.locator("[data-search-select-search]").click()
@@ -56,12 +46,12 @@ def _part_names(page, field: str) -> list[str]:
 
 
 def test_an_mdy_account_types_month_first_and_persists_the_same_day(
-    authenticated_page, live_server
+    authenticated_page, e2e_user, live_server
 ):
     """Display order moves; the day stays."""
     from games.models import Playthrough
 
-    page, user = authenticated_page
+    page, user = authenticated_page, e2e_user
     preferences = UserPreferences.objects.get(user=user)
     preferences.datetime_format = "mdy_12h"
     preferences.save(update_fields=["datetime_format"])
@@ -80,9 +70,9 @@ def test_an_mdy_account_types_month_first_and_persists_the_same_day(
 
 
 def test_edit_playthrough_date_field_prefills_from_the_run(
-    authenticated_page, live_server
+    authenticated_page, e2e_user, live_server
 ):
-    page, user = authenticated_page
+    page, user = authenticated_page, e2e_user
     run = state_run(
         user,
         create_tracked_game(user.library, "Alpha Game"),
@@ -100,10 +90,10 @@ def test_edit_playthrough_date_field_prefills_from_the_run(
 
 
 def test_changing_datetime_format_updates_the_segment_order(
-    authenticated_page, live_server
+    authenticated_page, e2e_user, live_server
 ):
     """A format change reorders the segments."""
-    page, user = authenticated_page
+    page, user = authenticated_page, e2e_user
 
     page.goto(f"{live_server.url}{reverse('games:add_playthrough')}")
     assert _part_names(page, STARTED) == ["year", "month", "day"]
@@ -116,11 +106,11 @@ def test_changing_datetime_format_updates_the_segment_order(
 
 
 def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
-    authenticated_page, live_server
+    authenticated_page, e2e_user, live_server
 ):
     from games.models import Playthrough
 
-    page, user = authenticated_page
+    page, user = authenticated_page, e2e_user
     platform = Platform.objects.create(
         library=user.library, name="PC", icon="steam", group="PC"
     )
@@ -146,8 +136,10 @@ def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
     assert str(run.completed_lower) == "2026-01-20"
 
 
-def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server):
-    page, user = authenticated_page
+def test_calendar_pick_commits_value_and_closes(
+    authenticated_page, e2e_user, live_server
+):
+    page, user = authenticated_page, e2e_user
     platform = Platform.objects.create(
         library=user.library, name="PC", icon="steam", group="PC"
     )

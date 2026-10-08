@@ -7,8 +7,10 @@ from django.utils import timezone
 from playwright.sync_api import Locator, Page, Route, expect
 from session_rows import session_row
 
-from e2e.helpers import settle_layout
+from e2e.helpers import Credentials, log_in, settle_layout
 from games.models import Game, Platform
+
+FALLBACK_LOGIN = Credentials("fallback-font", "secret123")
 
 LONG_NAME = (
     "A Deliberately Extraordinary Game Name That Is Much Wider Than Any Practical "
@@ -20,11 +22,7 @@ LONG_NAME = (
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     #: The width measurements want each declared column.
     show_every_column(e2e_user)
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     return page
 
 
@@ -34,14 +32,7 @@ def touch_page(live_server, browser, e2e_user):
         has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
     )
     page = context.new_page()
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    # Tap, never click: a click parks the virtual mouse on the
-    # button, and the next page opens whatever tooltip loads
-    # under it. A no-hover device has no cursor to park.
-    page.tap('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     yield page
     context.close()
 
@@ -376,7 +367,7 @@ def test_fallback_font_is_measured_when_webfonts_are_blocked(
     live_server, browser, django_user_model
 ):
     fallback_user = django_user_model.objects.create_user(
-        username="fallback-font", password="secret123"
+        username=FALLBACK_LOGIN.username, password=FALLBACK_LOGIN.password
     )
     platform = Platform.objects.create(
         name="PC", icon="steam", group="PC", library=fallback_user.library
@@ -394,11 +385,7 @@ def test_fallback_font_is_measured_when_webfonts_are_blocked(
         route.abort()
 
     page.route("**/*.woff2", block_font)
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "fallback-font")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server, FALLBACK_LOGIN)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
     host = _host(page, LONG_NAME)

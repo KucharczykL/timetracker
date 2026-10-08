@@ -4,15 +4,8 @@ from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import log_in
 from games.models import Device
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def test_two_devices_are_removed_and_the_undo_puts_them_back(
@@ -22,7 +15,7 @@ def test_two_devices_are_removed_and_the_undo_puts_them_back(
         create_device(e2e_library, name, Device.HANDHELD)
         for name in ("Steam Deck", "Switch")
     ]
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = f"{live_server.url}{reverse('games:list_devices')}"
     page.goto(listed)
@@ -52,7 +45,7 @@ def test_two_devices_are_removed_and_the_undo_puts_them_back(
 
 def test_the_row_menu_opens_edit(live_server, page: Page, e2e_library):
     device = create_device(e2e_library, "Steam Deck", Device.HANDHELD)
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
     page.get_by_role("button", name="Steam Deck (Handheld) actions").click()
@@ -70,7 +63,7 @@ def test_the_row_menu_opens_edit(live_server, page: Page, e2e_library):
 def test_each_row_checkbox_names_its_device_once(live_server, page: Page, e2e_library):
     for name in ("Steam Deck", "PC"):
         create_device(e2e_library, name, Device.PC)
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
 

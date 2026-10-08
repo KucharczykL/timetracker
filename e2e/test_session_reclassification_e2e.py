@@ -8,16 +8,8 @@ from playwright.sync_api import Page, expect
 from session_rows import duration_only_row, tracked_run
 from tracked_games import create_tracked_game
 
-from e2e.helpers import open_row_menu
+from e2e.helpers import log_in, open_row_menu
 from games.models import HistoricalPlaytime, PlayerSession
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def test_a_written_down_session_becomes_a_record_and_comes_back(
@@ -33,7 +25,7 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:library')}")
     #: The link speaks its count and label.

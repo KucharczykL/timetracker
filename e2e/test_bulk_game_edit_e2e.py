@@ -4,19 +4,12 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import log_in
 from games.models import Game, PlayerGame, PlayerGameStatus
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 #: The Undo reads the stream, so games are tracked through the command.
 pytestmark = pytest.mark.untracked_games
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _status(game: Game) -> PlayerGameStatus:
@@ -37,7 +30,7 @@ def test_two_games_are_edited_and_the_undo_puts_theirs_back(
         status=PlayerGameStatus.PLAYED,
         correlation_id=new_correlation_id(),
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = f"{live_server.url}{reverse('games:list_games')}"
     page.goto(listed)

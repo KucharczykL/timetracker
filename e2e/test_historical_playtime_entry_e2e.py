@@ -1,19 +1,11 @@
 """Every historical playtime act, from Game detail."""
 
-from django.urls import reverse
 from playwright.sync_api import Page, expect
 from stated_runs import another_run
 from tracked_games import create_tracked_game
 
+from e2e.helpers import log_in
 from games.models import HistoricalPlaytime
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _open_row_menu(page, row) -> None:
@@ -34,7 +26,7 @@ def test_a_record_goes_through_every_act_from_game_detail(
 ):
     game = create_tracked_game(e2e_library, "Outer Wilds")
     another_run(e2e_user, game)
-    _login(page, live_server)
+    log_in(page, live_server)
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
     section = page.locator("#historical-playtime-container")
     rows = section.locator("tbody tr")

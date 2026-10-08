@@ -4,18 +4,8 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import pick_choice
+from e2e.helpers import log_in, pick_choice
 from games.models import Game, Playthrough
-
-LOGIN = ("tester", "secret123")
-
-
-def _log_in(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', LOGIN[0])
-    page.fill('input[name="password"]', LOGIN[1])
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 @pytest.fixture
@@ -33,7 +23,7 @@ def errors(page: Page) -> list[str]:
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user, errors) -> Page:
-    _log_in(page, live_server)
+    log_in(page, live_server)
     return page
 
 

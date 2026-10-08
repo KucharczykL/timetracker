@@ -13,6 +13,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import session_row
 
+from e2e.helpers import log_in
 from games.models import Game, Platform
 from games.reads.calendar import calendar_day_zone
 from timetracker.settings_commands import change_user_setting
@@ -29,11 +30,7 @@ def browser_context_args(browser_context_args):
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     change_user_setting(e2e_user, "DISPLAY_TIME_ZONE", DISPLAY_ZONE)
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     return page
 
 

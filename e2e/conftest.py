@@ -7,8 +7,11 @@ import pytest
 from bulk_batches import chunk_queue, failing_batches, held_batches  # noqa: F401
 from calendar_days import _process_clock_off_the_calendar  # noqa: F401
 from icon_names import unknown_icon_names_fail  # noqa: F401
+from playwright.sync_api import Page
 from settings_caches import _reset_settings_caches  # noqa: F401
 from tracked_games import _track_created_games  # noqa: F401
+
+from e2e.helpers import E2E_LOGIN, log_in
 
 # Playwright runs an async event loop in the background, which triggers
 # Django's async safety checks when running synchronous tests. This allows
@@ -19,11 +22,20 @@ os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 @pytest.fixture
 def e2e_user(django_user_model, live_server):
     """Provision the explicit owner used by ordinary authenticated E2E tests."""
-    user, _created = django_user_model.objects.get_or_create(username="tester")
-    if not user.check_password("secret123"):
-        user.set_password("secret123")
+    user, _created = django_user_model.objects.get_or_create(
+        username=E2E_LOGIN.username
+    )
+    if not user.check_password(E2E_LOGIN.password):
+        user.set_password(E2E_LOGIN.password)
         user.save(update_fields=["password"])
     return user
+
+
+@pytest.fixture
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
+    """The page, signed in as ``e2e_user``."""
+    log_in(page, live_server)
+    return page
 
 
 @pytest.fixture

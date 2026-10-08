@@ -5,7 +5,7 @@ from devices import create_device, end_device_access
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import held_choice, pick_choice
+from e2e.helpers import held_choice, log_in, pick_choice
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
 
@@ -14,11 +14,7 @@ DEFAULT_DEVICE_URL = "/api/library/default-device"
 
 @pytest.fixture
 def library_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     return page
 
 

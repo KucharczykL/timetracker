@@ -12,16 +12,6 @@ from timetracker.settings_commands import change_user_setting
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
-@pytest.fixture
 def session(e2e_library) -> PlayerSession:
     game = Game.objects.create(
         library=e2e_library,
@@ -61,11 +51,11 @@ def test_default_profile_renders_decimal_hours(
 
 
 def test_changing_the_preference_rerenders_the_list(
-    authenticated_page: Page, live_server, django_user_model, session
+    authenticated_page: Page, live_server, django_user_model, session, e2e_user
 ):
     page = authenticated_page
     change_user_setting(
-        django_user_model.objects.get(username="tester"),
+        e2e_user,
         "DURATION_FORMAT",
         "hours_minutes",
     )

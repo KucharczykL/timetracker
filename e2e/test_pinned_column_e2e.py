@@ -24,7 +24,7 @@ from playwright.sync_api import Browser, Page, ViewportSize
 from purchases import record_purchase
 from session_rows import session_row
 
-from e2e.helpers import settle_layout
+from e2e.helpers import log_in, settle_layout
 from games.models import Game, Platform
 from timetracker.temporal import TemporalValue
 
@@ -90,32 +90,26 @@ def populated(e2e_library) -> None:
         )
 
 
-def _login(page: Page, live_server, django_user_model) -> Page:
-    django_user_model.objects.get_or_create(username="tester")
-    user = django_user_model.objects.get(username="tester")
-    user.set_password("secret123")
-    user.save()
-    #: These measurements want each column, not the default set.
-    show_every_column(user)
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+@pytest.fixture
+def every_column_user(e2e_user):
+    """These measurements want each column, not the default set."""
+    show_every_column(e2e_user)
+    return e2e_user
+
+
+@pytest.fixture
+def authenticated_page(live_server, page: Page, every_column_user) -> Page:
+    log_in(page, live_server)
     return page
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    return _login(page, live_server, django_user_model)
-
-
-@pytest.fixture
-def pre_upgrade_page(live_server, browser: Browser, django_user_model):
+def pre_upgrade_page(live_server, browser: Browser, every_column_user):
     """Pre-upgrade page: every column renders, so it overflows."""
     context = browser.new_context(java_script_enabled=False)
     page = context.new_page()
-    yield _login(page, live_server, django_user_model)
+    log_in(page, live_server)
+    yield page
     context.close()
 
 

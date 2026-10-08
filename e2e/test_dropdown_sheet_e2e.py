@@ -8,21 +8,13 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 
+from e2e.helpers import log_in
 from games.views.filtering import builder_url_for
 
-LOGIN = ("tester", "secret123")
 PHONE = ViewportSize(width=375, height=812)
 DESKTOP = ViewportSize(width=1280, height=800)
 STARTED = 'drop-down:has(input[name="started"][data-date-picker-hidden])'
 SHEET = "dialog[data-dropdown-sheet][open]"
-
-
-def _log_in(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', LOGIN[0])
-    page.fill('input[name="password"]', LOGIN[1])
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 @pytest.fixture
@@ -41,7 +33,7 @@ def errors(page: Page) -> list[str]:
 @pytest.fixture
 def phone(live_server, page: Page, e2e_user, errors) -> Page:
     page.set_viewport_size(PHONE)
-    _log_in(page, live_server)
+    log_in(page, live_server)
     return page
 
 
@@ -99,7 +91,7 @@ def test_close_leaves_a_datetime_sheet_after_now(phone: Page, live_server, error
 
 def test_a_desktop_keeps_the_anchored_popup(live_server, page: Page, e2e_user, errors):
     page.set_viewport_size(DESKTOP)
-    _log_in(page, live_server)
+    log_in(page, live_server)
     _open_started(page, live_server)
     calendar = page.locator(f"{STARTED} [data-date-range-calendar]")
     expect(calendar).to_be_visible()
