@@ -4,7 +4,11 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Exists, F, OuterRef, Q
 
-from games.management.library_scope import add_scope_arguments, scoped_libraries
+from games.management.library_scope import (
+    LibraryScope,
+    add_scope_arguments,
+    scoped_libraries,
+)
 from games.models import (
     Device,
     FilterPreset,
@@ -30,7 +34,7 @@ class Command(BaseCommand):
         add_scope_arguments(parser, verb="Audit")
 
     def handle(self, *args, **options):
-        libraries = scoped_libraries(options)
+        libraries = scoped_libraries(LibraryScope.from_options(options))
         library_ids = [library.pk for library in libraries]
         user_ids = [library.user_id for library in libraries]
 

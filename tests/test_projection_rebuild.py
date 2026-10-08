@@ -1631,6 +1631,14 @@ def test_the_command_takes_a_user_instead_of_a_library(owned_library):
 
 
 @pytest.mark.django_db
+def test_an_unknown_user_fails_before_anything_is_read(owned_library):
+    with pytest.raises(CommandError, match="No user is named"):
+        run_command("--user", "nobody", "--check")
+
+    assert not LibraryEventStreamHead.objects.exists()
+
+
+@pytest.mark.django_db
 def test_a_scope_is_required(owned_library):
     with pytest.raises(CommandError, match="one of the arguments"):
         run_command("--check")

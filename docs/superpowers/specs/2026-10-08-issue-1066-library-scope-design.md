@@ -14,26 +14,30 @@ alike.
 - `add_scope_arguments(parser, *, verb)` adds the required, mutually
   exclusive group `--user`, `--library` (dest `library_id`) and
   `--all-libraries`. `verb` fills each help line.
-- `scoped_libraries(options)` returns the libraries the group names, in
-  key order, with `user` selected.
+- `LibraryScope.from_options(options)` reads the group's three keys.
+  The key names occur in this module only.
+- `scoped_libraries(scope)` returns the libraries a `LibraryScope`
+  names, in key order, with `user` selected. The list is never empty.
 - `library_of_user(username)` returns the library of one user, with
   `user` selected.
-- `user_named(username, *, users=None)` returns one user. A caller that
-  locks passes `users=User.objects.select_for_update()`.
-- `library_by_id(raw_id)` takes text or a `UUID`.
+- `user_named(username, *, locked=False)` returns one user.
+  `locked=True` reads it with `select_for_update`.
+- `library_by_id(raw_id)` takes text or a `UUID` and parses it with
+  `parse_uuidv7`.
 
 ## Refusals
 
 1. `--all-libraries` that finds no library is refused: "--all-libraries
-   found no library, so there was nothing to act on." An empty census
-   must not read as a clean one.
+   found no library, so there was nothing to act on; N user(s) hold
+   none." An empty census must not read as a clean one. The count
+   tells the operator when users exist without a library.
 2. `--user ""` is a username. The module tests `--user` with
    `is not None`, so an empty name answers "No user is named ''."
 3. A missing user and a user without a library have two sentences:
    "No user is named 'x'." and "User 'x' owns no library."
-4. Text that is not a UUID, or a UUID that is not version 7, answers
-   "'x' is not a library id." A UUIDv7 that no library holds answers
-   "No library <uuid>."
+4. A value that `parse_uuidv7` refuses answers "'x' is not a library
+   id." followed by the parser's reason. A UUIDv7 that no library holds
+   answers "No library <uuid>."
 5. A group with no member set is refused: "Name --user, --library or
    --all-libraries." argparse enforces the group, but `call_command`
    can pass every member unset.
@@ -54,10 +58,10 @@ alike.
 
 `audit_library_ownership --all-libraries` lists each user without a
 library while at least one library exists. With no library at all,
-rule 1 refuses the run. Every user then lacks a library, so the list
-adds nothing.
+rule 1 refuses the run, and its sentence counts those users.
 
 ## Tests
 
 `tests/test_library_scope.py` tests each refusal against the module.
-Command tests keep the cases that prove each command reads the module.
+Command tests prove that each command reads the module: an unknown
+user, a user without a library, and an empty census.

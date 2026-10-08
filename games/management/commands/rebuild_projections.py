@@ -12,7 +12,11 @@ from games.events.reconcile import (
     ReferenceReconciliation,
     UnresolvedReferences,
 )
-from games.management.library_scope import add_scope_arguments, scoped_libraries
+from games.management.library_scope import (
+    LibraryScope,
+    add_scope_arguments,
+    scoped_libraries,
+)
 from games.models import UserLibrary
 from games.planner_statistics import analyze_tables
 from games.projections import projection_models
@@ -53,7 +57,7 @@ class Command(BaseCommand):
                 "--fail-on-drift reports what a check found, and a rebuild "
                 "removes drift rather than reporting it. Add --check."
             )
-        libraries = scoped_libraries(options)
+        libraries = scoped_libraries(LibraryScope.from_options(options))
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
         #: The whole census, so one drift hides no other.
         drifted: list[tuple[UserLibrary, int]] = []

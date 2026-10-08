@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter
 
-from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.db.models.deletion import Collector
@@ -43,7 +42,7 @@ class Command(BaseCommand):
         # A purge takes the events too.
         # Nothing is left to protect.
         with transaction.atomic(), purging_library():
-            user = user_named(username, users=User.objects.select_for_update())
+            user = user_named(username, locked=True)
             self._write_purge_scope(self._purge_counts(user))
             user.delete()
         self.stdout.write(

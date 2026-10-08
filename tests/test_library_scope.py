@@ -1,19 +1,16 @@
-from uuid import uuid7
+from uuid import UUID, uuid7
 
 import pytest
 from django.core.management.base import CommandError
 
 from games.management.library_scope import (
+    LibraryScope,
     library_by_id,
     library_of_user,
     scoped_libraries,
     user_named,
 )
 from games.models import UserLibrary
-
-
-def scope(*, user=None, library_id=None, all_libraries=False):
-    return {"user": user, "library_id": library_id, "all_libraries": all_libraries}
 
 
 @pytest.fixture
@@ -25,35 +22,35 @@ def owner(django_user_model):
 def test_all_libraries_reads_every_library_in_key_order(owner, django_user_model):
     second = django_user_model.objects.create_user(username="scope-second")
 
-    found = scoped_libraries(scope(all_libraries=True))
+    found = scoped_libraries(LibraryScope(all_libraries=True))
 
     assert found == sorted([owner.library, second.library], key=lambda row: row.pk)
 
 
 @pytest.mark.django_db
-def test_all_libraries_finding_none_is_refused():
+def test_all_libraries_finding_none_counts_the_users_lacking_one(owner):
     UserLibrary.objects.all().delete()
 
-    with pytest.raises(CommandError, match="found no library"):
-        scoped_libraries(scope(all_libraries=True))
+    with pytest.raises(CommandError, match="found no library.*1 user"):
+        scoped_libraries(LibraryScope(all_libraries=True))
 
 
 @pytest.mark.django_db
 def test_an_empty_username_is_a_username(owner):
     with pytest.raises(CommandError, match="No user is named ''"):
-        scoped_libraries(scope(user=""))
+        scoped_libraries(LibraryScope(user=""))
 
 
 @pytest.mark.django_db
 def test_no_scope_member_is_refused():
     """call_command can pass the group unset."""
     with pytest.raises(CommandError, match="Name --user, --library"):
-        scoped_libraries(scope())
+        scoped_libraries(LibraryScope())
 
 
 @pytest.mark.django_db
 def test_a_user_names_their_library(owner):
-    assert scoped_libraries(scope(user=owner.username)) == [owner.library]
+    assert scoped_libraries(LibraryScope(user=owner.username)) == [owner.library]
 
 
 @pytest.mark.django_db
@@ -82,6 +79,26 @@ def test_a_malformed_library_id_is_named(raw_id):
     """A version-4 UUID is no library key."""
     with pytest.raises(CommandError, match="is not a library id"):
         library_by_id(raw_id)
+
+
+@pytest.mark.django_db
+def test_a_version_4_uuid_object_names_the_version():
+    raw_id = UUID("6f1c2e2a-5b8d-4c1e-9a3f-2d7b8e9c0a11")
+
+    with pytest.raises(CommandError, match=r"^'6f1c2e2a-.*version 7"):
+        library_by_id(raw_id)
+
+
+def test_options_name_the_scope():
+    options = {"user": None, "library_id": "x", "all_libraries": False}
+
+    assert LibraryScope.from_options(options) == LibraryScope(library_id="x")
+
+
+@pytest.mark.django_db
+def test_a_locked_lookup_names_a_missing_user():
+    with pytest.raises(CommandError, match="No user is named 'nobody'"):
+        user_named("nobody", locked=True)
 
 
 @pytest.mark.django_db
