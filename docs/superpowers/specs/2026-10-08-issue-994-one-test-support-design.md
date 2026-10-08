@@ -55,16 +55,17 @@ in `e2e/conftest.py`, which calls it. `create_login_user(credentials)` makes
 another user from the same `Credentials`.
 
 `log_in` checks the credentials with `authenticate`, makes a session on the
-server, and puts its cookie into the browser context. It loads no page. The
-page stays where it was, so the test goes to the page it reads. A login form
-costs three page loads a test; the cookie took the suite from 63 s to 50 s.
-It waits for nothing a script draws, so a context with JavaScript off can use
-it. Bad credentials fail at once.
+server, and puts its cookie into the browser context. It loads no page, so a
+context with JavaScript off can use it. The test goes to the page it reads.
+A form login loads two pages and a chain of redirects for each test.
 
-A module that does setup before the login keeps its own `authenticated_page`:
-it does the setup, then calls `log_in`, and returns a `Page`. A test that
-needs the user asks for `e2e_user`. A module that shows every list column
-marks its tests with `usefixtures("every_column_user")`.
+`log_in` fails at once when the credentials are wrong, when the user has no
+library, or when the browser would not send the cookie to `live_server`.
+
+A module that needs more fixtures keeps its own `authenticated_page`: it asks
+for them, calls `log_in`, and returns a `Page`. A test that needs the user
+asks for `e2e_user`. A module that shows every list column marks its tests
+with `usefixtures("every_column_user")`.
 
 `log_in` resolves no URL, so a synthetic harness that swaps `ROOT_URLCONF`
 can sign in before or after the swap.

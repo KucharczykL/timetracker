@@ -1,9 +1,9 @@
-"""Browser test for the live result-count badge (<filter-count>, issue #195).
+"""Browser test for the live result-count badge (<filter-count>).
 
 A synthetic page pairs a real ``<filter-group>`` with two ``<filter-count>``
 badges and drives them against pytest-django's ``live_server``. The page's
-``urlpatterns`` extend the real project URLs, so ``/api/filter/count`` and the
-login route stay mounted under the ``override_settings(ROOT_URLCONF=...)`` swap.
+``urlpatterns`` extend the real project URLs, so ``/api/filter/count`` stays
+mounted under the ``override_settings(ROOT_URLCONF=...)`` swap.
 
 The badge's ``connectedCallback`` kicks an initial count for the (empty) filter,
 so the end-to-end endpoint→fetch→render path — including singular/plural nouns

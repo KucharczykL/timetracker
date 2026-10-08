@@ -1,4 +1,6 @@
-"""The cookie login every browser test takes."""
+"""The cookie login browser tests share."""
+
+import re
 
 import pytest
 from django.urls import reverse
@@ -19,6 +21,7 @@ def test_the_cookie_signs_the_page_in(live_server, page: Page, e2e_user):
 def test_a_wrong_password_fails_at_once(live_server, page: Page, e2e_user):
     wrong = Credentials(E2E_LOGIN.username, "not-the-password")
 
-    with pytest.raises(AssertionError, match="tester was not signed in"):
+    refusal = f"{E2E_LOGIN.username}'s password does not match"
+    with pytest.raises(AssertionError, match=re.escape(refusal)):
         log_in(page, live_server, wrong)
     assert page.context.cookies() == []

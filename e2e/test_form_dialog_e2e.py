@@ -2,6 +2,7 @@
 
 import pytest
 from devices import create_device
+from django.conf import settings
 from django.urls import reverse
 from graphs import default_graph
 from playwright.sync_api import Page, expect
@@ -271,7 +272,7 @@ def test_a_sign_in_inside_the_dialog_keeps_the_save(
     page = authenticated_page
     deck = create_device(e2e_library, "Deck")
     _open_device_edit(page, live_server, deck)
-    page.context.clear_cookies(name="sessionid")
+    page.context.clear_cookies(name=settings.SESSION_COOKIE_NAME)
     dialog = page.locator("dialog[data-modal][open]")
     dialog.get_by_role("button", name="Submit", exact=True).click()
 

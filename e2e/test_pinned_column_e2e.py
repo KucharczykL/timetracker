@@ -27,7 +27,7 @@ from e2e.helpers import log_in, settle_layout
 from games.models import Game, Platform
 from timetracker.temporal import TemporalValue
 
-#: Every column shown, before any login.
+#: Every list column shown.
 pytestmark = pytest.mark.usefixtures("every_column_user")
 
 ZONEINFO = ZoneInfo("Europe/Prague")

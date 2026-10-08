@@ -11,7 +11,7 @@ from playwright.sync_api import Locator, Page, expect
 
 
 class Credentials(NamedTuple):
-    """One user's login form values."""
+    """One user's username and password."""
 
     username: str
     password: str
@@ -28,22 +28,31 @@ def create_login_user(credentials: Credentials, *, superuser: bool = False):
 
 
 def log_in(page: Page, live_server, credentials: Credentials = E2E_LOGIN) -> None:
-    """Sign in by session cookie; the page stays put."""
+    """Sign in by cookie; no navigation."""
     user = authenticate(username=credentials.username, password=credentials.password)
     if user is None:
-        raise AssertionError(f"{credentials.username} was not signed in")
+        raise AssertionError(_refusal(credentials))
+    user.library  # noqa: B018 - a user without one fails here
     client = Client()
     client.force_login(user)
-    session = client.cookies[settings.SESSION_COOKIE_NAME].value
+    cookie_name = settings.SESSION_COOKIE_NAME
+    session_key = client.cookies[cookie_name].value
     page.context.add_cookies(
-        [
-            {
-                "name": settings.SESSION_COOKIE_NAME,
-                "value": session,
-                "url": live_server.url,
-            }
-        ]
+        [{"name": cookie_name, "value": session_key, "url": live_server.url}]
     )
+    sent = page.context.cookies(live_server.url)
+    if not any(cookie["name"] == cookie_name for cookie in sent):
+        raise AssertionError(f"{live_server.url} would not get {cookie_name}")
+
+
+def _refusal(credentials: Credentials) -> str:
+    """Why ``authenticate`` refused these credentials."""
+    user = get_user_model().objects.filter(username=credentials.username).first()
+    if user is None:
+        return f"no user named {credentials.username}"
+    if not user.is_active:
+        return f"{credentials.username} is inactive"
+    return f"{credentials.username}'s password does not match"
 
 
 TABLES_SETTLED = """
