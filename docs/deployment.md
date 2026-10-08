@@ -56,6 +56,34 @@ WantedBy=default.target
 This is an application-only unit. Keep database configuration, storage, and
 lifecycle in the database unit.
 
+## First account
+
+Create your account once the container runs. Pick one way:
+
+- Name it yourself:
+
+  ```bash
+  docker exec -it timetracker python manage.py createsuperuser
+  ```
+
+- Or start once with `CREATE_DEFAULT_SUPERUSER=true`, then read the
+  password from the log:
+
+  ```bash
+  docker logs timetracker 2>&1 | grep "Created default superuser"
+  ```
+
+  The log shows it once, as `admin / <password>`. Remove the flag. To
+  set your own password:
+
+  ```bash
+  docker exec -it timetracker python manage.py changepassword admin
+  ```
+
+*Why:* the password is random, so no deployment shares a known
+credential. With the flag still set, a container that finds no `admin`
+user creates one again.
+
 ## Behind a TLS proxy
 
 Your reverse proxy ends TLS; the container serves plain http on port 8000.

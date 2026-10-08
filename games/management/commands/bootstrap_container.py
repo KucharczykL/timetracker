@@ -50,8 +50,7 @@ class Command(BaseCommand):
                 user_model.objects.create_superuser("admin", "", password)
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"Created default superuser: admin / {password}"
-                        " (shown once; change it after signing in)"
+                        f"Created default superuser: admin / {password} (shown once)"
                     )
                 )
 
