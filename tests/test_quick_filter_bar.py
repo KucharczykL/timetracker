@@ -212,9 +212,9 @@ class IsQuickEditableTest(SimpleTestCase):
             )
         )
 
-    def test_an_averaged_facet_in_a_presence_mode_is_editable(self):
-        # Avg answers NULL over no rows, so "is null" is a mode it states.
-        self.assertTrue(
+    def test_an_averaged_facet_in_a_presence_mode_is_not_editable(self):
+        # A duration average reads 0 h over no rows, so it offers no presence mode.
+        self.assertFalse(
             is_quick_editable(
                 {"session_average": {"modifier": "IS_NULL"}},
                 {"session_average"},
@@ -222,8 +222,22 @@ class IsQuickEditableTest(SimpleTestCase):
             )
         )
 
-    def test_a_duration_facet_offers_none_as_a_mode(self):
+    def test_an_averaged_facet_in_a_fractional_mode_is_editable(self):
         self.assertTrue(
+            is_quick_editable(
+                {
+                    "session_average": {
+                        "value": "1.5",
+                        "modifier": "GREATER_THAN_OR_EQUAL",
+                    }
+                },
+                {"session_average"},
+                filter_cls=GameFilter,
+            )
+        )
+
+    def test_a_duration_facet_offers_no_none_mode(self):
+        self.assertFalse(
             is_quick_editable(
                 {"playtime_hours": {"modifier": "IS_NULL"}},
                 {"playtime_hours"},
