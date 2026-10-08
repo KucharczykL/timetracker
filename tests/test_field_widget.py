@@ -126,14 +126,11 @@ class TestFieldWidgetKindDispatch:
         assert 'value="IS_NULL"' not in html
         assert 'value="NOT_NULL"' not in html
 
-    def test_an_averaged_aggregate_keeps_the_presence_pair(self):
-        # Avg answers NULL over no rows.
-        #
-        # So "is null" reads as "never played", which nothing else asks — a
-        # working filter the picker had hidden.
+    def test_a_duration_average_offers_no_presence_pair(self):
+        # A duration average reads 0 h.
         html = str(field_widget(GameFilter, "session_average"))
-        assert 'value="IS_NULL"' in html
-        assert 'value="NOT_NULL"' in html
+        assert 'value="IS_NULL"' not in html
+        assert 'value="NOT_NULL"' not in html
 
     def test_a_summed_aggregate_keeps_the_presence_pair(self):
         html = str(field_widget(GameFilter, "purchase_price_total"))
@@ -168,71 +165,69 @@ class TestFieldWidgetNullableModifiers:
 
 
 class TestFieldWidgetDurationUnit:
-    """Duration fields name none and more-than-zero."""
+    """Duration fields offer plain number labels and no presence pair."""
 
-    def test_duration_presence_labels(self):
+    def test_duration_offers_no_none_option(self):
         html = str(field_widget(GameFilter, "playtime_hours"))
-        assert "is 0 (none)" in html
-        assert "is more than 0" in html
-        assert ">is null<" not in html
+        assert 'value="IS_NULL"' not in html
+        assert 'value="NOT_NULL"' not in html
+        assert "is 0 (none)" not in html
+        assert "is more than 0" not in html
+        assert "is null" not in html
+
+    def test_duration_keeps_plain_number_labels(self):
+        html = str(field_widget(GameFilter, "playtime_hours"))
+        assert "is at least" in html
+        assert "between" in html
 
     def test_other_numbers_keep_null_labels(self):
         html = str(field_widget(GameFilter, "purchase_price_total"))
         assert "is null" in html
-        assert "data-duration-bucket-hint" not in html
 
-    def test_bucket_hint_renders_server_side(self):
+    def test_duration_handler_field_states_step_any(self):
+        html = str(field_widget(GameFilter, "playtime_hours", step="1"))
+        assert 'step="any"' in html
+        assert 'step="1"' not in html
+
+    def test_duration_aggregate_states_step_any(self):
+        html = str(field_widget(GameFilter, "session_average", step="1"))
+        assert 'step="any"' in html
+        assert 'step="1"' not in html
+
+    def test_duration_widget_in_the_builder_layout_states_step_any(self):
+        html = str(field_widget(GameFilter, "playtime_hours", step="1", layout="field"))
+        assert 'step="any"' in html
+
+    def test_a_duration_fallback_drops_the_presence_pair(self):
+        from common.components.filters import NumberFilter
+
+        html = str(
+            NumberFilter("playtime", path=["playtime_hours"], unit=DURATION_HOURS)
+        )
+        assert 'value="IS_NULL"' not in html
+        assert 'value="NOT_NULL"' not in html
+        assert 'value="EQUALS"' in html
+
+    def test_a_number_fallback_keeps_the_presence_pair(self):
+        from common.components.filters import NumberFilter
+
+        html = str(NumberFilter("year", path=["year_released"]))
+        assert 'value="IS_NULL"' in html
+
+    @pytest.mark.parametrize("modifier", ["EQUALS", "NOT_EQUALS", "GREATER_THAN"])
+    def test_a_decimal_value_survives_in_the_input(self, modifier):
         from common.components.filters import NumberFilter
 
         html = str(
             NumberFilter(
                 "playtime",
-                value="0",
-                modifier="EQUALS",
+                value="1.5",
+                modifier=modifier,
                 path=["playtime_hours"],
                 unit=DURATION_HOURS,
             )
         )
-        assert "0 h up to 1 h" in html
-
-    def test_hint_stays_hidden_for_a_range_modifier(self):
-        from common.components.filters import NumberFilter
-
-        html = str(
-            NumberFilter(
-                "playtime",
-                value="1",
-                modifier="GREATER_THAN",
-                path=["playtime_hours"],
-                unit=DURATION_HOURS,
-            )
-        )
-        assert 'data-duration-bucket-hint=""' in html
-        match = re.search(r"<p[^>]*data-duration-bucket-hint[^>]*>", html)
-        assert match is not None
-        assert 'hidden="true"' in match.group(0)
-        assert "1 h up to 2 h" not in html
-
-    @pytest.mark.parametrize(
-        ("modifier", "value", "text"),
-        [
-            ("EQUALS", "0", "0 h up to 1 h"),
-            ("EQUALS", "0.5", "0.5 h up to 1.5 h"),
-            ("NOT_EQUALS", "1", "outside 1 h up to 2 h"),
-            ("EQUALS", "", ""),
-            ("EQUALS", "x", ""),
-            ("EQUALS", "1.0", "1 h up to 2 h"),
-            ("EQUALS", " 1 ", "1 h up to 2 h"),
-            ("EQUALS", "nan", ""),
-            ("EQUALS", "inf", ""),
-            ("EQUALS", "1e16", ""),
-            ("GREATER_THAN", "1", ""),
-        ],
-    )
-    def test_duration_bucket_hint_table(self, modifier, value, text):
-        from common.components.filters import duration_bucket_hint
-
-        assert duration_bucket_hint(modifier, value) == text
+        assert 'value="1.5"' in html
 
 
 class TestFieldWidgetPrefill:

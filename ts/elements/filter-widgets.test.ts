@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  parseNumberInputValue,
   readDateWidget,
   readNumberWidget,
   readStringWidget,
@@ -157,69 +158,18 @@ describe("the string and number widgets read their picker", () => {
   });
 });
 
-describe("the duration hint follows the typed hour", () => {
-  afterEach(() => document.body.replaceChildren());
-
-  function durationWidget(): HTMLElement {
-    const root = numberWidget();
-    root.insertAdjacentHTML(
-      "beforeend",
-      '<p data-duration-bucket-hint hidden></p>',
-    );
-    document.body.append(root);
-    return root;
-  }
-
-  function hintOf(root: HTMLElement): HTMLElement {
-    return root.querySelector<HTMLElement>("[data-duration-bucket-hint]")!;
-  }
-
-  it("shows the bucket when the typed hour is 0", () => {
-    const root = durationWidget();
-    setupModifierToggles(document.body);
-    const input = root.querySelector<HTMLInputElement>('input[type="number"]')!;
-    input.value = "0";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(hintOf(root).textContent).toBe("0 h up to 1 h");
-    expect(hintOf(root).hidden).toBe(false);
+describe("a number input reads only a finite value", () => {
+  it("reads a decimal", () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "1.5";
+    expect(parseNumberInputValue(input)).toBe(1.5);
   });
 
-  it("empties and hides the hint on a range pick", () => {
-    const root = durationWidget();
-    setupModifierToggles(document.body);
-    const input = root.querySelector<HTMLInputElement>('input[type="number"]')!;
-    input.value = "0";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(hintOf(root).hidden).toBe(false);
-    pick(root, "BETWEEN");
-    expect(hintOf(root).textContent).toBe("");
-    expect(hintOf(root).hidden).toBe(true);
-  });
-
-  it("empties and hides the hint on a presence pick", () => {
-    const root = durationWidget();
-    setupModifierToggles(document.body);
-    const input = root.querySelector<HTMLInputElement>('input[type="number"]')!;
-    input.value = "0";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    pick(root, "IS_NULL");
-    expect(hintOf(root).textContent).toBe("");
-    expect(hintOf(root).hidden).toBe(true);
-  });
-
-  it("hydrates the hint from a stored criterion", () => {
-    const root = durationWidget();
-    writeNumberWidget(root, { modifier: "EQUALS", value: 0 });
-    expect(hintOf(root).textContent).toBe("0 h up to 1 h");
-  });
-
-  it("leaves a widget without a hint element untouched", () => {
-    const root = numberWidget();
-    document.body.append(root);
-    setupModifierToggles(document.body);
-    const input = root.querySelector<HTMLInputElement>('input[type="number"]')!;
-    input.value = "0";
-    expect(() => input.dispatchEvent(new Event("input", { bubbles: true }))).not.toThrow();
-    expect(root.querySelector("[data-duration-bucket-hint]")).toBeNull();
+  it("refuses an overflow to Infinity as blank", () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "1e400";
+    expect(parseNumberInputValue(input)).toBe("");
   });
 });

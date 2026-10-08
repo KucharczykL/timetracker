@@ -8,11 +8,12 @@ filtering from *how* you're comparing, and makes filter serialization trivial.
 
 import json
 import logging
+import math
 import types
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from enum import Enum
 from functools import cached_property
@@ -35,9 +36,9 @@ from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
-from django.db.models import F, OuterRef, Q, Subquery
+from django.db.models import DurationField, F, OuterRef, Q, Subquery, Value
 from django.db.models.expressions import Combinable
-from django.db.models.functions import ExtractYear, TruncDate
+from django.db.models.functions import Coalesce, ExtractYear, TruncDate
 from django.db.models.lookups import (
     Exact,
     GreaterThan,
@@ -271,15 +272,16 @@ def _coerce_float(raw: Any) -> float:
     if isinstance(raw, bool):
         raise FilterError(f"expected a number, got {raw!r}")
     try:
-        return float(raw)
+        number = float(raw)
     except (ValueError, TypeError) as exc:
         raise FilterError(f"expected a number, got {raw!r}") from exc
+    if not math.isfinite(number):
+        raise FilterError(f"expected a finite number, got {raw!r}")
+    return number
 
 
 def _coerce_number(raw: Any) -> int | float:
-    # For fields that may be integer (a count) or fractional (a sum/avg): validate
-    # numerically but keep an integral value an ``int`` so a count round-trips as
-    # ``5`` rather than ``5.0`` in serialized filter JSON. Querying is unaffected.
+    # An integral value stays int.
     number = _coerce_float(raw)
     return int(number) if number.is_integer() else number
 
@@ -522,12 +524,15 @@ class IntCriterion(_ScalarCriterion):
         raise FilterError(f"Unsupported modifier {m} for int field")
 
 
+Number = int | float
+
+
 @dataclass
 class FloatCriterion(_ScalarCriterion):
-    value: float = 0.0
-    value2: float | None = None
+    value: Number = 0
+    value2: Number | None = None
     modifier: Modifier = Modifier.EQUALS
-    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_float)
+    _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_number)
 
     def to_q(self, field_name: str) -> Q:
         return _numeric_to_q(self.value, self.value2, self.modifier, field_name)
@@ -1088,6 +1093,9 @@ class FilterField:
             raise ValueError(
                 "FilterField search_url has no effect on a handler-mapped field"
             )
+        if self.nullable and self.unit is not None:
+            # A duration has no presence pair.
+            raise TypeError("a duration field has no presence pair; nullable=False")
         for stated, what in ((self.choices, "choices"), (self.nullable, "nullable")):
             if stated is not None and self.handler is None:
                 # The column answers both, so declaring shadows.
@@ -2099,8 +2107,6 @@ def filter_to_json(f: OperatorFilter) -> str:
 # ``AggregateSpec``); the algebra lives here so every entity composes the same
 # logic instead of repeating bespoke subqueries in each to_q().
 
-Number = int | float
-
 
 def _exact[Value: Number | Decimal | None](value: Value) -> Value | Decimal:
     """A float as typed, so decimals compare exactly."""
@@ -3017,14 +3023,28 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # ``Count`` answers 0 over no rows, so a presence test on one
             # matches nothing. ``Sum`` and ``Avg`` answer NULL there, so "is
             # null" on one reads as "no related rows".
-            if field_spec is not None and field_spec.nullable is not None:
+            # A duration has no presence pair.
+            unit: DurationUnit | None = None
+            if is_aggregate:
+                aggregate_spec = filter_cls.aggregates.get(name)
+                unit = aggregate_spec.unit if aggregate_spec is not None else None
+            elif field_spec is not None:
+                unit = field_spec.unit
+            if unit is not None:
+                if not (is_aggregate or issubclass(criterion_cls, FloatCriterion)):
+                    raise ValueError(
+                        f"{filter_cls.__name__}.{name} states a duration unit but "
+                        f"takes {criterion_cls.__name__}; a duration takes "
+                        "FloatCriterion or an aggregate"
+                    )
+                nullable = False
+            elif field_spec is not None and field_spec.nullable is not None:
                 nullable = field_spec.nullable
             elif field_spec is not None and field_spec.metadata_lookup is not None:
                 nullable = bool(getattr(model_field, "null", False))
             elif resolved_lookup is not None:
                 nullable = _lookup_is_nullable(model, resolved_lookup)
             elif is_aggregate:
-                aggregate_spec = filter_cls.aggregates.get(name)
                 nullable = aggregate_spec is not None and aggregate_spec.reducer in (
                     "sum",
                     "avg",
@@ -3048,7 +3068,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # loudly here matches the mis-typed-lookup contract above — a spec
             # gap is a wiring bug, not a degraded picker.
             scope_model: ModelKey = ""
-            unit: DurationUnit | None = None
             if is_aggregate:
                 spec = filter_cls.aggregates.get(name)
                 if spec is None:
@@ -3063,9 +3082,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                         f"{spec.scope_filter.__name__} has no comparison model"
                     )
                 scope_model = scope_target._meta.model_name or ""
-                unit = spec.unit
-            elif field_spec is not None:
-                unit = field_spec.unit
             entry = FieldMeta(
                 name=name,
                 label=_field_label(filter_cls, name),
@@ -3133,37 +3149,26 @@ def _allowed_comparison_modifiers(group: ComparisonGroup) -> list[Modifier]:
     return Modifier.for_ordered_field_comparisons()
 
 
+def _hours(value: Number) -> timedelta:
+    """Hours as a ``timedelta``; a value out of range is refused."""
+    try:
+        return timedelta(hours=value)
+    except (OverflowError, ValueError) as exc:
+        raise FilterError(f"{value:g} hours is out of range") from exc
+
+
 def duration_hours_to_q(
     value: Number, value2: Number | None, modifier: Modifier, field_name: str
 ) -> Q:
-    """Compare an hours value against a DurationField (or a duration aggregate).
+    """Compare decimal hours against a DurationField, exactly.
 
-    Django stores DurationField as microseconds, so hours convert to
-    ``timedelta``. EQUALS matches the whole hour bucket ``[h, h+1)``;
-    IS_NULL is no duration (zero, or NULL over no rows) and NOT_NULL is more
-    than zero. BETWEEN/NOT_BETWEEN require ``value2``. This is the single home
-    for the hours<->timedelta logic shared by
-    the direct duration fields (playtime, session durations) and the
-    duration-unit aggregates. Like ``_numeric_to_q`` it raises on an unsupported
-    or incomplete modifier rather than silently matching everything.
+    ``1.5`` is 90 minutes. None is ``= 0``, any is ``> 0``.
     """
-    from datetime import timedelta
-
-    duration = timedelta(hours=value)
+    duration = _hours(value)
     if modifier == Modifier.EQUALS:
-        return Q(
-            **{
-                f"{field_name}__gte": duration,
-                f"{field_name}__lt": timedelta(hours=value + 1),
-            }
-        )
+        return Q(**{field_name: duration})
     if modifier == Modifier.NOT_EQUALS:
-        return ~Q(
-            **{
-                f"{field_name}__gte": duration,
-                f"{field_name}__lt": timedelta(hours=value + 1),
-            }
-        )
+        return ~Q(**{field_name: duration})
     if modifier == Modifier.GREATER_THAN:
         return Q(**{f"{field_name}__gt": duration})
     if modifier == Modifier.LESS_THAN:
@@ -3175,24 +3180,24 @@ def duration_hours_to_q(
     if modifier == Modifier.BETWEEN:
         if value is None or value2 is None:
             raise FilterError("BETWEEN requires two bounds (value and value2)")
-        lower_bound = timedelta(hours=min(value, value2))
-        upper_bound = timedelta(hours=max(value, value2))
+        lower_bound = _hours(min(value, value2))
+        upper_bound = _hours(max(value, value2))
         return Q(
             **{f"{field_name}__gte": lower_bound, f"{field_name}__lte": upper_bound}
         )
     if modifier == Modifier.NOT_BETWEEN:
         if value is None or value2 is None:
             raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
-        lower_bound = timedelta(hours=min(value, value2))
-        upper_bound = timedelta(hours=max(value, value2))
+        lower_bound = _hours(min(value, value2))
+        upper_bound = _hours(max(value, value2))
         return Q(**{f"{field_name}__lt": lower_bound}) | Q(
             **{f"{field_name}__gt": upper_bound}
         )
-    if modifier == Modifier.IS_NULL:
-        return Q(**{field_name: timedelta(0)}) | Q(**{f"{field_name}__isnull": True})
-    if modifier == Modifier.NOT_NULL:
-        return Q(**{f"{field_name}__gt": timedelta(0)})
-    raise FilterError(f"Unsupported modifier {modifier} for duration comparison")
+    if modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
+        raise FilterError(
+            "A duration has no 'is null'; use 'is 0' for none or '> 0' for any"
+        )
+    raise FilterError(f"Unsupported modifier {modifier.value} for a duration")
 
 
 # ── Field-handler factories ──────────────────────────────────────────────────
@@ -3213,7 +3218,7 @@ def calendar_day_handler(column: ORMLookup) -> FieldHandler:
 
 
 def duration_hours_handler(field_name: str) -> FieldHandler:
-    """Map an hours-based ``IntCriterion`` onto a DurationField via timedelta."""
+    """Map an hours ``FloatCriterion`` onto a DurationField, exactly."""
 
     def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
         # ``value2`` is the optional upper bound (BETWEEN); only numeric criteria
@@ -3364,7 +3369,6 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
     is not negative, so a run with no answer matches nothing. The
     field names no column, so it offers no ``is null``.
     """
-    from datetime import timedelta
 
     def span_end(count: Any) -> Any:
         return F(lower_field) + timedelta(days=int(count) - 1)
@@ -3589,8 +3593,9 @@ def aggregate_to_q(
     Annotates ``model`` with the aggregate, compares it against the criterion's
     value(s)/modifier, and returns ``Q(id__in=<matching ids>)``.
     ``unit=DURATION_HOURS`` compares an hours value against a DurationField
-    aggregate; otherwise a plain numeric comparison is used. ``sum``/``avg``
-    require a ``source`` field; ``count`` aggregates whole rows.
+    aggregate, coalesced to 0 h and compared exactly; otherwise a plain numeric
+    comparison is used. ``sum``/``avg`` require a ``source`` field; ``count``
+    aggregates whole rows.
 
     A criterion ``scope`` narrows the reducer to related rows matching the
     sub-filter (issue #151), via the aggregate's ``filter=`` argument. The
@@ -3657,7 +3662,13 @@ def aggregate_to_q(
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 
+    # No play is 0 h; a price stays NULL.
     if spec.unit == DURATION_HOURS:
+        aggregate_expression = Coalesce(
+            aggregate_expression,
+            Value(timedelta(0)),
+            output_field=DurationField(),
+        )
         compare = duration_hours_to_q(
             criterion.value, criterion.value2, criterion.modifier, "_agg"
         )

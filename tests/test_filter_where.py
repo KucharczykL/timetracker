@@ -49,8 +49,8 @@ def test_between_suffix_consumes_tuple_into_value_and_value2():
 
 
 def test_isnull_suffix_ignores_value():
-    assert GameFilter.where(playtime_hours__isnull=True) == GameFilter(
-        playtime_hours=IntCriterion(modifier=Modifier.IS_NULL)
+    assert GameFilter.where(year_released__isnull=True) == GameFilter(
+        year_released=IntCriterion(modifier=Modifier.IS_NULL)
     )
 
 

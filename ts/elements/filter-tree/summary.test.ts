@@ -81,18 +81,9 @@ describe("summarize — duration fields", () => {
       DURATION,
     );
 
-  it("names none and more-than-zero for the presence pair", () => {
-    expect(leaf({ modifier: "IS_NULL" })).toBe("Games where Playtime (hrs) is 0 (none).");
-    expect(leaf({ modifier: "NOT_NULL" })).toBe("Games where Playtime (hrs) is more than 0.");
-  });
-
-  it("names the hour bucket for equals and not-equals", () => {
-    expect(leaf({ modifier: "EQUALS", value: 0 })).toBe(
-      "Games where Playtime (hrs) is 0 h up to 1 h.",
-    );
-    expect(leaf({ modifier: "NOT_EQUALS", value: 1 })).toBe(
-      "Games where Playtime (hrs) is not 1 h up to 2 h.",
-    );
+  it("reads an exact decimal hour like any number", () => {
+    expect(leaf({ modifier: "EQUALS", value: 1.5 })).toBe("Games where Playtime (hrs) is 1.5.");
+    expect(leaf({ modifier: "NOT_EQUALS", value: 1 })).toBe("Games where Playtime (hrs) is not 1.");
   });
 
   it("keeps the plain phrase for a number without a unit", () => {

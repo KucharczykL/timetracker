@@ -191,6 +191,21 @@ def test_the_scope_leaves_the_bucket_out(
     assert bucket_row not in scoped
 
 
+def test_a_session_of_exactly_the_threshold_is_reviewed(
+    owned_user, owned_library, run, reclassify
+):
+    """The threshold is a floor: eight hours is in the review."""
+    eight = a_written_session(
+        owned_library,
+        owned_user,
+        run,
+        duration=timedelta(hours=REVIEW_THRESHOLD_HOURS),
+    )
+
+    assert eight in set(reviewable_sessions(owned_library))
+    assert eight in set(reclassify.scope(owned_library, review_filter()))
+
+
 def test_the_review_filter_leaves_a_short_session_out(
     owned_user, owned_library, run, reclassify
 ):

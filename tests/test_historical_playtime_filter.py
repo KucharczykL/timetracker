@@ -14,7 +14,7 @@ from common.criteria import (
     ChoiceCriterion,
     DateCriterion,
     FieldComparisonCriterion,
-    IntCriterion,
+    FloatCriterion,
     Modifier,
     RelationMatch,
     StringCriterion,
@@ -170,13 +170,26 @@ def test_emulated_and_note(owned_library, varied):
 
 def test_duration_hours(owned_library, varied):
     longer = HistoricalPlaytimeFilter(
-        duration_hours=IntCriterion(value=4, modifier=Modifier.GREATER_THAN)
+        duration_hours=FloatCriterion(value=4, modifier=Modifier.GREATER_THAN)
     )
     between = HistoricalPlaytimeFilter(
-        duration_hours=IntCriterion(value=1, value2=10, modifier=Modifier.BETWEEN)
+        duration_hours=FloatCriterion(value=1, value2=10, modifier=Modifier.BETWEEN)
     )
     assert matched(owned_library, longer) == {"zelda", "unknown"}
     assert matched(owned_library, between) == {"doom", "unknown"}
+
+
+def test_duration_hours_is_exact(owned_library, varied):
+    record_row([varied["doom"]], note="ninety", duration=timedelta(minutes=90))
+
+    def equals(value):
+        return HistoricalPlaytimeFilter(
+            duration_hours=FloatCriterion(value=value, modifier=Modifier.EQUALS)
+        )
+
+    assert matched(owned_library, equals(1.5)) == {"ninety"}
+    assert matched(owned_library, equals(1)) == set()
+    assert matched(owned_library, equals(2)) == {"doom"}
 
 
 @pytest.mark.parametrize(
