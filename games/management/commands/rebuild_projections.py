@@ -1,6 +1,3 @@
-from uuid import UUID
-
-from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError, OutputWrapper
 
 from games.events.rebuild import (
@@ -14,6 +11,11 @@ from games.events.reconcile import (
     REMEDY,
     ReferenceReconciliation,
     UnresolvedReferences,
+)
+from games.management.library_scope import (
+    LibraryScope,
+    add_scope_arguments,
+    scoped_libraries,
 )
 from games.models import UserLibrary
 from games.planner_statistics import analyze_tables
@@ -31,16 +33,7 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        scope = parser.add_mutually_exclusive_group(required=True)
-        scope.add_argument("--user", help="Rebuild the library owned by USERNAME.")
-        scope.add_argument(
-            "--library", dest="library_id", help="Rebuild one library UUID."
-        )
-        scope.add_argument(
-            "--all-libraries",
-            action="store_true",
-            help="Explicitly rebuild every library, in key order.",
-        )
+        add_scope_arguments(parser, verb="Rebuild")
         parser.add_argument(
             "--check",
             action="store_true",
@@ -64,7 +57,7 @@ class Command(BaseCommand):
                 "--fail-on-drift reports what a check found, and a rebuild "
                 "removes drift rather than reporting it. Add --check."
             )
-        libraries = self._resolve_libraries(options)
+        libraries = scoped_libraries(LibraryScope.from_options(options))
         mode = RebuildMode.CHECK if options["check"] else RebuildMode.REBUILD
         #: The whole census, so one drift hides no other.
         drifted: list[tuple[UserLibrary, int]] = []
@@ -125,45 +118,6 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("References: all resolved."))
         #: A rebuild leaves no drift to report.
         return 0
-
-    def _resolve_libraries(self, options) -> list[UserLibrary]:
-        libraries = UserLibrary.objects.select_related("user").order_by("pk")
-        if options["all_libraries"]:
-            found = list(libraries)
-            if not found:
-                raise CommandError(
-                    "--all-libraries found no library, so nothing was replayed "
-                    "and nothing was compared."
-                )
-            return found
-        #: Not truthiness: --user "" would fall through to a UUID.
-        if options["user"] is not None:
-            return [self._library_of_user(libraries, options["user"])]
-        return [self._library_by_id(libraries, options["library_id"])]
-
-    @staticmethod
-    def _library_of_user(libraries, username: str) -> UserLibrary:
-        """Two errors: no user, or no library."""
-        user_model = get_user_model()
-        try:
-            user = user_model.objects.get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"No user is named {username!r}.") from error
-        try:
-            return libraries.get(user=user)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"User {username!r} owns no library.") from error
-
-    @staticmethod
-    def _library_by_id(libraries, raw_id: str) -> UserLibrary:
-        try:
-            library_id = UUID(raw_id)
-        except ValueError as error:
-            raise CommandError(f"{raw_id!r} is not a library id.") from error
-        try:
-            return libraries.get(pk=library_id)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"No library {library_id}.") from error
 
     def _write_report(self, report: RebuildReport) -> None:
         self.stdout.write(f"Library {report.library_id}: {report.mode.value}")

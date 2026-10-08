@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Exists, F, OuterRef, Q
 
+from games.management.library_scope import (
+    LibraryScope,
+    add_scope_arguments,
+    scoped_libraries,
+)
 from games.models import (
     Device,
     FilterPreset,
@@ -13,7 +17,6 @@ from games.models import (
     Platform,
     PlayerSession,
     PurchaseConversionState,
-    UserLibrary,
     UserLibraryPreferences,
     UserPreferences,
 )
@@ -28,19 +31,10 @@ class Command(BaseCommand):
     help = "Read and validate library ownership without changing any data."
 
     def add_arguments(self, parser):
-        scope = parser.add_mutually_exclusive_group(required=True)
-        scope.add_argument("--user", help="Audit the library owned by USERNAME.")
-        scope.add_argument(
-            "--library", dest="library_id", help="Audit one library UUID."
-        )
-        scope.add_argument(
-            "--all-libraries",
-            action="store_true",
-            help="Explicitly audit every library.",
-        )
+        add_scope_arguments(parser, verb="Audit")
 
     def handle(self, *args, **options):
-        libraries = self._resolve_libraries(options)
+        libraries = scoped_libraries(LibraryScope.from_options(options))
         library_ids = [library.pk for library in libraries]
         user_ids = [library.user_id for library in libraries]
 
@@ -135,26 +129,6 @@ class Command(BaseCommand):
         if violation_count:
             raise CommandError(f"Ownership audit found {violation_count} violation(s).")
         self.stdout.write(self.style.SUCCESS("Ownership audit passed."))
-
-    def _resolve_libraries(self, options):
-        libraries = UserLibrary.objects.select_related("user").order_by("pk")
-        if options["all_libraries"]:
-            return list(libraries)
-        if options["user"]:
-            user_model = get_user_model()
-            try:
-                user = user_model.objects.get(username=options["user"])
-                return [libraries.get(user=user)]
-            except (user_model.DoesNotExist, UserLibrary.DoesNotExist) as error:
-                raise CommandError(
-                    f"User {options['user']!r} or their library does not exist."
-                ) from error
-        try:
-            return [libraries.get(pk=options["library_id"])]
-        except (UserLibrary.DoesNotExist, ValidationError, ValueError) as error:
-            raise CommandError(
-                f"Library {options['library_id']!r} does not exist."
-            ) from error
 
     @staticmethod
     def _cross_library_violations(library_ids):

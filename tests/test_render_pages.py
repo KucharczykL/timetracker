@@ -128,5 +128,5 @@ def test_the_command_refuses_a_non_empty_directory(furnished, tmp_path):
 
 
 def test_the_command_refuses_an_unknown_user(tmp_path):
-    with pytest.raises(CommandError, match="No user"):
+    with pytest.raises(CommandError, match="No user is named 'nobody'"):
         call_command("render_pages", user="nobody", out=str(tmp_path / "x"))

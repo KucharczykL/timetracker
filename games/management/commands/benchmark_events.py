@@ -1,7 +1,5 @@
 """Arguments and printing; the decisions are elsewhere."""
 
-from uuid import UUID
-
 from django.core.management.base import BaseCommand, CommandError
 from django.db.utils import DatabaseError
 
@@ -15,6 +13,7 @@ from games.events.benchmark import (
 )
 from games.events.benchmark_run import run_benchmark
 from games.events.rebuild import RebuildReport
+from games.management.library_scope import library_by_id
 from games.models import UserLibrary
 
 DEFAULT_SEED_EVENTS = 100_000
@@ -152,14 +151,7 @@ class Command(BaseCommand):
             return None
         if options["seed"] is not None:
             raise CommandError("--seed and --library cannot both be given.")
-        try:
-            library_id = UUID(raw_id)
-        except ValueError as error:
-            raise CommandError(f"{raw_id!r} is not a library id.") from error
-        try:
-            return UserLibrary.objects.get(pk=library_id)
-        except UserLibrary.DoesNotExist as error:
-            raise CommandError(f"No library {library_id}.") from error
+        return library_by_id(raw_id)
 
     def _announce_scratch_user(self, username: str) -> None:
         """First: a run that raises leaves it."""

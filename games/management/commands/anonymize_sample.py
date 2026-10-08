@@ -10,7 +10,6 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import yaml
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
@@ -37,6 +36,7 @@ from games.management.commands.load_sample_data import (
     TARGET_LIBRARY_MARKER,
     FixtureLabel,
 )
+from games.management.library_scope import library_of_user
 from games.models import (
     Device,
     Edition,
@@ -383,14 +383,7 @@ class Command(BaseCommand):
         if options["seed"] is not None:
             random.seed(options["seed"])
 
-        user_model = get_user_model()
-        try:
-            user = user_model.objects.select_related("library").get(
-                username=options["user"]
-            )
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"User {options['user']!r} does not exist.") from error
-        library = user.library
+        library = library_of_user(options["user"])
         #: Every game the library holds, removed rows included -- the plain
         #: manager, not `for_library()`, whose `alive()` drops them. A removed
         #: game keeps its PlayerGame, its Playthroughs and every LibraryEvent

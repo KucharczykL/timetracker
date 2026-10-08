@@ -598,6 +598,13 @@ class AnonymizeSampleTest(TransactionTestCase):
         _build_dataset()
         with TemporaryDirectory() as tempdir, self.assertRaises(CommandError):
             call_command("anonymize_sample", output=Path(tempdir) / "out.yaml.gz")
+        with (
+            TemporaryDirectory() as tempdir,
+            self.assertRaisesRegex(CommandError, "No user is named 'nobody'"),
+        ):
+            call_command(
+                "anonymize_sample", user="nobody", output=Path(tempdir) / "out.gz"
+            )
 
     def test_output_invariants(self):
         _build_dataset()

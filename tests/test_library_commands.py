@@ -195,7 +195,7 @@ def test_purge_user_library_cascades_private_data_but_keeps_shared_platform(owne
 
 @pytest.mark.django_db
 def test_load_sample_data_rejects_a_missing_explicit_user():
-    with pytest.raises(CommandError, match="does not exist"):
+    with pytest.raises(CommandError, match="No user is named"):
         call_command("load_sample_data", "--user", "missing-user")
 
 
@@ -811,7 +811,8 @@ def test_a_tracked_game_with_no_library_is_no_violation(owner):
 
 
 @pytest.mark.django_db
-def test_all_libraries_audit_reports_a_user_missing_their_library(owner):
+def test_all_libraries_audit_reports_a_user_missing_their_library(owner, outsider):
+    """A second library keeps the census non-empty."""
     owner.library.delete()
     output = StringIO()
 
@@ -819,6 +820,42 @@ def test_all_libraries_audit_reports_a_user_missing_their_library(owner):
         call_command("audit_library_ownership", "--all-libraries", stdout=output)
 
     assert f"UserLibrary missing for user {owner.pk}" in output.getvalue()
+
+
+@pytest.mark.django_db
+def test_all_libraries_audit_counts_users_when_no_library_exists(owner):
+    """The census names who lacks one."""
+    owner.library.delete()
+
+    with pytest.raises(CommandError, match="1 user"):
+        call_command("audit_library_ownership", "--all-libraries")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "command",
+    [
+        "render_pages",
+        "load_sample_data",
+        "anonymize_sample",
+        "verify_reclassification_parity",
+    ],
+)
+def test_a_user_without_a_library_is_refused_by_name(owner, command, tmp_path):
+    owner.library.delete()
+    output_options = {
+        "render_pages": {"out": str(tmp_path / "pages")},
+        "anonymize_sample": {"output": tmp_path / "out.gz"},
+    }
+
+    with pytest.raises(CommandError, match="'command-owner' owns no library"):
+        call_command(command, user=owner.username, **output_options.get(command, {}))
+
+
+@pytest.mark.django_db
+def test_purge_user_library_names_a_missing_user_under_its_lock():
+    with pytest.raises(CommandError, match="No user is named 'nobody'"):
+        call_command("purge_user_library", user="nobody", confirm="nobody")
 
 
 @pytest.mark.parametrize("target", ["loadsample", "anonymize-sample"])
