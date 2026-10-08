@@ -50,7 +50,7 @@ Every duration label ends in "(hrs)".
 - `bool_nonzero_duration_handler` is removed. It had no caller.
 - The Python hint, `duration_bucket_hint`, and the TypeScript hint,
   `durationBucketHint`, follow one table. The contract fixtures check the
-  summary.
+  serializer round-trip. `summary.test.ts` checks the phrases.
 
 ## Follow-up issues
 

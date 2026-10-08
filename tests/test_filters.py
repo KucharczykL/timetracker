@@ -5167,6 +5167,7 @@ class TestFieldMetadata:
         for filter_cls, name in (
             (GameFilter, "playtime_hours"),
             (PlayerSessionFilter, "duration_hours"),
+            (GameFilter, "session_average"),
         ):
             entry = self._by_name(filter_cls)[name]
             assert entry["nullable"] is True
@@ -5991,7 +5992,7 @@ class TestScopedAggregateReducers:
         # NULL sum: no duration, not bucket zero.
         assert self._games_matching(scoped("EQUALS", 0)) == set()
         assert self._games_matching(scoped("IS_NULL")) == {data["desktop_only"]}
-        # …while mixed's deck sessions (1h + 1h elapsed) sum normally.
+        # Mixed's deck sessions (1h + 1h elapsed) sum normally.
         assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}
 
 
@@ -6052,6 +6053,7 @@ class TestDurationPresence:
         [
             ("playtime_hours", {"unplayed", "running_only"}),
             ("session_playtime_hours", {"unplayed", "running_only", "hist_only"}),
+            ("session_average", {"unplayed", "running_only", "hist_only"}),
         ],
     )
     def test_is_null_and_not_null_partition_the_scope(self, field, expected_none):
@@ -6063,11 +6065,48 @@ class TestDurationPresence:
         assert none_set.isdisjoint(more_set)
 
     def test_not_equals_zero_drops_games_without_sessions(self):
-        """NOT_EQUALS 0 drops games with no sessions."""
+        """A NULL sum falls outside NOT_EQUALS 0, so the game drops out."""
+        from datetime import datetime
+
+        from games.models import Game
+
         games = self._world()
+        library = games["unplayed"].library
+        long_game = Game.objects.create(
+            name="Two Hours", platform=games["unplayed"].platform
+        )
+        games["two_hours"] = long_game
+        tracked_run(library, long_game)
+        start = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
+        session_row(
+            long_game,
+            started_at=start,
+            ended_at=start + timedelta(hours=2),
+            library=library,
+        )
         not_zero = self._matching("session_playtime_hours", "NOT_EQUALS", games)
-        assert games["unplayed"] not in not_zero
-        assert games["hist_only"] not in not_zero
+        assert not_zero == {long_game}
+
+    def test_session_rows_split_on_no_duration(self):
+        from games.filters import filter_query_context_for_library
+        from games.models import PlayerSession
+
+        games = self._world()
+        library = games["unplayed"].library
+        sessions = PlayerSession.objects.filter(library=library)
+        context = filter_query_context_for_library(library)
+
+        def matching(modifier):
+            session_filter = PlayerSessionFilter.from_json(
+                {"duration_hours": {"modifier": modifier}}
+            )
+            return set(execute_filter(session_filter, sessions, context))
+
+        none_set = matching("IS_NULL")
+        more_set = matching("NOT_NULL")
+        assert {session.ended_at for session in none_set} == {None}
+        assert len(more_set) == 1
+        assert none_set.isdisjoint(more_set)
 
 
 class TestComparisonOperandPaths:

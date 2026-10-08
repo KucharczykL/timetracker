@@ -1130,7 +1130,8 @@ structured filtering.
   `avg` answer NULL there, so "is null" on one reads as "no related rows".
   `StringFilter`/`NumberFilter` render exactly this list.
   Duration fields: `IS_NULL` is zero or absent, `NOT_NULL` is more than zero;
-  `EQUALS h` is the hour `[h, h+1)`, hinted under the input (`duration_hours_to_q`).
+  `EQUALS h` is the hour `[h, h+1)` (`duration_hours_to_q`). The widget hints
+  it under the input (`duration_bucket_hint`).
 - `games/filters.py` defines `GameFilter`, `PlayerSessionFilter`,
   `PurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
   `FindFilter` (sort/pagination). Filters serialize to/from JSON and travel in

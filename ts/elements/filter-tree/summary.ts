@@ -287,6 +287,7 @@ function durationClause(label: string, modifier: string, value: string): string 
   const presence = DURATION_MODIFIER_PHRASES[modifier as ModifierToken];
   if (presence !== undefined) return `${label} ${presence}`;
   const range = durationBucketRange(value);
+  if (range === "") return null;
   if (modifier === "EQUALS") return `${label} is ${range}`;
   if (modifier === "NOT_EQUALS") return `${label} is not ${range}`;
   return null;

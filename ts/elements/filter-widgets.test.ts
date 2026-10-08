@@ -162,7 +162,6 @@ describe("the duration hint follows the typed hour", () => {
 
   function durationWidget(): HTMLElement {
     const root = numberWidget();
-    root.setAttribute("data-unit", "duration_hours");
     root.insertAdjacentHTML(
       "beforeend",
       '<p data-duration-bucket-hint hidden></p>',
@@ -188,7 +187,22 @@ describe("the duration hint follows the typed hour", () => {
   it("empties and hides the hint on a range pick", () => {
     const root = durationWidget();
     setupModifierToggles(document.body);
+    const input = root.querySelector<HTMLInputElement>('input[type="number"]')!;
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(hintOf(root).hidden).toBe(false);
     pick(root, "BETWEEN");
+    expect(hintOf(root).textContent).toBe("");
+    expect(hintOf(root).hidden).toBe(true);
+  });
+
+  it("empties and hides the hint on a presence pick", () => {
+    const root = durationWidget();
+    setupModifierToggles(document.body);
+    const input = root.querySelector<HTMLInputElement>('input[type="number"]')!;
+    input.value = "0";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    pick(root, "IS_NULL");
     expect(hintOf(root).textContent).toBe("");
     expect(hintOf(root).hidden).toBe(true);
   });

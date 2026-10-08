@@ -1012,7 +1012,6 @@ class FieldComparisonCriterion(_Criterion):
 type AttrName = str  # a filter dataclass field name, e.g. "playtime_hours"
 type ORMLookup = str  # a Django query path, e.g. "platform__group"
 
-# A custom criterion→Q builder for a filter field whose mapping is not a plain
 # Custom criterion→Q builder; see duration_hours_handler.
 # The context is the compile's library facts; a handler over the row ignores it.
 type FieldHandler = Callable[[_Criterion, FilterQueryContext | None], Q]
@@ -1025,9 +1024,10 @@ class FilterField:
     Lifts the per-field mapping a filter's ``to_q`` used to do imperatively into a
     single declarative table (see ``OperatorFilter.fields``). ``lookup`` overrides
     the ORM path (defaulting to the attribute name, so a plain field needs no
-    argument); ``handler`` supplies bespoke Q logic for fields whose mapping is not
-    a plain ``criterion.to_q(lookup)`` — the hours→duration cases. The two are mutually exclusive: a handler is fully
-    self-contained, so a ``lookup`` alongside it would be silently ignored —
+    argument); ``handler`` supplies bespoke Q logic for fields whose mapping is
+    not a plain ``criterion.to_q(lookup)``, e.g. hours→duration. The two are
+    mutually exclusive: a handler is fully self-contained, so a ``lookup``
+    alongside it would be silently ignored —
     ``__post_init__`` rejects that misconfiguration at import time.
     """
 
@@ -1059,7 +1059,7 @@ class FilterField:
 
     @property
     def unit(self) -> DurationUnit | None:
-        """Hours unit, read by the widget."""
+        """Duration unit the handler marks."""
         return getattr(self.handler, "unit", None)
 
     def __post_init__(self) -> None:
@@ -3141,8 +3141,8 @@ def duration_hours_to_q(
     Django stores DurationField as microseconds, so hours convert to
     ``timedelta``. EQUALS matches the whole hour bucket ``[h, h+1)``;
     IS_NULL is no duration (zero, or NULL over no rows) and NOT_NULL is more
-    than zero. BETWEEN/NOT_BETWEEN require
-    ``value2``. This is the single home for the hours<->timedelta logic shared by
+    than zero. BETWEEN/NOT_BETWEEN require ``value2``. This is the single home
+    for the hours<->timedelta logic shared by
     the direct duration fields (playtime, session durations) and the
     duration-unit aggregates. Like ``_numeric_to_q`` it raises on an unsupported
     or incomplete modifier rather than silently matching everything.
@@ -3657,7 +3657,7 @@ def aggregate_to_q(
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 
-    if spec.unit == "duration_hours":
+    if spec.unit == DURATION_HOURS:
         compare = duration_hours_to_q(
             criterion.value, criterion.value2, criterion.modifier, "_agg"
         )

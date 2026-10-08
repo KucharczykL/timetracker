@@ -180,7 +180,6 @@ class TestFieldWidgetDurationUnit:
         html = str(field_widget(GameFilter, "purchase_price_total"))
         assert "is null" in html
         assert "data-duration-bucket-hint" not in html
-        assert 'data-unit="duration_hours"' not in html
 
     def test_bucket_hint_renders_server_side(self):
         from common.components.filters import NumberFilter
@@ -194,7 +193,6 @@ class TestFieldWidgetDurationUnit:
                 unit="duration_hours",
             )
         )
-        assert 'data-unit="duration_hours"' in html
         assert "0 h up to 1 h" in html
 
     def test_hint_stays_hidden_for_a_range_modifier(self):
@@ -210,7 +208,10 @@ class TestFieldWidgetDurationUnit:
             )
         )
         assert 'data-duration-bucket-hint=""' in html
-        assert 'hidden="true"' in html
+        match = re.search(r"<p[^>]*data-duration-bucket-hint[^>]*>", html)
+        assert match is not None
+        assert 'hidden="true"' in match.group(0)
+        assert "1 h up to 2 h" not in html
 
     @pytest.mark.parametrize(
         ("modifier", "value", "text"),
@@ -220,6 +221,11 @@ class TestFieldWidgetDurationUnit:
             ("NOT_EQUALS", "1", "outside 1 h up to 2 h"),
             ("EQUALS", "", ""),
             ("EQUALS", "x", ""),
+            ("EQUALS", "1.0", "1 h up to 2 h"),
+            ("EQUALS", " 1 ", "1 h up to 2 h"),
+            ("EQUALS", "nan", ""),
+            ("EQUALS", "inf", ""),
+            ("EQUALS", "1e16", ""),
             ("GREATER_THAN", "1", ""),
         ],
     )

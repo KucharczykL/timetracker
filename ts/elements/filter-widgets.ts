@@ -270,7 +270,7 @@ export function setupModifierToggles(root: HTMLElement): void {
     }
   });
   root.addEventListener("input", (event) => {
-    const target = event.target as Element;
+    const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.type !== "number") return;
     const widget = widgetRoot(target);
     if (widget) refreshDurationBucketHint(widget);
@@ -313,7 +313,10 @@ export function writeStringWidget(element: HTMLElement, criterion: Record<string
 export function writeNumberWidget(element: HTMLElement, criterion: Record<string, unknown>): void {
   writeModifier(element, NUMBER_MODIFIER, criterion["modifier"]);
   const modifier = numberModifier(element);
-  if (modifier === null) return;
+  if (modifier === null) {
+    refreshDurationBucketHint(element);
+    return;
+  }
   toggleNumberFilterInput(element, modifier); // reveals value2 for BETWEEN, disables for presence
   if (isPresenceModifier(modifier)) return;
   const valueInput = element.querySelector<HTMLInputElement>(

@@ -31,7 +31,6 @@ from common.components.search_select import (
     SearchSelectOption,
 )
 from common.criteria import (
-    DURATION_HOURS,
     AttrName,
     ComparableColumn,
     ComparisonGranularity,
@@ -924,7 +923,7 @@ NUMBER_MODIFIER_LABELS: dict[ModifierToken, str] = {
 }
 
 
-#: Duration presence labels: none, more than zero.
+#: Number labels; duration presence reads as zero.
 DURATION_MODIFIER_LABELS: dict[ModifierToken, str] = {
     **NUMBER_MODIFIER_LABELS,
     "IS_NULL": "is 0 (none)",
@@ -937,13 +936,17 @@ def _hour_text(hours: float) -> str:
     return str(int(hours)) if hours.is_integer() else str(hours)
 
 
+#: Largest hour count a timedelta holds.
+MAX_DURATION_HOURS = 999_999_999 * 24
+
+
 def duration_bucket_hint(modifier: ModifierToken, value: str) -> str:
-    """Hour-bucket hint text. Mirrors duration-bucket.ts."""
+    """Same table as duration-bucket.ts."""
     try:
         hours = float(value)
     except ValueError:
         return ""
-    if not math.isfinite(hours):
+    if not math.isfinite(hours) or abs(hours) > MAX_DURATION_HOURS:
         return ""
     bucket = f"{_hour_text(hours)} h up to {_hour_text(hours + 1)} h"
     if modifier == "EQUALS":
@@ -972,13 +975,13 @@ def NumberFilter(
     cannot be NULL states no presence pair, and neither does a ``count``, which
     answers 0 over no rows rather than NULL.
 
+    A duration ``unit`` swaps in the presence labels and adds the hour hint.
+
     Both inputs disable for a presence modifier; the second shows only for a
     range one. Initial state is server-rendered, so the widget never flashes
     before its JS runs.
     """
-    labels = (
-        DURATION_MODIFIER_LABELS if unit == DURATION_HOURS else NUMBER_MODIFIER_LABELS
-    )
+    labels = DURATION_MODIFIER_LABELS if unit is not None else NUMBER_MODIFIER_LABELS
     offered = list(modifiers) if modifiers else list(labels)
     if modifier not in offered:
         modifier = offered[0]
@@ -1023,7 +1026,6 @@ def NumberFilter(
     if inputs_disabled:
         value2_attrs.append(("disabled", "true"))
 
-    root_attrs = filter_widget_attributes(path, "number")
     children: list[Node] = [
         modifier_select,
         Div(class_="flex items-center gap-2")[
@@ -1032,7 +1034,6 @@ def NumberFilter(
         ],
     ]
     if unit is not None:
-        root_attrs.append(("data-unit", unit))
         hint = duration_bucket_hint(modifier, value)
         hint_attrs = [
             ("data-duration-bucket-hint", ""),
@@ -1043,7 +1044,7 @@ def NumberFilter(
         children.append(P(hint_attrs)[hint])
 
     return Div(
-        root_attrs,
+        filter_widget_attributes(path, "number"),
         class_="flex flex-col gap-2 @container",
     )[children]
 

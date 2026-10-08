@@ -35,6 +35,7 @@ from django.urls import reverse
 from django.utils.http import urlencode
 
 from common.criteria import (
+    DURATION_HOURS,
     AggregateCriterion,
     AggregateSpec,
     AttrName,
@@ -1312,7 +1313,7 @@ GameFilter.aggregates = {
         GAME_SESSIONS,
         PlayerSessionFilter,
         source="effective_duration",
-        unit="duration_hours",
+        unit=DURATION_HOURS,
     ),
     "purchase_count": AggregateSpec("count", GAME_PURCHASES, PurchaseFilter),
     "entry_count": AggregateSpec("count", "player_games__entries", LibraryEntryFilter),
@@ -1329,7 +1330,7 @@ GameFilter.aggregates = {
         GAME_SESSIONS,
         PlayerSessionFilter,
         source="effective_duration",
-        unit="duration_hours",
+        unit=DURATION_HOURS,
     ),
     "purchase_price_total": AggregateSpec(
         "sum",
