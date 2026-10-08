@@ -38,7 +38,7 @@ export function criterion(value: unknown, value2: unknown, modifier: string): Cr
 export function parseNumberInputValue(element: HTMLInputElement | null): number | "" {
   if (!element || element.value === "") return "";
   const value = parseFloat(element.value);
-  return isNaN(value) ? "" : value;
+  return Number.isFinite(value) ? value : "";
 }
 
 // The value2 slot's [data-number-value2] marker may be the input itself or a

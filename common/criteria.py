@@ -282,9 +282,7 @@ def _coerce_float(raw: Any) -> float:
 
 
 def _coerce_number(raw: Any) -> int | float:
-    # For fields that may be integer (a count) or fractional (a sum/avg): validate
-    # numerically but keep an integral value an ``int`` so a count round-trips as
-    # ``5`` rather than ``5.0`` in serialized filter JSON. Querying is unaffected.
+    # Validate numerically; an integral value stays int.
     number = _coerce_float(raw)
     return int(number) if number.is_integer() else number
 
@@ -527,12 +525,14 @@ class IntCriterion(_ScalarCriterion):
         raise FilterError(f"Unsupported modifier {m} for int field")
 
 
+Number = int | float
+
+
 @dataclass
 class FloatCriterion(_ScalarCriterion):
-    value: float = 0.0
-    value2: float | None = None
+    value: Number = 0
+    value2: Number | None = None
     modifier: Modifier = Modifier.EQUALS
-    # Integral values stay int.
     _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_number)
 
     def to_q(self, field_name: str) -> Q:
@@ -1094,6 +1094,9 @@ class FilterField:
             raise ValueError(
                 "FilterField search_url has no effect on a handler-mapped field"
             )
+        if self.nullable and self.unit is not None:
+            # A duration has no presence pair; "is 0" is none.
+            raise TypeError("a duration field has no presence pair; nullable=False")
         for stated, what in ((self.choices, "choices"), (self.nullable, "nullable")):
             if stated is not None and self.handler is None:
                 # The column answers both, so declaring shadows.
@@ -2105,8 +2108,6 @@ def filter_to_json(f: OperatorFilter) -> str:
 # ``AggregateSpec``); the algebra lives here so every entity composes the same
 # logic instead of repeating bespoke subqueries in each to_q().
 
-Number = int | float
-
 
 def _exact[Value: Number | Decimal | None](value: Value) -> Value | Decimal:
     """A float as typed, so decimals compare exactly."""
@@ -3023,18 +3024,32 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # ``Count`` answers 0 over no rows, so a presence test on one
             # matches nothing. ``Sum`` and ``Avg`` answer NULL there, so "is
             # null" on one reads as "no related rows".
-            if field_spec is not None and field_spec.nullable is not None:
+            # A duration field states no presence pair: "is 0" is none, "> 0" any.
+            unit: DurationUnit | None = None
+            if is_aggregate:
+                aggregate_spec = filter_cls.aggregates.get(name)
+                unit = aggregate_spec.unit if aggregate_spec is not None else None
+            elif field_spec is not None:
+                unit = field_spec.unit
+            if unit is not None:
+                if not (is_aggregate or issubclass(criterion_cls, FloatCriterion)):
+                    raise ValueError(
+                        f"{filter_cls.__name__}.{name} states a duration unit but "
+                        f"takes {criterion_cls.__name__}; a duration takes "
+                        "FloatCriterion or an aggregate"
+                    )
+                nullable = False
+            elif field_spec is not None and field_spec.nullable is not None:
                 nullable = field_spec.nullable
             elif field_spec is not None and field_spec.metadata_lookup is not None:
                 nullable = bool(getattr(model_field, "null", False))
             elif resolved_lookup is not None:
                 nullable = _lookup_is_nullable(model, resolved_lookup)
             elif is_aggregate:
-                aggregate_spec = filter_cls.aggregates.get(name)
-                nullable = (
-                    aggregate_spec is not None
-                    and aggregate_spec.reducer in ("sum", "avg")
-                    and aggregate_spec.unit is None
+                # Sum and avg answer NULL over no rows; count answers 0.
+                nullable = aggregate_spec is not None and aggregate_spec.reducer in (
+                    "sum",
+                    "avg",
                 )
             else:
                 nullable = False
@@ -3055,7 +3070,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # loudly here matches the mis-typed-lookup contract above — a spec
             # gap is a wiring bug, not a degraded picker.
             scope_model: ModelKey = ""
-            unit: DurationUnit | None = None
             if is_aggregate:
                 spec = filter_cls.aggregates.get(name)
                 if spec is None:
@@ -3070,9 +3084,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                         f"{spec.scope_filter.__name__} has no comparison model"
                     )
                 scope_model = scope_target._meta.model_name or ""
-                unit = spec.unit
-            elif field_spec is not None:
-                unit = field_spec.unit
             entry = FieldMeta(
                 name=name,
                 label=_field_label(filter_cls, name),
@@ -3145,7 +3156,7 @@ def _hours(value: Number) -> timedelta:
     try:
         return timedelta(hours=value)
     except (OverflowError, ValueError) as exc:
-        raise FilterError(f"{value!r} hours is out of range") from exc
+        raise FilterError(f"{value:g} hours is out of range") from exc
 
 
 def duration_hours_to_q(
@@ -3153,7 +3164,7 @@ def duration_hours_to_q(
 ) -> Q:
     """Compare decimal hours against a DurationField, exactly.
 
-    No bucket: ``1.5`` is 90 minutes. Presence is ``= 0`` and ``> 0``.
+    ``1.5`` is 90 minutes. None is ``= 0``, any is ``> 0``.
     """
     duration = _hours(value)
     if modifier == Modifier.EQUALS:
@@ -3184,7 +3195,11 @@ def duration_hours_to_q(
         return Q(**{f"{field_name}__lt": lower_bound}) | Q(
             **{f"{field_name}__gt": upper_bound}
         )
-    raise FilterError(f"Unsupported modifier {modifier} for duration comparison")
+    if modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
+        raise FilterError(
+            "A duration has no 'is null'; use 'is 0' for none or '> 0' for any"
+        )
+    raise FilterError(f"Unsupported modifier {modifier.value} for a duration")
 
 
 # ── Field-handler factories ──────────────────────────────────────────────────
@@ -3580,8 +3595,9 @@ def aggregate_to_q(
     Annotates ``model`` with the aggregate, compares it against the criterion's
     value(s)/modifier, and returns ``Q(id__in=<matching ids>)``.
     ``unit=DURATION_HOURS`` compares an hours value against a DurationField
-    aggregate; otherwise a plain numeric comparison is used. ``sum``/``avg``
-    require a ``source`` field; ``count`` aggregates whole rows.
+    aggregate, coalesced to 0 h and compared exactly; otherwise a plain numeric
+    comparison is used. ``sum``/``avg`` require a ``source`` field; ``count``
+    aggregates whole rows.
 
     A criterion ``scope`` narrows the reducer to related rows matching the
     sub-filter (issue #151), via the aggregate's ``filter=`` argument. The
@@ -3648,7 +3664,7 @@ def aggregate_to_q(
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 
-    # No play reads 0 h.
+    # No play is 0 h; a price stays NULL.
     if spec.unit == DURATION_HOURS:
         aggregate_expression = Coalesce(
             aggregate_expression,
