@@ -17,7 +17,7 @@ from common.components.filters import (
 from common.components.filters import (
     field_widget_templates as _field_widget_templates,
 )
-from common.criteria import field_metadata
+from common.criteria import DURATION_HOURS, field_metadata
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -190,7 +190,7 @@ class TestFieldWidgetDurationUnit:
                 value="0",
                 modifier="EQUALS",
                 path=["playtime_hours"],
-                unit="duration_hours",
+                unit=DURATION_HOURS,
             )
         )
         assert "0 h up to 1 h" in html
@@ -204,7 +204,7 @@ class TestFieldWidgetDurationUnit:
                 value="1",
                 modifier="GREATER_THAN",
                 path=["playtime_hours"],
-                unit="duration_hours",
+                unit=DURATION_HOURS,
             )
         )
         assert 'data-duration-bucket-hint=""' in html
