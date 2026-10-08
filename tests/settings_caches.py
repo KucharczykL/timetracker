@@ -12,7 +12,7 @@ def _reset_settings_caches():
 
     No rollback or flush fires the ``SiteSetting`` commit signal, so a
     discarded row would leak through the resolver's snapshot. Also
-    resets the env/ini file caches per-test ``ENV_FILE`` fixtures fill.
+    resets the env/ini caches that ``ENV_FILE``/``INI_FILE`` fixtures fill.
     """
     config_module.reset_caches()
     settings_resolver.clear_cache()

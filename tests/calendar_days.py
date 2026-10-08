@@ -1,4 +1,4 @@
-"""Seeding fixtures on the library's calendar day."""
+"""Calendar-day seeding; the process clock displaced."""
 
 import os
 import uuid
