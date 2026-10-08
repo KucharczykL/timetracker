@@ -5,6 +5,7 @@ reachable only through one of them — a container that asks for nothing gets a
 migrate and nothing else.
 """
 
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -14,12 +15,12 @@ from django.test import TestCase
 from games.models import Game
 
 
-def _run(*args) -> list[tuple]:
+def _run(*args, stdout: StringIO | None = None) -> list[tuple]:
     """Run the command with `call_command` recorded; returns the nested calls."""
     with patch(
         "games.management.commands.bootstrap_container.call_command"
     ) as call_command_mock:
-        call_command("bootstrap_container", *args, verbosity=0)
+        call_command("bootstrap_container", *args, verbosity=0, stdout=stdout)
     return [(call.args[0], call.args[1:]) for call in call_command_mock.call_args_list]
 
 
@@ -55,6 +56,15 @@ class BootstrapContainerTest(TestCase):
         # A restarted container must not trip over the user it made last time.
         _run("--default-superuser")
         self.assertEqual(user_model.objects.filter(username="admin").count(), 1)
+
+    def test_default_superuser_password_is_random_and_printed(self):
+        output = StringIO()
+        _run("--default-superuser", stdout=output)
+        admin = get_user_model().objects.get(username="admin")
+
+        self.assertFalse(admin.check_password("admin"))
+        printed = output.getvalue().split("admin / ")[1].split()[0]
+        self.assertTrue(admin.check_password(printed))
 
     def test_no_superuser_without_the_flag(self):
         _run()
