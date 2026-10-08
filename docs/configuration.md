@@ -313,9 +313,10 @@ APP_URL=https://tracker.example.com,https://www.tracker.example.com
 
 When every listed URL is https, the session and CSRF cookies carry the
 `Secure` flag, so a browser never sends them over plain http. One http URL
-keeps the flag off, because a browser drops a `Secure` cookie on http and
-login there would fail. TLS ends at the reverse proxy, so the scheme of
-`APP_URL` decides this, not the scheme of the request Django sees. See
+keeps the flag off for every listed URL, the https ones included, because a
+browser drops a `Secure` cookie on http and login there would fail. Django
+cannot see the browser's scheme behind the TLS proxy, so `APP_URL` states
+it. A malformed entry stops boot. See
 [Behind a TLS proxy](deployment.md#behind-a-tls-proxy).
 
 `ALLOWED_HOSTS` can still be overridden directly for edge cases. A typical

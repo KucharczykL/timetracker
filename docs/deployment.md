@@ -60,11 +60,24 @@ lifecycle in the database unit.
 
 The image serves plain http on port 8000. A reverse proxy outside the
 container ends TLS. Inside the container, Caddy on port 8000 forwards to
-Gunicorn on port 8001.
+Gunicorn on port 8001, which runs Uvicorn workers.
 
 Set `APP_URL` to the public https URL. The session and CSRF cookies then
 carry the `Secure` flag (see
-[Configuration](configuration.md#app_url-allowed_hosts-and-csrf)).
+[Configuration](configuration.md#app_url-allowed_hosts-and-csrf)). Startup
+logs the decision on the `games.apps` logger:
+
+```text
+Session and CSRF cookies are Secure, from APP_URL 'https://tracker.example.com'.
+```
+
+With an https `APP_URL`, a browser that reaches the container port over
+plain http drops both cookies, so login there fails. Chrome and Firefox
+treat `localhost` as secure and keep them.
+
+A malformed `APP_URL` stops boot with `ImproperlyConfigured`: an empty
+entry (a stray comma), a scheme other than http or https, or an entry
+without a host.
 
 ### HSTS
 
@@ -75,8 +88,8 @@ in its Caddyfile:
 header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 ```
 
-Django does not send this header. Its `SecurityMiddleware` sends HSTS only
-on a request it reads as secure, and every request reaches it as http. Do
+Django does not send this header: `SECURE_HSTS_SECONDS` is unset, and
+`SecurityMiddleware` sends HSTS only on a request it reads as secure. Do
 not add `preload`: the preload list accepts only a registrable domain, not
 a subdomain such as `tracker.example.com`.
 
@@ -87,21 +100,33 @@ Nothing in the application depends on it: the cookie flags come from
 `APP_URL`, and the CSRF origin check accepts the https origins that
 `APP_URL` lists.
 
-Do not set `SECURE_SSL_REDIRECT` alone. Django would redirect every request
-to https, and the redirected request would reach it as http again.
+The scheme reaches Django through two hops. Uvicorn trusts
+`X-Forwarded-Proto` from `FORWARDED_ALLOW_IPS`, which defaults to
+`127.0.0.1,::1`, so it trusts the Caddy in the container. That Caddy
+ignores an incoming `X-Forwarded-Proto` and writes the scheme of its own
+connection, which is http.
 
-To make Django read the scheme, both of these are necessary:
+To make Django read https, let the Caddy in the container trust the outer
+proxy. Add `trusted_proxies` to the global options of `Caddyfile`:
 
-1. Set `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")` in
-   Django.
-2. Configure the Caddy in the container to trust the outer proxy. By
-   default, Caddy ignores an incoming `X-Forwarded-Proto` and writes its own
-   scheme, which is http. Add `trusted_proxies` with the outer proxy's
-   address to the global `servers` options in `Caddyfile`.
+```text
+{
+	auto_https off
+	servers {
+		trusted_proxies static <outer-proxy-cidr>
+	}
+}
+```
 
-Without step 2, step 1 has no effect. With step 1 and a container port that
-a client can reach without the proxy, a client can set the header and
-mark its own request secure.
+The image bakes `Caddyfile` in at `/etc/caddy/Caddyfile`. Mount a
+replacement there, or build a derived image.
+
+Do not set `SECURE_PROXY_SSL_HEADER`. Uvicorn already passes the scheme on,
+and Django would read the header from any client, so a client that reaches
+port 8001 directly could mark its own request secure. Do not set
+`SECURE_SSL_REDIRECT` without `trusted_proxies`: Django would redirect
+every request to https, and the redirected request would reach it as http
+again. `settings.py` reads neither setting from the environment.
 
 ## Manual backup
 

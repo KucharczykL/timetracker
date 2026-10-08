@@ -42,7 +42,7 @@ from configparser import ConfigParser
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, NamedTuple
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -173,15 +173,41 @@ def _load_ini_file() -> dict[str, str]:
     return _ini_file_cache
 
 
+type AppUrl = str  # e.g. "https://a.example.com, http://192.168.1.5:8000"
+
+
+def parse_app_url(app_url: AppUrl) -> list[ParseResult]:
+    """Parse an APP_URL value: one or more comma-separated full URLs.
+
+    Refuses an empty entry, a scheme other than http or https, and an entry
+    without a host, so a stray comma or a typo stops boot rather than
+    quietly dropping the cookies' ``Secure`` flag.
+    """
+    parsed_urls = []
+    for raw_url in app_url.split(","):
+        entry = raw_url.strip()
+        if not entry:
+            raise ImproperlyConfigured(
+                f"APP_URL has an empty entry: {app_url!r}. Remove the stray comma."
+            )
+        parsed_url = urlparse(entry)
+        if parsed_url.scheme not in ("http", "https") or not parsed_url.hostname:
+            raise ImproperlyConfigured(
+                f"APP_URL entry {entry!r} is not a full http or https URL, "
+                "such as https://tracker.example.com."
+            )
+        parsed_urls.append(parsed_url)
+    return parsed_urls
+
+
 def derive_hosts_and_origins(
-    app_url: str,
+    app_url: AppUrl,
 ) -> tuple[list[str], list[str]]:
     """Derive ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS from an APP_URL value.
 
-    ``app_url`` may be a single full URL or a comma-separated list of full URLs.
     Returns ``(allowed_hosts, csrf_trusted_origins)``.
     """
-    parsed_urls = [urlparse(raw_url.strip()) for raw_url in app_url.split(",")]
+    parsed_urls = parse_app_url(app_url)
     allowed_hosts = [
         parsed_url.hostname for parsed_url in parsed_urls if parsed_url.hostname
     ]
@@ -191,15 +217,13 @@ def derive_hosts_and_origins(
     return allowed_hosts, csrf_trusted_origins
 
 
-def serves_only_https(app_url: str) -> bool:
+def serves_only_https(app_url: AppUrl) -> bool:
     """Whether every URL in an APP_URL value is https.
 
     Decides the cookies' ``Secure`` flag: a browser drops a ``Secure``
-    cookie on plain http, so one http URL keeps the flag off.
+    cookie on plain http, so one http URL keeps the flag off for all.
     """
-    return all(
-        urlparse(raw_url.strip()).scheme == "https" for raw_url in app_url.split(",")
-    )
+    return all(parsed_url.scheme == "https" for parsed_url in parse_app_url(app_url))
 
 
 def reset_caches() -> None:

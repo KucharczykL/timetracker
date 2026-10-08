@@ -52,13 +52,12 @@ SECRET_KEY = config(
 )
 
 # APP_URL accepts one or more comma-separated full URLs (single URL is the
-# common case). Both ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS are derived from
-# all listed URLs. ALLOWED_HOSTS can still be overridden directly for edge
-# cases like ALLOWED_HOSTS=* behind a reverse proxy.
+# common case). ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS and both cookies' Secure
+# flag are derived from all listed URLs; TLS ends at a proxy, so APP_URL
+# states the scheme the browser uses. ALLOWED_HOSTS can still be overridden
+# directly for edge cases like ALLOWED_HOSTS=* behind a reverse proxy.
 APP_URL = config("APP_URL", default="http://localhost:8000")
 _derived_hosts, CSRF_TRUSTED_ORIGINS = derive_hosts_and_origins(APP_URL)
-# TLS ends at a proxy, so Django sees http and would send both cookies
-# without Secure; the scheme APP_URL states decides instead.
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = serves_only_https(APP_URL)
 
 # Dev/staging-only: when set to "username:password", the login page prefills those
