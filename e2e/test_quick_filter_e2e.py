@@ -120,10 +120,45 @@ def test_quick_scalar_facet_filters_sessions(
     ).to_have_value("2")
 
 
-def test_playtime_none_finds_the_unplayed_game(
+def test_duration_facet_decimal_hours_finds_the_exact_session(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Playtime "is 0 (none)" finds the unplayed game."""
+    """A decimal duration typed in the Sessions facet matches exactly:
+    1.5 is 90 minutes, so a 60-minute session drops out."""
+    from datetime import datetime, timedelta
+
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
+    game = Game.objects.create(
+        library=e2e_library, name="Decimal Game", platform=platform
+    )
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    ninety_minutes = session_row(
+        game, started_at=start, ended_at=start + timedelta(minutes=90)
+    )
+    one_hour = session_row(
+        game, started_at=start, ended_at=start + timedelta(minutes=60)
+    )
+
+    page = authenticated_page
+    page.set_viewport_size({"width": 2000, "height": 900})
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    open_facet(page, "duration_hours")
+    duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
+    pick_choice(duration, "quick-duration_hours-modifier", "EQUALS")
+    duration.locator('input[name="quick-duration_hours"]').fill("1.5")
+    _quick_apply(page)
+
+    page.wait_for_url("**filter=**")
+    assert _filter_from_url(page.url)["duration_hours"]["value"] == 1.5
+    expect(page.locator(f"#session-row-{ninety_minutes.pk}")).to_be_visible()
+    expect(page.locator(f"#session-row-{one_hour.pk}")).to_have_count(0)
+
+
+def test_playtime_is_zero_finds_the_unplayed_game(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """Playtime "is 0" finds the unplayed game and not the played one."""
     from datetime import datetime, timedelta
 
     create_tracked_game(e2e_library, name="Never Played")
@@ -139,26 +174,16 @@ def test_playtime_none_finds_the_unplayed_game(
 
     open_facet(page, "playtime_hours")
     playtime = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
-    pick_choice(playtime, "quick-playtime_hours-modifier", "IS_NULL")
+    pick_choice(playtime, "quick-playtime_hours-modifier", "EQUALS")
+    playtime.locator('input[name="quick-playtime_hours"]').fill("0")
     _quick_apply(page)
 
     page.wait_for_url("**filter=**")
-    assert _filter_from_url(page.url) == {"playtime_hours": {"modifier": "IS_NULL"}}
+    assert _filter_from_url(page.url) == {
+        "playtime_hours": {"value": 0, "modifier": "EQUALS"}
+    }
     expect(page.get_by_role("link", name="Never Played")).to_be_visible()
     expect(page.get_by_role("link", name="Half Hour Game")).to_have_count(0)
-
-
-def test_duration_hint_follows_typing(authenticated_page: Page, live_server):
-    """Typing 0 shows the hour bucket."""
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-
-    open_facet(page, "duration_hours")
-    duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
-    duration.locator('input[name="quick-duration_hours"]').fill("0")
-    expect(duration.locator("[data-duration-bucket-hint]")).to_have_text(
-        "0 h up to 1 h"
-    )
 
 
 def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_server):
