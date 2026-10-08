@@ -14,7 +14,7 @@ import os
 import warnings
 from pathlib import Path
 
-from timetracker.config import config, derive_hosts_and_origins
+from timetracker.config import config, derive_hosts_and_origins, serves_only_https
 from timetracker.database import required_database_settings
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -57,6 +57,9 @@ SECRET_KEY = config(
 # cases like ALLOWED_HOSTS=* behind a reverse proxy.
 APP_URL = config("APP_URL", default="http://localhost:8000")
 _derived_hosts, CSRF_TRUSTED_ORIGINS = derive_hosts_and_origins(APP_URL)
+# TLS ends at a proxy, so Django sees http and would send both cookies
+# without Secure; the scheme APP_URL states decides instead.
+SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = serves_only_https(APP_URL)
 
 # Dev/staging-only: when set to "username:password", the login page prefills those
 # credentials (see games/dev_login.py). Empty (the default) = off everywhere.

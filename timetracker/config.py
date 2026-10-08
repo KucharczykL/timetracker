@@ -191,6 +191,17 @@ def derive_hosts_and_origins(
     return allowed_hosts, csrf_trusted_origins
 
 
+def serves_only_https(app_url: str) -> bool:
+    """Whether every URL in an APP_URL value is https.
+
+    Decides the cookies' ``Secure`` flag: a browser drops a ``Secure``
+    cookie on plain http, so one http URL keeps the flag off.
+    """
+    return all(
+        urlparse(raw_url.strip()).scheme == "https" for raw_url in app_url.split(",")
+    )
+
+
 def reset_caches() -> None:
     """Clear parsed-file caches. Intended for use in tests."""
     global _env_file_cache, _ini_file_cache

@@ -44,7 +44,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 |---------|------|---------|:---------:|-------------|
 | `SECRET_KEY` | str | insecure dev key | yes | Django secret key. **Required in production** (DEBUG off) — a missing value is a hard error, not a silent insecure fallback. |
 | `DEBUG` | bool | `true` (dev) | no | Debug mode. Turn **off** in production. Defaults on for local development. |
-| `APP_URL` | str (or comma-separated URLs) | `http://localhost:8000` | no | Public URL(s) of the site. One full URL or a comma-separated list. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` from all listed URLs. |
+| `APP_URL` | str (or comma-separated URLs) | `http://localhost:8000` | no | Public URL(s) of the site. One full URL or a comma-separated list. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` from all listed URLs, and marks the session and CSRF cookies `Secure` when every listed URL is https. |
 | `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation (useful for `ALLOWED_HOSTS=*` behind a reverse proxy). |
 | `TZ` | str | `UTC` | no | Boot-time Django/server time zone. Nothing a library reads depends on it: days come from the library calendar. Requires a restart and is not editable on Admin settings. |
 | `DEFAULT_PURCHASE_CURRENCY` | str | `CZK` | no | Live user/site default used to pre-fill the required original currency on new purchases. |
@@ -310,6 +310,13 @@ APP_URL=https://tracker.example.com,https://www.tracker.example.com
 # -> ALLOWED_HOSTS     = ["tracker.example.com", "www.tracker.example.com"]
 # -> CSRF_TRUSTED_ORIGINS = ["https://tracker.example.com", "https://www.tracker.example.com"]
 ```
+
+When every listed URL is https, the session and CSRF cookies carry the
+`Secure` flag, so a browser never sends them over plain http. One http URL
+keeps the flag off, because a browser drops a `Secure` cookie on http and
+login there would fail. TLS ends at the reverse proxy, so the scheme of
+`APP_URL` decides this, not the scheme of the request Django sees. See
+[Behind a TLS proxy](deployment.md#behind-a-tls-proxy).
 
 `ALLOWED_HOSTS` can still be overridden directly for edge cases. A typical
 reverse-proxy setup where the proxy validates the host:

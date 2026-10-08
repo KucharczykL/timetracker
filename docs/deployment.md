@@ -56,6 +56,53 @@ WantedBy=default.target
 This is an application-only unit. Keep database configuration, storage, and
 lifecycle in the database unit.
 
+## Behind a TLS proxy
+
+The image serves plain http on port 8000. A reverse proxy outside the
+container ends TLS. Inside the container, Caddy on port 8000 forwards to
+Gunicorn on port 8001.
+
+Set `APP_URL` to the public https URL. The session and CSRF cookies then
+carry the `Secure` flag (see
+[Configuration](configuration.md#app_url-allowed_hosts-and-csrf)).
+
+### HSTS
+
+Send `Strict-Transport-Security` from the proxy that ends TLS, for example
+in its Caddyfile:
+
+```text
+header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+```
+
+Django does not send this header. Its `SecurityMiddleware` sends HSTS only
+on a request it reads as secure, and every request reaches it as http. Do
+not add `preload`: the preload list accepts only a registrable domain, not
+a subdomain such as `tracker.example.com`.
+
+### Request scheme
+
+Django reads every request as http, so `request.is_secure()` is `False`.
+Nothing in the application depends on it: the cookie flags come from
+`APP_URL`, and the CSRF origin check accepts the https origins that
+`APP_URL` lists.
+
+Do not set `SECURE_SSL_REDIRECT` alone. Django would redirect every request
+to https, and the redirected request would reach it as http again.
+
+To make Django read the scheme, both of these are necessary:
+
+1. Set `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")` in
+   Django.
+2. Configure the Caddy in the container to trust the outer proxy. By
+   default, Caddy ignores an incoming `X-Forwarded-Proto` and writes its own
+   scheme, which is http. Add `trusted_proxies` with the outer proxy's
+   address to the global `servers` options in `Caddyfile`.
+
+Without step 2, step 1 has no effect. With step 1 and a container port that
+a client can reach without the proxy, a client can set the header and
+mark its own request secure.
+
 ## Manual backup
 
 Use a `pg_dump` client compatible with your server. The flags prevent a restore

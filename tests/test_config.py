@@ -11,6 +11,7 @@ from timetracker.config import (
     SettingSource,
     config,
     derive_hosts_and_origins,
+    serves_only_https,
 )
 from timetracker.settings_commands import (
     SETTING_NAMESPACE_CHOICES,
@@ -233,6 +234,19 @@ def test_url_with_port_is_preserved_in_origin():
     hosts, origins = derive_hosts_and_origins("http://localhost:8000")
     assert hosts == ["localhost"]
     assert origins == ["http://localhost:8000"]
+
+
+@pytest.mark.parametrize(
+    "app_url,expected",
+    [
+        ("https://tracker.example.com", True),
+        ("https://a.example.com , https://b.example.com", True),
+        ("http://localhost:8000", False),
+        ("https://tracker.example.com,http://192.168.1.5:8000", False),
+    ],
+)
+def test_cookies_are_secure_only_when_every_url_is_https(app_url, expected):
+    assert serves_only_https(app_url) is expected
 
 
 # --- Django integration: derived values are accepted by Django internals -----
