@@ -304,7 +304,7 @@ dev-prod: ensure-postgres ensure-node-deps migrate collectstatic
 # the following `... :` line is the rule + recipe. Make merges them — not a redefinition.
 gunicorn-prod: export PROD := 1
 gunicorn-prod: ensure-postgres
-	uv run --frozen python -m gunicorn --bind 0.0.0.0:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker
+	uv run --frozen python -m gunicorn --bind 127.0.0.1:8001 timetracker.asgi:application -k uvicorn.workers.UvicornWorker
 
 qcluster-prod: export PROD := 1
 qcluster-prod: ensure-postgres

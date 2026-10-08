@@ -16,8 +16,6 @@ services:
       - DATABASE_URL__FILE=/run/secrets/timetracker_database_url
     ports:
       - "${TIMETRACKER_EXTERNAL_PORT:-8000}:8000"
-    volumes:
-      - "${DOCKER_STORAGE_PATH:-/tmp}/timetracker/backups:/home/timetracker/app/games/fixtures/backups"
     secrets:
       - source: timetracker_database_url
         target: timetracker_database_url
