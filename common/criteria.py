@@ -275,7 +275,6 @@ def _coerce_float(raw: Any) -> float:
         number = float(raw)
     except (ValueError, TypeError) as exc:
         raise FilterError(f"expected a number, got {raw!r}") from exc
-    # Refuse infinity and NaN.
     if not math.isfinite(number):
         raise FilterError(f"expected a finite number, got {raw!r}")
     return number
@@ -3046,7 +3045,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             elif resolved_lookup is not None:
                 nullable = _lookup_is_nullable(model, resolved_lookup)
             elif is_aggregate:
-                # Sum and avg answer NULL over no rows; count answers 0.
                 nullable = aggregate_spec is not None and aggregate_spec.reducer in (
                     "sum",
                     "avg",

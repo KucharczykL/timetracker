@@ -949,12 +949,16 @@ def NumberFilter(
     """
     if unit is not None:
         step = "any"
-    fallback = [
-        token
-        for token in NUMBER_MODIFIER_LABELS
-        if unit is None or token not in ("IS_NULL", "NOT_NULL")
-    ]
-    offered = list(modifiers) if modifiers else fallback
+    if modifiers:
+        offered = list(modifiers)
+    elif unit is not None:
+        offered = [
+            token
+            for token in NUMBER_MODIFIER_LABELS
+            if token not in ("IS_NULL", "NOT_NULL")
+        ]
+    else:
+        offered = list(NUMBER_MODIFIER_LABELS)
     if modifier not in offered:
         modifier = offered[0]
 
