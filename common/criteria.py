@@ -3588,7 +3588,7 @@ def aggregate_to_q(
 
     Annotates ``model`` with the aggregate, compares it against the criterion's
     value(s)/modifier, and returns ``Q(id__in=<matching ids>)``.
-    ``unit="duration_hours"`` compares an hours value against a DurationField
+    ``unit=DURATION_HOURS`` compares an hours value against a DurationField
     aggregate; otherwise a plain numeric comparison is used. ``sum``/``avg``
     require a ``source`` field; ``count`` aggregates whole rows.
 
