@@ -168,7 +168,7 @@ class TestFieldWidgetNullableModifiers:
 
 
 class TestFieldWidgetDurationUnit:
-    """A duration field names none and more-than-zero, and shows its hour bucket."""
+    """Duration fields name none and more-than-zero."""
 
     def test_duration_presence_labels(self):
         html = str(field_widget(GameFilter, "playtime_hours"))

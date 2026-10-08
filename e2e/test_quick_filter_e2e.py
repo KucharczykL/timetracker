@@ -123,8 +123,7 @@ def test_quick_scalar_facet_filters_sessions(
 def test_playtime_none_finds_the_unplayed_game(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """The Playtime facet's "is 0 (none)" mode finds the game with no playtime
-    and leaves out the game with a half-hour session."""
+    """Playtime "is 0 (none)" finds the unplayed game."""
     from datetime import datetime, timedelta
 
     create_tracked_game(e2e_library, name="Never Played")
@@ -150,7 +149,7 @@ def test_playtime_none_finds_the_unplayed_game(
 
 
 def test_duration_hint_follows_typing(authenticated_page: Page, live_server):
-    """Typing 0 into the Duration facet shows the hour bucket it compiles to."""
+    """Typing 0 shows the hour bucket."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 

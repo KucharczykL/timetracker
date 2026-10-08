@@ -68,7 +68,7 @@ export const MODIFIER_PHRASES: Record<ModifierToken, string> = {
   INCLUDES_ONLY: "is exactly",
 };
 
-// Duration fields with their own phrase. Partial: other modifiers keep MODIFIER_PHRASES.
+// Duration-only phrases; partial override.
 const DURATION_MODIFIER_PHRASES: Partial<Record<ModifierToken, string>> = {
   IS_NULL: "is 0 (none)",
   NOT_NULL: "is more than 0",
@@ -281,8 +281,8 @@ function renderCriterionClause(leaf: CriterionLeaf, model: SummaryModel | undefi
   return `${label} ${phrase} ${renderValue(leaf.criterion["value"], meta)}`;
 }
 
-// A duration clause names the hour range, or "none" and "more than 0".
-// Null for a modifier with no duration phrase, so the caller falls through.
+// Duration clause: hour range or none.
+// Null falls through to MODIFIER_PHRASES.
 function durationClause(label: string, modifier: string, value: string): string | null {
   const presence = DURATION_MODIFIER_PHRASES[modifier as ModifierToken];
   if (presence !== undefined) return `${label} ${presence}`;

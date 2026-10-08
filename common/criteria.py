@@ -1013,8 +1013,7 @@ type AttrName = str  # a filter dataclass field name, e.g. "playtime_hours"
 type ORMLookup = str  # a Django query path, e.g. "platform__group"
 
 # A custom criterion→Q builder for a filter field whose mapping is not a plain
-# ``criterion.to_q(lookup)`` — e.g. hours→duration conversion. Built by the
-# factories below (see ``duration_hours_handler``).
+# Custom criterion→Q builder; see duration_hours_handler.
 # The context is the compile's library facts; a handler over the row ignores it.
 type FieldHandler = Callable[[_Criterion, FilterQueryContext | None], Q]
 
@@ -1060,7 +1059,7 @@ class FilterField:
 
     @property
     def unit(self) -> DurationUnit | None:
-        """The handler's hours unit, so the widget reads hours."""
+        """Hours unit, read by the widget."""
         return getattr(self.handler, "unit", None)
 
     def __post_init__(self) -> None:
@@ -2768,7 +2767,7 @@ class FieldMeta(TypedDict):
     # aggregate field reduces — the model whose fields build the aggregate's
     # ``scope`` sub-filter (issue #151). ``""`` for every non-aggregate field.
     scope_model: ModelKey
-    # Hours unit for a DurationField-backed field. Absent (not "") otherwise.
+    # Hours unit; absent for other fields.
     unit: NotRequired[DurationUnit]
 
 
@@ -3197,9 +3196,7 @@ def duration_hours_to_q(
 
 
 # ── Field-handler factories ──────────────────────────────────────────────────
-# Reusable criterion→Q builders for the non-plain ``FilterField`` mappings, so a
-# filter's descriptor table can express hours→duration fields declaratively
-# instead of in an imperative ``to_q`` block.
+# Reusable criterion→Q builders for non-plain ``FilterField`` mappings.
 
 
 def calendar_day_handler(column: ORMLookup) -> FieldHandler:

@@ -232,7 +232,7 @@ class IsQuickEditableTest(SimpleTestCase):
         )
 
     def test_a_record_duration_facet_offers_no_none_mode(self):
-        # The record's duration is never NULL, so the pair is not offered.
+        # Record duration is never NULL.
         self.assertFalse(
             is_quick_editable(
                 {"duration_hours": {"modifier": "IS_NULL"}},

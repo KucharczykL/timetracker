@@ -1,7 +1,6 @@
-// The one TS home of the duration bucket text. Mirrors `duration_bucket_hint`
-// and its range in common/components/filters.py; keep the two in step.
+// Mirrors duration_bucket_hint in filters.py.
 
-// Whole hours print bare, so `1` never reads `1.0`.
+// Print whole hours without decimals.
 function hourText(hours: number): string {
   return String(hours);
 }
@@ -15,7 +14,7 @@ export function durationBucketRange(value: string): string {
   return `${hourText(hours)} h up to ${hourText(hours + 1)} h`;
 }
 
-// The hint under a duration input. Only EQUALS and NOT_EQUALS carry one.
+// Hint for EQUALS and NOT_EQUALS only.
 export function durationBucketHint(modifier: string, value: string): string {
   const range = durationBucketRange(value);
   if (range === "") return "";

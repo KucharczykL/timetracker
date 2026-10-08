@@ -243,8 +243,7 @@ export function toggleNumberFilterInput(root: HTMLElement, modifier: string): vo
   refreshDurationBucketHint(root);
 }
 
-// Shows the hour range a duration value compiles to. Only duration widgets
-// carry a hint element, so other number widgets return early.
+// Refresh the duration hint; no-op otherwise.
 export function refreshDurationBucketHint(root: HTMLElement): void {
   const hint = root.querySelector<HTMLElement>("[data-duration-bucket-hint]");
   if (!hint) return;

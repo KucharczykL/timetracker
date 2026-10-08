@@ -924,7 +924,7 @@ NUMBER_MODIFIER_LABELS: dict[ModifierToken, str] = {
 }
 
 
-#: Duration fields name "none" and "more than zero", not "null".
+#: Duration presence labels: none, more than zero.
 DURATION_MODIFIER_LABELS: dict[ModifierToken, str] = {
     **NUMBER_MODIFIER_LABELS,
     "IS_NULL": "is 0 (none)",
@@ -933,17 +933,12 @@ DURATION_MODIFIER_LABELS: dict[ModifierToken, str] = {
 
 
 def _hour_text(hours: float) -> str:
-    """Whole hours print bare, so ``1`` never reads ``1.0``."""
+    """Print whole hours without decimals."""
     return str(int(hours)) if hours.is_integer() else str(hours)
 
 
 def duration_bucket_hint(modifier: ModifierToken, value: str) -> str:
-    """The hour range an EQUALS or NOT_EQUALS duration value compiles to.
-
-    Empty when the value is not a finite number, or the modifier is not one
-    of the two bucket modifiers. ``ts/elements/duration-bucket.ts`` mirrors
-    this table; keep the two in step.
-    """
+    """Hour-bucket hint text. Mirrors duration-bucket.ts."""
     try:
         hours = float(value)
     except ValueError:

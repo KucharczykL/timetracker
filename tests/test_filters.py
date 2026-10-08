@@ -5158,7 +5158,7 @@ class TestFieldMetadata:
         assert session_fields["game"]["nullable"] is False
 
     def test_a_handler_field_defaults_not_nullable(self):
-        # The record's duration never answers NULL, so it states no pair.
+        # Record duration is never NULL.
         entry = self._by_name(HistoricalPlaytimeFilter)["duration_hours"]
         assert entry["kind"] == "number"
         assert entry["nullable"] is False
@@ -5975,11 +5975,7 @@ class TestScopedAggregateReducers:
         assert self._games_matching(two_sessions_off_deck) == set()
 
     def test_scoped_sum_over_no_rows_is_none_not_zero(self):
-        """SUM with a filter= that matches no rows yields SQL NULL (unlike the
-        count's 0). Under D2, IS_NULL means no duration (zero or NULL), so the
-        game matches IS_NULL but not EQUALS 0, which tests the bucket [0, 1 h).
-        Pin the NULL so a future 'coalesce to 0' change is deliberate, with a
-        positive contrast proving the scoped sum itself computes."""
+        """Scoped SUM over no rows is NULL, not zero."""
         data = self._seed_two_device_games()
         deck_scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
 
@@ -5992,7 +5988,7 @@ class TestScopedAggregateReducers:
                 }
             }
 
-        # desktop_only's NULL deck-sum is no duration, not the [0, 1 h) bucket.
+        # NULL sum: no duration, not bucket zero.
         assert self._games_matching(scoped("EQUALS", 0)) == set()
         assert self._games_matching(scoped("IS_NULL")) == {data["desktop_only"]}
         # …while mixed's deck sessions (1h + 1h elapsed) sum normally.
@@ -6001,11 +5997,7 @@ class TestScopedAggregateReducers:
 
 @pytest.mark.django_db
 class TestDurationPresence:
-    """IS_NULL is no duration (zero or NULL); NOT_NULL is more than zero (D2).
-
-    Each game falls in exactly one bucket, so the two modifiers partition the
-    scope. The 'none' set for each field is pinned here.
-    """
+    """IS_NULL and NOT_NULL partition the scope."""
 
     def _world(self):
         from datetime import datetime
@@ -6071,9 +6063,7 @@ class TestDurationPresence:
         assert none_set.isdisjoint(more_set)
 
     def test_not_equals_zero_drops_games_without_sessions(self):
-        """Follow-up 3: NOT_EQUALS 0 on session playtime still drops games
-        whose only playtime is absent or a record; the pair is not
-        complete for that field until the follow-up lands."""
+        """NOT_EQUALS 0 drops games with no sessions."""
         games = self._world()
         not_zero = self._matching("session_playtime_hours", "NOT_EQUALS", games)
         assert games["unplayed"] not in not_zero
