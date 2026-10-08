@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  parseNumberInputValue,
   readDateWidget,
   readNumberWidget,
   readStringWidget,
@@ -154,5 +155,21 @@ describe("the string and number widgets read their picker", () => {
     expect(root.querySelector("[data-number-value2]")!.classList.contains("hidden")).toBe(false);
     root.querySelector<HTMLInputElement>("[data-number-value2]")!.value = "2000";
     expect(readNumberWidget(root)).toEqual({ value: 1990, value2: 2000, modifier: "BETWEEN" });
+  });
+});
+
+describe("a number input reads only a finite value", () => {
+  it("reads a decimal", () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "1.5";
+    expect(parseNumberInputValue(input)).toBe(1.5);
+  });
+
+  it("refuses an overflow to Infinity as blank", () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "1e400";
+    expect(parseNumberInputValue(input)).toBe("");
   });
 });

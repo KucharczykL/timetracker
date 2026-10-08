@@ -411,6 +411,88 @@ class TestDurationExactAgainstDB:
         }
 
 
+@pytest.mark.django_db
+class TestGameDurationsExactAgainstDB:
+    """A game's totals compare exactly: 1 h 30 m is 1.5, never a bucket."""
+
+    @pytest.fixture
+    def games_by_total(self, owned_library):
+        from datetime import datetime
+
+        from games.models import Game
+
+        start = datetime(2026, 3, 1, 10, tzinfo=UTC)
+
+        def game_with(name, sessions, record=None):
+            game = Game.objects.create(library=owned_library, name=name)
+            run = tracked_run(owned_library, game)
+            for offset, length in enumerate(sessions):
+                begin = start + timedelta(days=offset)
+                session_row(game, started_at=begin, ended_at=begin + length)
+            if record is not None:
+                record_row([run], duration=record)
+            return game
+
+        return {
+            # A 1 h session and a 30 m record: 1.5 h in all, 1 h of sessions.
+            "hour_and_a_half": game_with(
+                "Hour and a half", [timedelta(hours=1)], timedelta(minutes=30)
+            ),
+            # 1 h 59 m: a bucket's 1, but not exactly 1.
+            "almost_two": game_with("Almost two", [timedelta(hours=1, minutes=59)]),
+            # Two sessions: 2.5 h in all, averaging 1.25 h.
+            "mixed": game_with("Mixed", [timedelta(hours=1), timedelta(minutes=90)]),
+        }
+
+    @staticmethod
+    def _matching(library, field, value):
+        from games.filters import GameFilter, filter_query_context_for_library
+        from games.models import Game
+
+        game_filter = GameFilter.from_json(
+            {field: {"value": value, "modifier": "EQUALS"}}
+        )
+        assert game_filter is not None
+        return set(
+            execute_filter(
+                game_filter,
+                Game.objects.tracked_by(library),
+                filter_query_context_for_library(library),
+            )
+        )
+
+    def test_playtime_adds_sessions_and_records_exactly(
+        self, owned_library, games_by_total
+    ):
+        matching = self._matching
+        assert matching(owned_library, "playtime_hours", 1.5) == {
+            games_by_total["hour_and_a_half"]
+        }
+        assert matching(owned_library, "playtime_hours", 1) == set()
+        assert matching(owned_library, "playtime_hours", 2) == set()
+
+    def test_session_playtime_skips_records_and_bucket_neighbours(
+        self, owned_library, games_by_total
+    ):
+        matching = self._matching
+        assert matching(owned_library, "session_playtime_hours", 1.5) == set()
+        assert matching(owned_library, "session_playtime_hours", 2) == set()
+        assert matching(owned_library, "session_playtime_hours", 2.5) == {
+            games_by_total["mixed"]
+        }
+
+    def test_session_average_compares_the_mean_exactly(
+        self, owned_library, games_by_total
+    ):
+        matching = self._matching
+        assert matching(owned_library, "session_average", 1) == {
+            games_by_total["hour_and_a_half"]
+        }
+        assert matching(owned_library, "session_average", 1.25) == {
+            games_by_total["mixed"]
+        }
+
+
 class TestDurationValueRefusals:
     """A duration value refuses what a timedelta cannot hold, and no presence."""
 
@@ -435,6 +517,56 @@ class TestDurationValueRefusals:
         raw = json.dumps({field: {"value": value, "modifier": "EQUALS"}})
         with pytest.raises(FilterError):
             filter_from_json(filter_cls, raw)
+
+    @pytest.mark.parametrize(
+        ("filter_cls", "field"),
+        [(PlayerSessionFilter, "duration_hours"), (GameFilter, "session_average")],
+    )
+    @pytest.mark.parametrize("modifier", ["BETWEEN", "NOT_BETWEEN"])
+    @pytest.mark.parametrize("value2", [1e20, "nan"])
+    def test_upper_bound_outside_a_timedelta_is_refused(
+        self, filter_cls, field, modifier, value2
+    ):
+        raw = json.dumps({field: {"value": 1, "value2": value2, "modifier": modifier}})
+        with pytest.raises(FilterError):
+            filter_from_json(filter_cls, raw)
+
+    def test_presence_refusal_names_the_remedy(self):
+        raw = json.dumps({"playtime_hours": {"modifier": "IS_NULL"}})
+        with pytest.raises(FilterError, match="is 0"):
+            filter_from_json(GameFilter, raw)
+
+    def test_a_duration_field_cannot_be_nullable(self):
+        from common.criteria import FilterField, duration_hours_handler
+
+        with pytest.raises(TypeError, match="presence pair"):
+            FilterField(
+                handler=duration_hours_handler("effective_duration"), nullable=True
+            )
+
+    def test_a_duration_unit_takes_only_a_float_criterion(self):
+        from common.criteria import (
+            FilterField,
+            duration_hours_handler,
+            field_metadata,
+        )
+
+        @dataclass
+        class _CountedDurationStub(OperatorFilter):
+            AND: list[_CountedDurationStub] = dc_field(default_factory=list)
+            OR: list[_CountedDurationStub] = dc_field(default_factory=list)
+            NOT: list[_CountedDurationStub] = dc_field(default_factory=list)
+
+            total: IntCriterion | None = None
+
+            fields: ClassVar[dict[str, FilterField]] = {
+                "total": FilterField(
+                    handler=duration_hours_handler("effective_duration")
+                ),
+            }
+
+        with pytest.raises(ValueError, match="FloatCriterion or an aggregate"):
+            field_metadata(_CountedDurationStub)
 
     @pytest.mark.parametrize("value", ["inf", "nan", float("nan")])
     def test_non_finite_amount_is_refused(self, value):
@@ -6062,8 +6194,8 @@ class TestScopedAggregateReducers:
             "session_average": {"value": 1, "modifier": "EQUALS", "scope": deck_scope}
         }
         unscoped_hour_average = {"session_average": {"value": 1, "modifier": "EQUALS"}}
-        # Scoped to the deck, mixed averages exactly 1h; unscoped its 5h desktop
-        # session pulls the mean into the [2, 3) bucket, leaving only desktop_only.
+        # Scoped to the deck, mixed averages exactly 1 h. Unscoped, its 5 h desktop
+        # session lifts the mean to 7/3 h, so only desktop_only averages 1 h.
         assert self._games_matching(scoped_hour_average) == {data["mixed"]}
         assert self._games_matching(unscoped_hour_average) == {data["desktop_only"]}
 
@@ -6188,7 +6320,7 @@ class TestDurationZero:
         }
         assert zero_set.isdisjoint(non_zero_set)
 
-    def test_not_equals_zero_drops_games_without_sessions(self):
+    def test_not_equals_zero_keeps_only_games_with_session_play(self):
         """No play is 0 h, so a game with no sessions drops out of NOT_EQUALS 0."""
         from datetime import datetime
 

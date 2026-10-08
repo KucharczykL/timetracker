@@ -183,7 +183,6 @@ class TestFieldWidgetDurationUnit:
     def test_other_numbers_keep_null_labels(self):
         html = str(field_widget(GameFilter, "purchase_price_total"))
         assert "is null" in html
-        assert "data-duration-bucket-hint" not in html
 
     def test_duration_handler_field_states_step_any(self):
         html = str(field_widget(GameFilter, "playtime_hours", step="1"))
@@ -198,7 +197,6 @@ class TestFieldWidgetDurationUnit:
     def test_duration_widget_in_the_builder_layout_states_step_any(self):
         html = str(field_widget(GameFilter, "playtime_hours", step="1", layout="field"))
         assert 'step="any"' in html
-        assert "data-duration-bucket-hint" not in html
 
     def test_a_duration_fallback_drops_the_presence_pair(self):
         from common.components.filters import NumberFilter
@@ -217,7 +215,7 @@ class TestFieldWidgetDurationUnit:
         assert 'value="IS_NULL"' in html
 
     @pytest.mark.parametrize("modifier", ["EQUALS", "NOT_EQUALS", "GREATER_THAN"])
-    def test_no_hint_element_for_any_modifier(self, modifier):
+    def test_a_decimal_value_survives_in_the_input(self, modifier):
         from common.components.filters import NumberFilter
 
         html = str(
@@ -229,8 +227,7 @@ class TestFieldWidgetDurationUnit:
                 unit=DURATION_HOURS,
             )
         )
-        assert "data-duration-bucket-hint" not in html
-        assert "h up to" not in html
+        assert 'value="1.5"' in html
 
 
 class TestFieldWidgetPrefill:

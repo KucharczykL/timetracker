@@ -179,6 +179,19 @@ def test_duration_hours(owned_library, varied):
     assert matched(owned_library, between) == {"doom", "unknown"}
 
 
+def test_duration_hours_is_exact(owned_library, varied):
+    record_row([varied["doom"]], note="ninety", duration=timedelta(minutes=90))
+
+    def equals(value):
+        return HistoricalPlaytimeFilter(
+            duration_hours=FloatCriterion(value=value, modifier=Modifier.EQUALS)
+        )
+
+    assert matched(owned_library, equals(1.5)) == {"ninety"}
+    assert matched(owned_library, equals(1)) == set()
+    assert matched(owned_library, equals(2)) == {"doom"}
+
+
 @pytest.mark.parametrize(
     ("criterion", "expected"),
     [
