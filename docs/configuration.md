@@ -240,7 +240,7 @@ Changes save immediately against the account through `/api/settings/user`:
   under `whole_hours`, never `0 hours`. Only `adaptive` rolls hours into days,
   weeks, and years; the others keep counting hours, because hours are this
   application's unit of account (the filter facets are `playtime_hours` and
-  `duration_total_hours`). Grouping and the decimal separator come from the
+  `duration_hours`). Grouping and the decimal separator come from the
   formatting locale, so 1234 hours reads `1,234` under `en-us` and `1 234`
   under `cs`. The preference is display only: stored values, the API, filtering,
   and sorting are unaffected.

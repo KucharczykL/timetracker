@@ -1128,10 +1128,12 @@ structured filtering.
   the empty string under "is". An aggregate's nullability comes from its
   reducer: `count` answers 0 over no rows and is never null, while `sum` and
   `avg` answer NULL there, so "is null" on one reads as "no related rows".
+  A duration aggregate is never null: no play reads 0 h.
   `StringFilter`/`NumberFilter` render exactly this list.
-  Duration fields: `IS_NULL` is zero or absent, `NOT_NULL` is more than zero;
-  `EQUALS h` is the hour `[h, h+1)` (`duration_hours_to_q`). The widget hints
-  it under the input (`duration_bucket_hint`).
+  Duration fields compare the stored duration exactly, in decimal hours
+  (`duration_hours_to_q`); no play is 0 h, so they offer no presence pair:
+  none is `= 0`, any is `> 0`. Contract is
+  [Exact duration filters](docs/superpowers/specs/2026-10-08-issue-1583-exact-duration-filters-design.md).
 - `games/filters.py` defines `GameFilter`, `PlayerSessionFilter`,
   `PurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
   `FindFilter` (sort/pagination). Filters serialize to/from JSON and travel in
