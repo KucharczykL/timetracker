@@ -8,6 +8,7 @@ from bulk_batches import chunk_queue, failing_batches, held_batches  # noqa: F40
 from calendar_days import _process_clock_off_the_calendar  # noqa: F401
 from column_choice import show_every_column
 from icon_names import unknown_icon_names_fail  # noqa: F401
+from password_hashing import _fast_password_hashing  # noqa: F401
 from playwright.sync_api import Page
 from settings_caches import _reset_settings_caches  # noqa: F401
 from tracked_games import _track_created_games  # noqa: F401

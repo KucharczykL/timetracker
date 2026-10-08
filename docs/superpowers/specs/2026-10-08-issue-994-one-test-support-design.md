@@ -33,13 +33,17 @@ import it under `# noqa: F401`:
 | --- | --- |
 | `chunk_queue`, `held_batches`, `failing_batches` | `tests/bulk_batches.py` |
 | `_process_clock_off_the_calendar` | `tests/calendar_days.py` |
+| `_fast_password_hashing` | `tests/password_hashing.py` |
 | `unknown_icon_names_fail` | `tests/icon_names.py` |
 | `_reset_settings_caches` | `tests/settings_caches.py` |
 | `_track_created_games` | `tests/tracked_games.py` |
 
 Pytest orders the autouse fixtures of one conftest by name. Three of the
 fixtures keep their leading underscore, so the order did not change when they
-moved. Each suite has a test that the five fixtures apply.
+moved. Each suite has a test that the shared fixtures apply.
+
+Tests hash passwords with the MD5 hasher. A test proves no hash's strength,
+and the default hasher costs about 0.1 s for each user a test creates.
 
 A root `conftest.py` is not used. mypy reads it and `tests/conftest.py` as the
 same module, `conftest`, and stops. `explicit_package_bases` would make the

@@ -6,6 +6,7 @@ import pytest
 @pytest.mark.parametrize(
     "fixture",
     [
+        "_fast_password_hashing",
         "_process_clock_off_the_calendar",
         "_reset_settings_caches",
         "_track_created_games",

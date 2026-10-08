@@ -27,6 +27,7 @@ def test_a_helper_shadows_no_module(name):
 @pytest.mark.parametrize(
     "fixture",
     [
+        "_fast_password_hashing",
         "_process_clock_off_the_calendar",
         "_reset_settings_caches",
         "_track_created_games",
