@@ -4,9 +4,11 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, expect
 
-from e2e.helpers import Credentials, held_choice, log_in, pick_choice
+from e2e.helpers import Credentials, create_login_user, held_choice, log_in, pick_choice
 from games.models import SiteSetting, UserPreferences
 from timetracker import settings_resolver
+
+THEME_PASSWORD = "pw"
 
 
 def _install_first_frame_probe(page: Page) -> None:
@@ -81,11 +83,12 @@ def test_invalid_browser_theme_falls_back_to_system(live_server, page: Page):
 
 
 def test_account_menu_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
-    live_server, page: Page, django_user_model
+    live_server, page: Page
 ):
-    user = django_user_model.objects.create_user(username="theme-user", password="pw")
+    login = Credentials("theme-user", THEME_PASSWORD)
+    create_login_user(login)
     page.emulate_media(color_scheme="light")
-    log_in(page, live_server, Credentials(user.username, "pw"))
+    log_in(page, live_server, login)
     page.get_by_role("button", name="Open account menu for theme-user").click()
     toggle = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")
@@ -121,22 +124,21 @@ def test_account_menu_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
 def test_account_theme_wins_before_redirect_paints_without_touching_storage(
     live_server,
     page: Page,
-    django_user_model,
     preference,
     scheme,
     expected_dark,
     anonymous,
 ):
-    user = django_user_model.objects.create_user(
-        username=f"{preference}-user", password="pw"
-    )
+    login = Credentials(f"{preference}-user", THEME_PASSWORD)
+    user = create_login_user(login)
     _set_user_theme(user, preference)
     page.emulate_media(color_scheme=scheme)
     _set_anonymous_theme(page, live_server, anonymous)
     _install_first_frame_probe(page)
 
-    page.fill('input[name="username"]', user.username)
-    page.fill('input[name="password"]', "pw")
+    # By hand: the probed login page is the subject.
+    page.fill('input[name="username"]', login.username)
+    page.fill('input[name="password"]', login.password)
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
 
@@ -147,15 +149,15 @@ def test_account_theme_wins_before_redirect_paints_without_touching_storage(
     assert page.evaluate("localStorage.getItem('color-theme')") == anonymous
 
 
-def test_logout_restores_the_anonymous_browser_preference(
-    live_server, page: Page, django_user_model
-):
-    user = django_user_model.objects.create_user(username="logout-user", password="pw")
+def test_logout_restores_the_anonymous_browser_preference(live_server, page: Page):
+    login = Credentials("logout-user", THEME_PASSWORD)
+    user = create_login_user(login)
     _set_user_theme(user, "dark")
     page.emulate_media(color_scheme="light")
     _set_anonymous_theme(page, live_server, "light")
-    page.fill('input[name="username"]', user.username)
-    page.fill('input[name="password"]', "pw")
+    # By hand: the probed login page is the subject.
+    page.fill('input[name="username"]', login.username)
+    page.fill('input[name="password"]', login.password)
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
     expect(page.locator("html")).to_have_class("dark")
@@ -170,15 +172,17 @@ def test_logout_restores_the_anonymous_browser_preference(
 
 
 def test_prelogin_storage_is_ignored_and_not_migrated_to_account(
-    live_server, page: Page, django_user_model
+    live_server, page: Page
 ):
-    user = django_user_model.objects.create_user(username="new-user", password="pw")
+    login = Credentials("new-user", THEME_PASSWORD)
+    user = create_login_user(login)
     page.emulate_media(color_scheme="light")
     _set_anonymous_theme(page, live_server, "dark")
     _install_first_frame_probe(page)
 
-    page.fill('input[name="username"]', user.username)
-    page.fill('input[name="password"]', "pw")
+    # By hand: the probed login page is the subject.
+    page.fill('input[name="username"]', login.username)
+    page.fill('input[name="password"]', login.password)
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
 
@@ -189,14 +193,13 @@ def test_prelogin_storage_is_ignored_and_not_migrated_to_account(
 
 
 def test_settings_control_updates_permanently_disabled_navbar_theme_state(
-    live_server, page: Page, django_user_model
+    live_server, page: Page
 ):
-    user = django_user_model.objects.create_user(
-        username="settings-user", password="pw"
-    )
+    login = Credentials("settings-user", THEME_PASSWORD)
+    user = create_login_user(login)
     _set_user_theme(user, "light")
     page.emulate_media(color_scheme="light")
-    log_in(page, live_server, Credentials(user.username, "pw"))
+    log_in(page, live_server, login)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     page.get_by_role("button", name="Open account menu for settings-user").click()
     theme = held_choice(page, "theme")
@@ -239,17 +242,18 @@ def test_settings_control_updates_permanently_disabled_navbar_theme_state(
 
 
 def test_second_browser_reconciles_account_theme_on_navigation(
-    live_server, browser: Browser, django_user_model
+    live_server, browser: Browser
 ):
-    user = django_user_model.objects.create_user(username="two-browser", password="pw")
+    login = Credentials("two-browser", THEME_PASSWORD)
+    user = create_login_user(login)
     _set_user_theme(user, "light")
     first_context = browser.new_context()
     second_context = browser.new_context()
     first = first_context.new_page()
     second = second_context.new_page()
     try:
-        log_in(first, live_server, Credentials(user.username, "pw"))
-        log_in(second, live_server, Credentials(user.username, "pw"))
+        log_in(first, live_server, login)
+        log_in(second, live_server, login)
         first.goto(f"{live_server.url}{reverse('games:settings')}")
         second.goto(f"{live_server.url}{reverse('games:settings')}")
         expect(second.locator("html")).to_have_attribute(
@@ -274,14 +278,13 @@ def test_second_browser_reconciles_account_theme_on_navigation(
         second_context.close()
 
 
-def test_clearing_personal_theme_commits_the_inherited_value(
-    live_server, page: Page, django_user_model
-):
-    user = django_user_model.objects.create_user(username="inherit-user", password="pw")
+def test_clearing_personal_theme_commits_the_inherited_value(live_server, page: Page):
+    login = Credentials("inherit-user", THEME_PASSWORD)
+    user = create_login_user(login)
     _set_user_theme(user, "light")
     SiteSetting.objects.create(key="THEME", value="dark")
     settings_resolver.clear_cache()
-    log_in(page, live_server, Credentials(user.username, "pw"))
+    log_in(page, live_server, login)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     theme = held_choice(page, "theme")
 
@@ -296,15 +299,14 @@ def test_clearing_personal_theme_commits_the_inherited_value(
 
 
 def test_failed_theme_save_restores_system_state_then_allows_retry(
-    live_server, page: Page, django_user_model
+    live_server, page: Page
 ):
-    user = django_user_model.objects.create_user(
-        username="rollback-user", password="pw"
-    )
+    login = Credentials("rollback-user", THEME_PASSWORD)
+    create_login_user(login)
     SiteSetting.objects.create(key="THEME", value="system")
     settings_resolver.clear_cache()
     page.emulate_media(color_scheme="dark")
-    log_in(page, live_server, Credentials(user.username, "pw"))
+    log_in(page, live_server, login)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     page.get_by_role("button", name="Open account menu for rollback-user").click()
     theme = held_choice(page, "theme")

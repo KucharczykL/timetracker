@@ -15,7 +15,6 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
-from column_choice import show_every_column
 from devices import create_device
 from django.urls import reverse
 from entries import record_entry
@@ -27,6 +26,9 @@ from session_rows import session_row
 from e2e.helpers import log_in, settle_layout
 from games.models import Game, Platform
 from timetracker.temporal import TemporalValue
+
+#: Before any login: these measurements want each column.
+pytestmark = pytest.mark.usefixtures("every_column_user")
 
 ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -88,19 +90,6 @@ def populated(e2e_library) -> None:
             currency="USD",
             purchased=TemporalValue.from_day((BASE + timedelta(days=index)).date()),
         )
-
-
-@pytest.fixture
-def every_column_user(e2e_user):
-    """These measurements want each column, not the default set."""
-    show_every_column(e2e_user)
-    return e2e_user
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, every_column_user) -> Page:
-    log_in(page, live_server)
-    return page
 
 
 @pytest.fixture

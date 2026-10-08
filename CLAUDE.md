@@ -1523,8 +1523,8 @@ artifact absent; `make check`/`make test` order `test-ts` first.
 `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers system
 Chrome/Chromium (see env section); otherwise `uv run playwright install
 chromium` once. A test signs in with `authenticated_page` (`e2e/conftest.py`) or
-`log_in(page, live_server, credentials)` (`e2e/helpers.py`), never its own
-steps. All JS vendored, so tests run fully offline. Bare `make test`
+`log_in(page, live_server[, credentials])` (`e2e/helpers.py`); only a test of
+the login page states its own steps. All JS vendored, so tests run fully offline. Bare `make test`
 collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.py`
 (onReady lifecycle, FilterSelect, sort headers),
 `test_search_select_e2e.py` (single-select edge cases on synthetic page).

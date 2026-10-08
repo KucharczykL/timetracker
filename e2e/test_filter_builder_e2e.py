@@ -44,9 +44,6 @@ from games.models import (
 )
 from timetracker.temporal import TemporalValue
 
-# ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
-
-
 # ── filter JSON helpers ────────────────────────────────────────────────────────
 
 
@@ -322,7 +319,7 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
 
 
 def test_load_set_field_preset_reflects_field_without_crash(
-    authenticated_page: Page, live_server, django_user_model, e2e_library, e2e_user
+    authenticated_page: Page, live_server, e2e_library, e2e_user
 ) -> None:
     """Loading a preset whose filter contains a set-field criterion (session's
     ``game`` field) must not throw and must reflect the field in the picker.
@@ -345,13 +342,11 @@ def test_load_set_field_preset_reflects_field_without_crash(
         e2e_library, "SpyGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
-    user = e2e_user
-
     # A session preset whose object_filter contains a set-field criterion for
     # the session's ``game`` field.  This is the exact shape that triggered the
     # Fix-C crash: a ``set`` kind field with an id/label value list.
     FilterPreset.objects.create(
-        library=user.library,
+        library=e2e_user.library,
         mode="sessions",
         name="setpreset",
         object_filter={
@@ -958,18 +953,17 @@ def test_comparison_left_operand_survives_keystroke(
 
 
 def test_preset_removal_flow_takes_the_row_out(
-    authenticated_page: Page, live_server, django_user_model, e2e_user
+    authenticated_page: Page, live_server, e2e_user
 ) -> None:
     """The per-row × : confirm → DELETE /api/presets/{id} → the row
     vanishes on the refetch and the preset leaves the library (#297). The
     panel must survive the native confirm() — it stays open with focus in
     the search box, showing the remaining preset."""
-    user = e2e_user
     keep = FilterPreset.objects.create(
-        library=user.library, mode="games", name="keepme"
+        library=e2e_user.library, mode="games", name="keepme"
     )
     doomed = FilterPreset.objects.create(
-        library=user.library, mode="games", name="deleteme"
+        library=e2e_user.library, mode="games", name="deleteme"
     )
 
     page = authenticated_page
@@ -992,21 +986,20 @@ def test_preset_removal_flow_takes_the_row_out(
         picker.locator("[data-search-select-option]").filter(has_text="keepme")
     ).to_be_visible()
     expect(picker.locator("[data-menu]")).to_be_visible()
-    visible = FilterPreset.objects.for_library(user.library)
+    visible = FilterPreset.objects.for_library(e2e_user.library)
     assert not visible.filter(id=doomed.id).exists()
     assert visible.filter(id=keep.id).exists()
 
 
 def test_removing_the_last_picked_preset_does_not_bring_it_back(
-    authenticated_page: Page, live_server, django_user_model, e2e_user
+    authenticated_page: Page, live_server, e2e_user
 ) -> None:
     """Pick a preset, then delete that same preset on the next open: the row
     must NOT reappear after the refetch. Guards the transient-pick design —
     a lingering committed selection would pin the stale row through
     renderRows' selected-value preservation (#297 review finding)."""
-    user = e2e_user
     FilterPreset.objects.create(
-        library=user.library,
+        library=e2e_user.library,
         mode="games",
         name="pickme",
         object_filter={"name": {"modifier": "INCLUDES", "value": "x"}},
@@ -1039,19 +1032,18 @@ def test_removing_the_last_picked_preset_does_not_bring_it_back(
     expect(picker.locator("[data-search-select-no-results]")).to_have_text(
         "No saved presets"
     )
-    visible = FilterPreset.objects.for_library(user.library)
+    visible = FilterPreset.objects.for_library(e2e_user.library)
     assert not visible.filter(name="pickme").exists()
 
 
 def test_preset_keyboard_pick_and_empty_enter(
-    authenticated_page: Page, live_server, django_user_model, e2e_user
+    authenticated_page: Page, live_server, e2e_user
 ) -> None:
     """Keyboard path: Enter on the toggle opens the dialog with focus in the
     search box; Enter on a held name picks the preset into the tree. A
     non-matching query offers Save, and Enter saves without navigating."""
-    user = e2e_user
     FilterPreset.objects.create(
-        library=user.library,
+        library=e2e_user.library,
         mode="games",
         name="kbpreset",
         object_filter={"name": {"modifier": "INCLUDES", "value": "x"}},
@@ -1139,11 +1131,10 @@ def test_typing_over_a_picked_field_keeps_the_typed_text(
 
 
 def test_a_saved_preset_states_the_edited_leaf(
-    authenticated_page: Page, live_server, django_user_model, e2e_user
+    authenticated_page: Page, live_server, e2e_user
 ) -> None:
     """Save reads the live widgets: a leaf changed after the page loaded saves
     its new value, not the one the tree was loaded with."""
-    user = e2e_user
     filter_param = _encode_filter({"name": {"modifier": "INCLUDES", "value": "old"}})
     page = authenticated_page
     page.goto(
@@ -1164,7 +1155,9 @@ def test_a_saved_preset_states_the_edited_leaf(
     expect(box).to_have_value("")
 
     saved = json.dumps(
-        FilterPreset.objects.for_library(user.library).get(name="Edited").object_filter
+        FilterPreset.objects.for_library(e2e_user.library)
+        .get(name="Edited")
+        .object_filter
     )
     assert '"new"' in saved
     assert '"old"' not in saved

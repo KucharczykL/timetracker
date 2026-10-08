@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from bulk_batches import chunk_queue, failing_batches, held_batches  # noqa: F401
 from calendar_days import _process_clock_off_the_calendar  # noqa: F401
+from column_choice import show_every_column
 from icon_names import unknown_icon_names_fail  # noqa: F401
 from playwright.sync_api import Page
 from settings_caches import _reset_settings_caches  # noqa: F401
@@ -21,7 +22,7 @@ os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 
 @pytest.fixture
 def e2e_user(django_user_model, live_server):
-    """Provision the explicit owner used by ordinary authenticated E2E tests."""
+    """The default signed-in owner."""
     user, _created = django_user_model.objects.get_or_create(
         username=E2E_LOGIN.username
     )
@@ -29,6 +30,13 @@ def e2e_user(django_user_model, live_server):
         user.set_password(E2E_LOGIN.password)
         user.save(update_fields=["password"])
     return user
+
+
+@pytest.fixture
+def every_column_user(e2e_user):
+    """The default user, every list column shown."""
+    show_every_column(e2e_user)
+    return e2e_user
 
 
 @pytest.fixture

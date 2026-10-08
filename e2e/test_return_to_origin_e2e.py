@@ -13,7 +13,7 @@ from games.models import Game, Platform, PlayerGameStatus
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 #: The fixture below tracks its games the way production does, so the
-#: conftest fixture that writes a bare row must stay out of the way: a
+#: autouse tracking fixture that writes a bare row must stay out of the way: a
 #: row already there turns TrackGame into a no-op, and the delete this
 #: module exercises needs the reference that event captures.
 pytestmark = pytest.mark.untracked_games

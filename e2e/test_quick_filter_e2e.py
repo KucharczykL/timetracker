@@ -407,7 +407,7 @@ def test_an_applied_facet_stays_inline_and_marked(
 
 
 def test_preset_pick_on_builderless_mode(
-    authenticated_page: Page, live_server, django_user_model, e2e_library, e2e_user
+    authenticated_page: Page, live_server, e2e_library, e2e_user
 ):
     """The quick bar's Presets panel loads on a builderless mode
     (devices): picking navigates with the preset's ?filter=; Enter inside the
@@ -416,10 +416,9 @@ def test_preset_pick_on_builderless_mode(
 
     create_device(library=e2e_library, name="Steam Deck")
     create_device(library=e2e_library, name="Desktop")
-    user = e2e_user
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "deck"}}
     FilterPreset.objects.create(
-        library=user.library,
+        library=e2e_user.library,
         name="DeckOnly",
         mode="devices",
         object_filter=stored_filter,

@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import NamedTuple
 
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, expect
 
@@ -18,17 +19,27 @@ class Credentials(NamedTuple):
 E2E_LOGIN = Credentials("tester", "secret123")
 
 
-def log_in(page: Page, live_server, credentials: Credentials = E2E_LOGIN) -> None:
-    """Sign in through the form; land on ``/tracker``.
+def create_login_user(credentials: Credentials, *, superuser: bool = False):
+    """A user these credentials sign in as."""
+    users = get_user_model().objects
+    create = users.create_superuser if superuser else users.create_user
+    return create(username=credentials.username, password=credentials.password)
 
-    Enter, not a click: a click parks the virtual mouse on the
-    button, and the next page opens whatever hovers under it.
+
+def log_in(page: Page, live_server, credentials: Credentials = E2E_LOGIN) -> None:
+    """Sign in via the form, to ``/tracker``.
+
+    Enter, not a click: a click leaves the mouse on the button,
+    and the next page then hovers the element under it.
     """
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', credentials.username)
     page.fill('input[name="password"]', credentials.password)
-    page.press('input[name="password"]', "Enter")
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    with page.expect_navigation():
+        page.press('input[name="password"]', "Enter")
+    if not page.url.startswith(f"{live_server.url}/tracker"):
+        refusal = page.locator("form").inner_text()
+        raise AssertionError(f"{credentials.username} was not signed in: {refusal}")
 
 
 TABLES_SETTLED = """

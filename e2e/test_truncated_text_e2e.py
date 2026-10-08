@@ -1,13 +1,12 @@
 """Real-layout coverage for width-based name clipping and reveal behavior."""
 
 import pytest
-from column_choice import show_every_column
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Locator, Page, Route, expect
 from session_rows import session_row
 
-from e2e.helpers import Credentials, log_in, settle_layout
+from e2e.helpers import Credentials, create_login_user, log_in, settle_layout
 from games.models import Game, Platform
 
 FALLBACK_LOGIN = Credentials("fallback-font", "secret123")
@@ -19,9 +18,7 @@ LONG_NAME = (
 
 
 @pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    #: The width measurements want each declared column.
-    show_every_column(e2e_user)
+def authenticated_page(live_server, page: Page, every_column_user) -> Page:
     log_in(page, live_server)
     return page
 
@@ -363,12 +360,8 @@ def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
     assert _gap_after_text(host) < 12
 
 
-def test_fallback_font_is_measured_when_webfonts_are_blocked(
-    live_server, browser, django_user_model
-):
-    fallback_user = django_user_model.objects.create_user(
-        username=FALLBACK_LOGIN.username, password=FALLBACK_LOGIN.password
-    )
+def test_fallback_font_is_measured_when_webfonts_are_blocked(live_server, browser):
+    fallback_user = create_login_user(FALLBACK_LOGIN)
     platform = Platform.objects.create(
         name="PC", icon="steam", group="PC", library=fallback_user.library
     )

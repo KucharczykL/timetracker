@@ -79,7 +79,7 @@ def test_reset_cancel_leaves_start_unchanged(
 
 
 def test_reset_stamps_the_browser_zone(
-    authenticated_page: Page, browser: Browser, live_server, e2e_library
+    browser: Browser, live_server, e2e_user, e2e_library
 ):
     session = _make_running_session(e2e_library)
 

@@ -5,17 +5,11 @@ from devices import create_device, end_device_access
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import held_choice, log_in, pick_choice
+from e2e.helpers import held_choice, pick_choice
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
 
 DEFAULT_DEVICE_URL = "/api/library/default-device"
-
-
-@pytest.fixture
-def library_page(live_server, page: Page, e2e_user) -> Page:
-    log_in(page, live_server)
-    return page
 
 
 @pytest.fixture
@@ -51,9 +45,9 @@ def _stored(e2e_library):
 
 
 def test_a_pick_saves_and_none_saves_null(
-    library_page: Page, live_server, e2e_library, devices
+    authenticated_page: Page, live_server, e2e_library, devices
 ):
-    page = library_page
+    page = authenticated_page
     deck, phone = devices["deck"], devices["phone"]
     _open(page, live_server)
     picker = page.locator('search-select[name="default_device"]')
@@ -86,9 +80,9 @@ def test_a_pick_saves_and_none_saves_null(
 
 
 def test_a_refused_save_restores_the_stored_device(
-    library_page: Page, live_server, devices
+    authenticated_page: Page, live_server, devices
 ):
-    page = library_page
+    page = authenticated_page
     deck = devices["deck"]
     _open(page, live_server)
     page.route(

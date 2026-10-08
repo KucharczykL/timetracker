@@ -61,8 +61,8 @@ def test_session_timestamps_render_date_and_time_segments(
 ):
     """Default (ISO, 24-hour) account: one flat run of date and time segments,
     and no day period."""
-    page, user = authenticated_page, e2e_user
-    Game.objects.create(library=user.library, name="Alpha Game")
+    page = authenticated_page
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     parts = page.locator(f"{START_FIELD} input[data-date-part]")
@@ -76,11 +76,10 @@ def test_typed_wall_clock_means_the_picked_zone(
     """The reverse-engineered check for the reported bug: account zone Prague,
     zone picker flipped to Tokyo, typed 15:37 → the stored instant must be
     06:37 UTC (15:37 Tokyo), not 13:37 UTC (15:37 Prague)."""
-    user = e2e_user
-    _set_preferences(user, display_time_zone="Europe/Prague")
-    Game.objects.create(library=user.library, name="Alpha Game")
+    _set_preferences(e2e_user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
     # Browser pinned to the account zone: the capture default stamps Prague,
-    # so the flip to Tokyo below is a deliberate user act, as in the report.
+    # so the flip to Tokyo below is a deliberate e2e_user act, as in the report.
     context = browser.new_context(timezone_id="Europe/Prague")
     try:
         page = context.new_page()
@@ -123,9 +122,8 @@ def test_capture_default_makes_typed_digits_mean_the_browser_zone(
     """Browser in Tokyo, account in Prague, and the zone picker never touched:
     the capture default alone must make the typed 15:37 a Tokyo wall clock
     (06:37 UTC), not a Prague one (13:37 UTC)."""
-    user = e2e_user
-    _set_preferences(user, display_time_zone="Europe/Prague")
-    Game.objects.create(library=user.library, name="Alpha Game")
+    _set_preferences(e2e_user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
     context = browser.new_context(timezone_id="Asia/Tokyo")
     try:
         page = context.new_page()
@@ -160,9 +158,8 @@ def test_typed_session_timestamp_persists_as_the_instant_it_shows(
 ):
     """Browser pinned to the account zone, so the capture default stamps
     Europe/Prague and the typed digits mean exactly what they show."""
-    user = e2e_user
-    _set_preferences(user, display_time_zone="Europe/Prague")
-    Game.objects.create(library=user.library, name="Alpha Game")
+    _set_preferences(e2e_user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
     context = browser.new_context(timezone_id="Europe/Prague")
     try:
         page = context.new_page()
@@ -189,9 +186,9 @@ def test_typed_session_timestamp_persists_as_the_instant_it_shows(
 def test_a_12_hour_account_gets_a_day_period_segment(
     authenticated_page, e2e_user, live_server
 ):
-    page, user = authenticated_page, e2e_user
-    _set_preferences(user, datetime_format="mdy_12h")
-    Game.objects.create(library=user.library, name="Alpha Game")
+    page = authenticated_page
+    _set_preferences(e2e_user, datetime_format="mdy_12h")
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     parts = page.locator(f"{START_FIELD} input[data-date-part]")
@@ -209,9 +206,8 @@ def test_copy_arrow_fills_the_other_timestamp(browser: Browser, live_server, e2e
     vitest suite for that case; two fields landing on different capture
     defaults purely by machine happenstance is not the scenario this test is
     about.)"""
-    user = e2e_user
-    _set_preferences(user, display_time_zone="Europe/Prague")
-    Game.objects.create(library=user.library, name="Alpha Game")
+    _set_preferences(e2e_user, display_time_zone="Europe/Prague")
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
     context = browser.new_context(timezone_id="Europe/Prague")
     try:
         page = context.new_page()
@@ -238,8 +234,8 @@ def test_copy_arrow_fills_the_other_timestamp(browser: Browser, live_server, e2e
 def test_picking_a_calendar_day_keeps_the_typed_time(
     authenticated_page, e2e_user, live_server
 ):
-    page, user = authenticated_page, e2e_user
-    Game.objects.create(library=user.library, name="Alpha Game")
+    page = authenticated_page
+    Game.objects.create(library=e2e_user.library, name="Alpha Game")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     _fill_segments(
@@ -297,8 +293,8 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
     authenticated_page, e2e_user, live_server
 ):
     """Sub-minute residual survives an untouched edit."""
-    page, user = authenticated_page, e2e_user
-    game = Game.objects.create(library=user.library, name="Alpha Game")
+    page = authenticated_page
+    game = Game.objects.create(library=e2e_user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
     session = _row(game, started_at=started, ended_at=started + dt.timedelta(hours=1))
 
@@ -316,8 +312,8 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
 def test_a_typed_edit_keeps_the_stored_microseconds(
     authenticated_page, e2e_user, live_server
 ):
-    page, user = authenticated_page, e2e_user
-    game = Game.objects.create(library=user.library, name="Alpha Game")
+    page = authenticated_page
+    game = Game.objects.create(library=e2e_user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
     session = _row(game, started_at=started)
 

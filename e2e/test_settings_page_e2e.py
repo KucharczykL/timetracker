@@ -10,18 +10,16 @@ from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import Credentials, held_choice, log_in, pick_choice
+from e2e.helpers import Credentials, create_login_user, held_choice, log_in, pick_choice
 from games.models import Device, Game, PlayerGame, UserPreferences
 
-ADMIN_LOGIN = Credentials("infra-admin", "secret123")
+INFRA_ADMIN_LOGIN = Credentials("infra-admin", "secret123")
 
 
 @pytest.fixture
-def superuser_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_superuser(
-        username=ADMIN_LOGIN.username, password=ADMIN_LOGIN.password
-    )
-    log_in(page, live_server, ADMIN_LOGIN)
+def superuser_page(live_server, page: Page) -> Page:
+    create_login_user(INFRA_ADMIN_LOGIN, superuser=True)
+    log_in(page, live_server, INFRA_ADMIN_LOGIN)
     return page
 
 
@@ -93,9 +91,8 @@ def authenticated_page(live_server, page: Page, e2e_user, preferred_device) -> P
     games = Game.objects.bulk_create(
         [Game(library=library, name=f"Game {index:02}") for index in range(51)]
     )
-    #: bulk_create sends no post_save, so the fixture that tracks a
-    #: created game never runs and the list this page's page size drives
-    #: would come back empty.
+    #: bulk_create sends no post_save, so the autouse tracking fixture
+    #: tracks none; the paged list would come back empty.
     PlayerGame.objects.bulk_create(
         [
             PlayerGame(

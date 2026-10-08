@@ -62,13 +62,15 @@ Releases, a second Edition, or a graph that keeps existing rows.
 
 ## One login
 
-A browser test signs in through one helper. No module restates the login
-steps.
+A browser test signs in through one helper. Only a test whose subject is
+the login page restates the login steps.
 
 `e2e/helpers.py` holds `Credentials(NamedTuple)` (`username`, `password`),
-`E2E_LOGIN` and `log_in(page, live_server, credentials=E2E_LOGIN)`. `log_in`
-opens the login page, fills both fields, presses Enter in the password field
-and waits for `/tracker`. `e2e_user` takes its credentials from `E2E_LOGIN`.
+`E2E_LOGIN`, `create_login_user(credentials, *, superuser=False)` and
+`log_in(page, live_server, credentials=E2E_LOGIN)`. `log_in` opens the login
+page, fills both fields and presses Enter in the password field. When the
+page then is not `/tracker`, it fails at once with the form's text.
+`e2e_user` takes its credentials from `E2E_LOGIN`.
 
 `log_in` presses Enter, not the Login button. A click leaves Playwright's
 virtual mouse on the button. The next page then gets `pointerenter` on the
@@ -78,8 +80,9 @@ pointer, so one helper serves the mouse and the touch contexts.
 `log_in` waits for nothing that a script draws, so a context with JavaScript
 off can use it. It calls `reverse("login")` when it runs. A synthetic harness
 that swaps `ROOT_URLCONF` logs in before the swap, or extends the base
-patterns. A module that swaps in an autouse fixture cannot take
-`authenticated_page`.
+patterns. A module that sets `ROOT_URLCONF` in an autouse fixture cannot take
+`authenticated_page`: the autouse fixture runs first, and `reverse("login")`
+then fails.
 
 `e2e/conftest.py` holds `authenticated_page(live_server, page, e2e_user)`. It
 calls `log_in` and returns the page. A module that must do something before
@@ -88,8 +91,10 @@ the login keeps its own `authenticated_page`: it does its setup, then calls
 row asks for that fixture beside `authenticated_page`.
 
 A test that needs the default user asks for `e2e_user`; no test looks it up
-by name. A login as another user passes its own `Credentials`, held in one
-module constant.
+by name. Another user is made with `create_login_user` from the same
+`Credentials` that `log_in` then takes. A module that shows every list column
+marks its tests with `usefixtures("every_column_user")`, so the choice does
+not hang on a fixture override.
 
 A test whose subject is the login page keeps its own steps: the
 anonymous-theme and logout tests, and the sign-in inside a form dialog.

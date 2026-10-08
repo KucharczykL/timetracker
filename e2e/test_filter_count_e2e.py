@@ -86,11 +86,8 @@ def _login_and_open(page: Page, live_server, query: str = "") -> None:
     page.goto(f"{live_server.url}/filter-count-test/{query}")
 
 
-# NB: no ``@pytest.mark.django_db`` / ``db`` fixture here. ``live_server`` pulls in
-# ``transactional_db`` (committed rows visible to the server thread); mixing the
-# plain ``db`` fixture with it breaks the between-test table flush, which leaked a
-# second "tester" user into the next test (User.MultipleObjectsReturned on login).
-# Mirror the working ``test_widgets_e2e`` pattern: create rows in the test body.
+# No ``db`` fixture: beside ``live_server``'s ``transactional_db`` it
+# breaks the flush between tests.
 
 
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")

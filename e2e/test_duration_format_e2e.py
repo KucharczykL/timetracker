@@ -51,7 +51,7 @@ def test_default_profile_renders_decimal_hours(
 
 
 def test_changing_the_preference_rerenders_the_list(
-    authenticated_page: Page, live_server, django_user_model, session, e2e_user
+    authenticated_page: Page, live_server, session, e2e_user
 ):
     page = authenticated_page
     change_user_setting(
