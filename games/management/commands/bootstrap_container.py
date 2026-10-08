@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
@@ -26,7 +28,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--default-superuser",
             action="store_true",
-            help="Create an admin/admin superuser unless one already exists.",
+            help=(
+                "Create an admin superuser with a random password, printed once, "
+                "unless one already exists."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -41,9 +46,12 @@ class Command(BaseCommand):
         if should_create_default_user:
             user_model = get_user_model()
             if not user_model.objects.filter(username="admin").exists():
-                user_model.objects.create_superuser("admin", "", "admin")
+                password = secrets.token_urlsafe(16)
+                user_model.objects.create_superuser("admin", "", password)
                 self.stdout.write(
-                    self.style.SUCCESS("Created default superuser: admin / admin")
+                    self.style.SUCCESS(
+                        f"Created default superuser: admin / {password} (shown once)"
+                    )
                 )
 
         if should_load_sample:
