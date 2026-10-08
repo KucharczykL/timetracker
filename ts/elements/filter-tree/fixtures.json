@@ -643,11 +643,12 @@
       }
     },
     {
-      "description": "game: playtime none",
+      "description": "game: playtime is 0",
       "model": "game",
       "filter": {
         "playtime_hours": {
-          "modifier": "IS_NULL"
+          "value": 0,
+          "modifier": "EQUALS"
         }
       }
     }
