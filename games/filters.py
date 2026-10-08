@@ -300,7 +300,7 @@ class GameFilter(OperatorFilter):
     mastered: BoolCriterion | None = None
     excluded_from_unfinished: BoolCriterion | None = None
     excluded_from_dropped: BoolCriterion | None = None
-    playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
+    playtime_hours: FloatCriterion | None = None  # decimal hours, exact
     created_at: DateCriterion | None = None  # compared by calendar day
     updated_at: DateCriterion | None = None  # compared by calendar day
     #: The held copies' words.
@@ -369,7 +369,6 @@ class GameFilter(OperatorFilter):
         "playtime_hours": FilterField(
             handler=duration_hours_handler("playtime"),
             label="Playtime (hrs)",
-            nullable=True,  # Zero is "none"; see duration_hours_to_q.
         ),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
@@ -579,7 +578,7 @@ class PlayerSessionFilter(OperatorFilter):
     ended: DateCriterion | None = (
         None  # ended_at's day in day_zone; null running, Duration-only
     )
-    duration_hours: IntCriterion | None = None  # effective_duration
+    duration_hours: FloatCriterion | None = None  # effective_duration, hours
     created_at: DateCriterion | None = None  # compared by calendar day
 
     # Free-text search
@@ -637,7 +636,6 @@ class PlayerSessionFilter(OperatorFilter):
         "duration_hours": FilterField(
             handler=duration_hours_handler("effective_duration"),
             label="Duration (hrs)",
-            nullable=True,  # Zero is "none"; see duration_hours_to_q.
         ),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
@@ -997,7 +995,7 @@ class HistoricalPlaytimeFilter(OperatorFilter):
     release: UUIDMultiCriterion | None = None  # filters on release_id
     edition_kind: ChoiceCriterion | None = None  # the Release's Edition
     emulated: BoolCriterion | None = None
-    duration_hours: IntCriterion | None = None
+    duration_hours: FloatCriterion | None = None
     when: DateCriterion | None = None  # the interval the record states
     note: StringCriterion | None = None
     created_at: DateCriterion | None = None  # compared by calendar day

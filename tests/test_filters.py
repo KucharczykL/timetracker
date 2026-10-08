@@ -343,6 +343,123 @@ class TestRegexFilterDetection:
         )
 
 
+@pytest.mark.django_db
+class TestDurationExactAgainstDB:
+    """A duration compares the stored value exactly, in decimal hours."""
+
+    @staticmethod
+    def _matching(library, value, modifier):
+        from games.filters import (
+            PlayerSessionFilter,
+            filter_query_context_for_library,
+        )
+        from games.reads.player_sessions import library_sessions
+
+        session_filter = PlayerSessionFilter.from_json(
+            {"duration_hours": {"value": value, "modifier": modifier}}
+        )
+        return set(
+            execute_filter(
+                session_filter,
+                library_sessions(library),
+                filter_query_context_for_library(library),
+            )
+        )
+
+    @pytest.fixture
+    def sessions_by_length(self, owned_library):
+        from datetime import datetime
+
+        from games.models import Game
+
+        game = Game.objects.create(library=owned_library, name="Lengths")
+        start = datetime(2026, 3, 1, 10, tzinfo=UTC)
+        lengths = {
+            "just_short": timedelta(minutes=59, seconds=58),
+            "one_hour": timedelta(hours=1),
+            "ninety_minutes": timedelta(minutes=90),
+        }
+        return {
+            name: session_row(
+                game,
+                started_at=start + offset * timedelta(days=1),
+                ended_at=start + offset * timedelta(days=1) + length,
+            )
+            for offset, (name, length) in enumerate(lengths.items())
+        }
+
+    def test_equals_one_hour_matches_only_that_hour(
+        self, owned_library, sessions_by_length
+    ):
+        assert self._matching(owned_library, 1, "EQUALS") == {
+            sessions_by_length["one_hour"]
+        }
+
+    def test_at_most_one_hour_agrees_with_equals_at_the_boundary(
+        self, owned_library, sessions_by_length
+    ):
+        assert self._matching(owned_library, 1, "LESS_THAN_OR_EQUAL") == {
+            sessions_by_length["just_short"],
+            sessions_by_length["one_hour"],
+        }
+
+    def test_a_decimal_hour_matches_the_same_minutes(
+        self, owned_library, sessions_by_length
+    ):
+        assert self._matching(owned_library, 1.5, "EQUALS") == {
+            sessions_by_length["ninety_minutes"]
+        }
+
+
+class TestDurationValueRefusals:
+    """A duration value refuses what a timedelta cannot hold, and no presence."""
+
+    DURATION_FILTERS = (
+        (GameFilter, "playtime_hours"),
+        (GameFilter, "session_average"),
+        (GameFilter, "session_playtime_hours"),
+        (PlayerSessionFilter, "duration_hours"),
+        (HistoricalPlaytimeFilter, "duration_hours"),
+    )
+
+    @pytest.mark.parametrize(("filter_cls", "field"), DURATION_FILTERS)
+    @pytest.mark.parametrize("modifier", ["IS_NULL", "NOT_NULL"])
+    def test_presence_modifier_is_refused(self, filter_cls, field, modifier):
+        raw = json.dumps({field: {"modifier": modifier}})
+        with pytest.raises(FilterError):
+            filter_from_json(filter_cls, raw)
+
+    @pytest.mark.parametrize(("filter_cls", "field"), DURATION_FILTERS)
+    @pytest.mark.parametrize("value", [1e20, "inf", "nan", float("inf")])
+    def test_value_outside_a_timedelta_is_refused(self, filter_cls, field, value):
+        raw = json.dumps({field: {"value": value, "modifier": "EQUALS"}})
+        with pytest.raises(FilterError):
+            filter_from_json(filter_cls, raw)
+
+    @pytest.mark.parametrize("value", ["inf", "nan", float("nan")])
+    def test_non_finite_amount_is_refused(self, value):
+        raw = json.dumps({"amount": {"value": value, "modifier": "EQUALS"}})
+        with pytest.raises(FilterError):
+            filter_from_json(PurchaseFilter, raw)
+
+    def test_integral_hours_stay_an_int_after_parse(self):
+        game_filter = GameFilter.from_json(
+            {"playtime_hours": {"value": 1.0, "modifier": "EQUALS"}}
+        )
+        assert game_filter is not None
+        assert type(game_filter.playtime_hours.value) is int
+        assert game_filter.playtime_hours.value == 1
+
+    def test_non_duration_sum_keeps_its_presence_pair(self):
+        entries = {
+            entry["name"]: entry
+            for entry in field_metadata(GameFilter)
+            if entry["name"] == "purchase_price_total"
+        }
+        assert "IS_NULL" in entries["purchase_price_total"]["modifiers"]
+        assert entries["purchase_price_total"]["nullable"] is True
+
+
 class TestIntCriterion:
     def test_between(self):
         c = IntCriterion(value=2020, value2=2024, modifier=Modifier.BETWEEN)
@@ -1249,13 +1366,12 @@ class TestPlaytimeHoursAgainstDB:
             unplayed
         }
 
-    def test_playtime_hours_is_null_matches_an_unplayed_game(
-        self, owned_library, played_and_unplayed
+    @pytest.mark.parametrize("modifier", ["IS_NULL", "NOT_NULL"])
+    def test_playtime_hours_refuses_a_presence_modifier(
+        self, owned_library, played_and_unplayed, modifier
     ):
-        played, unplayed = played_and_unplayed
-
-        assert self._matching(owned_library, {"modifier": "IS_NULL"}) == {unplayed}
-        assert self._matching(owned_library, {"modifier": "NOT_NULL"}) == {played}
+        with pytest.raises(FilterError):
+            self._matching(owned_library, {"modifier": modifier})
 
     def test_playtime_hours_inside_a_game_filter_relation(
         self, owned_library, played_and_unplayed
@@ -4662,25 +4778,22 @@ class TestFilterFieldHandlers:
     field it serves (a plain FilterField regression would pass the drift guard but
     fail here)."""
 
-    def test_duration_hours_equals_bucket(self):
+    def test_duration_hours_equals_is_exact(self):
         from datetime import timedelta
 
         handler = duration_hours_handler("effective_duration")
-        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS), None) == Q(
-            effective_duration__gte=timedelta(hours=4),
-            effective_duration__lt=timedelta(hours=5),
+        assert handler(FloatCriterion(value=1.5, modifier=Modifier.EQUALS), None) == Q(
+            effective_duration=timedelta(minutes=90)
         )
+        assert handler(
+            FloatCriterion(value=1.5, modifier=Modifier.NOT_EQUALS), None
+        ) == ~Q(effective_duration=timedelta(minutes=90))
 
-    def test_duration_presence_is_zero_or_absent(self):
-        from datetime import timedelta
-
+    @pytest.mark.parametrize("modifier", [Modifier.IS_NULL, Modifier.NOT_NULL])
+    def test_duration_presence_arms_are_refused(self, modifier):
         handler = duration_hours_handler("effective_duration")
-        assert handler(IntCriterion(modifier=Modifier.IS_NULL), None) == (
-            Q(effective_duration=timedelta(0)) | Q(effective_duration__isnull=True)
-        )
-        assert handler(IntCriterion(modifier=Modifier.NOT_NULL), None) == Q(
-            effective_duration__gt=timedelta(0)
-        )
+        with pytest.raises(FilterError):
+            handler(FloatCriterion(modifier=modifier), None)
 
     def test_duration_hours_between_passes_value2(self):
         # The refactor reads value2 via getattr — confirm it actually flows through.
@@ -4688,7 +4801,7 @@ class TestFilterFieldHandlers:
 
         handler = duration_hours_handler("effective_duration")
         assert handler(
-            IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN), None
+            FloatCriterion(value=1, value2=5, modifier=Modifier.BETWEEN), None
         ) == Q(
             effective_duration__gte=timedelta(hours=1),
             effective_duration__lte=timedelta(hours=5),
@@ -4732,7 +4845,7 @@ class TestFilterFieldHandlers:
         from datetime import timedelta
 
         assert GameFilter(
-            playtime_hours=IntCriterion(value=2, modifier=Modifier.GREATER_THAN)
+            playtime_hours=FloatCriterion(value=2, modifier=Modifier.GREATER_THAN)
         ).to_q() == Q(playtime__gt=timedelta(hours=2))
 
 
@@ -5163,9 +5276,8 @@ class TestFieldMetadata:
         assert entry["kind"] == "number"
         assert entry["nullable"] is False
 
-    def test_every_duration_field_offers_the_pair_unless_exempt(self):
-        # The record duration is NOT NULL and always positive, so it has no none case.
-        exempt = {("HistoricalPlaytimeFilter", "duration_hours")}
+    def test_no_duration_field_offers_the_presence_pair(self):
+        # "none" is is 0, "any" is > 0; a duration field is never presence-nullable.
         checked = 0
         for filter_cls in _ALL_FILTERS:
             for entry in field_metadata(filter_cls):
@@ -5173,11 +5285,9 @@ class TestFieldMetadata:
                     continue
                 checked += 1
                 key = (filter_cls.__name__, entry["name"])
-                if key in exempt:
-                    assert entry["nullable"] is False, key
-                    continue
-                assert entry["nullable"] is True, key
-                assert entry["modifiers"][-2:] == ["IS_NULL", "NOT_NULL"], key
+                assert entry["nullable"] is False, key
+                assert "IS_NULL" not in entry["modifiers"], key
+                assert "NOT_NULL" not in entry["modifiers"], key
         assert checked == 5
 
     def test_duration_fields_state_their_unit(self):
@@ -5982,8 +6092,8 @@ class TestScopedAggregateReducers:
         }
         assert self._games_matching(two_sessions_off_deck) == set()
 
-    def test_scoped_sum_over_no_rows_is_none_not_zero(self):
-        """Scoped SUM over no rows is NULL, not zero."""
+    def test_scoped_sum_over_no_rows_is_zero_hours(self):
+        """Scoped SUM over no rows reads 0 h: no play is zero, never NULL."""
         data = self._seed_two_device_games()
         deck_scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
 
@@ -5996,16 +6106,17 @@ class TestScopedAggregateReducers:
                 }
             }
 
-        # NULL sum: no duration, not bucket zero.
-        assert self._games_matching(scoped("EQUALS", 0)) == set()
-        assert self._games_matching(scoped("IS_NULL")) == {data["desktop_only"]}
+        # No deck sessions is 0 h; presence is refused.
+        assert self._games_matching(scoped("EQUALS", 0)) == {data["desktop_only"]}
+        with pytest.raises(FilterError):
+            self._games_matching(scoped("IS_NULL"))
         # Mixed's deck sessions (1h + 1h elapsed) sum normally.
         assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}
 
 
 @pytest.mark.django_db
-class TestDurationPresence:
-    """IS_NULL and NOT_NULL partition the scope."""
+class TestDurationZero:
+    """EQUALS 0 and NOT_EQUALS 0 partition the scope; no play reads as 0 h."""
 
     def _world(self):
         from datetime import datetime
@@ -6040,11 +6151,13 @@ class TestDurationPresence:
                 record_row([run], duration=timedelta(minutes=20))
         return games
 
-    def _matching(self, field, modifier, games):
+    def _matching(self, field, modifier, games, value=0):
         from games.filters import GameFilter, filter_query_context_for_library
         from games.models import Game
 
-        game_filter = GameFilter.from_json({field: {"value": 0, "modifier": modifier}})
+        game_filter = GameFilter.from_json(
+            {field: {"value": value, "modifier": modifier}}
+        )
         assert game_filter is not None
         library = games["unplayed"].library
         matched = execute_filter(
@@ -6056,23 +6169,27 @@ class TestDurationPresence:
         return {game for game in matched if game.id in ids}
 
     @pytest.mark.parametrize(
-        ("field", "expected_none"),
+        ("field", "expected_zero"),
         [
             ("playtime_hours", {"unplayed", "running_only"}),
             ("session_playtime_hours", {"unplayed", "running_only", "hist_only"}),
             ("session_average", {"unplayed", "running_only", "hist_only"}),
         ],
     )
-    def test_is_null_and_not_null_partition_the_scope(self, field, expected_none):
+    def test_equals_zero_and_not_equals_zero_partition_the_scope(
+        self, field, expected_zero
+    ):
         games = self._world()
-        none_set = self._matching(field, "IS_NULL", games)
-        more_set = self._matching(field, "NOT_NULL", games)
-        assert none_set == {games[name] for name in expected_none}
-        assert more_set == {games[name] for name in games if name not in expected_none}
-        assert none_set.isdisjoint(more_set)
+        zero_set = self._matching(field, "EQUALS", games)
+        non_zero_set = self._matching(field, "NOT_EQUALS", games)
+        assert zero_set == {games[name] for name in expected_zero}
+        assert non_zero_set == {
+            games[name] for name in games if name not in expected_zero
+        }
+        assert zero_set.isdisjoint(non_zero_set)
 
     def test_not_equals_zero_drops_games_without_sessions(self):
-        """A NULL sum falls outside NOT_EQUALS 0, so the game drops out."""
+        """No play is 0 h, so a game with no sessions drops out of NOT_EQUALS 0."""
         from datetime import datetime
 
         from games.models import Game
@@ -6092,9 +6209,15 @@ class TestDurationPresence:
             library=library,
         )
         not_zero = self._matching("session_playtime_hours", "NOT_EQUALS", games)
-        assert not_zero == {long_game}
+        assert not_zero == {games["half_hour"], long_game}
 
-    def test_session_rows_split_on_no_duration(self):
+    def test_less_than_one_hour_includes_an_unplayed_game(self):
+        games = self._world()
+        for field in ("session_playtime_hours", "session_average"):
+            matched = self._matching(field, "LESS_THAN", games, value=1)
+            assert games["unplayed"] in matched, field
+
+    def test_session_rows_split_on_zero_duration(self):
         from games.filters import filter_query_context_for_library
         from games.models import PlayerSession
 
@@ -6105,15 +6228,15 @@ class TestDurationPresence:
 
         def matching(modifier):
             session_filter = PlayerSessionFilter.from_json(
-                {"duration_hours": {"modifier": modifier}}
+                {"duration_hours": {"value": 0, "modifier": modifier}}
             )
             return set(execute_filter(session_filter, sessions, context))
 
-        none_set = matching("IS_NULL")
-        more_set = matching("NOT_NULL")
-        assert {session.ended_at for session in none_set} == {None}
-        assert len(more_set) == 1
-        assert none_set.isdisjoint(more_set)
+        zero_set = matching("EQUALS")
+        non_zero_set = matching("NOT_EQUALS")
+        assert {session.ended_at for session in zero_set} == {None}
+        assert len(non_zero_set) == 1
+        assert zero_set.isdisjoint(non_zero_set)
 
 
 class TestComparisonOperandPaths:
