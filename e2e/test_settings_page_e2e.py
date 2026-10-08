@@ -91,8 +91,7 @@ def authenticated_page(live_server, page: Page, e2e_user, preferred_device) -> P
     games = Game.objects.bulk_create(
         [Game(library=library, name=f"Game {index:02}") for index in range(51)]
     )
-    #: bulk_create sends no post_save, so the autouse tracking fixture
-    #: tracks none; the paged list would come back empty.
+    #: bulk_create fires no post_save: track here.
     PlayerGame.objects.bulk_create(
         [
             PlayerGame(

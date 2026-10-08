@@ -185,7 +185,7 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
-            #: Unanalyzed, the stale read below plans for minutes.
+            #: Unanalyzed, the next read takes minutes.
             analyze_tables(loaded_tables())
             if (
                 state.requested_version != state.published_version

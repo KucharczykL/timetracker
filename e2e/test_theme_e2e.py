@@ -136,7 +136,7 @@ def test_account_theme_wins_before_redirect_paints_without_touching_storage(
     _set_anonymous_theme(page, live_server, anonymous)
     _install_first_frame_probe(page)
 
-    # By hand: the probed login page is the subject.
+    # By hand: the login page is probed.
     page.fill('input[name="username"]', login.username)
     page.fill('input[name="password"]', login.password)
     page.click('button:has-text("Login")')
@@ -155,7 +155,7 @@ def test_logout_restores_the_anonymous_browser_preference(live_server, page: Pag
     _set_user_theme(user, "dark")
     page.emulate_media(color_scheme="light")
     _set_anonymous_theme(page, live_server, "light")
-    # By hand: the probed login page is the subject.
+    # By hand: the login page is probed.
     page.fill('input[name="username"]', login.username)
     page.fill('input[name="password"]', login.password)
     page.click('button:has-text("Login")')
@@ -180,7 +180,7 @@ def test_prelogin_storage_is_ignored_and_not_migrated_to_account(
     _set_anonymous_theme(page, live_server, "dark")
     _install_first_frame_probe(page)
 
-    # By hand: the probed login page is the subject.
+    # By hand: the login page is probed.
     page.fill('input[name="username"]', login.username)
     page.fill('input[name="password"]', login.password)
     page.click('button:has-text("Login")')

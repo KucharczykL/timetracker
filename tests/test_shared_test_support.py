@@ -17,7 +17,7 @@ HELPERS = sorted(
 
 @pytest.mark.parametrize("name", HELPERS)
 def test_a_helper_shadows_no_module(name):
-    """``pythonpath`` puts tests/ first, for app code too."""
+    """tests/ comes first, for app code too."""
     elsewhere = [entry for entry in sys.path if Path(entry or ".").resolve() != TESTS]
 
     assert name not in sys.stdlib_module_names

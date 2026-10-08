@@ -853,7 +853,7 @@ def test_root_still_uses_an_explicit_database_url(harness, monkeypatch, tmp_path
 
 
 def test_the_cluster_trades_durability_for_speed(harness, monkeypatch, tmp_path):
-    """Each setting is its own command: ALTER SYSTEM refuses a transaction."""
+    """ALTER SYSTEM refuses a transaction block."""
     tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
     commands: list[list[str]] = []
     monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))

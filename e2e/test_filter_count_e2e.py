@@ -86,8 +86,7 @@ def _login_and_open(page: Page, live_server, query: str = "") -> None:
     page.goto(f"{live_server.url}/filter-count-test/{query}")
 
 
-# No ``db`` fixture: beside ``live_server``'s ``transactional_db`` it
-# breaks the flush between tests.
+# No ``db`` fixture: it breaks live_server's flush.
 
 
 @override_settings(ROOT_URLCONF="e2e.test_filter_count_e2e")
