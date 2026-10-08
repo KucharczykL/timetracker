@@ -13,12 +13,12 @@ waits for the page the redirect lands on first.
 import pytest
 from django.urls import reverse
 from entries import record_entry
+from graphs import default_graph
 from playwright.sync_api import Locator, Page, expect
 
 from e2e.helpers import held_choice, pick_choice, picker_opened
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Edition, Game, Platform, PlayerGame, Release
 from timetracker.temporal import TemporalValue
 
@@ -45,37 +45,10 @@ def dos(e2e_library) -> Platform:
     return Platform.objects.create(library=e2e_library, name="DOS")
 
 
-def state_default_graph(game: Game, library, *, platform=None, release_date=None):
-    """One default Edition holding one default Release.
-
-    Stated here rather than pulled from `tests/conftest.py`, which
-    is not on this package's path.
-    """
-    game.save()
-    return state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition-0",
-                is_default=True,
-                releases=(
-                    ReleaseState(
-                        key="edition-0-release-0",
-                        platform=platform,
-                        release_date=release_date,
-                        is_default=True,
-                    ),
-                ),
-            )
-        ],
-    )
-
-
 @pytest.fixture
 def game(e2e_library, amiga) -> Game:
     """One Game as the app leaves it."""
-    written = state_default_graph(
+    written = default_graph(
         Game(library=e2e_library, name="Elite"),
         e2e_library,
         platform=amiga,

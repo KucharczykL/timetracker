@@ -8,6 +8,7 @@ import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase, remove_purchase
 
 from games.commands.endpoint import ActStatement
@@ -100,8 +101,8 @@ def test_amount_text_writes_two_places(amount, text):
 
 
 @pytest.fixture
-def entry(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def entry(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     return record_entry(owned_library, graph.release)
 
 
@@ -169,12 +170,12 @@ def test_another_librarys_purchase_is_never_listed(
 
 @pytest.mark.parametrize("drift", ("entry", "player_game"))
 def test_a_drifted_purchase_is_never_listed(
-    owned_library, django_user_model, stated_graph, entry, drift
+    owned_library, django_user_model, entry, drift
 ):
     purchase = record_purchase(entry)
     second = django_user_model.objects.create_user(username="drift").library
     theirs = record_entry(
-        second, stated_graph(Game(name="Hades", library=second), second).release
+        second, default_graph(Game(name="Hades", library=second), second).release
     )
     if drift == "entry":
         Purchase.objects.filter(pk=purchase.pk).update(entry=theirs)
@@ -198,8 +199,8 @@ def _draft(copy, **changes) -> PurchaseDraft:
     )._replace(**changes)
 
 
-def test_record_answers_what_the_dispatch_created(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_record_answers_what_the_dispatch_created(owned_library):
+    graph = default_graph(Game(name="Hades", library=owned_library), owned_library)
     copy = EntryStatement(release_id=graph.release.pk, access="owned", format="digital")
 
     recorded = record_purchase_write(

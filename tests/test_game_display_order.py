@@ -8,6 +8,7 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from entries import record_entry
 from game_display_order import tied_games
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from session_rows import timed_row
 
@@ -194,11 +195,9 @@ def test_game_sort_name_sort_reads_display_order(owned_library, games, sort):
 
 
 @pytest.mark.parametrize("sort", ["name", "-name"])
-def test_entries_resolve_and_sort_in_display_order(
-    owned_library, games, stated_graph, sort
-):
+def test_entries_resolve_and_sort_in_display_order(owned_library, games, sort):
     entries = [
-        record_entry(owned_library, stated_graph(game, owned_library).release)
+        record_entry(owned_library, default_graph(game, owned_library).release)
         for game in reversed(games)
     ]
     expected = [game.id for game in games]

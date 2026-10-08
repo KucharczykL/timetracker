@@ -34,8 +34,8 @@ from graphs import default_graph
 from playwright.sync_api import Locator, Page, expect
 from purchases import record_purchase
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
-from e2e.tracked_games import create_tracked_game
 from games.models import (
     FilterPreset,
     Game,

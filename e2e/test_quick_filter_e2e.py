@@ -13,9 +13,9 @@ from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import ConsoleMessage, Locator, Page, expect
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from e2e.helpers import open_facet, pick_choice
-from e2e.tracked_games import create_tracked_game
 from games.models import Game, Platform, PlayerGameStatus
 from games.reads.calendar import calendar_day_zone
 

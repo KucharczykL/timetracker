@@ -8,6 +8,7 @@ from bulk_posts import act_url, posted, selection
 from django.http import Http404
 from django.urls import reverse
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase
 
 from games.bulk_actions import BULK_ACTIONS
@@ -91,15 +92,13 @@ def test_a_key_the_library_does_not_hold_comes_out_lost(owned_library, amiga):
     ] == [(str(shared.pk), True, PLATFORM_GONE)]
 
 
-def test_the_counts_are_the_live_rows_naming_each(
-    owned_library, stated_graph, amiga, dos
-):
-    lemmings = stated_graph(
+def test_the_counts_are_the_live_rows_naming_each(owned_library, amiga, dos):
+    lemmings = default_graph(
         Game(library=owned_library, name="Lemmings", platform=amiga),
         owned_library,
         platform=amiga,
     )
-    gone = stated_graph(
+    gone = default_graph(
         Game(library=owned_library, name="Turrican", platform=amiga),
         owned_library,
         platform=amiga,

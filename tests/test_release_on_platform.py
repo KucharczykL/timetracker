@@ -2,6 +2,7 @@
 
 import pytest
 from entries import record_entry
+from graphs import default_graph
 
 from games.models import Edition, EditionKind, Game, Platform, Release
 from games.reads.releases import (
@@ -27,8 +28,8 @@ def switch():
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph, ps5):
-    return stated_graph(
+def graph(owned_library, ps5):
+    return default_graph(
         Game(name="Tunic", library=owned_library), owned_library, platform=ps5
     )
 
@@ -148,10 +149,8 @@ def test_unspecified_answers_the_release_with_no_platform(owned_library, copy, g
     assert _answer(owned_library, copy, None) == OnPlatform(target)
 
 
-def test_another_games_release_is_not_a_candidate(
-    owned_library, copy, stated_graph, switch
-):
-    stated_graph(
+def test_another_games_release_is_not_a_candidate(owned_library, copy, switch):
+    default_graph(
         Game(name="Hades", library=owned_library), owned_library, platform=switch
     )
 

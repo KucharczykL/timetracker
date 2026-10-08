@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase, remove_purchase
 
 from games.catalog_release import SHARED_GAME_RELEASE
@@ -41,9 +42,9 @@ def _day(name: str, day: datetime.date) -> dict[str, str]:
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
+def graph(owned_library):
     ps5 = Platform.objects.create(name="PS5", group="Sony")
-    return stated_graph(
+    return default_graph(
         Game(name="Tunic", library=owned_library), owned_library, platform=ps5
     )
 

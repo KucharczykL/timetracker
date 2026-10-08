@@ -8,6 +8,7 @@ from django.db import connection, models
 from django.test.utils import isolate_apps
 from django.utils import timezone
 from entries import record_entry, remove_entry, restore_entry, second_release
+from graphs import default_graph
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
@@ -65,14 +66,14 @@ def second_library(django_user_model):
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture
-def shared_graph(owned_library, stated_graph):
+def shared_graph(owned_library):
     """A shared Game: stated as the library's, then given away."""
-    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    graph = default_graph(Game(name="Hades", library=owned_library), owned_library)
     Game.objects.filter(pk=graph.game.pk).update(library=None)
     return graph
 
@@ -182,10 +183,8 @@ def test_a_removed_release_or_parent_is_refused(owned_library, graph, level):
     assert refused.sentence == RELEASE_REMOVED
 
 
-def test_another_librarys_private_release_is_absent(
-    owned_library, second_library, stated_graph
-):
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+def test_another_librarys_private_release_is_absent(owned_library, second_library):
+    theirs = default_graph(Game(name="Hades", library=second_library), second_library)
 
     with pytest.raises(RowNotHeld):
         _dispatch(
@@ -303,11 +302,9 @@ def test_a_description_that_changes_nothing_is_unchanged(owned_library, graph):
     assert _event_types(entry) == ["library.libraryentry.created"]
 
 
-def test_a_description_refuses_a_release_of_another_game(
-    owned_library, graph, stated_graph
-):
+def test_a_description_refuses_a_release_of_another_game(owned_library, graph):
     entry = record_entry(owned_library, graph.release)
-    other = stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+    other = default_graph(Game(name="Celeste", library=owned_library), owned_library)
 
     refused = _refused(
         owned_library, DescribeEntry(entry_id=entry.pk, release_id=other.release.pk)
@@ -329,10 +326,10 @@ def test_a_description_refuses_a_removed_release(owned_library, graph):
 
 
 def test_a_description_refuses_another_librarys_release(
-    owned_library, second_library, graph, stated_graph
+    owned_library, second_library, graph
 ):
     entry = record_entry(owned_library, graph.release)
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+    theirs = default_graph(Game(name="Hades", library=second_library), second_library)
 
     with pytest.raises(RowNotHeld):
         _dispatch(
@@ -535,10 +532,10 @@ def test_an_entry_naming_a_foreign_player_game_is_a_defect(
 
 
 def test_an_entry_naming_a_foreign_private_release_is_a_defect(
-    owned_library, second_library, graph, stated_graph
+    owned_library, second_library, graph
 ):
     entry = record_entry(owned_library, graph.release)
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+    theirs = default_graph(Game(name="Hades", library=second_library), second_library)
     LibraryEntry.objects.filter(pk=entry.pk).update(release=theirs.release)
 
     with pytest.raises(RowUnreadable, match=str(theirs.release.pk)):

@@ -2,11 +2,11 @@
 
 import pytest
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
 from e2e.helpers import pick_choice
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Game, LibraryEntry, Platform, Release, UserLibrary
 
 
@@ -22,20 +22,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
     game = create_tracked_game(library, name)
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
-    return game
+    return default_graph(game, library, platform=platform).game
 
 
 def _submit(page: Page, label: str = "Save") -> None:

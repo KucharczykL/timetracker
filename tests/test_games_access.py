@@ -5,6 +5,7 @@ import json
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 from tracked_games import create_tracked_game
 
 from common.components.quick_filter import is_quick_editable, quick_facet_fields
@@ -22,13 +23,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def games(owned_library, stated_graph):
+def games(owned_library):
     """Owned: an owned digital copy and a sold physical one. Borrowed: one
     borrowed physical copy. Former: its one copy ended. Both: an owned and a
     borrowed copy. Bare: tracked, no copy."""
 
     def graph(name):
-        return stated_graph(Game(name=name, library=owned_library), owned_library)
+        return default_graph(Game(name=name, library=owned_library), owned_library)
 
     owned, borrowed, former, both = (
         graph(name) for name in ("Owned", "Borrowed", "Former", "Both")
@@ -112,8 +113,8 @@ def test_entry_count_counts_ended_copies_too(owned_library, games):
     assert _matching(owned_library, two) == {"Owned", "Both"}
 
 
-def test_a_removed_copy_counts_nowhere(owned_library, stated_graph):
-    gone = stated_graph(Game(name="Gone", library=owned_library), owned_library)
+def test_a_removed_copy_counts_nowhere(owned_library):
+    gone = default_graph(Game(name="Gone", library=owned_library), owned_library)
     remove_entry(record_entry(owned_library, gone.release))
 
     held = {"access": {"modifier": "NOT_NULL"}}
@@ -131,10 +132,8 @@ def test_entry_filter_narrows_by_a_copy(owned_library, games):
     assert _matching(owned_library, sold) == {"Owned"}
 
 
-def test_a_shared_game_counts_one_librarys_copies(
-    owned_library, django_user_model, stated_graph
-):
-    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_a_shared_game_counts_one_librarys_copies(owned_library, django_user_model):
+    graph = default_graph(Game(name="Hades", library=owned_library), owned_library)
     record_entry(owned_library, graph.release)
     Game.objects.filter(pk=graph.game.pk).update(library=None)
     second = django_user_model.objects.create_user("second").library

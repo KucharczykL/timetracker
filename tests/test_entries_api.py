@@ -6,6 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from entries import record_entry, remove_entry
+from graphs import default_graph
 
 from games.commands.scope import RELEASE_OF_ANOTHER_GAME, RELEASE_REMOVED
 from games.models import Game, LibraryEntry, LibraryEvent, Platform, PlayerGame
@@ -38,9 +39,11 @@ def second_library(django_user_model):
 
 
 @pytest.fixture
-def graph(library, stated_graph):
+def graph(library):
     platform = Platform.objects.create(library=library, name="Switch", group="")
-    return stated_graph(Game(name="Tunic", library=library), library, platform=platform)
+    return default_graph(
+        Game(name="Tunic", library=library), library, platform=platform
+    )
 
 
 def _post(client: Client, body: dict, **headers):
@@ -106,10 +109,8 @@ def test_a_removed_release_answers_the_sentence(auth_client, graph):
     assert response.json()["detail"] == RELEASE_REMOVED
 
 
-def test_another_librarys_private_release_is_absent(
-    auth_client, second_library, stated_graph
-):
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+def test_another_librarys_private_release_is_absent(auth_client, second_library):
+    theirs = default_graph(Game(name="Hades", library=second_library), second_library)
 
     response = _post(auth_client, {**_body(theirs)})
 
@@ -232,13 +233,11 @@ def test_patch_states_an_unknown_day_with_null(auth_client, library, graph):
     )
 
 
-def test_a_refused_patch_leaves_the_day_unmoved(
-    auth_client, library, graph, stated_graph
-):
+def test_a_refused_patch_leaves_the_day_unmoved(auth_client, library, graph):
     entry = record_entry(
         library, graph.release, acquired=TemporalValue.parse("2021-05")
     )
-    other = stated_graph(Game(name="Celeste", library=library), library)
+    other = default_graph(Game(name="Celeste", library=library), library)
 
     response = _patch(
         auth_client,
@@ -413,10 +412,8 @@ def test_resume_refuses_an_unknown_key(auth_client, library, graph):
     assert response.status_code == 422
 
 
-def test_another_librarys_entry_is_absent_to_both_acts(
-    auth_client, second_library, stated_graph
-):
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+def test_another_librarys_entry_is_absent_to_both_acts(auth_client, second_library):
+    theirs = default_graph(Game(name="Hades", library=second_library), second_library)
     entry = record_entry(second_library, theirs.release)
 
     patched = _patch(

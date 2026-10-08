@@ -9,6 +9,7 @@ from django.db.models import Q, QuerySet
 from django.urls import reverse
 from django.utils import timezone
 from entries import prerelease_release, record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row, timed_row, tracked_run
 
@@ -79,8 +80,8 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Hades", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -106,9 +107,9 @@ def a_session(run, release, *, at=START, hours=1, **columns):
 
 
 @pytest.fixture
-def world(owned_library, graph, demo, stated_graph):
+def world(owned_library, graph, demo):
     """Hades on both Editions; a demo-only game."""
-    demo_game = stated_graph(
+    demo_game = default_graph(
         Game(name="Demo Quest", library=owned_library), owned_library
     )
     demo_game_demo = prerelease_release(owned_library, demo_game.release)

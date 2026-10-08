@@ -6,6 +6,7 @@ from datetime import date
 import pytest
 from django.db import transaction
 from entries import record_entry
+from graphs import default_graph
 
 from games.commands.batch_undo import UndoSentences, refuse_unless_this_batch_wrote_it
 from games.commands.endpoint import ActStatement, WayActStatement
@@ -29,8 +30,8 @@ RESUMED = ActStatement(TemporalValue.from_day(date(2024, 6, 1)), "")
 
 
 @pytest.fixture
-def copy(owned_library, stated_graph) -> LibraryEntry:
-    graph = stated_graph(
+def copy(owned_library) -> LibraryEntry:
+    graph = default_graph(
         Game(name="Tunic", library=owned_library),
         owned_library,
         platform=Platform.objects.create(name="PS5", group="Sony"),

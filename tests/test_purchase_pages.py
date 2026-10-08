@@ -10,6 +10,7 @@ from calendar_days import displace_calendar
 from django.urls import reverse
 from django.utils.html import escape
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase, remove_purchase
 
 from common.date_time_presentation import (
@@ -55,8 +56,8 @@ def logged_in(client, owned_user):
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -438,10 +439,10 @@ def test_an_identical_refund_press_says_already_refunded(
 
 
 def test_add_purchase_on_a_foreign_or_removed_copy_is_absent(
-    logged_in, django_user_model, stated_graph, entry
+    logged_in, django_user_model, entry
 ):
     stranger = django_user_model.objects.create_user(username="stranger").library
-    graph = stated_graph(Game(name="Hades", library=stranger), stranger)
+    graph = default_graph(Game(name="Hades", library=stranger), stranger)
     foreign = record_entry(stranger, graph.release)
     removed = remove_entry(record_entry(entry.library, entry.release))
     before = LibraryEvent.objects.count()

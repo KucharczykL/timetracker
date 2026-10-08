@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from entries import end_entry_access, record_entry
+from graphs import default_graph
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -46,8 +47,8 @@ def _day(name: str, day: datetime.date) -> dict[str, str]:
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -109,9 +110,7 @@ def test_add_seeds_digital(owned_library, graph):
     )
 
 
-def test_add_on_a_game_seeds_its_default_release_among_several(
-    owned_library, graph, stated_graph
-):
+def test_add_on_a_game_seeds_its_default_release_among_several(owned_library, graph):
     from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 
     state_catalog_graph(
@@ -161,8 +160,8 @@ def test_add_offers_no_create_row_on_a_shared_game(owned_library):
     assert form.fields["release"].widget.create is None
 
 
-def test_add_refuses_a_release_of_another_game(owned_library, graph, stated_graph):
-    other = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_add_refuses_a_release_of_another_game(owned_library, graph):
+    other = default_graph(Game(name="Hades", library=owned_library), owned_library)
     form = _add(
         owned_library,
         graph,

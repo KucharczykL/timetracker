@@ -4,6 +4,7 @@ import json
 
 import pytest
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase, remove_purchase
 
 from common.criteria import ChoiceCriterion, FilterError, Modifier
@@ -24,9 +25,9 @@ def tagged(*words: Category) -> dict[str, object]:
 
 
 @pytest.fixture
-def copies(owned_library, stated_graph):
+def copies(owned_library):
     def copy(name: str) -> LibraryEntry:
-        graph = stated_graph(Game(name=name, library=owned_library), owned_library)
+        graph = default_graph(Game(name=name, library=owned_library), owned_library)
         return record_entry(owned_library, graph.release)
 
     return copy
@@ -174,8 +175,8 @@ def _entries(library, criterion: ChoiceCriterion) -> set[LibraryEntry]:
     return set(LibraryEntry.objects.filter(library=library).filter(q))
 
 
-def test_an_entry_reads_its_own_tags(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def test_an_entry_reads_its_own_tags(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     rental = record_entry(
         owned_library, graph.release, source_metadata=tagged(Category.RENTAL)
     )

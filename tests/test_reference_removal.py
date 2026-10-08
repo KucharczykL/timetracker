@@ -2,6 +2,7 @@
 
 import pytest
 from django.db import IntegrityError
+from graphs import default_graph
 
 from games.external_references import state_external_references
 from games.models import ExternalReference, Game, Platform, Release
@@ -111,9 +112,9 @@ def test_a_removed_platform_lets_go_of_its_key(owned_library):
     assert reference.removed_at is not None
 
 
-def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated_graph):
+def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library):
     """Only the removed row lets go."""
-    game, edition, release = stated_graph(
+    game, edition, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     reference = _reference("release", release, "Q999")
@@ -129,8 +130,8 @@ def test_a_live_release_under_a_removed_game_keeps_its_key(owned_library, stated
         _reference("release", other, "Q999")
 
 
-def test_removing_an_edition_marks_the_reference_it_holds(owned_library, stated_graph):
-    _, edition, _ = stated_graph(
+def test_removing_an_edition_marks_the_reference_it_holds(owned_library):
+    _, edition, _ = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     reference = _reference("edition", edition, "Q500")
@@ -141,8 +142,8 @@ def test_removing_an_edition_marks_the_reference_it_holds(owned_library, stated_
     assert reference.removed_at is not None
 
 
-def test_removing_a_release_marks_the_reference_it_holds(owned_library, stated_graph):
-    _, _, release = stated_graph(
+def test_removing_a_release_marks_the_reference_it_holds(owned_library):
+    _, _, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     reference = _reference("release", release, "Q501")
@@ -153,10 +154,8 @@ def test_removing_a_release_marks_the_reference_it_holds(owned_library, stated_g
     assert reference.removed_at is not None
 
 
-def test_restoring_an_edition_takes_back_a_key_that_is_free(
-    owned_library, stated_graph
-):
-    _, edition, _ = stated_graph(
+def test_restoring_an_edition_takes_back_a_key_that_is_free(owned_library):
+    _, edition, _ = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     reference = _reference("edition", edition, "Q500")
@@ -179,11 +178,9 @@ def test_restoring_a_platform_takes_back_a_key_that_is_free(owned_library):
     assert reference.removed_at is None
 
 
-def test_restoring_a_release_leaves_a_key_another_release_took(
-    owned_library, stated_graph
-):
+def test_restoring_a_release_leaves_a_key_another_release_took(owned_library):
     """The taken-meanwhile branch, on a Release."""
-    _, edition, release = stated_graph(
+    _, edition, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     reference = _reference("release", release, "Q501")

@@ -14,6 +14,7 @@ from bulk_posts import act_url, posted, press, selection
 from django.http import Http404, QueryDict
 from django.urls import reverse
 from entries import record_entry, remove_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase, remove_purchase
 
 from common.components.unset_field import unset_input_name
@@ -65,8 +66,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(
+def graph(owned_library):
+    return default_graph(
         Game(name="Tunic", library=owned_library),
         owned_library,
         platform=Platform.objects.create(name="PS5", group="Sony"),
@@ -126,13 +127,13 @@ def test_an_unreadable_filter_refuses_the_act(owned_library, first):
 
 
 def test_another_librarys_purchase_comes_out_lost(
-    owned_library, first, django_user_model, stated_graph
+    owned_library, first, django_user_model
 ):
     stranger = django_user_model.objects.create_user("stranger").library
     theirs = record_purchase(
         record_entry(
             stranger,
-            stated_graph(Game(name="Hades", library=stranger), stranger).release,
+            default_graph(Game(name="Hades", library=stranger), stranger).release,
         )
     )
 
@@ -205,15 +206,13 @@ def test_a_purchase_removed_since_the_confirmation_is_left_alone(logged_in, firs
     assert first.removed_at is not None
 
 
-def test_an_undo_of_another_librarys_purchase_is_absent(
-    owned_user, django_user_model, stated_graph
-):
+def test_an_undo_of_another_librarys_purchase_is_absent(owned_user, django_user_model):
     stranger = django_user_model.objects.create_user("stranger").library
     theirs = remove_purchase(
         record_purchase(
             record_entry(
                 stranger,
-                stated_graph(Game(name="Hades", library=stranger), stranger).release,
+                default_graph(Game(name="Hades", library=stranger), stranger).release,
             )
         )
     )

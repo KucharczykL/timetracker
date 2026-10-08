@@ -2,15 +2,15 @@
 
 import pytest
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
 from e2e.helpers import pick_choice
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
 from games.events.libraryentry import EntryAccessValue
-from games.models import Game, LibraryEntry, Platform, Release, UserLibrary
+from games.models import LibraryEntry, Platform, Release, UserLibrary
 from games.writes.libraryentry import record_entry
 from games.writes.playergame import new_correlation_id
 
@@ -26,21 +26,8 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 
 def _release(library: UserLibrary, name: str, platform: Platform) -> Release:
-    game: Game = create_tracked_game(library, name)
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
-    return Release.objects.get(edition__game=game)
+    game = create_tracked_game(library, name)
+    return default_graph(game, library, platform=platform).release
 
 
 @pytest.fixture

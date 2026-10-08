@@ -1828,8 +1828,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   wrappers in `games/views/playergame_writes.py`. `Game` holds no status and no
   mastered column: command is only way to state either fact, and projection is
   only place to read it. In tests, `create_tracked_game()` from
-  `tests/tracked_games.py` (and its `e2e/` twin) states the words on the row the
-  autouse hook seeds.
+  `tests/tracked_games.py` states the words on the row its autouse hook
+  seeds. Both suites import `tests/` helpers by bare name (`pythonpath`);
+  `e2e/` keeps no copy of one.
 - **A refused command becomes an answer** — wrap dispatch in `answered(subject)`
   from `games/writes/answers.py`. One clause per refusal; caller handles three
   shapes: `CommandRejected` or mapped `CommandConflict` becomes `CommandFailed`

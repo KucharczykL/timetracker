@@ -10,6 +10,7 @@ from devices import create_device
 from django.apps import apps as global_apps
 from django.db import DataError, IntegrityError, models, transaction
 from django.utils import timezone
+from graphs import default_graph
 
 from games.checks import check_projection_models
 from games.commands.playergame import TrackGame
@@ -1029,12 +1030,10 @@ def test_a_timing_correction_leaves_the_description_and_the_run(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_each_description_event_writes_its_own_column(
-    owned_user, owned_library, run, stated_graph
-):
+def test_each_description_event_writes_its_own_column(owned_user, owned_library, run):
     old_device = create_device(library=owned_library, name="Steam Deck")
     new_device = create_device(library=owned_library, name="Switch")
-    release = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    release = default_graph(Game(name="Hades", library=owned_library), owned_library)
     append_session(
         owned_library,
         owned_user,
@@ -1395,8 +1394,8 @@ def test_a_replay_reproduces_a_reclassified_session(owned_user, owned_library, r
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_creation_writes_the_release(owned_user, owned_library, run, stated_graph):
-    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_the_creation_writes_the_release(owned_user, owned_library, run):
+    graph = default_graph(Game(name="Hades", library=owned_library), owned_library)
 
     append_session(
         owned_library,

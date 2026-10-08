@@ -21,7 +21,6 @@ from graphs import default_graph
 from purchases import record_purchase, refund_purchase, request_run
 
 from games import tasks
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
@@ -476,23 +475,10 @@ class AnonymizeSampleTest(TransactionTestCase):
     def test_a_purchase_event_keeps_no_typed_text_or_real_amount(self):
         _build_dataset()
         owner = get_user_model().objects.get(username="sample-source")
-        game = Game.objects.create(library=owner.library, name="Tunic")
-        state_catalog_graph(
-            game=game,
-            library=owner.library,
-            editions=[
-                EditionState(
-                    key="edition-0",
-                    is_default=True,
-                    releases=(
-                        ReleaseState(key="edition-0-release-0", is_default=True),
-                    ),
-                )
-            ],
-        )
+        graph = default_graph(Game(library=owner.library, name="Tunic"), owner.library)
         entry = record_entry(
             owner.library,
-            Release.objects.get(edition__game=game),
+            graph.release,
             note="from a friend",
             acquisition_note="birthday",
         )

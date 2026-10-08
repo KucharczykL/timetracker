@@ -8,6 +8,7 @@ from django.db.models import CheckConstraint, Q
 from django.db.models.expressions import BaseExpression
 from django.urls import reverse
 from django.utils.timezone import now
+from graphs import default_graph
 
 from games import external_references
 from games.external_references import (
@@ -924,14 +925,12 @@ def test_a_reference_no_policy_admits_reads_as_text(
     assert "states no link" in caplog.text
 
 
-def test_an_edition_reads_its_owner_through_its_game(
-    owned_library, stated_graph, django_user_model
-):
+def test_an_edition_reads_its_owner_through_its_game(owned_library, django_user_model):
     """An Edition reads its Game's library column."""
     other = django_user_model.objects.create_user(
         username="other", password="p"
     ).library
-    _, edition, _ = stated_graph(Game(name="Elite", library=other), other)
+    _, edition, _ = default_graph(Game(name="Elite", library=other), other)
 
     with pytest.raises(ReferencesRefused) as refusal:
         state_external_references(
@@ -953,9 +952,9 @@ def test_an_edition_under_a_shared_game_is_refused(owned_library):
     assert refusal.value.messages[0] == SHARED_TARGET
 
 
-def test_an_edition_under_a_removed_game_is_refused(owned_library, stated_graph):
+def test_an_edition_under_a_removed_game_is_refused(owned_library):
     """A removed Game hides its Editions."""
-    game, edition, _ = stated_graph(
+    game, edition, _ = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     remove(game)
@@ -968,8 +967,8 @@ def test_an_edition_under_a_removed_game_is_refused(owned_library, stated_graph)
     assert refusal.value.messages[0] == REMOVED_TARGET
 
 
-def test_a_release_under_a_removed_edition_is_refused(owned_library, stated_graph):
-    _, edition, release = stated_graph(
+def test_a_release_under_a_removed_edition_is_refused(owned_library):
+    _, edition, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     remove(edition)
@@ -982,9 +981,9 @@ def test_a_release_under_a_removed_edition_is_refused(owned_library, stated_grap
     assert refusal.value.messages[0] == REMOVED_TARGET
 
 
-def test_a_release_under_a_removed_game_is_refused(owned_library, stated_graph):
+def test_a_release_under_a_removed_game_is_refused(owned_library):
     """Two rows up, and no mark between."""
-    game, _, release = stated_graph(
+    game, _, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     remove(game)
@@ -997,11 +996,9 @@ def test_a_release_under_a_removed_game_is_refused(owned_library, stated_graph):
     assert refusal.value.messages[0] == REMOVED_TARGET
 
 
-def test_a_release_states_a_key_under_the_library_two_rows_up(
-    owned_library, stated_graph
-):
+def test_a_release_states_a_key_under_the_library_two_rows_up(owned_library):
     """The live path through both ancestors."""
-    _, _, release = stated_graph(
+    _, _, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
 

@@ -4,10 +4,10 @@ from decimal import Decimal
 
 import pytest
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
 from games.commands.purchase import StatedPrice
@@ -27,19 +27,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 
 def _release(library: UserLibrary, name: str) -> Release:
-    game = create_tracked_game(library, name)
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(ReleaseState(key="release", is_default=True),),
-            )
-        ],
-    )
-    return Release.objects.get(edition__game=game)
+    return default_graph(create_tracked_game(library, name), library).release
 
 
 @pytest.fixture

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase
 
 from common.date_time_presentation import (
@@ -62,8 +63,8 @@ def _unknown_day(name: str) -> dict[str, str]:
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture

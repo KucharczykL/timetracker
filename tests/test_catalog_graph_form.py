@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.exceptions import ValidationError
+from graphs import default_graph
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -285,9 +286,9 @@ def graph_form(data=None, *, game, library):
 
 
 @pytest.fixture
-def plain_game(owned_library, stated_graph):
+def plain_game(owned_library):
     """One Game as the app leaves it: a default graph, columns mirrored."""
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_library, name="Portal"),
         owned_library,
         release_date=TemporalValue.from_year(2007),
@@ -473,10 +474,10 @@ def test_the_form_accepts_two_names_the_constraint_accepts(owned_library, plain_
 
 
 def test_the_graph_treats_another_library_s_release_id_as_a_new_row(
-    owned_library, plain_game, django_user_model, stated_graph
+    owned_library, plain_game, django_user_model
 ):
     stranger = django_user_model.objects.create_user(username="graphling", password="p")
-    theirs = stated_graph(
+    theirs = default_graph(
         Game(library=stranger.library, name="Theirs"), stranger.library
     )
 

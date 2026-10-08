@@ -6,6 +6,7 @@ import pytest
 from django.db import connection, transaction
 from django.utils import timezone
 from entries import record_entry, remove_entry, restore_entry
+from graphs import default_graph
 
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import CorrectEntryAcquisition, DescribeEntry
@@ -27,8 +28,8 @@ MAY = TemporalValue.parse("2021-05")
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 def _entries_drift(library) -> list[tuple[int, int, int]]:

@@ -1,22 +1,18 @@
 import contextlib
 import logging
-import uuid
 
 import pytest
 from bulk_batches import chunk_queue, failing_batches, held_batches  # noqa: F401
-from calendar_days import process_zone_off_the_calendar
-from django.db.models.signals import post_save
-from django.utils import timezone
-from graphs import default_graph
+from calendar_days import _process_clock_off_the_calendar  # noqa: F401
 from html_answers import html_answers_checked  # noqa: F401
 from icon_names import unknown_icon_names_fail  # noqa: F401
+from settings_caches import _reset_settings_caches  # noqa: F401
+from tracked_games import _track_created_games  # noqa: F401
 
 from games.models import (
     USER_PREFERENCE_FIELD_BY_KEY,
-    Game,
     UserPreferences,
 )
-from timetracker import config as config_module
 from timetracker import settings_resolver
 
 
@@ -47,16 +43,6 @@ def owned_user(db, django_user_model):
 @pytest.fixture
 def owned_library(owned_user):
     return owned_user.library
-
-
-@pytest.fixture
-def stated_graph():
-    """A Game with one default Edition holding one default Release.
-
-    The shape every page draws for a Game nobody has edited, and
-    the shape a test wants before it states something else.
-    """
-    return default_graph
 
 
 @pytest.fixture
@@ -109,33 +95,11 @@ def catalog_graph_post():
 
 
 @pytest.fixture(autouse=True)
-def _process_clock_off_the_calendar(settings):
-    """A process-clock day is wrong at every hour."""
-    settings.TIME_ZONE = process_zone_off_the_calendar()
-
-
-@pytest.fixture(autouse=True)
 def _no_process_statement_limit(monkeypatch):
     """Importing an entry point marks the whole worker."""
     from timetracker import database
 
     monkeypatch.setattr(database._ProcessStatements, "timeout_seconds", 0)
-
-
-@pytest.fixture(autouse=True)
-def _reset_settings_caches():
-    """Isolate the layered settings resolver between tests.
-
-    TestCase transaction rollback fires no ``SiteSetting`` commit signal, so a
-    written-then-rolled-back row would otherwise leak through the resolver's TTL
-    snapshot into later tests. Also reset the parsed env/ini file caches so
-    per-test ``ENV_FILE``/``INI_FILE`` fixtures don't bleed.
-    """
-    config_module.reset_caches()
-    settings_resolver.clear_cache()
-    yield
-    config_module.reset_caches()
-    settings_resolver.clear_cache()
 
 
 @pytest.fixture
@@ -203,53 +167,3 @@ def capture_client_errors_logger(caplog):
             client_logger.removeHandler(caplog.handler)
 
     return _capture
-
-
-@pytest.fixture(autouse=True)
-def _track_created_games(request):
-    """Seed each created game its projection rows.
-
-    Rows, not TrackGame: the command wants an actor and a transaction.
-    Both rows: a write path that finds no run creates a second.
-    Other words come through ``create_tracked_game``.
-    """
-    from games.models import (
-        PlayerGame,
-        PlayerGameStatus,
-        Playthrough,
-        PlaythroughKind,
-    )
-
-    if "untracked_games" in request.keywords:
-        yield
-        return
-
-    def track(sender, instance, created, raw, **kwargs):
-        #: raw is a loaddata row: the library may not exist yet.
-        if raw or not created or instance.library_id is None:
-            return
-        tracked, made = PlayerGame.objects.get_or_create(
-            library_id=instance.library_id,
-            game=instance,
-            defaults={
-                "pk": uuid.uuid7(),
-                "tracked_at": timezone.now(),
-                "status": PlayerGameStatus.UNPLAYED,
-                "mastered": False,
-            },
-        )
-        if not made:
-            return
-        Playthrough.objects.create(
-            pk=uuid.uuid7(),
-            library_id=instance.library_id,
-            player_game=tracked,
-            kind=PlaythroughKind.ORDINARY,
-            created_at=timezone.now(),
-        )
-
-    post_save.connect(track, sender=Game, dispatch_uid="test-track-created-games")
-    try:
-        yield
-    finally:
-        post_save.disconnect(sender=Game, dispatch_uid="test-track-created-games")

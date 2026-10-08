@@ -5,6 +5,7 @@ import json
 import pytest
 from django.urls import reverse
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase
 
 from common.criteria import Modifier, StringCriterion
@@ -16,9 +17,9 @@ pytestmark = pytest.mark.untracked_games
 
 
 @pytest.fixture
-def two_copies(owned_library, stated_graph):
+def two_copies(owned_library):
     """One game, two copies, a purchase each."""
-    graph = stated_graph(Game(library=owned_library, name="Tunic"), owned_library)
+    graph = default_graph(Game(library=owned_library, name="Tunic"), owned_library)
     return [
         record_purchase(
             record_entry(owned_library, graph.release),

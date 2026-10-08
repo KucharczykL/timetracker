@@ -12,6 +12,7 @@ from entries import (
     remove_entry,
     resume_entry_access,
 )
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase, remove_purchase, void_refund
 
 from games.end_ways import EndWay
@@ -39,8 +40,8 @@ def ps5():
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph, ps5):
-    return stated_graph(
+def graph(owned_library, ps5):
+    return default_graph(
         Game(name="Tunic", library=owned_library), owned_library, platform=ps5
     )
 
@@ -86,10 +87,12 @@ class History:
 
 
 @pytest.fixture
-def history(owned_library, graph, stated_graph, django_user_model, ps5):
-    other_graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def history(owned_library, graph, django_user_model, ps5):
+    other_graph = default_graph(
+        Game(name="Hades", library=owned_library), owned_library
+    )
     stranger = django_user_model.objects.create_user("stranger").library
-    stranger_graph = stated_graph(
+    stranger_graph = default_graph(
         Game(name="Tunic", library=stranger), stranger, platform=ps5
     )
     return History(owned_library, graph, other_graph, stranger, stranger_graph)

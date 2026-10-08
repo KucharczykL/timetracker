@@ -67,12 +67,12 @@ The price is one join per `tracked__` filter call — two when the quick bar set
 status and mastered. Collapsing them into a single `.filter()` call is the
 remedy if a query plan ever asks for it.
 
-`alive()` comes first, and it is what keeps a deleted game off the list. Since
+`alive()` comes first, and it is what keeps a removed game off the list. Since
 #676 a game delete never removes the row: `catalog.game` is a required
 reference kind, the backfill gave every game at least one event that names it,
-so `tombstone_or_delete()` takes the tombstone branch every time. The catalog
+so `tombstone_or_delete()` takes the branch that stamps the row every time. The catalog
 row survives with `tombstoned_at` set, and the projection row survives beside
-it. Without `alive()` every deleted game comes back.
+it. Without `alive()` every removed game comes back.
 
 The join is an inner join, so an untracked game is absent from every read.
 Three sources put games in a database and each one leaves a row: the game form
@@ -262,8 +262,8 @@ map alive.
 exercise a game read path, and under an inner join each of those reads an empty
 list.
 
-One autouse fixture in `tests/conftest.py` and one in `e2e/conftest.py` connect
-a `post_save` receiver on `Game`. On a created game that names a library, it
+One autouse fixture, `_track_created_games` in `tests/tracked_games.py`, which
+both suites' conftests import, connects a `post_save` receiver on `Game`. On a created game that names a library, it
 writes the row directly:
 
 ```python
@@ -347,7 +347,7 @@ all three.
 **`games/views/playergame_writes.py` stays.** The D2 bullet lists it for
 deletion, and the module's own docstring promised as much. Both sentences were
 written when the mirror was its reason for existing, and it is not:
-`record_facts()` still dispatches, still heals an untracked game, and still
+`record_facts()` still dispatches, still tracks an untracked game first, and still
 turns four command failures into an answer, and the view half still turns that
 answer into a toast. Deleting the pair would copy one `try/except
 PlayerGameWriteFailed` into five views. D2 removed the promise instead, and
@@ -359,7 +359,7 @@ it. Keeping them would leave the columns current for a game just added and
 stale for every game before it — a worse record than plainly stale, and one
 that reads as if something still maintains them.
 
-**A session on an untracked game heals it, whatever the letter says.** The
+**A session on an untracked game tracks it, whatever the letter says.** The
 `_record_played` catalog arm used to leave a game the catalog called finished
 untracked. That arm is gone, so the game is tracked and recorded `Played`. The
 alternative — no row, no statement — would keep the letter from being written
@@ -388,14 +388,14 @@ with a `record_facts()` statement, which #771 no longer has to.
 
 `PlayerGame.archived_at` gains no reader, and `ArchivePlayerGame` and
 `RestorePlayerGame` gain no caller. The column was going to hide a game from
-the list, and a delete already does that — since #676 a delete tombstones the
+the list, and a delete already does that — since #676 a delete stamps `tombstoned_at` on the
 catalog row, `alive()` drops it, and nothing is recoverable afterwards because
 `tombstone_or_delete()` runs Django's collector over everything below it.
 
 So the project holds four disagreeing ideas of removal: a hard delete for
-sessions, purchases, play events and status changes; a tombstone for games,
+sessions, purchases, play events and status changes; a `tombstoned_at` stamp for games,
 platforms and devices; an unwired `archived_at`; and the live projection row a
-tombstoned game leaves behind, still claiming the library tracks it. Which
+removed game leaves behind, still claiming the library tracks it. Which
 button means which, and what the confirmation page should say, is one decision
 about the whole project. Settling it inside a read cutover would settle it in
 one place and leave the other six models disagreeing, so it gets its own issue

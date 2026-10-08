@@ -3,10 +3,10 @@
 import pytest
 from devices import create_device
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
 from games.models import Device, Game, LibraryEntry, Platform, Release
@@ -300,24 +300,12 @@ def test_a_sign_in_inside_the_dialog_keeps_the_save(
 def _copy_got_in_2099(user, library) -> LibraryEntry:
     """Any end the form offers precedes it."""
     platform = Platform.objects.create(name="PS5", group="Sony")
-    game: Game = create_tracked_game(library, "Tunic")
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
+    game = create_tracked_game(library, "Tunic")
+    release = default_graph(game, library, platform=platform).release
     answer = record_entry(
         user,
         EntryStatement(
-            release_id=Release.objects.get(edition__game=game).pk,
+            release_id=release.pk,
             access="owned",
             format="digital",
             note="",
@@ -402,21 +390,8 @@ def _mark_new_link(page: Page, href: str, text: str) -> None:
 
 
 def _game_on(library, name: str, platform: Platform) -> Game:
-    game: Game = create_tracked_game(library, name)
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
-    return game
+    game = create_tracked_game(library, name)
+    return default_graph(game, library, platform=platform).game
 
 
 def test_a_picker_works_inside_and_the_message_follows_the_page(

@@ -18,6 +18,7 @@ from entries import (
     remove_entry,
     second_release,
 )
+from graphs import default_graph
 from historical_playtime_posts import posted_record
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row
@@ -101,13 +102,13 @@ START = datetime(2026, 1, 1, 12, tzinfo=UTC)
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Hades", library=owned_library), owned_library)
 
 
 @pytest.fixture
-def other_graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+def other_graph(owned_library):
+    return default_graph(Game(name="Celeste", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -232,10 +233,10 @@ def test_another_games_release_is_refused(owned_library, run, other_graph, other
 
 
 def test_a_release_the_library_cannot_see_is_absent(
-    owned_library, run, django_user_model, stated_graph
+    owned_library, run, django_user_model
 ):
     stranger = django_user_model.objects.create_user(username="stranger").library
-    theirs = stated_graph(Game(name="Tunic", library=stranger), stranger)
+    theirs = default_graph(Game(name="Tunic", library=stranger), stranger)
 
     with pytest.raises(RowNotHeld):
         state(owned_library, created_session(run, theirs.release))
@@ -598,10 +599,10 @@ def test_the_held_search_hints_a_release_whose_copies_all_ended(
 
 
 def test_the_held_search_answers_another_librarys_game_as_absent(
-    client, django_user_model, stated_graph
+    client, django_user_model
 ):
     stranger = django_user_model.objects.create_user(username="stranger").library
-    theirs = stated_graph(Game(name="Tunic", library=stranger), stranger)
+    theirs = default_graph(Game(name="Tunic", library=stranger), stranger)
 
     answer = client.get(f"/api/releases/held?game_id={theirs.game.pk}")
 
@@ -1003,11 +1004,11 @@ def test_a_patch_moving_alone_says_it_cleared_the_release(
 
 
 def test_a_patch_naming_an_unseen_release_is_absent(
-    client, owned_library, run, django_user_model, stated_graph
+    client, owned_library, run, django_user_model
 ):
     session = a_session(owned_library, run)
     stranger = django_user_model.objects.create_user(username="stranger").library
-    theirs = stated_graph(Game(name="Tunic", library=stranger), stranger)
+    theirs = default_graph(Game(name="Tunic", library=stranger), stranger)
 
     answer = client.patch(
         f"/api/session/{session.pk}",

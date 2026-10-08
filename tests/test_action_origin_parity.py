@@ -15,6 +15,7 @@ import pytest
 from devices import create_device
 from django.urls import Resolver404, resolve, reverse
 from entries import record_entry
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from purchases import record_purchase
 from session_rows import session_row
@@ -27,9 +28,9 @@ MUST_CARRY_ORIGIN = ORIGIN_AWARE
 
 
 @pytest.fixture
-def world(owned_library, stated_graph):
+def world(owned_library):
     platform = Platform.objects.create(name="PC")
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_library, name="Test Game", platform=platform),
         owned_library,
     )

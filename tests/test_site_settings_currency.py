@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth import get_user_model
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase
 
 from common.date_time_presentation import (
@@ -80,7 +81,6 @@ def test_convert_prices_targets_display_currency(
     user,
     clean_currency_env,
     django_capture_on_commit_callbacks,
-    stated_graph,
 ):
     from games.models import PurchaseConversionState, PurchaseValuation
     from games.tasks import convert_library_prices
@@ -90,7 +90,7 @@ def test_convert_prices_targets_display_currency(
         "DEFAULT_DISPLAY_CURRENCY",
         "EUR",
     )
-    graph = stated_graph(Game(library=user.library, name="Tunic"), user.library)
+    graph = default_graph(Game(library=user.library, name="Tunic"), user.library)
     purchase = record_purchase(
         record_entry(user.library, graph.release),
         amount=Decimal("50.00"),

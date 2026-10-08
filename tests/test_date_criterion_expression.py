@@ -6,6 +6,7 @@ from datetime import date
 import pytest
 from django.db.models import F
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase
 
 from common.criteria import DateCriterion, FilterError, Modifier
@@ -19,8 +20,8 @@ DAYS = (date(2026, 3, 4), date(2026, 3, 5), date(2026, 3, 6))
 
 
 @pytest.fixture
-def three_days(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def three_days(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     entry = record_entry(owned_library, graph.release)
     for day in DAYS:
         #: An upgrade's refund ends no copy.

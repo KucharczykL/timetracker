@@ -3,9 +3,9 @@
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
+from tracked_games import create_tracked_game
 
 from e2e.helpers import held_choice, open_facet, pick_choice
-from e2e.tracked_games import create_tracked_game
 from games.models import Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)

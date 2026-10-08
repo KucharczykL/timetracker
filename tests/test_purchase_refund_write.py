@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from entries import record_entry
+from graphs import default_graph
 from purchases import (
     record_purchase,
     refund_purchase,
@@ -30,8 +31,8 @@ JULY = TemporalValue.parse("2021-07-01")
 
 
 @pytest.fixture
-def entry(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def entry(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     return record_entry(owned_library, graph.release)
 
 
