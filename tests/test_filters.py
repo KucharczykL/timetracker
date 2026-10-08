@@ -5163,15 +5163,22 @@ class TestFieldMetadata:
         assert entry["kind"] == "number"
         assert entry["nullable"] is False
 
-    def test_duration_fields_where_none_occurs_state_the_pair(self):
-        for filter_cls, name in (
-            (GameFilter, "playtime_hours"),
-            (PlayerSessionFilter, "duration_hours"),
-            (GameFilter, "session_average"),
-        ):
-            entry = self._by_name(filter_cls)[name]
-            assert entry["nullable"] is True
-            assert entry["modifiers"][-2:] == ["IS_NULL", "NOT_NULL"]
+    def test_every_duration_field_offers_the_pair_unless_exempt(self):
+        # The record duration is NOT NULL and always positive, so it has no none case.
+        exempt = {("HistoricalPlaytimeFilter", "duration_hours")}
+        checked = 0
+        for filter_cls in _ALL_FILTERS:
+            for entry in field_metadata(filter_cls):
+                if "unit" not in entry:
+                    continue
+                checked += 1
+                key = (filter_cls.__name__, entry["name"])
+                if key in exempt:
+                    assert entry["nullable"] is False, key
+                    continue
+                assert entry["nullable"] is True, key
+                assert entry["modifiers"][-2:] == ["IS_NULL", "NOT_NULL"], key
+        assert checked == 5
 
     def test_duration_fields_state_their_unit(self):
         from games.filters import (
