@@ -1,5 +1,10 @@
 """Tests for the configuration reader in ``timetracker/config.py``."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from django.core.exceptions import DisallowedHost, ImproperlyConfigured
 from django.middleware.csrf import CsrfViewMiddleware
@@ -11,11 +16,15 @@ from timetracker.config import (
     SettingSource,
     config,
     derive_hosts_and_origins,
+    parse_app_url,
+    serves_only_https,
 )
 from timetracker.settings_commands import (
     SETTING_NAMESPACE_CHOICES,
     SettingNamespace,
 )
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(autouse=True)
@@ -233,6 +242,69 @@ def test_url_with_port_is_preserved_in_origin():
     hosts, origins = derive_hosts_and_origins("http://localhost:8000")
     assert hosts == ["localhost"]
     assert origins == ["http://localhost:8000"]
+
+
+@pytest.mark.parametrize(
+    "app_url,expected",
+    [
+        ("https://tracker.example.com", True),
+        ("HTTPS://tracker.example.com", True),
+        ("https://a.example.com , https://b.example.com", True),
+        ("http://localhost:8000", False),
+        ("https://tracker.example.com,http://192.168.1.5:8000", False),
+    ],
+)
+def test_serves_only_https_when_every_url_is_https(app_url, expected):
+    assert serves_only_https(app_url) is expected
+
+
+@pytest.mark.parametrize(
+    "app_url",
+    [
+        "",
+        "https://tracker.example.com,",
+        "https://a.example.com,,https://b.example.com",
+        "tracker.example.com",
+        "htps://tracker.example.com",
+        "https//tracker.example.com",
+        "https://",
+    ],
+)
+def test_malformed_app_url_is_refused(app_url):
+    with pytest.raises(ImproperlyConfigured, match="APP_URL"):
+        parse_app_url(app_url)
+
+
+@pytest.mark.parametrize(
+    "app_url,secure",
+    [("https://tracker.example.com", True), ("http://localhost:8000", False)],
+)
+def test_settings_mark_cookies_secure_from_app_url(app_url, secure):
+    """Settings evaluate once at import, so a clean process reads them."""
+    script = (
+        "import django\n"
+        "django.setup()\n"
+        "from django.conf import settings\n"
+        "print(settings.SESSION_COOKIE_SECURE, settings.CSRF_COOKIE_SECURE)\n"
+    )
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "DJANGO_SETTINGS_MODULE": "timetracker.settings",
+        "DATABASE_URL": "postgresql://127.0.0.1/timetracker",
+        "APP_URL": app_url,
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == [str(secure), str(secure)]
+    flag = "Secure" if secure else "not Secure"
+    assert f"cookies are {flag}, from APP_URL {app_url!r}" in result.stderr
 
 
 # --- Django integration: derived values are accepted by Django internals -----

@@ -56,6 +56,48 @@ WantedBy=default.target
 This is an application-only unit. Keep database configuration, storage, and
 lifecycle in the database unit.
 
+## Behind a TLS proxy
+
+Your reverse proxy ends TLS; the container serves plain http on port 8000.
+
+1. Set `APP_URL` to your public https URL:
+
+   ```text
+   APP_URL=https://tracker.example.com
+   ```
+
+   The session and CSRF cookies then carry the `Secure` flag.
+   *Why:* the app cannot see the browser's scheme behind the proxy, so
+   `APP_URL` states it ([Django: SESSION_COOKIE_SECURE](https://docs.djangoproject.com/en/stable/ref/settings/#session-cookie-secure)).
+
+2. Add HSTS in the proxy that ends TLS, for example its Caddyfile:
+
+   ```text
+   header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+   ```
+
+   *Why:* browsers then refuse plain http to your host
+   ([MDN: HSTS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)).
+
+3. Check the startup log for:
+
+   ```text
+   Session and CSRF cookies are Secure, from APP_URL 'https://tracker.example.com'.
+   ```
+
+If startup fails with `ImproperlyConfigured` naming `APP_URL`, look for a
+stray comma or a typo in the scheme.
+
+Do not:
+
+- reach the container port over plain http while `APP_URL` is https:
+  login fails there;
+- set `SECURE_PROXY_SSL_HEADER` or `SECURE_SSL_REDIRECT` in Django:
+  the first lets a client mark its own request secure, the second
+  redirects forever. The app needs neither
+  ([Caddy: trusted_proxies](https://caddyserver.com/docs/caddyfile/options#trusted-proxies)
+  explains how the scheme travels between proxies).
+
 ## Manual backup
 
 Use a `pg_dump` client compatible with your server. The flags prevent a restore
