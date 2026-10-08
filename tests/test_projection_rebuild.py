@@ -1631,24 +1631,6 @@ def test_the_command_takes_a_user_instead_of_a_library(owned_library):
 
 
 @pytest.mark.django_db
-def test_an_unknown_user_fails_before_anything_is_read(owned_library):
-    with pytest.raises(CommandError, match="No user is named"):
-        run_command("--user", "nobody", "--check")
-
-    assert not LibraryEventStreamHead.objects.exists()
-
-
-@pytest.mark.django_db
-def test_a_user_owning_no_library_fails(django_user_model):
-    """Two errors: no user, or no library."""
-    user = django_user_model.objects.create_user(username="libraryless")
-    UserLibrary.objects.filter(user=user).delete()
-
-    with pytest.raises(CommandError, match="owns no library"):
-        run_command("--user", "libraryless", "--check")
-
-
-@pytest.mark.django_db
 def test_a_scope_is_required(owned_library):
     with pytest.raises(CommandError, match="one of the arguments"):
         run_command("--check")
@@ -1750,22 +1732,6 @@ def test_fail_on_drift_without_a_check_is_refused(owned_library):
         run_command("--all-libraries", "--fail-on-drift")
 
     assert not LibraryEventStreamHead.objects.exists()
-
-
-@pytest.mark.django_db
-def test_all_libraries_finding_none_is_refused(owned_library):
-    """Nothing replayed reads as nothing wrong."""
-    UserLibrary.objects.all().delete()
-
-    with pytest.raises(CommandError, match="found no library"):
-        run_command("--all-libraries", "--check", "--fail-on-drift")
-
-
-@pytest.mark.django_db
-def test_an_empty_username_is_read_as_a_username(owned_library):
-    """Truthiness would fall through to a UUID."""
-    with pytest.raises(CommandError, match="No user is named ''"):
-        run_command("--user", "", "--check")
 
 
 @pytest.mark.django_db

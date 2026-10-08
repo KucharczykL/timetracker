@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections import Counter
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DEFAULT_DB_ALIAS, transaction
 from django.db.models.deletion import Collector
 
+from games.management.library_scope import user_named
 from games.retention import purging_library
 
 
@@ -28,7 +29,7 @@ class Command(BaseCommand):
         username = options["user"]
         confirmation = options["confirm"]
         if confirmation is None:
-            user = self._get_user(username)
+            user = user_named(username)
             self._write_purge_scope(self._purge_counts(user))
             self.stdout.write(
                 self.style.WARNING(
@@ -42,23 +43,12 @@ class Command(BaseCommand):
         # A purge takes the events too.
         # Nothing is left to protect.
         with transaction.atomic(), purging_library():
-            user = self._get_user(username, for_update=True)
+            user = user_named(username, users=User.objects.select_for_update())
             self._write_purge_scope(self._purge_counts(user))
             user.delete()
         self.stdout.write(
             self.style.SUCCESS(f"PURGED User {username!r} and the scope above.")
         )
-
-    @staticmethod
-    def _get_user(username, *, for_update=False):
-        user_model = get_user_model()
-        users = user_model.objects
-        if for_update:
-            users = users.select_for_update()
-        try:
-            return users.get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"User {username!r} does not exist.") from error
 
     def _write_purge_scope(self, counts):
         self.stdout.write(

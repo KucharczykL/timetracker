@@ -3,12 +3,12 @@
 import uuid
 from typing import NamedTuple
 
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 
 from games.commands.session_reclassification import statement_from_session
 from games.events.benchmark_workload import RECORD_TABLES
+from games.management.library_scope import library_of_user
 from games.models import PlayerSession, UserLibrary
 from games.planner_statistics import analyze_tables
 from games.reads.playtime import played_years
@@ -91,8 +91,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         username = options["user"]
         confirmation = options["confirm"]
-        user = self._get_user(username)
-        library = user.library
+        library = library_of_user(username)
+        user = library.user
 
         scopes: list[ScopeKey] = [None, *played_years(library)]
         before = {scope: read_scope(library, scope) for scope in scopes}
@@ -184,11 +184,3 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(line))
         else:
             self.stdout.write(line)
-
-    @staticmethod
-    def _get_user(username: str) -> User:
-        user_model = get_user_model()
-        try:
-            return user_model.objects.get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"User {username!r} does not exist.") from error

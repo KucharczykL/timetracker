@@ -1748,6 +1748,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   where one exists. Autovacuum runs late, and a join planned without
   statistics runs for minutes. See
   [Planner statistics](docs/database.md#planner-statistics).
+- **A maintenance command resolves its scope in one module** —
+  `--user`/`--library`/`--all-libraries` and every user or library lookup go
+  through `games/management/library_scope.py`, never a command's own
+  `.get()`. Contract is
+  [One library scope](docs/superpowers/specs/2026-10-08-issue-1066-library-scope-design.md)
 - **Read settings via `config()`** from `timetracker/config.py`, never bare
   `os.environ.get` in `settings.py`. Declare `cast`/`allow_file`/`required_in_prod`
   explicitly. Container-bootstrap flags belong in `entrypoint.sh`.

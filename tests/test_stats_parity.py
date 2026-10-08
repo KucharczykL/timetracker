@@ -629,7 +629,7 @@ def test_a_mismatched_confirm_is_refused(owned_user, review_population):
 
 @pytest.mark.django_db(transaction=True)
 def test_an_unknown_user_is_named():
-    with pytest.raises(CommandError, match="does not exist"):
+    with pytest.raises(CommandError, match="No user is named"):
         run_parity(user="nobody")
 
 

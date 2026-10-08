@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import NamedTuple
 
 import yaml
-from django.contrib.auth import get_user_model
 from django.core import serializers
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
@@ -27,6 +26,7 @@ from games.events.references import Resolution, UnknownReferenceKind
 from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
+from games.management.library_scope import library_of_user
 from games.models import (
     Edition,
     ExchangeRate,
@@ -137,29 +137,25 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         username = options["user"]
-        user_model = get_user_model()
-        try:
-            user = user_model.objects.select_related("library").get(username=username)
-        except user_model.DoesNotExist as error:
-            raise CommandError(f"User {username!r} does not exist.") from error
+        library = library_of_user(username)
 
         records = self._read_fixture()
         self._validate_records(records)
 
         with transaction.atomic():
             state = PurchaseConversionState.objects.select_for_update().get(
-                library=user.library
+                library=library
             )
-            if LibraryEventStreamHead.objects.filter(library=user.library).exists():
+            if LibraryEventStreamHead.objects.filter(library=library).exists():
                 raise CommandError(
-                    f"Library {user.library.pk} already has an event stream; "
+                    f"Library {library.pk} already has an event stream; "
                     "the sample fixture cannot be loaded into it twice."
                 )
-            platform_uuids = self._load_platforms(records, user.library)
+            platform_uuids = self._load_platforms(records, library)
             self._load_exchange_rates(records)
             loadable = self._prepare_private_records(
                 records,
-                user.library,
+                library,
                 platform_uuids,
             )
             self._reject_primary_key_collisions(loadable)
@@ -178,7 +174,7 @@ class Command(BaseCommand):
 
             #: Replay the fixture's events into projections.
             try:
-                report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
+                report = rebuild_projections(library, mode=RebuildMode.REBUILD)
             except (
                 UnresolvedReferences,
                 StreamNotContiguous,
@@ -195,7 +191,7 @@ class Command(BaseCommand):
                 )
             if (
                 state.requested_version != state.published_version
-                or stale_purchases(user.library).exists()
+                or stale_purchases(library).exists()
             ):
                 _request_conversion_for_locked_state(
                     state,
@@ -203,7 +199,7 @@ class Command(BaseCommand):
                 )
             #: The fixture carries no Wikidata reference rows.
             try:
-                backfilled = backfill_wikidata_references(user.library)
+                backfilled = backfill_wikidata_references(library)
             except ValidationError as refusal:
                 raise CommandError(
                     "Sample fixture references could not be written: "
@@ -229,7 +225,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Loaded {len(loadable)} sample object(s) for User {username!r} "
-                f"into library {user.library.pk}, with "
+                f"into library {library.pk}, with "
                 f"{backfilled.written} external reference(s) and "
                 f"{report.replayed_through} event(s) replayed across "
                 + ", ".join(

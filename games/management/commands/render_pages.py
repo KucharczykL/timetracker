@@ -20,6 +20,7 @@ from django.utils.html import escape
 from common.components.custom_elements import FILTER_MODE_MODELS
 from common.layout import VERSION_STAMP_CLASS
 from common.returns import UrlName
+from games.management.library_scope import library_of_user
 from games.models import Game, UserLibrary
 from games.reads.playtime import played_years
 from games.views.returns import READ_ONLY
@@ -147,10 +148,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        try:
-            user = User.objects.get(username=options["user"])
-        except User.DoesNotExist as error:
-            raise CommandError(f"No user {options['user']!r}.") from error
+        user = library_of_user(options["user"]).user
         #: call_command passes a str; argparse a Path.
         out = Path(options["out"])
         if out.exists() and any(out.iterdir()):

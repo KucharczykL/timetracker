@@ -195,7 +195,7 @@ def test_purge_user_library_cascades_private_data_but_keeps_shared_platform(owne
 
 @pytest.mark.django_db
 def test_load_sample_data_rejects_a_missing_explicit_user():
-    with pytest.raises(CommandError, match="does not exist"):
+    with pytest.raises(CommandError, match="No user is named"):
         call_command("load_sample_data", "--user", "missing-user")
 
 
@@ -811,7 +811,8 @@ def test_a_tracked_game_with_no_library_is_no_violation(owner):
 
 
 @pytest.mark.django_db
-def test_all_libraries_audit_reports_a_user_missing_their_library(owner):
+def test_all_libraries_audit_reports_a_user_missing_their_library(owner, outsider):
+    """A second library keeps the census non-empty."""
     owner.library.delete()
     output = StringIO()
 

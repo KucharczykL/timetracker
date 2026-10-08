@@ -2,85 +2,62 @@
 
 Issue #1066.
 
-## Problem
+## Rule
 
-Management commands name the data they act on by a user or a library.
-Each command resolves that name itself. The rules and the sentences
-differ:
+A management command that names a user or a library resolves the name
+through `games/management/library_scope.py`. No command resolves one
+itself. The module states each refusal once, so every command answers
+alike.
 
-- `rebuild_projections` refuses an empty `--all-libraries`.
-  `audit_library_ownership` accepts it and reports a pass.
-- `rebuild_projections` reads `--user ""` as a username.
-  `audit_library_ownership` tests truthiness, so `--user ""` falls
-  through to `options["library_id"]`, which is `None`, and answers
-  "Library None does not exist."
-- A missing user reads "No user is named 'x'." in one command,
-  "No user 'x'." in another, "User 'x' or their library does not
-  exist." in a third and "User 'x' does not exist." in four more.
-- Four commands that read `user.library` raise an uncaught
-  `RelatedObjectDoesNotExist` for a user without a library.
-- `benchmark_events` repeats `rebuild_projections`'s library-id parse.
+## Interface
 
-## Design
-
-`games/management/library_scope.py` is the one module. It holds:
-
-- `add_scope_arguments(parser, *, verb)`: the required, mutually
-  exclusive group `--user`, `--library` (dest `library_id`),
+- `add_scope_arguments(parser, *, verb)` adds the required, mutually
+  exclusive group `--user`, `--library` (dest `library_id`) and
   `--all-libraries`. `verb` fills each help line.
-- `scoped_libraries(options) -> list[UserLibrary]`: the libraries the
-  group names, in key order, with `user` selected.
-- `user_named(username, *, users: UserRows | None = None) -> User`: one
-  user by name. `users` lets a caller lock (`select_for_update`); the
-  catch reads `users.model.DoesNotExist`.
-- `library_of_user(username) -> UserLibrary`, with `user` selected.
-- `library_by_id(raw_id: str | UUID) -> UserLibrary`. A `UUID` passes
-  unparsed; `call_command` hands one through unchanged.
+- `scoped_libraries(options)` returns the libraries the group names, in
+  key order, with `user` selected.
+- `library_of_user(username)` returns the library of one user, with
+  `user` selected.
+- `user_named(username, *, users=None)` returns one user. A caller that
+  locks passes `users=User.objects.select_for_update()`.
+- `library_by_id(raw_id)` takes text or a `UUID`.
 
-### Rules, stated once
+## Refusals
 
 1. `--all-libraries` that finds no library is refused: "--all-libraries
-   found no library, so there was nothing to act on." An empty census reads as
-   a clean one otherwise. The sentence is shorter than
-   `rebuild_projections`'s old one on purpose: it now serves both.
-2. `--user` is tested with `is not None`. `--user ""` is a username and
-   answers "No user is named ''." One rule for every name: a lookup
-   that finds nothing. (The module #772 removed refused an empty name
-   with its own sentence; this reverses that.)
-3. A missing user and a user without a library are two sentences: "No
-   user is named 'x'." and "User 'x' owns no library."
-4. A library id that is not a UUID answers "'x' is not a library id.";
-   a UUID no library holds answers "No library <uuid>."
-5. No group member set is refused: "Name --user, --library or
+   found no library, so there was nothing to act on." An empty census
+   must not read as a clean one.
+2. `--user ""` is a username. The module tests `--user` with
+   `is not None`, so an empty name answers "No user is named ''."
+3. A missing user and a user without a library have two sentences:
+   "No user is named 'x'." and "User 'x' owns no library."
+4. Text that is not a UUID, or a UUID that is not version 7, answers
+   "'x' is not a library id." A UUIDv7 that no library holds answers
+   "No library <uuid>."
+5. A group with no member set is refused: "Name --user, --library or
    --all-libraries." argparse enforces the group, but `call_command`
-   with `library_id=None` or `all_libraries=False` passes it.
+   can pass every member unset.
 
-### Callers
+## Callers
 
-- `rebuild_projections`, `audit_library_ownership`: the group and
-  `scoped_libraries`. Their `_resolve_libraries` go.
-- `render_pages`, `verify_reclassification_parity`, `load_sample_data`,
-  `anonymize_sample`: `library_of_user`, since each reads the library.
-- `purge_user_library`: `user_named` under `select_for_update`. It
-  purges a user who may hold no library.
-- `benchmark_events`: `library_by_id`; its `--seed` conflict check stays
+- `rebuild_projections` and `audit_library_ownership` use the group and
+  `scoped_libraries`.
+- `render_pages`, `verify_reclassification_parity`, `load_sample_data`
+  and `anonymize_sample` use `library_of_user`, because each reads the
+  library.
+- `purge_user_library` uses `user_named` under a lock. It purges a user
+  that may hold no library.
+- `benchmark_events` uses `library_by_id`. Its `--seed` conflict stays
   in the command.
 
-`audit_library_ownership --all-libraries` still lists users without a
-library while one library exists. Under rule 1 a database with no
-library at all exits non-zero with the scope sentence instead: every
-user then lacks one, so the list adds nothing.
-`test_all_libraries_audit_reports_a_user_missing_their_library` keeps
-a second, libraried user so it still reaches the list.
+## Consequence
+
+`audit_library_ownership --all-libraries` lists each user without a
+library while at least one library exists. With no library at all,
+rule 1 refuses the run. Every user then lacks a library, so the list
+adds nothing.
 
 ## Tests
 
-`tests/test_library_scope.py` states each rule once, against the module.
-Command tests keep one case each that proves the command reads the
-module. `tests/test_library_commands.py:198` and
-`tests/test_stats_parity.py:632` match "does not exist" for a missing
-user and move to "No user is named".
-
-## Follow-up issues to file
-
-None.
+`tests/test_library_scope.py` tests each refusal against the module.
+Command tests keep the cases that prove each command reads the module.
