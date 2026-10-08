@@ -29,7 +29,12 @@ end of the pipe, so the reader waits for an EOF that never comes and a finished
 command looks like it hung. A failed start quotes the log lines that attempt
 added. Stop the cluster with `make stop-postgres`; the command waits for
 shutdown and succeeds when the managed server is already stopped or absent. It
-only targets the current worktree's managed cluster. Set `DATABASE_URL` to use
+only targets the current worktree's managed cluster. The managed cluster runs
+with `fsync` and `synchronous_commit` off, set on every `make ensure-postgres`
+through `ALTER SYSTEM`: each `DROP DATABASE` waits for a checkpoint, and a
+checkpoint's fsync held every test worker's end for half a minute. An OS crash
+or power loss can then corrupt the cluster; rebuild it with `make loadsample`
+or `make restore-dump`. Set `DATABASE_URL` to use
 an existing server instead; `make stop-postgres` never stops that external
 server. Deployments should provide the URL through `DATABASE_URL__FILE` so
 credentials need not appear in the environment or the Compose configuration.

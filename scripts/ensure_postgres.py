@@ -572,6 +572,33 @@ def provision_database(
         run([str(tools.createdb), *base, "-O", "timetracker", "timetracker"])
 
 
+#: A throwaway cluster: speed over crash safety.
+SPEED_OVER_DURABILITY = ("fsync = off", "synchronous_commit = off")
+
+
+def relax_durability(
+    tools: Tools, port: int, account: ServerAccount | None = None
+) -> None:
+    """Stop waiting on the disk; reload.
+
+    A checkpoint's fsync took 30 s, and every DROP DATABASE waits
+    for one. An OS crash can then corrupt this local cluster; it is
+    rebuilt, never restored.
+    """
+    base = ["-h", "127.0.0.1", "-p", str(port), "-d", "postgres"]
+    if account is not None:
+        base += ["-U", account.name]
+    settings = [
+        arg
+        for setting in SPEED_OVER_DURABILITY
+        for arg in ("-c", f"ALTER SYSTEM SET {setting}")
+    ]
+    run(
+        [str(tools.psql), *base, "-Atq", *settings, "-c", "SELECT pg_reload_conf()"],
+        capture=True,
+    )
+
+
 def verify_contract(tools: Tools, port: int) -> PostgresContract:
     result = run(
         [
@@ -688,6 +715,7 @@ def ensure(cache: Path) -> str:
     start_cluster(tools, data_dir, port, account)
     wait_for_ready(tools, port)
     provision_database(tools, port, account)
+    relax_durability(tools, port, account)
     verify_contract(tools, port)
     url = f"postgresql://timetracker@127.0.0.1:{port}/timetracker"
     print(

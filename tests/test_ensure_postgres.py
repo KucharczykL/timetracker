@@ -484,6 +484,7 @@ def test_ensure_reuses_existing_cluster_metadata(harness, monkeypatch, tmp_path)
     )
     monkeypatch.setattr(harness, "wait_for_ready", lambda *args: None)
     monkeypatch.setattr(harness, "provision_database", lambda *args: None)
+    monkeypatch.setattr(harness, "relax_durability", lambda *args: None)
     monkeypatch.setattr(harness, "verify_contract", lambda *args: None)
 
     assert (
@@ -767,6 +768,11 @@ def test_root_hands_the_server_side_to_the_account_it_picked(
         "provision_database",
         lambda _tools, _port, given: seen.__setitem__("provisioned", given),
     )
+    monkeypatch.setattr(
+        harness,
+        "relax_durability",
+        lambda _tools, _port, given: seen.__setitem__("relaxed", given),
+    )
     monkeypatch.setattr(harness, "verify_contract", lambda *args: None)
 
     assert (
@@ -778,6 +784,7 @@ def test_root_hands_the_server_side_to_the_account_it_picked(
         "given": (cache / "postgres", account),
         "started": account,
         "provisioned": account,
+        "relaxed": account,
     }
 
 
@@ -843,3 +850,22 @@ def test_root_still_uses_an_explicit_database_url(harness, monkeypatch, tmp_path
     )
 
     assert harness.ensure(tmp_path) == "postgresql://external.example/tracker"
+
+
+def test_the_cluster_trades_durability_for_speed(harness, monkeypatch, tmp_path):
+    """Each setting is its own command: ALTER SYSTEM refuses a transaction."""
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    commands: list[list[str]] = []
+    monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))
+
+    harness.relax_durability(tools, 5432)
+
+    (command,) = commands
+    statements = [
+        command[index + 1] for index, arg in enumerate(command) if arg == "-c"
+    ]
+    assert statements == [
+        "ALTER SYSTEM SET fsync = off",
+        "ALTER SYSTEM SET synchronous_commit = off",
+        "SELECT pg_reload_conf()",
+    ]

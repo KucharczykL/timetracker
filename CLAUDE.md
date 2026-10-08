@@ -1427,7 +1427,8 @@ and never fetch it; nothing there lints.
 ### Database
 
 PostgreSQL 18 required. Development uses `make ensure-postgres` (normally via Nix
-shell) to provision ignored loopback-only cluster; deployments supply
+shell) to provision ignored loopback-only cluster, run with `fsync` off (an OS
+crash can corrupt it; rebuild, never restore); deployments supply
 `DATABASE_URL`. Every connection must use UTF-8, `builtin` locale provider, and
 `C.UTF-8` — full contract in [Database contract](docs/database.md). Migrations
 live in `games/migrations/`. Note the `GeneratedField`s (above).
