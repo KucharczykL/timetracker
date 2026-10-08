@@ -15,23 +15,35 @@ No migration and no operator statement removes a content type.
 
 - A migration that removes content types must name each model. The next
   squash deletes that migration, and the work moves to hand-run SQL.
-- Raw SQL does not reach the dependent rows. It must delete four tables in
-  order. The Django command deletes through the ORM collector, which finds
-  them.
+- Raw SQL does not cascade. It must delete four tables in order. The Django
+  command deletes through the ORM collector, which takes that order.
 - The entrypoint makes one `manage.py` call, to keep cold starts short. The
-  sweep runs inside that process. It costs one query per installed app.
+  sweep runs inside that process. It reads `django_content_type` in one
+  query; each stale type adds its delete.
 - The command is idempotent. A start that finds nothing stale deletes
   nothing.
+
+## Behaviour
+
+- The sweep runs at verbosity 2. The container log names each content type
+  it deletes.
+- `--no-input` deletes without a prompt. Without it, the command reads
+  standard input, and a container start hangs or fails.
+- The collector reaches only installed models. A table outside them with a
+  foreign key to `django_content_type` refuses the delete. The startup
+  command then fails with a `CommandError` that names the table and the
+  constraint, and the container does not start. In the database, only
+  `auth_permission` has such a key today.
 
 ## Scope
 
 - The command reads installed apps only. It does not take
-  `--include-stale-apps`. A DEBUG-only app (admin, debug toolbar) is not
-  installed in production, and its rows stay.
-- In the database, only `auth_permission` has a foreign key to
-  `django_content_type`. No application model refers to a content type.
-- `--no-input` deletes without a prompt. Without it, the command asks for
-  confirmation on standard input, which a container start does not answer.
+  `--include-stale-apps`. A DEBUG-only app (`debug_toolbar`,
+  `django_extensions`) is not installed in production, and its rows stay.
+- An older image does not know a newer image's models. A rollback deletes
+  their content types and permissions, and a later `migrate` creates new
+  permissions without the grants. The app checks no permission, so a
+  rollback loses nothing it reads.
 
 ## Evidence
 
@@ -42,7 +54,12 @@ removed nothing.
 
 ## Tests
 
-`tests/test_bootstrap_container.py` holds the order of the nested commands. It
-also creates a stale content type with a permission, a user grant and a group
-grant, runs the startup command, and checks that all four are gone and that a
-live model's content type stays.
+`tests/test_bootstrap_container.py` holds:
+
+- the order of the nested commands;
+- a stale content type, its permission and grants removed, and named in the
+  output;
+- a live model's permissions and an uninstalled app's rows kept, over two
+  runs;
+- a foreign key from a table outside the apps stopping startup with a
+  `CommandError` that names the table.

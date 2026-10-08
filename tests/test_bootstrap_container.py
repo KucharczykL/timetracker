@@ -14,6 +14,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db import connection, transaction
 from django.test import TestCase
 
 from games.management.commands.bootstrap_container import (
@@ -65,18 +67,50 @@ class BootstrapContainerTest(TestCase):
         )
         user = get_user_model().objects.create_user(username="granted")
         user.user_permissions.add(permission)
-        group = Group.objects.create(name="granted")
-        group.permissions.add(permission)
+        Group.objects.create(name="granted").permissions.add(permission)
+        output = StringIO()
 
-        call_command("bootstrap_container", verbosity=0, stdout=StringIO())
+        call_command("bootstrap_container", verbosity=0, stdout=output)
 
         self.assertFalse(ContentType.objects.filter(pk=stale.pk).exists())
         self.assertFalse(Permission.objects.filter(pk=permission.pk).exists())
-        self.assertFalse(user.user_permissions.exists())
-        self.assertFalse(group.permissions.exists())
-        self.assertTrue(
-            ContentType.objects.filter(app_label="games", model="game").exists()
+        self.assertIn("games | droppedmodel", output.getvalue())
+
+    def test_live_models_and_uninstalled_apps_keep_their_rows(self):
+        uninstalled = ContentType.objects.create(
+            app_label="notinstalled", model="thing"
         )
+        Permission.objects.create(
+            content_type=uninstalled, codename="view_thing", name="Can view"
+        )
+        content_type_count = ContentType.objects.count()
+        permission_count = Permission.objects.count()
+
+        call_command("bootstrap_container", verbosity=0, stdout=StringIO())
+        call_command("bootstrap_container", verbosity=0, stdout=StringIO())
+
+        self.assertEqual(ContentType.objects.count(), content_type_count)
+        self.assertEqual(Permission.objects.count(), permission_count)
+        self.assertTrue(
+            Permission.objects.filter(
+                content_type__app_label="games", codename="view_game"
+            ).exists()
+        )
+
+    def test_a_foreign_key_from_outside_the_apps_stops_startup(self):
+        stale = ContentType.objects.create(app_label="games", model="droppedmodel")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "CREATE TABLE leftover_log (content_type_id integer"
+                " REFERENCES django_content_type (id))"
+            )
+            cursor.execute("INSERT INTO leftover_log VALUES (%s)", [stale.pk])
+
+        with (
+            transaction.atomic(),
+            self.assertRaisesMessage(CommandError, "leftover_log"),
+        ):
+            call_command("bootstrap_container", verbosity=0, stdout=StringIO())
 
     def test_scrub_staging_only_on_request(self):
         self.assertIn(("scrub_staging", ()), _run("--scrub-staging"))

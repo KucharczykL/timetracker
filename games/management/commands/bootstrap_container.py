@@ -2,7 +2,8 @@ import secrets
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
+from django.db import IntegrityError
 
 from games.models import Game
 
@@ -16,9 +17,9 @@ PASSWORD_BYTES = 16
 class Command(BaseCommand):
     help = (
         "Run the container's one-shot startup work — migrate and the stale "
-        "content type sweep, plus whichever of "
-        "the staging scrub, sample-data seed and default superuser the "
-        "entrypoint asks for — in a single Django process."
+        "content type sweep, plus whichever of the staging scrub, sample-data "
+        "seed and default superuser the entrypoint asks for — in a single "
+        "Django process."
     )
 
     def add_arguments(self, parser):
@@ -43,8 +44,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         call_command("migrate")
-        # A dropped model leaves its content type and permissions.
-        call_command("remove_stale_contenttypes", "--no-input")
+        self._remove_stale_content_types()
 
         if options["scrub_staging"]:
             call_command("scrub_staging")
@@ -58,6 +58,22 @@ class Command(BaseCommand):
         if should_load_sample:
             call_command("load_sample_data", "--user", DEFAULT_SUPERUSER)
             self.stdout.write(self.style.SUCCESS("Loaded sample data."))
+
+    def _remove_stale_content_types(self) -> None:
+        # Migrate leaves dropped models' content types behind.
+        try:
+            call_command(
+                "remove_stale_contenttypes",
+                "--no-input",
+                verbosity=2,
+                stdout=self.stdout,
+            )
+        except IntegrityError as error:
+            raise CommandError(
+                "A table outside the installed apps still names a stale content"
+                f" type:\n{str(error).strip()}\n"
+                "Drop that table, or its rows, and start again."
+            ) from error
 
     def _ensure_default_superuser(self) -> None:
         user_model = get_user_model()

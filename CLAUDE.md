@@ -1454,7 +1454,7 @@ All configurable Django settings read through `config()` in
   overridden directly (e.g. `ALLOWED_HOSTS=*` behind reverse proxy);
   `CSRF_TRUSTED_ORIGINS` always derived from `APP_URL`.
 - `TIME_ZONE` reads `TZ` (defaults `UTC`); no library day read depends on it.
-- Django Admin, Debug Toolbar, and `django_extensions` are `DEBUG`-only.
+- Debug Toolbar and `django_extensions` are `DEBUG`-only; Django Admin is not installed.
 - `DEV_LOGIN_PREFILL` (**dev/staging only**, off by default): `username:password`
   prefills login form and sends `X-Robots-Tag: noindex` — login still POSTs and
   authenticates (not a bypass). `make dev` sets `admin:admin`; `make devlogin`
