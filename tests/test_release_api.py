@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from django.http import Http404
+from graphs import default_graph
 
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN
 from games.catalog_release import SHARED_GAME_RELEASE, PlatformRelease, release_on
@@ -21,8 +22,8 @@ def ps5():
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph, ps5):
-    return stated_graph(
+def graph(owned_library, ps5):
+    return default_graph(
         Game(name="Tunic", library=owned_library),
         owned_library,
         platform=ps5,
@@ -54,9 +55,9 @@ def test_search_answers_the_games_releases_labelled(client, owned_user, graph):
 
 
 def test_a_label_names_a_named_edition_and_an_unspecified_platform(
-    client, owned_user, owned_library, stated_graph
+    client, owned_user, owned_library
 ):
-    written = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    written = default_graph(Game(name="Hades", library=owned_library), owned_library)
     Edition.objects.filter(pk=written.edition.pk).update(name="Deluxe")
     client.force_login(owned_user)
 

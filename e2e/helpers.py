@@ -2,8 +2,58 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import NamedTuple
 
+from django.conf import settings
+from django.contrib.auth import authenticate, get_user_model
+from django.test import Client
 from playwright.sync_api import Locator, Page, expect
+
+
+class Credentials(NamedTuple):
+    """One user's username and password."""
+
+    username: str
+    password: str
+
+
+E2E_LOGIN = Credentials("tester", "secret123")
+
+
+def create_login_user(credentials: Credentials, *, superuser: bool = False):
+    """A user these credentials sign in as."""
+    users = get_user_model().objects
+    create = users.create_superuser if superuser else users.create_user
+    return create(username=credentials.username, password=credentials.password)
+
+
+def log_in(page: Page, live_server, credentials: Credentials = E2E_LOGIN) -> None:
+    """Sign in by cookie; no navigation."""
+    user = authenticate(username=credentials.username, password=credentials.password)
+    if user is None:
+        raise AssertionError(_refusal(credentials))
+    user.library  # noqa: B018 - a user without one fails here
+    client = Client()
+    client.force_login(user)
+    cookie_name = settings.SESSION_COOKIE_NAME
+    session_key = client.cookies[cookie_name].value
+    page.context.add_cookies(
+        [{"name": cookie_name, "value": session_key, "url": live_server.url}]
+    )
+    sent = page.context.cookies(live_server.url)
+    if not any(cookie["name"] == cookie_name for cookie in sent):
+        raise AssertionError(f"{live_server.url} would not get {cookie_name}")
+
+
+def _refusal(credentials: Credentials) -> str:
+    """Why ``authenticate`` refused these credentials."""
+    user = get_user_model().objects.filter(username=credentials.username).first()
+    if user is None:
+        return f"no user named {credentials.username}"
+    if not user.is_active:
+        return f"{credentials.username} is inactive"
+    return f"{credentials.username}'s password does not match"
+
 
 TABLES_SETTLED = """
 () => [...document.querySelectorAll('responsive-table')].every(

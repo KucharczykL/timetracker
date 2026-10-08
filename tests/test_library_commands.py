@@ -947,3 +947,22 @@ def test_the_loader_takes_every_dumped_model():
 
     rebuilt = {"games.platform", "games.exchangerate"}
     assert set(DUMP_LABELS) - rebuilt <= set(LOADABLE_MODELS)
+
+
+@pytest.mark.django_db
+def test_sample_load_refuses_a_field_the_model_lacks(owner, monkeypatch, tmp_path):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(
+        """- model: games.game
+  pk: 00000000-0000-7000-8000-000000000401
+  fields:
+    library: __target_library__
+    retired_column: 1
+"""
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(CommandError, match="could not be loaded"):
+        call_command("load_sample_data", "--user", owner.username)

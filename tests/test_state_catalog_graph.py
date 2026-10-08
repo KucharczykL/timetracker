@@ -8,6 +8,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from graphs import default_graph
 
 from games.catalog_writes import (
     DUPLICATE_EDITION_NAME,
@@ -42,8 +43,8 @@ def other_library(django_user_model):
 
 
 @pytest.fixture
-def game(owned_library, stated_graph):
-    return stated_graph(Game(library=owned_library, name="Deus Ex"), owned_library)
+def game(owned_library):
+    return default_graph(Game(library=owned_library, name="Deus Ex"), owned_library)
 
 
 def one(key="edition-0", **fields) -> EditionState:
@@ -133,8 +134,8 @@ def test_a_named_release_that_is_removed_is_refused(owned_library, game):
     assert refused.value.key == "edition-0-release-0"
 
 
-def test_another_game_s_edition_is_refused(owned_library, game, stated_graph):
-    theirs = stated_graph(Game(library=owned_library, name="Theirs"), owned_library)
+def test_another_game_s_edition_is_refused(owned_library, game):
+    theirs = default_graph(Game(library=owned_library, name="Theirs"), owned_library)
 
     with pytest.raises(GraphRefused) as refused:
         state(game.game, owned_library, one(edition=theirs.edition))
@@ -143,8 +144,8 @@ def test_another_game_s_edition_is_refused(owned_library, game, stated_graph):
     assert refused.value.key == "edition-0"
 
 
-def test_another_edition_s_release_is_refused(owned_library, game, stated_graph):
-    theirs = stated_graph(Game(library=owned_library, name="Theirs"), owned_library)
+def test_another_edition_s_release_is_refused(owned_library, game):
+    theirs = default_graph(Game(library=owned_library, name="Theirs"), owned_library)
 
     with pytest.raises(GraphRefused) as refused:
         state(
@@ -442,10 +443,10 @@ def live_releases(edition: Edition) -> list[Release]:
     return list(Release.objects.alive().filter(edition=edition).order_by("pk"))
 
 
-def test_a_binned_release_does_not_eat_its_re_add(owned_library, stated_graph):
+def test_a_binned_release_does_not_eat_its_re_add(owned_library):
     """The case that started this: one submit, two rows, one pair."""
     amiga = Platform.objects.create(library=owned_library, name="Amiga")
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_library, name="Elite"),
         owned_library,
         platform=amiga,

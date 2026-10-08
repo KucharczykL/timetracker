@@ -13,26 +13,16 @@ waits for the page the redirect lands on first.
 import pytest
 from django.urls import reverse
 from entries import record_entry
+from graphs import default_graph
 from playwright.sync_api import Locator, Page, expect
 
 from e2e.helpers import held_choice, pick_choice, picker_opened
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Edition, Game, Platform, PlayerGame, Release
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-@pytest.fixture
-def signed_in(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 @pytest.fixture
@@ -45,37 +35,10 @@ def dos(e2e_library) -> Platform:
     return Platform.objects.create(library=e2e_library, name="DOS")
 
 
-def state_default_graph(game: Game, library, *, platform=None, release_date=None):
-    """One default Edition holding one default Release.
-
-    Stated here rather than pulled from `tests/conftest.py`, which
-    is not on this package's path.
-    """
-    game.save()
-    return state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition-0",
-                is_default=True,
-                releases=(
-                    ReleaseState(
-                        key="edition-0-release-0",
-                        platform=platform,
-                        release_date=release_date,
-                        is_default=True,
-                    ),
-                ),
-            )
-        ],
-    )
-
-
 @pytest.fixture
 def game(e2e_library, amiga) -> Game:
     """One Game as the app leaves it."""
-    written = state_default_graph(
+    written = default_graph(
         Game(library=e2e_library, name="Elite"),
         e2e_library,
         platform=amiga,
@@ -161,9 +124,9 @@ def saved(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
 
 
-def test_a_cloned_row_adds_a_release(signed_in, live_server, game, amiga, dos):
+def test_a_cloned_row_adds_a_release(authenticated_page, live_server, game, amiga, dos):
     """One more row, and the mark stays where it was."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
 
     page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
@@ -183,7 +146,7 @@ def test_a_cloned_row_adds_a_release(signed_in, live_server, game, amiga, dos):
 
 
 def test_the_mark_moves_to_the_row_a_person_chose(
-    signed_in, live_server, e2e_library, game, dos
+    authenticated_page, live_server, e2e_library, game, dos
 ):
     """The radio says which release the games list draws."""
     Release.objects.create(
@@ -191,7 +154,7 @@ def test_the_mark_moves_to_the_row_a_person_chose(
         platform=dos,
         release_date=TemporalValue.from_year(1988),
     )
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
 
     release_card(page, 0, 1).locator("input[name='in_library']").check()
@@ -204,7 +167,7 @@ def test_the_mark_moves_to_the_row_a_person_chose(
 
 
 def test_the_bin_takes_one_release_and_leaves_the_other(
-    signed_in, live_server, e2e_library, game, amiga, dos
+    authenticated_page, live_server, e2e_library, game, amiga, dos
 ):
     """A removed row stays in the form and is stamped on submit."""
     going = Release.objects.create(
@@ -212,7 +175,7 @@ def test_the_bin_takes_one_release_and_leaves_the_other(
         platform=dos,
         release_date=TemporalValue.from_year(1988),
     )
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
 
     release_card(page, 0, 1).locator("[data-catalog-remove]").click()
@@ -226,10 +189,10 @@ def test_the_bin_takes_one_release_and_leaves_the_other(
 
 
 def test_binning_a_release_and_re_adding_its_pair_keeps_the_new_row(
-    signed_in, live_server, game, amiga
+    authenticated_page, live_server, game, amiga
 ):
     """One submit, one statement: the re-add is not eaten by the removal."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     old = live_releases(default_edition(game))[0]
 
@@ -250,7 +213,7 @@ def test_binning_a_release_and_re_adding_its_pair_keeps_the_new_row(
 
 
 def test_binning_the_marked_row_moves_the_mark_where_a_person_sees_it(
-    signed_in, live_server, game, amiga, dos
+    authenticated_page, live_server, game, amiga, dos
 ):
     """The bin states a removal, and the mark falls to a row that stays.
 
@@ -262,7 +225,7 @@ def test_binning_the_marked_row_moves_the_mark_where_a_person_sees_it(
         platform=dos,
         release_date=TemporalValue.from_year(1988),
     )
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     old = live_releases(default_edition(game))[0]
 
@@ -285,7 +248,7 @@ def test_binning_the_marked_row_moves_the_mark_where_a_person_sees_it(
 
 
 def test_undo_takes_the_bin_back_and_the_mark_with_it(
-    signed_in, live_server, game, amiga, dos
+    authenticated_page, live_server, game, amiga, dos
 ):
     """An accidental bin leaves the graph as it was."""
     Release.objects.create(
@@ -293,7 +256,7 @@ def test_undo_takes_the_bin_back_and_the_mark_with_it(
         platform=dos,
         release_date=TemporalValue.from_year(1988),
     )
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     marked = release_card(page, 0, 0)
 
@@ -315,14 +278,14 @@ def test_undo_takes_the_bin_back_and_the_mark_with_it(
 
 
 def test_undo_takes_back_the_bin_of_an_edition(
-    signed_in, live_server, game, amiga, dos
+    authenticated_page, live_server, game, amiga, dos
 ):
     """The block comes back, and the mark inside it."""
     second = Edition.objects.create(game=game, name="Remaster")
     Release.objects.create(
         edition=second, platform=dos, release_date=TemporalValue.from_year(1990)
     )
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     block = page.locator("[data-catalog-edition='0']")
 
@@ -342,9 +305,11 @@ def test_undo_takes_back_the_bin_of_an_edition(
     assert live_releases(default_edition(game))[0].is_default
 
 
-def test_a_cloned_block_adds_an_edition(signed_in, live_server, game, amiga, dos):
+def test_a_cloned_block_adds_an_edition(
+    authenticated_page, live_server, game, amiga, dos
+):
     """A second Edition, named, and the default did not move."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
 
     page.click("[data-catalog-add='edition']")
@@ -361,7 +326,7 @@ def test_a_cloned_block_adds_an_edition(signed_in, live_server, game, amiga, dos
 
 
 def test_a_refused_release_reads_inside_its_own_row(
-    signed_in, live_server, e2e_library, game, amiga, dos
+    authenticated_page, live_server, e2e_library, game, amiga, dos
 ):
     """Two alike say nothing apart, and the row says so."""
     standing = Release.objects.create(
@@ -369,7 +334,7 @@ def test_a_refused_release_reads_inside_its_own_row(
         platform=dos,
         release_date=TemporalValue.from_year(1984),
     )
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
 
     refused = release_card(page, 0, 1)
@@ -382,7 +347,7 @@ def test_a_refused_release_reads_inside_its_own_row(
 
 
 def test_a_new_game_states_two_editions_at_once(
-    signed_in, live_server, e2e_library, amiga, dos
+    authenticated_page, live_server, e2e_library, amiga, dos
 ):
     """Add Game writes the Game and its whole graph in one Submit.
 
@@ -390,7 +355,7 @@ def test_a_new_game_states_two_editions_at_once(
     Edition holds the stated Release rather than an empty one beside
     it.
     """
-    page = signed_in
+    page = authenticated_page
     open_add_form(page, live_server)
 
     page.fill("input[name='name']", "Elite")
@@ -412,12 +377,12 @@ def test_a_new_game_states_two_editions_at_once(
     assert (written.platform, written.year_released) == (amiga, 1984)
 
 
-def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
+def test_a_row_names_its_controls_at_both_widths(authenticated_page, live_server, game):
     """Narrow, each control keeps a label; wide, one header stands over them.
 
     The form width never reaches the grid, so the cap is lifted.
     """
-    page = signed_in
+    page = authenticated_page
     page.set_viewport_size({"width": 390, "height": 900})
     open_form(page, live_server, game)
     card = release_card(page, 0, 0)
@@ -444,10 +409,10 @@ def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
 
 
 def test_a_cloned_row_takes_the_original_release(
-    signed_in, live_server, e2e_library, amiga, dos
+    authenticated_page, live_server, e2e_library, amiga, dos
 ):
     """A cloned row fills itself from the Game."""
-    page = signed_in
+    page = authenticated_page
     open_add_form(page, live_server)
 
     page.fill("input[name='name']", "Grim Fandango")
@@ -470,13 +435,15 @@ def test_a_cloned_row_takes_the_original_release(
     assert [release.is_default for release in releases] == [True, False]
 
 
-def test_the_button_wakes_when_the_original_release_fills(signed_in, live_server):
+def test_the_button_wakes_when_the_original_release_fills(
+    authenticated_page, live_server
+):
     """The button wakes with no reload.
 
     Here a real key reaches the real engine across two upgraded
     elements, which jsdom states but does not run.
     """
-    page = signed_in
+    page = authenticated_page
     open_add_form(page, live_server)
     button = copy_button(release_card(page, 0, 0))
     expect(button).to_be_disabled()
@@ -491,9 +458,11 @@ def mark_text(card: Locator) -> Locator:
     return card.locator("label [data-catalog-name-of='platform']")
 
 
-def test_a_changed_row_names_its_new_platform(signed_in, live_server, game, dos):
+def test_a_changed_row_names_its_new_platform(
+    authenticated_page, live_server, game, dos
+):
     """Narrow: visible text. Wide: the radio's name."""
-    page = signed_in
+    page = authenticated_page
     page.set_viewport_size({"width": 390, "height": 900})
     open_form(page, live_server, game)
     card = release_card(page, 0, 0)
@@ -516,9 +485,9 @@ def test_a_changed_row_names_its_new_platform(signed_in, live_server, game, dos)
 
 
 def test_a_cloned_row_names_the_platform_chosen_in_it(
-    signed_in, live_server, game, dos
+    authenticated_page, live_server, game, dos
 ):
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
     added = release_card(page, 0, 1)
@@ -546,9 +515,9 @@ def test_a_cloned_row_names_the_platform_chosen_in_it(
 
 
 def test_a_cloned_edition_names_what_is_typed_in_it(
-    signed_in, live_server, game, amiga
+    authenticated_page, live_server, game, amiga
 ):
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     page.click("[data-catalog-add='edition']")
     block = page.locator("[data-catalog-edition='1']")
@@ -577,10 +546,10 @@ def radio_named(scope: Locator, platform: str) -> Locator:
 
 
 def test_back_shows_the_stored_platform_and_names_it(
-    signed_in, live_server, game, amiga, dos
+    authenticated_page, live_server, game, amiga, dos
 ):
     """Back restores no pick; the stored one stands."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     choose_platform(release_card(page, 0, 0), "DOS")
     page.fill("input[name='edition-0-name']", "Gold")
@@ -607,10 +576,10 @@ def test_back_shows_the_stored_platform_and_names_it(
 
 
 def test_a_cloned_row_creates_a_platform_from_its_create_row(
-    signed_in, live_server, game, amiga, e2e_library
+    authenticated_page, live_server, game, amiga, e2e_library
 ):
     """Typed, created, named; one submit."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
     added = release_card(page, 0, 1)
@@ -628,10 +597,10 @@ def test_a_cloned_row_creates_a_platform_from_its_create_row(
 
 
 def test_a_cloned_row_creates_a_platform_in_a_dialog(
-    signed_in, live_server, game, amiga, e2e_library
+    authenticated_page, live_server, game, amiga, e2e_library
 ):
     """The + opens Add Platform; its row lands."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
     added = release_card(page, 0, 1)
@@ -650,9 +619,11 @@ def test_a_cloned_row_creates_a_platform_in_a_dialog(
     assert [release.platform for release in releases] == [amiga, created]
 
 
-def test_a_refused_page_names_the_posted_platform(signed_in, live_server, game, dos):
+def test_a_refused_page_names_the_posted_platform(
+    authenticated_page, live_server, game, dos
+):
     """Two unnamed editions refuse the page."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     choose_platform(release_card(page, 0, 0), "DOS")
     page.click("[data-catalog-add='edition']")
@@ -669,9 +640,9 @@ def test_a_refused_page_names_the_posted_platform(signed_in, live_server, game, 
 
 
 def test_a_row_added_after_a_bin_names_its_own_platform(
-    signed_in, live_server, game, dos
+    authenticated_page, live_server, game, dos
 ):
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
     add = "[data-catalog-edition='0'] [data-catalog-add='release']"
     page.click(add)
@@ -688,10 +659,10 @@ def test_a_row_added_after_a_bin_names_its_own_platform(
 
 
 def test_an_excluded_game_leaves_the_unfinished_list(
-    signed_in, live_server, game, e2e_library
+    authenticated_page, live_server, game, e2e_library
 ):
     """Ticked: detail names it, stats drop it."""
-    page = signed_in
+    page = authenticated_page
     record_entry(
         e2e_library,
         default_edition(game).releases.get(),
@@ -714,9 +685,9 @@ def test_an_excluded_game_leaves_the_unfinished_list(
     assert PlayerGame.objects.get(game=game).excluded_from_unfinished is True
 
 
-def test_the_parent_row_follows_the_kind(signed_in, live_server, game):
+def test_the_parent_row_follows_the_kind(authenticated_page, live_server, game):
     """Hidden for main, shown for add-ons, cleared."""
-    page = signed_in
+    page = authenticated_page
     open_add_form(page, live_server)
     parent_row = page.locator("[data-field-row='parent']")
     expect(parent_row).to_be_hidden()
@@ -735,10 +706,12 @@ def test_the_parent_row_follows_the_kind(signed_in, live_server, game):
     expect(parent_row.locator("input[type=hidden][name='parent']")).to_have_count(0)
 
 
-def test_the_parent_picker_offers_no_addons(signed_in, live_server, e2e_library, game):
+def test_the_parent_picker_offers_no_addons(
+    authenticated_page, live_server, e2e_library, game
+):
     addon = Game.objects.create(library=e2e_library, name="Elite DLC")
     Game.objects.filter(pk=addon.pk).update(kind="dlc", parent=game)
-    page = signed_in
+    page = authenticated_page
     open_add_form(page, live_server)
 
     pick_choice(page, "kind", "dlc")
@@ -751,8 +724,8 @@ def test_the_parent_picker_offers_no_addons(signed_in, live_server, e2e_library,
     expect(picker.get_by_role("option", name="Elite DLC")).to_have_count(0)
 
 
-def test_a_cloned_edition_saves_its_kind(signed_in, live_server, game):
-    page = signed_in
+def test_a_cloned_edition_saves_its_kind(authenticated_page, live_server, game):
+    page = authenticated_page
     open_form(page, live_server, game)
 
     page.click("[data-catalog-add='edition']")
@@ -764,8 +737,8 @@ def test_a_cloned_edition_saves_its_kind(signed_in, live_server, game):
     assert added.kind == "prerelease"
 
 
-def test_a_new_dlc_names_its_parent(signed_in, live_server, e2e_library, game):
-    page = signed_in
+def test_a_new_dlc_names_its_parent(authenticated_page, live_server, e2e_library, game):
+    page = authenticated_page
     open_add_form(page, live_server)
 
     page.fill("input[name='name']", "Elite Expansion")
@@ -782,9 +755,9 @@ def test_a_new_dlc_names_its_parent(signed_in, live_server, e2e_library, game):
     expect(parent_link).to_have_attribute("href", game.get_absolute_url())
 
 
-def test_two_cloned_editions_keep_their_own_kind(signed_in, live_server, game):
+def test_two_cloned_editions_keep_their_own_kind(authenticated_page, live_server, game):
     """Each clone's picker owns its own list."""
-    page = signed_in
+    page = authenticated_page
     open_form(page, live_server, game)
 
     page.click("[data-catalog-add='edition']")
@@ -811,9 +784,9 @@ def test_two_cloned_editions_keep_their_own_kind(signed_in, live_server, game):
     assert kinds == {"Demo": "prerelease", "Remaster": "full"}
 
 
-def test_a_keystroke_in_kind_keeps_the_parent(signed_in, live_server, game):
+def test_a_keystroke_in_kind_keeps_the_parent(authenticated_page, live_server, game):
     """Typing drops the value; leaving puts it back."""
-    page = signed_in
+    page = authenticated_page
     open_add_form(page, live_server)
     pick_choice(page, "kind", "dlc")
     picker = page.locator("search-select[name='parent']")

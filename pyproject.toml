@@ -88,6 +88,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "timetracker.settings"
 addopts = "-p timetracker.pytest_topology"
+# Both suites import tests/ helpers by name.
+pythonpath = ["tests"]
 python_files = ["test_*.py"]
 # Naive instants save in TIME_ZONE, not the calendar.
 filterwarnings = [

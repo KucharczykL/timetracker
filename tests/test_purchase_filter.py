@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 from calendar_days import library_noon
 from entries import end_entry_access, record_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase, remove_purchase, request_run
 
 from common.criteria import FilterError, FilterQueryContext
@@ -34,8 +35,8 @@ def no_stored_rates():
 
 
 @pytest.fixture
-def entry(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def entry(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     return record_entry(owned_library, graph.release)
 
 
@@ -134,16 +135,16 @@ def _matching(library, purchase_filter: PurchaseFilter) -> set[Purchase]:
 
 
 @pytest.fixture
-def tunic(owned_library, stated_graph):
+def tunic(owned_library):
     platform = Platform.objects.create(name="Switch", group="Nintendo")
-    return stated_graph(
+    return default_graph(
         Game(name="Tunic", library=owned_library), owned_library, platform=platform
     )
 
 
 @pytest.fixture
-def hades(owned_library, stated_graph):
-    return stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def hades(owned_library):
+    return default_graph(Game(name="Hades", library=owned_library), owned_library)
 
 
 def test_kind(entry, owned_library):
@@ -332,10 +333,10 @@ def test_a_removed_purchase_is_not_listed(entry, owned_library):
 
 
 def test_another_library_s_purchase_never_matches(
-    entry, owned_library, django_user_model, stated_graph
+    entry, owned_library, django_user_model
 ):
     stranger = django_user_model.objects.create_user(username="stranger").library
-    graph = stated_graph(Game(name="Tunic", library=stranger), stranger)
+    graph = default_graph(Game(name="Tunic", library=stranger), stranger)
     theirs = record_purchase(
         record_entry(stranger, graph.release), purchased=MARCH_2021
     )

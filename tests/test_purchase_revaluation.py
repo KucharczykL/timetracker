@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 from django.db import DatabaseError
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase as record_purchase_event
 from purchases import remove_purchase as remove_purchase_event
 from purchases import request_run
@@ -53,8 +54,8 @@ def queued(monkeypatch):
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -271,12 +272,12 @@ def test_the_recovery_requests_a_restored_game(owned_library, graph, purchase):
 
 
 def test_one_failing_library_leaves_the_others(
-    owned_library, purchase, django_user_model, stated_graph, monkeypatch
+    owned_library, purchase, django_user_model, monkeypatch
 ):
     other = django_user_model.objects.create_user(username="other").library
     record_purchase_event(
         record_entry(
-            other, stated_graph(Game(name="Hades", library=other), other).release
+            other, default_graph(Game(name="Hades", library=other), other).release
         )
     )
     _at_rest(owned_library)

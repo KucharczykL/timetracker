@@ -7,14 +7,13 @@ row loses its finish control and gains an end time.
 
 import datetime as dt
 
-import pytest
 from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Browser, Page, expect
 from session_rows import session_row
 
-from e2e.helpers import open_row_menu
+from e2e.helpers import log_in, open_row_menu
 from games.models import Game, Platform, UserPreferences
 from games.reads.calendar import calendar_day_zone
 from timetracker.settings_resolver import resolve_for_user
@@ -24,16 +23,6 @@ def _row(game, **columns):
     """A projection row whose day is counted in the library's calendar."""
     library = game.library
     return session_row(game, day_zone=calendar_day_zone(library).key, **columns)
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 def _finish_control(row):
@@ -89,11 +78,7 @@ def test_finish_stamps_the_browser_zone_not_the_account_zone(
     context = browser.new_context(timezone_id="Pacific/Honolulu")
     try:
         page = context.new_page()
-        page.goto(f"{live_server.url}{reverse('login')}")
-        page.fill('input[name="username"]', "tester")
-        page.fill('input[name="password"]', "secret123")
-        page.click('button:has-text("Login")')
-        page.wait_for_url(f"{live_server.url}/tracker**")
+        log_in(page, live_server)
 
         page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
         row = page.locator(f"#session-row-{session.pk}")

@@ -1,22 +1,11 @@
 """A hosted widget never outruns its host."""
 
-import pytest
 from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, Route, expect
 
 #: Delays host evaluation, like a slow fetch.
 HOST_DELAY = "await new Promise((resolve) => setTimeout(resolve, 500));\n"
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 def test_autofocused_picker_opens_after_a_slow_host(

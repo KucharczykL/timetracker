@@ -12,16 +12,6 @@ from session_rows import session_row, tracked_run
 from games.models import Game, PlayerGame, PlayerGameStatus
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
 def list_url(live_server) -> str:
     return f"{live_server.url}{reverse('games:list_games')}"
 

@@ -29,13 +29,13 @@ form fields. They state `PlayerGame` facts through `record_facts`.
 Tests state words. The autouse hook `_track_created_games` seeds each created
 game one `PlayerGame` row, `UNPLAYED` and unmastered, and one run.
 `create_tracked_game(library, name, *, status, mastered, **game_fields)`
-creates the game and updates that row. It refuses when no row exists. It
-lives in `tests/tracked_games.py` and again in `e2e/tracked_games.py`,
-because the suites share no conftest. Under `untracked_games` the hook does
-not run, so those sites only lose their kwargs. Tests whose subject was the
-column are removed. Assertions that read the column after a refused write
-read the `PlayerGame` row. `TestChoiceCriterionAgainstDB` and the bool
-comparison-column examples read `PlayerGame`.
+creates the game and updates that row. It refuses when no row exists. The hook
+and `create_tracked_game` live in `tests/tracked_games.py`, which both suites
+import. Under `untracked_games` the hook does not run, so those sites only lose
+their kwargs. Tests whose subject was the column are removed. Assertions that
+read the column after a refused write read the `PlayerGame` row.
+`TestChoiceCriterionAgainstDB` and the bool comparison-column examples read
+`PlayerGame`.
 
 The sample fixture is regenerated from a dump of the deployment after `0007`
 applies to the copy. The anonymizer needs no edit. The migration and the

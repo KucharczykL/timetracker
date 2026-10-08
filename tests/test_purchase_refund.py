@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 from django.db import transaction
 from entries import end_entry_access, record_entry, second_release
+from graphs import default_graph
 from purchases import record_purchase, remove_purchase
 
 from games.commands.endpoint import ActStatement, WayActStatement
@@ -73,8 +74,8 @@ def second_library(django_user_model):
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -590,8 +591,8 @@ def test_a_refund_before_the_target_copys_acquisition_appends_nothing(
     assert _library_event_count(purchase) == before
 
 
-def test_a_refused_move_keeps_the_refund(owned_library, stated_graph, entry, purchase):
-    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_a_refused_move_keeps_the_refund(owned_library, entry, purchase):
+    elsewhere = default_graph(Game(name="Hades", library=owned_library), owned_library)
     other_game_copy = record_entry(owned_library, elsewhere.release)
     _dispatch(owned_library, _refund(purchase))
     before = _library_event_count(purchase)
@@ -631,10 +632,8 @@ def test_an_unstorable_refund_note_keeps_the_description(owned_library, purchase
     assert _library_event_count(purchase) == before
 
 
-def test_a_first_refund_onto_another_games_copy_names_the_game(
-    owned_library, stated_graph, purchase
-):
-    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_a_first_refund_onto_another_games_copy_names_the_game(owned_library, purchase):
+    elsewhere = default_graph(Game(name="Hades", library=owned_library), owned_library)
     other_game_copy = record_entry(owned_library, elsewhere.release, acquired=JULY)
 
     with pytest.raises(CommandFailed) as refused:

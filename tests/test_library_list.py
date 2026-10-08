@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 from purchases import record_purchase, refund_purchase, request_run
 
 from common.criteria import FilterError
@@ -34,21 +35,21 @@ def ps5():
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph, ps5):
-    return stated_graph(
+def graph(owned_library, ps5):
+    return default_graph(
         Game(name="Tunic", library=owned_library), owned_library, platform=ps5
     )
 
 
 @pytest.fixture
-def other_graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def other_graph(owned_library):
+    return default_graph(Game(name="Hades", library=owned_library), owned_library)
 
 
 @pytest.fixture
-def stranger_entry(django_user_model, stated_graph, ps5):
+def stranger_entry(django_user_model, ps5):
     stranger = django_user_model.objects.create_user("stranger").library
-    graph = stated_graph(Game(name="Tunic", library=stranger), stranger, platform=ps5)
+    graph = default_graph(Game(name="Tunic", library=stranger), stranger, platform=ps5)
     return record_entry(stranger, graph.release, access="borrowed", format="physical")
 
 

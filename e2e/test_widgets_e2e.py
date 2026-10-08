@@ -16,22 +16,8 @@ from django.urls import reverse
 from graphs import default_graph
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import open_facet, pick_choice
+from e2e.helpers import log_in, open_facet, pick_choice
 from games.models import Device, Game, Platform
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    _login(page, live_server)
-    return page
 
 
 @pytest.fixture
@@ -40,7 +26,7 @@ def touch_page(live_server, browser, e2e_user):
     pointer events report pointerType "touch"). Uses a desktop-width viewport."""
     context = browser.new_context(has_touch=True)
     page = context.new_page()
-    _login(page, live_server)
+    log_in(page, live_server)
     yield page
     context.close()
 

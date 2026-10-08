@@ -8,30 +8,15 @@ import re
 import urllib.parse
 from datetime import UTC
 
-import pytest
 from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import ConsoleMessage, Locator, Page, expect
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from e2e.helpers import open_facet, pick_choice
-from e2e.tracked_games import create_tracked_game
 from games.models import Game, Platform, PlayerGameStatus
 from games.reads.calendar import calendar_day_zone
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    _login(page, live_server)
-    return page
 
 
 def _filter_from_url(url: str) -> dict:
@@ -422,7 +407,7 @@ def test_an_applied_facet_stays_inline_and_marked(
 
 
 def test_preset_pick_on_builderless_mode(
-    authenticated_page: Page, live_server, django_user_model, e2e_library
+    authenticated_page: Page, live_server, e2e_library, e2e_user
 ):
     """The quick bar's Presets panel loads on a builderless mode
     (devices): picking navigates with the preset's ?filter=; Enter inside the
@@ -431,10 +416,9 @@ def test_preset_pick_on_builderless_mode(
 
     create_device(library=e2e_library, name="Steam Deck")
     create_device(library=e2e_library, name="Desktop")
-    user = django_user_model.objects.get(username="tester")
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "deck"}}
     FilterPreset.objects.create(
-        library=user.library,
+        library=e2e_user.library,
         name="DeckOnly",
         mode="devices",
         object_filter=stored_filter,

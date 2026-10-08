@@ -9,6 +9,7 @@ from bulk_posts import act_url, posted, said, selection
 from django.db import transaction
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 from pickers import held
 from purchases import record_purchase, refund_purchase
 
@@ -53,8 +54,8 @@ RESUMED = ActStatement(TemporalValue.from_day(date(2024, 6, 1)), "")
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(
+def graph(owned_library):
+    return default_graph(
         Game(name="Tunic", library=owned_library),
         owned_library,
         platform=Platform.objects.create(name="PS5", group="Sony"),
@@ -165,16 +166,14 @@ def _preview_row(html: str, game: str) -> str:
     return next(row for row in rows if f">{game}<" in row)
 
 
-def test_the_confirmation_names_already_ended_copies(
-    logged_in, owned_library, stated_graph, first
-):
-    other = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_the_confirmation_names_already_ended_copies(logged_in, owned_library, first):
+    other = default_graph(Game(name="Hades", library=owned_library), owned_library)
     nameless = record_entry(owned_library, other.release)
     end_entry_access(first, ended=TemporalValue.from_day(SOLD_DAY))
     end_entry_access(nameless, ended=None)
     held = record_entry(
         owned_library,
-        stated_graph(
+        default_graph(
             Game(name="Celeste", library=owned_library), owned_library
         ).release,
     )

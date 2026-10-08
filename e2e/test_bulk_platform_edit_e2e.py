@@ -3,15 +3,8 @@
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import log_in
 from games.models import Platform
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _held(platform: Platform) -> tuple[str, str]:
@@ -39,7 +32,7 @@ def test_two_platforms_are_edited_and_the_undo_puts_theirs_back(
         )
         for name, group in (("Amiga", "Commodore"), ("DOS", "PC"))
     ]
-    _login(page, live_server)
+    log_in(page, live_server)
     listed = f"{live_server.url}{reverse('games:list_platforms')}"
 
     _edit_selected(page, listed)
@@ -77,7 +70,7 @@ def test_the_unset_toggle_takes_the_group_away(live_server, page: Page, e2e_libr
         Platform.objects.create(library=e2e_library, name=name, group="Home")
         for name in ("Amiga", "DOS")
     ]
-    _login(page, live_server)
+    log_in(page, live_server)
     listed = f"{live_server.url}{reverse('games:list_platforms')}"
 
     _edit_selected(page, listed)
@@ -94,7 +87,7 @@ def test_the_platform_form_picks_an_icon_from_the_grid(
     platform = Platform.objects.create(
         library=e2e_library, name="Amiga", icon="unspecified"
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
     trigger = page.get_by_role("button", name="Unspecified")
@@ -120,7 +113,7 @@ def test_the_platform_form_picks_a_group_the_library_holds(
 ):
     Platform.objects.create(library=e2e_library, name="Amiga", group="Commodore")
     platform = Platform.objects.create(library=e2e_library, name="C64")
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
     page.locator("search-select[name='group'] [data-search-select-search]").fill("com")
@@ -135,7 +128,7 @@ def test_a_typed_group_is_saved_without_picking_it(
     live_server, page: Page, e2e_library
 ):
     platform = Platform.objects.create(library=e2e_library, name="C64", group="PC")
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
     page.locator("search-select[name='group'] [data-search-select-search]").fill(
@@ -154,7 +147,7 @@ def test_a_group_typed_in_bulk_is_saved_without_picking_it(
         Platform.objects.create(library=e2e_library, name=name, group="PC")
         for name in ("Amiga", "DOS")
     ]
-    _login(page, live_server)
+    log_in(page, live_server)
     listed = f"{live_server.url}{reverse('games:list_platforms')}"
 
     _edit_selected(page, listed)

@@ -7,6 +7,7 @@ from django.urls import path, reverse
 from playwright.sync_api import FloatRect, Page
 
 from common.components import ComboboxDropdown, FilterSelect, SearchSelect
+from e2e.helpers import log_in
 
 OPTIONS = [{"value": "1", "label": "Hades", "data": {}}]
 
@@ -64,11 +65,7 @@ def test_date_time_buttons_fit_the_field_at_phone_width(
     live_server, page: Page, e2e_user
 ):
     page.set_viewport_size({"width": 375, "height": 800})
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     buttons = page.locator("[data-date-picker-calendar-toggle], [data-date-time-copy]")

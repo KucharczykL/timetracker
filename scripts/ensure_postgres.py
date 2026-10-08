@@ -572,6 +572,43 @@ def provision_database(
         run([str(tools.createdb), *base, "-O", "timetracker", "timetracker"])
 
 
+#: A throwaway cluster: speed over crash safety.
+SPEED_OVER_DURABILITY = ("fsync = off", "synchronous_commit = off")
+
+
+def relax_durability(
+    tools: Tools, port: int, account: ServerAccount | None = None
+) -> None:
+    """Stop waiting on the disk; reload.
+
+    Every DROP DATABASE waits for a checkpoint, whose fsync can take
+    30 s; every commit waits for its WAL flush. An OS crash can then
+    corrupt this local cluster; it is rebuilt, never restored.
+    ON_ERROR_STOP: else only the last ``-c`` sets the exit status.
+    """
+    base = ["-h", "127.0.0.1", "-p", str(port), "-d", "postgres"]
+    if account is not None:
+        base += ["-U", account.name]
+    settings = [
+        arg
+        for setting in SPEED_OVER_DURABILITY
+        for arg in ("-c", f"ALTER SYSTEM SET {setting}")
+    ]
+    run(
+        [
+            str(tools.psql),
+            *base,
+            "-Atq",
+            "-v",
+            "ON_ERROR_STOP=1",
+            *settings,
+            "-c",
+            "SELECT pg_reload_conf()",
+        ],
+        capture=True,
+    )
+
+
 def verify_contract(tools: Tools, port: int) -> PostgresContract:
     result = run(
         [
@@ -688,6 +725,7 @@ def ensure(cache: Path) -> str:
     start_cluster(tools, data_dir, port, account)
     wait_for_ready(tools, port)
     provision_database(tools, port, account)
+    relax_durability(tools, port, account)
     verify_contract(tools, port)
     url = f"postgresql://timetracker@127.0.0.1:{port}/timetracker"
     print(
@@ -717,7 +755,9 @@ def main() -> None:
             args.makefile.write_text(contents)
     except (HarnessError, subprocess.CalledProcessError, OSError) as exc:
         operation_name = "stop-postgres" if args.stop else "ensure-postgres"
-        raise SystemExit(f"{operation_name}: {exc}") from exc
+        reason = getattr(exc, "stderr", None)
+        detail = f"\n{reason.strip()}" if reason else ""
+        raise SystemExit(f"{operation_name}: {exc}{detail}") from exc
 
 
 if __name__ == "__main__":

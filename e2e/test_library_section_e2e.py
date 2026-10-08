@@ -1,41 +1,17 @@
 """Every copy act, from Game detail and from the Add to library page."""
 
-import pytest
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
 from e2e.helpers import pick_choice
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Game, LibraryEntry, Platform, Release, UserLibrary
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
     game = create_tracked_game(library, name)
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
-    return game
+    return default_graph(game, library, platform=platform).game
 
 
 def _submit(page: Page, label: str = "Save") -> None:

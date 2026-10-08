@@ -5,7 +5,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import tracked_run
 
-from e2e.helpers import open_row_menu
+from e2e.helpers import log_in, open_row_menu
 from games.bulk_playthrough_acts import START_RUNS
 from games.models import Game, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.calendar import calendar_today
@@ -15,14 +15,6 @@ from games.writes.playergame import new_correlation_id, track_game
 pytestmark = pytest.mark.untracked_games
 
 COMPLETE = "Completed today"
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _tracked(user, name: str) -> Playthrough:
@@ -56,7 +48,7 @@ def test_two_runs_are_completed_today_and_the_undo_takes_it_back(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = f"{live_server.url}{reverse('games:list_playthroughs')}"
     page.goto(listed)
@@ -101,7 +93,7 @@ def test_a_row_menu_reaches_the_same_act(
 ):
     """One row, through the item, to the same act."""
     run, _ = _two_tracked_runs(e2e_user)
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
     open_row_menu(page, f"run-menu-{run.pk}")

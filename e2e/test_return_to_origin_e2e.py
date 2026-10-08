@@ -8,23 +8,15 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import open_row_menu
+from e2e.helpers import log_in, open_row_menu
 from games.models import Game, Platform, PlayerGameStatus
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 #: The fixture below tracks its games the way production does, so the
-#: conftest fixture that writes a bare row must stay out of the way: a
+#: autouse tracking fixture that writes a bare row must stay out of the way: a
 #: row already there turns TrackGame into a no-op, and the delete this
 #: module exercises needs the reference that event captures.
 pytestmark = pytest.mark.untracked_games
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 @pytest.fixture
@@ -51,7 +43,7 @@ def world(live_server, e2e_user):
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, world) -> Page:
-    _login(page, live_server)
+    log_in(page, live_server)
     return page
 
 

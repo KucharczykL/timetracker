@@ -12,6 +12,7 @@ import pytest
 from django.db import connection
 from django_q.models import Schedule
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase
 
 from games.models import ExchangeRate, FilterPreset, Game
@@ -56,8 +57,8 @@ def test_a_stored_rate_is_refused():
         _guard()
 
 
-def test_a_purchase_row_is_refused(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def test_a_purchase_row_is_refused(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     record_purchase(record_entry(owned_library, graph.release))
     assert not ExchangeRate.objects.exists()
     with pytest.raises(RuntimeError, match="games_purchase holds"):

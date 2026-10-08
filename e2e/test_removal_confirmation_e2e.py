@@ -13,16 +13,6 @@ from session_rows import session_row
 from games.models import Game, PlayerSession
 
 
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
 @pytest.mark.untracked_games
 def test_the_confirmation_promises_a_removal(
     authenticated_page: Page, live_server, e2e_library

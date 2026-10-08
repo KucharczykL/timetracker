@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.http import Http404
 from django.urls import reverse
+from graphs import default_graph
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -56,9 +57,7 @@ PRESENTATION = DateTimePresentation(
 NO_MIRROR = MirroredIdentity(None, None)
 
 
-def test_a_binned_row_with_a_bad_value_refuses_nothing(
-    client, owned_user, stated_graph, game_post
-):
+def test_a_binned_row_with_a_bad_value_refuses_nothing(client, owned_user, game_post):
     """A row that is going states only which row it is.
 
     Its date never reaches storage, and the page draws the row out of
@@ -67,7 +66,7 @@ def test_a_binned_row_with_a_bad_value_refuses_nothing(
     """
     library = owned_user.library
     client.force_login(owned_user)
-    graph = stated_graph(Game(library=library, name="Elite"), library)
+    graph = default_graph(Game(library=library, name="Elite"), library)
     staying = Release.objects.create(
         edition=graph.edition,
         platform=Platform.objects.create(library=library, name="DOS"),
@@ -99,12 +98,10 @@ def test_a_binned_row_with_a_bad_value_refuses_nothing(
     assert [row.pk for row in graph.edition.releases.alive()] == [staying.pk]
 
 
-def test_a_refused_graph_takes_the_renamed_game_back(
-    client, owned_user, stated_graph, game_post
-):
+def test_a_refused_graph_takes_the_renamed_game_back(client, owned_user, game_post):
     """One transaction: the name and the graph go together or not at all."""
     client.force_login(owned_user)
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_user.library, name="Elite"), owned_user.library
     )
     #: A live Edition this submit never mentions still holds its name,
@@ -124,12 +121,10 @@ def test_a_refused_graph_takes_the_renamed_game_back(
     assert graph.game.name == "Elite"
 
 
-def test_a_graph_that_is_fine_saves_the_rename_with_it(
-    client, owned_user, stated_graph, game_post
-):
+def test_a_graph_that_is_fine_saves_the_rename_with_it(client, owned_user, game_post):
     """The inverse, so the rollback above is not passing on nothing."""
     client.force_login(owned_user)
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_user.library, name="Elite"), owned_user.library
     )
     posted = game_post("Elite Renamed")
@@ -186,13 +181,11 @@ def test_a_game_with_no_graph_can_be_edited(client, owned_user, game_post):
     assert Edition.objects.alive().filter(game=game).count() == 1
 
 
-def test_a_taken_legacy_identity_lands_on_the_game_form(
-    client, owned_user, stated_graph, game_post
-):
+def test_a_taken_legacy_identity_lands_on_the_game_form(client, owned_user, game_post):
     """The mirror refuses the whole Game, not one row."""
     client.force_login(owned_user)
-    stated_graph(Game(library=owned_user.library, name="Twin"), owned_user.library)
-    graph = stated_graph(
+    default_graph(Game(library=owned_user.library, name="Twin"), owned_user.library)
+    graph = default_graph(
         Game(library=owned_user.library, name="Elite"), owned_user.library
     )
     posted = game_post("Twin")
@@ -208,7 +201,7 @@ def test_a_taken_legacy_identity_lands_on_the_game_form(
 
 
 def test_a_rename_that_moves_its_own_platform_is_not_refused(
-    client, owned_user, stated_graph, game_post
+    client, owned_user, game_post
 ):
     """The name and the pair it stands beside go in one write.
 
@@ -222,7 +215,7 @@ def test_a_rename_that_moves_its_own_platform_is_not_refused(
     Game.objects.create(
         library=library, name="Elite", platform=amiga, year_released=1984
     )
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=library, name="Frontier"),
         library,
         platform=amiga,
@@ -246,13 +239,11 @@ def test_a_rename_that_moves_its_own_platform_is_not_refused(
     assert (graph.game.name, graph.game.platform_id) == ("Elite", dos.pk)
 
 
-def test_a_written_graph_is_redrawn_from_storage(
-    client, owned_user, stated_graph, game_post
-):
+def test_a_written_graph_is_redrawn_from_storage(client, owned_user, game_post):
     """A refused command re-renders the page, and a resubmit is not a copy."""
     library = owned_user.library
     client.force_login(owned_user)
-    graph = stated_graph(Game(library=library, name="Elite"), library)
+    graph = default_graph(Game(library=library, name="Elite"), library)
     posted = game_post("Elite")
     posted["editions-count"] = "2"
     posted["edition-0-edition_id"] = str(graph.edition.pk)
@@ -278,22 +269,20 @@ def test_a_written_graph_is_redrawn_from_storage(
     assert str(written.pk) in response.content.decode()
 
 
-def test_a_race_the_pre_check_missed_answers_in_words(
-    client, owned_user, stated_graph, game_post
-):
+def test_a_race_the_pre_check_missed_answers_in_words(client, owned_user, game_post):
     """The database is the only thing that decides, so read what it did.
 
     The two games differ by year until this submit, thus the Game's
     own save is fine and only the mirror walks it onto the twin.
     """
     client.force_login(owned_user)
-    twin = stated_graph(
+    twin = default_graph(
         Game(library=owned_user.library, name="Twin"),
         owned_user.library,
         release_date=TemporalValue.from_year(1984),
     )
     mirror_legacy_columns(twin.game)
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_user.library, name="Elite"),
         owned_user.library,
         release_date=TemporalValue.from_year(1990),
@@ -509,9 +498,9 @@ def test_a_private_game_needs_a_library_owner(owned_library):
     assert not Game.objects.filter(name="Elite").exists()
 
 
-def test_a_graph_statement_writes_no_wikidata_reference(owned_library, stated_graph):
+def test_a_graph_statement_writes_no_wikidata_reference(owned_library):
     """The column travels with the graph; only a submit maps it."""
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_library, name="Durable writer only", wikidata="Q123"),
         owned_library,
     )

@@ -3,6 +3,7 @@
 import pytest
 from column_choice import show_every_column
 from django.urls import reverse
+from graphs import default_graph
 
 from common.components import ExternalReferenceLinks
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
@@ -111,10 +112,10 @@ def test_gathering_one_row_does_not_write_into_another(owned_library):
 
 
 def test_the_batch_read_takes_one_query_for_each_kind_present(
-    owned_library, stated_graph, django_assert_num_queries
+    owned_library, django_assert_num_queries
 ):
     """Three kinds, three queries, none per row."""
-    game, edition, release = stated_graph(
+    game, edition, release = default_graph(
         Game(name="Elite", library=owned_library), owned_library
     )
     for target, key in ((game, "Q1"), (edition, "Q2"), (release, "Q3")):

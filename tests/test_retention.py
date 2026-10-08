@@ -18,6 +18,7 @@ from django.db import transaction
 from django.db.models import Model
 from django.db.models.deletion import RestrictedError
 from django.db.models.signals import pre_delete
+from graphs import default_graph
 from pydantic import ConfigDict, with_config
 from session_rows import session_row
 
@@ -693,14 +694,12 @@ def test_an_exempt_row_is_still_a_referenced_row():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_purging_a_library_takes_its_purchases_and_copies(
-    owned_user, owned_library, stated_graph
-):
+def test_purging_a_library_takes_its_purchases_and_copies(owned_user, owned_library):
     """Two RESTRICT edges on the purge path."""
     from entries import record_entry
     from purchases import record_purchase
 
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     record_purchase(record_entry(owned_library, graph.release))
 
     call_command(

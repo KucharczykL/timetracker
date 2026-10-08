@@ -10,24 +10,8 @@ directly and never exercises the real <script>-tag load semantics.
    /api/client-error/.
 """
 
-import pytest
 from django.urls import reverse
 from playwright.sync_api import Page
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_user(username="tester", password="secret123")
-    _login(page, live_server)
-    return page
 
 
 def test_no_syntax_error_on_load(authenticated_page: Page, live_server) -> None:

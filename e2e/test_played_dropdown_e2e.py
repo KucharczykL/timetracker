@@ -15,23 +15,12 @@ took the "+1" action away, so they read the one item the menu still holds.
 """
 
 import pytest
-from django.urls import reverse
 from playwright.sync_api import Page, expect
 
 from games.models import Game
 
 # Sample points spanning the row, including the former dead zones at the edges.
 ROW_FRACTIONS = [0.02, 0.1, 0.3, 0.5, 0.7, 0.9, 0.98]
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 @pytest.fixture

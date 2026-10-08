@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pytest
 from entries import record_entry, remove_entry, second_release
+from graphs import default_graph
 from purchases import (
     record_purchase,
     refund_purchase,
@@ -65,8 +66,8 @@ def second_library(django_user_model):
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture
@@ -75,15 +76,15 @@ def entry(owned_library, graph):
 
 
 @pytest.fixture
-def other_game_entry(owned_library, stated_graph):
+def other_game_entry(owned_library):
     """A copy of another game, same library."""
-    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    elsewhere = default_graph(Game(name="Hades", library=owned_library), owned_library)
     return record_entry(owned_library, elsewhere.release)
 
 
 @pytest.fixture
-def their_graph(second_library, stated_graph):
-    return stated_graph(Game(name="Hades", library=second_library), second_library)
+def their_graph(second_library):
+    return default_graph(Game(name="Hades", library=second_library), second_library)
 
 
 def _dispatch(library, command, key: str | None = None) -> CommandResult:

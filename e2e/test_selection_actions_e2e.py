@@ -7,19 +7,12 @@ from playwright.sync_api import Page, expect
 from session_rows import duration_only_row, tracked_run
 from tracked_games import create_tracked_game
 
+from e2e.helpers import log_in
 from games.commands.playthrough import ActStatement
 from games.models import PlayerSession, Playthrough
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft, record_run
 from timetracker.temporal import TemporalValue
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _select_rows(page: Page, *indexes: int) -> None:
@@ -41,7 +34,7 @@ def test_two_rows_are_removed_from_the_line_and_put_back(
     run = tracked_run(e2e_library, game)
     for day in (5, 6, 7):
         duration_only_row(run, date(2026, 3, day), timedelta(hours=2))
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = f"{live_server.url}{reverse('games:list_sessions')}"
     page.goto(listed)
@@ -92,7 +85,7 @@ def test_a_refused_row_states_its_sentence_while_the_rest_are_removed(
             ),
             correlation_id=new_correlation_id(),
         )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
     #: Every run this library holds: one alone, two sharing a game.
@@ -123,7 +116,7 @@ def test_the_acts_that_do_not_fit_move_behind_one_trigger(
     run = tracked_run(e2e_library, game)
     for day in (5, 6):
         duration_only_row(run, date(2026, 3, day), timedelta(hours=2))
-    _login(page, live_server)
+    log_in(page, live_server)
     page.set_viewport_size({"width": 400, "height": 900})
 
     listed = f"{live_server.url}{reverse('games:list_sessions')}"
@@ -154,7 +147,7 @@ def test_every_act_stands_in_the_line_where_they_fit(
     duration_only_row(
         tracked_run(e2e_library, game), date(2026, 3, 5), timedelta(hours=2)
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     _select_rows(page, 0)

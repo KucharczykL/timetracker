@@ -8,6 +8,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from entries import prerelease_release, record_entry
+from graphs import default_graph
 from session_rows import duration_only_row, tracked_run
 
 from games.filters import filter_url, parse_session_filter
@@ -90,10 +91,10 @@ def test_the_link_opens_the_session_list_on_the_same_filter(builder):
 
 @pytest.mark.django_db
 def test_hiding_prerelease_play_moves_no_before_start_count(
-    owned_library, stated_graph, set_user_setting
+    owned_library, set_user_setting
 ):
     """Demo play is out either way."""
-    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    graph = default_graph(Game(name="Hades", library=owned_library), owned_library)
     record_entry(owned_library, graph.release)
     demo = prerelease_release(owned_library, graph.release)
     run = Playthrough.objects.get(player_game__game=graph.game)

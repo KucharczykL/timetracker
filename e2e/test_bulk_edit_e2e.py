@@ -9,19 +9,12 @@ from playwright.sync_api import Page, expect
 from session_rows import tracked_run
 from tracked_games import create_tracked_game
 
+from e2e.helpers import log_in
 from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.events.dispatch import dispatch
 from games.models import PlayerSession
 
 ACT = "Edit…"
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _two_sessions(library, actor, device=None) -> list[PlayerSession]:
@@ -57,7 +50,7 @@ def _console_errors(page: Page) -> list[str]:
 
 def _edit_both(page: Page, live_server) -> str:
     """Logged in, both rows selected, Edit… pressed."""
-    _login(page, live_server)
+    log_in(page, live_server)
     listed = f"{live_server.url}{reverse('games:list_sessions')}"
     page.goto(listed)
     boxes = page.locator("tbody [data-selection-checkbox]")

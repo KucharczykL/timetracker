@@ -23,8 +23,9 @@ def default_graph(
     release_date: TemporalValue | None = None,
     edition_kind: EditionKind | None = None,
 ) -> DefaultGraph:
-    """Save the game; state its default graph."""
-    game.save()
+    """Save a new game; state its default graph."""
+    if game._state.adding:
+        game.save()
     written = state_catalog_graph(
         game=game,
         library=library,

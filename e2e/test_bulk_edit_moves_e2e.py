@@ -9,6 +9,7 @@ from playwright.sync_api import Page, expect
 from session_rows import duration_only_row, tracked_run
 from tracked_games import create_tracked_game
 
+from e2e.helpers import log_in
 from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.events.dispatch import dispatch
 from games.models import PlayerGame, PlayerSession, Playthrough, PlaythroughKind
@@ -16,14 +17,6 @@ from games.reads.session_run_labels import IMPORTED_HISTORY_LABEL
 from games.writes.playersession import move_session
 
 ACT = "Edit…"
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _a_game_with_a_bucket(library, actor) -> tuple[Playthrough, Playthrough]:
@@ -89,7 +82,7 @@ def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = f"{live_server.url}{reverse('games:list_sessions')}"
     page.goto(listed)
@@ -130,7 +123,7 @@ def test_sessions_at_two_games_keep_the_form_without_the_picker(
     duration_only_row(
         tracked_run(e2e_library, other), date(2026, 3, 7), timedelta(hours=2)
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     _select_rows(page, 0, 1, 2)

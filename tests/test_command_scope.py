@@ -5,6 +5,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from graphs import default_graph
 
 from games.commands.scope import Refusal, library_row, visible_row
 from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
@@ -126,11 +127,11 @@ def test_the_queryset_the_caller_hands_over_is_the_one_read(
 
 
 @pytest.fixture
-def two_releases(owned_library, other_library, stated_graph):
+def two_releases(owned_library, other_library):
     """A shared Release and the other library's private one."""
-    shared = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+    shared = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     Game.objects.filter(pk=shared.game.pk).update(library=None)
-    private = stated_graph(Game(name="Hades", library=other_library), other_library)
+    private = default_graph(Game(name="Hades", library=other_library), other_library)
     return shared.release, private.release
 
 
@@ -143,10 +144,8 @@ def test_visible_row_answers_a_shared_row(owned_user, owned_library, two_release
     )
 
 
-def test_visible_row_answers_the_librarys_own_private_row(
-    owned_user, owned_library, stated_graph
-):
-    own = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+def test_visible_row_answers_the_librarys_own_private_row(owned_user, owned_library):
+    own = default_graph(Game(name="Hades", library=owned_library), owned_library)
     context = CommandContext(library=owned_library, actor=owned_user)
 
     resolved = visible_row(context, Release.objects.all(), refusal(), pk=own.release.pk)

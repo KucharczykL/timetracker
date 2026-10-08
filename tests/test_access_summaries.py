@@ -2,6 +2,7 @@
 
 import pytest
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 
 from games.end_ways import EndWay
 from games.models import Game
@@ -12,8 +13,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 def _summary(library, game):
@@ -95,11 +96,9 @@ def test_among_ends_on_one_day_the_later_statement_is_former(owned_library, grap
     assert _summary(owned_library, graph.game).former.entry == later
 
 
-def test_another_librarys_copy_never_counts(
-    owned_library, graph, django_user_model, stated_graph
-):
+def test_another_librarys_copy_never_counts(owned_library, graph, django_user_model):
     stranger = django_user_model.objects.create_user("stranger").library
-    theirs = stated_graph(Game(name="Hades", library=stranger), stranger)
+    theirs = default_graph(Game(name="Hades", library=stranger), stranger)
     record_entry(stranger, theirs.release)
     record_entry(owned_library, graph.release)
 
@@ -108,11 +107,9 @@ def test_another_librarys_copy_never_counts(
     assert set(summaries) == {graph.game.pk}
 
 
-def test_one_query_reads_every_game(
-    owned_library, stated_graph, django_assert_num_queries
-):
+def test_one_query_reads_every_game(owned_library, django_assert_num_queries):
     games = [
-        stated_graph(Game(name=name, library=owned_library), owned_library)
+        default_graph(Game(name=name, library=owned_library), owned_library)
         for name in ("Tunic", "Hades", "Celeste")
     ]
     for graph in games:

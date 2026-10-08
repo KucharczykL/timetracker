@@ -1427,7 +1427,8 @@ and never fetch it; nothing there lints.
 ### Database
 
 PostgreSQL 18 required. Development uses `make ensure-postgres` (normally via Nix
-shell) to provision ignored loopback-only cluster; deployments supply
+shell) to provision ignored loopback-only cluster, run with `fsync` off (an OS
+crash can corrupt it; rebuild, never restore); deployments supply
 `DATABASE_URL`. Every connection must use UTF-8, `builtin` locale provider, and
 `C.UTF-8` — full contract in [Database contract](docs/database.md). Migrations
 live in `games/migrations/`. Note the `GeneratedField`s (above).
@@ -1522,7 +1523,9 @@ artifact absent; `make check`/`make test` order `test-ts` first.
 (`pytest-playwright` driving real Chromium against pytest-django's `live_server`).
 `e2e/conftest.py` sets `DJANGO_ALLOW_ASYNC_UNSAFE` and prefers system
 Chrome/Chromium (see env section); otherwise `uv run playwright install
-chromium` once. All JS vendored, so tests run fully offline. Bare `make test`
+chromium` once. A test signs in with `authenticated_page` (`e2e/conftest.py`) or
+`log_in(page, live_server[, credentials])` (`e2e/helpers.py`), which sets a
+session cookie and loads no page; only a test of the login page fills the form. All JS vendored, so tests run fully offline. Bare `make test`
 collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.py`
 (onReady lifecycle, FilterSelect, sort headers),
 `test_search_select_e2e.py` (single-select edge cases on synthetic page).
@@ -1828,8 +1831,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   wrappers in `games/views/playergame_writes.py`. `Game` holds no status and no
   mastered column: command is only way to state either fact, and projection is
   only place to read it. In tests, `create_tracked_game()` from
-  `tests/tracked_games.py` (and its `e2e/` twin) states the words on the row the
-  autouse hook seeds.
+  `tests/tracked_games.py` states the words on the row its autouse hook
+  seeds. Both suites import `tests/` helpers by bare name (`pythonpath`);
+  `e2e/` keeps no copy of one.
 - **A refused command becomes an answer** — wrap dispatch in `answered(subject)`
   from `games/writes/answers.py`. One clause per refusal; caller handles three
   shapes: `CommandRejected` or mapped `CommandConflict` becomes `CommandFailed`

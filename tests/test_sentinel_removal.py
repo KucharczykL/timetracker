@@ -7,6 +7,7 @@ platform is NULL."""
 import pytest
 from django.db import IntegrityError
 from django.utils import timezone
+from graphs import default_graph
 from session_rows import session_row
 
 from games.models import Device, Game, Platform, PlayerGameStatus
@@ -29,9 +30,9 @@ def test_session_without_device_stays_null(owned_library):
     assert Device.objects.count() == 0
 
 
-def test_platform_delete_sets_null_and_keeps_releases(owned_library, stated_graph):
+def test_platform_delete_sets_null_and_keeps_releases(owned_library):
     platform = Platform.objects.create(name="Steam")
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_library, name="Hades", platform=platform),
         owned_library,
         platform=platform,

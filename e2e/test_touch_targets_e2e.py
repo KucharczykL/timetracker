@@ -13,6 +13,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import log_in
 from games.models import Game, Platform
 
 MIN_TOUCH_TARGET = 24
@@ -24,14 +25,7 @@ def touch_page(live_server, browser, e2e_user):
         has_touch=True, is_mobile=True, viewport={"width": 390, "height": 844}
     )
     page = context.new_page()
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    # Tap, never click: a click parks the virtual mouse on the
-    # button, and the next page opens whatever tooltip loads
-    # under it. A no-hover device has no cursor to park.
-    page.tap('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     yield page
     context.close()
 

@@ -1,23 +1,15 @@
 """A person states how many times a game was played."""
 
 import pytest
-from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import log_in
 from games.models import Game, PlayerGame
 from games.reads.playthrough_runs import completed_run_count
 from games.writes.playergame import new_correlation_id, track_game
 
 #: Tracked by command: the Undo reads events.
 pytestmark = pytest.mark.untracked_games
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def test_a_count_opens_in_a_dialog_and_its_undo_takes_it_back(
@@ -32,7 +24,7 @@ def test_a_count_opens_in_a_dialog_and_its_undo_takes_it_back(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    _login(page, live_server)
+    log_in(page, live_server)
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
     detail_url = page.url
 

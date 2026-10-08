@@ -484,6 +484,7 @@ def test_ensure_reuses_existing_cluster_metadata(harness, monkeypatch, tmp_path)
     )
     monkeypatch.setattr(harness, "wait_for_ready", lambda *args: None)
     monkeypatch.setattr(harness, "provision_database", lambda *args: None)
+    monkeypatch.setattr(harness, "relax_durability", lambda *args: None)
     monkeypatch.setattr(harness, "verify_contract", lambda *args: None)
 
     assert (
@@ -767,6 +768,11 @@ def test_root_hands_the_server_side_to_the_account_it_picked(
         "provision_database",
         lambda _tools, _port, given: seen.__setitem__("provisioned", given),
     )
+    monkeypatch.setattr(
+        harness,
+        "relax_durability",
+        lambda _tools, _port, given: seen.__setitem__("relaxed", given),
+    )
     monkeypatch.setattr(harness, "verify_contract", lambda *args: None)
 
     assert (
@@ -778,6 +784,7 @@ def test_root_hands_the_server_side_to_the_account_it_picked(
         "given": (cache / "postgres", account),
         "started": account,
         "provisioned": account,
+        "relaxed": account,
     }
 
 
@@ -843,3 +850,55 @@ def test_root_still_uses_an_explicit_database_url(harness, monkeypatch, tmp_path
     )
 
     assert harness.ensure(tmp_path) == "postgresql://external.example/tracker"
+
+
+def test_the_cluster_trades_durability_for_speed(harness, monkeypatch, tmp_path):
+    """One -c each: ALTER SYSTEM refuses a transaction block."""
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    commands: list[list[str]] = []
+    monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))
+
+    harness.relax_durability(tools, 5432)
+
+    (command,) = commands
+    statements = [
+        command[index + 1] for index, arg in enumerate(command) if arg == "-c"
+    ]
+    assert statements == [
+        "ALTER SYSTEM SET fsync = off",
+        "ALTER SYSTEM SET synchronous_commit = off",
+        "SELECT pg_reload_conf()",
+    ]
+    assert "ON_ERROR_STOP=1" in command
+
+
+@pytest.mark.parametrize(
+    ("account", "role"),
+    [(None, None), (("postgres", 102, 104), "postgres")],
+)
+def test_the_durability_settings_run_under_the_cluster_role(
+    harness, monkeypatch, tmp_path, account, role
+):
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    commands: list[list[str]] = []
+    monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))
+    server_account = harness.ServerAccount(*account) if account else None
+
+    harness.relax_durability(tools, 5432, server_account)
+
+    (command,) = commands
+    named = command[command.index("-U") + 1] if "-U" in command else None
+    assert named == role
+
+
+def test_a_failed_client_names_its_reason(harness, monkeypatch):
+    def refuse(cache):
+        raise subprocess.CalledProcessError(
+            1, ["psql"], stderr="ERROR:  must be superuser\n"
+        )
+
+    monkeypatch.setattr(harness.sys, "argv", [str(HARNESS_PATH), "--makefile", "x"])
+    monkeypatch.setattr(harness, "ensure", refuse)
+
+    with pytest.raises(SystemExit, match="must be superuser"):
+        harness.main()

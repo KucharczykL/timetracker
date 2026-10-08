@@ -2,6 +2,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 from entries import record_entry
+from graphs import default_graph
 from pickers import held
 
 from games.catalog_release import release_on_platform
@@ -42,8 +43,8 @@ def _state(game, library, *, name="", kind: EditionKind | None = EditionKind.FUL
 
 
 @pytest.fixture
-def game(owned_library, stated_graph):
-    return stated_graph(Game(library=owned_library, name="Demo game"), owned_library)
+def game(owned_library):
+    return default_graph(Game(library=owned_library, name="Demo game"), owned_library)
 
 
 def test_a_kind_change_alone_writes(owned_library, game):
@@ -92,11 +93,9 @@ def test_a_shared_game_s_edition_kind_is_refused(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_kind_round_trips_through_the_game_form(
-    client, owned_user, stated_graph, game_post
-):
+def test_the_kind_round_trips_through_the_game_form(client, owned_user, game_post):
     client.force_login(owned_user)
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_user.library, name="Round trip"), owned_user.library
     )
     posted = game_post("Round trip")
@@ -140,11 +139,9 @@ def test_a_prerelease_copy_says_prerelease(owned_library, game):
     assert release_words(entry) == "Unspecified · Prerelease"
 
 
-def test_a_lone_prerelease_edition_brings_the_editions_table(
-    client, owned_user, stated_graph
-):
+def test_a_lone_prerelease_edition_brings_the_editions_table(client, owned_user):
     client.force_login(owned_user)
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_user.library, name="Only a demo"), owned_user.library
     )
     Edition.objects.filter(pk=graph.edition.pk).update(kind=EditionKind.PRERELEASE)

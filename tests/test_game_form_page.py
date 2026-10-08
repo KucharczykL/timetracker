@@ -7,6 +7,7 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from graphs import default_graph
 
 from common.components.primitives import SECTION_SURFACE_CLASS
 from games.catalog_compat import mirror_legacy_columns
@@ -61,9 +62,9 @@ def logged_in(client, owned_user):
 
 
 @pytest.fixture
-def plain_game(owned_library, stated_graph):
+def plain_game(owned_library):
     """One Game as the app leaves it: a default graph, columns mirrored."""
-    graph = stated_graph(
+    graph = default_graph(
         Game(library=owned_library, name="Portal"),
         owned_library,
         release_date=TemporalValue.from_year(2007),

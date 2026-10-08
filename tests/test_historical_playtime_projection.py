@@ -7,6 +7,7 @@ import pytest
 from django.apps import apps as global_apps
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from graphs import default_graph
 from session_rows import duration_only_row
 
 from games.checks import check_projection_models
@@ -465,9 +466,9 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_record_names_its_release_and_a_move_clears_it_only_when_stated(
-    owned_user, owned_library, tracked, run, game, stated_graph
+    owned_user, owned_library, tracked, run, game
 ):
-    graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    graph = default_graph(Game(name="Hades", library=owned_library), owned_library)
     created = a_created(tracked, [run], release=capture_reference(graph.release))
     append(owned_library, owned_user, created, key="create")
     assert HistoricalPlaytime.objects.get().release_id == graph.release.pk

@@ -10,20 +10,16 @@ from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page, expect
 
-from e2e.helpers import held_choice, pick_choice
+from e2e.helpers import Credentials, create_login_user, held_choice, log_in, pick_choice
 from games.models import Device, Game, PlayerGame, UserPreferences
+
+INFRA_ADMIN_LOGIN = Credentials("infra-admin", "secret123")
 
 
 @pytest.fixture
-def superuser_page(live_server, page: Page, django_user_model) -> Page:
-    django_user_model.objects.create_superuser(
-        username="infra-admin", password="secret123"
-    )
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.get_by_label("Username").fill("infra-admin")
-    page.get_by_label("Password").fill("secret123")
-    page.get_by_role("button", name="Login", exact=True).click()
-    page.wait_for_url(f"{live_server.url}/tracker**")
+def superuser_page(live_server, page: Page) -> Page:
+    create_login_user(INFRA_ADMIN_LOGIN, superuser=True)
+    log_in(page, live_server, INFRA_ADMIN_LOGIN)
     return page
 
 
@@ -80,39 +76,35 @@ def test_superuser_sees_infrastructure_section_on_admin_settings(
 
 
 @pytest.fixture
-def authenticated_page(
-    live_server, page: Page, django_user_model
-) -> tuple[Page, Device]:
-    user = django_user_model.objects.create_user(
-        username="tester", password="secret123"
-    )
+def preferred_device(e2e_user) -> Device:
+    """The library's default device."""
     preferred = create_device(
-        library=user.library, name="Steam Deck", type=Device.HANDHELD
+        library=e2e_user.library, name="Steam Deck", type=Device.HANDHELD
     )
-    user.library.preferences.set_default_device(preferred)
+    e2e_user.library.preferences.set_default_device(preferred)
+    return preferred
+
+
+@pytest.fixture
+def authenticated_page(live_server, page: Page, e2e_user, preferred_device) -> Page:
+    library = e2e_user.library
     games = Game.objects.bulk_create(
-        [Game(library=user.library, name=f"Game {index:02}") for index in range(51)]
+        [Game(library=library, name=f"Game {index:02}") for index in range(51)]
     )
-    #: bulk_create sends no post_save, so the conftest fixture that tracks a
-    #: created game never runs and the list this page's page size drives
-    #: would come back empty.
+    #: bulk_create fires no post_save: track here.
     PlayerGame.objects.bulk_create(
         [
             PlayerGame(
                 pk=uuid.uuid7(),
-                library=user.library,
+                library=library,
                 game=game,
                 tracked_at=timezone.now(),
             )
             for game in games
         ]
     )
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page, preferred
+    log_in(page, live_server)
+    return page
 
 
 def _save_select(page: Page, key: str, name: str, value: str) -> None:
@@ -142,10 +134,11 @@ def _wait_for_live_settings(page: Page) -> None:
 def test_personal_settings_persist_and_drive_consumers(
     live_server,
     authenticated_page,
+    preferred_device,
     viewport,
     mobile,
 ):
-    page, preferred = authenticated_page
+    page = authenticated_page
     page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
 
@@ -203,7 +196,7 @@ def test_personal_settings_persist_and_drive_consumers(
     expect(page.locator('input[name="currency"]')).to_have_value("EUR")
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     expect(page.locator('input[name="device"][type="hidden"]')).to_have_value(
-        str(preferred.pk)
+        str(preferred_device.pk)
     )
     page.goto(f"{live_server.url}{reverse('games:index')}")
     expect(page).to_have_url(f"{live_server.url}{reverse('games:list_games')}")
@@ -215,7 +208,7 @@ def test_a_text_select_keeps_its_value_after_the_live_save(
     live_server, authenticated_page
 ):
     """The save writes the resolved value back."""
-    page, _preferred = authenticated_page
+    page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     _wait_for_live_settings(page)
     select = held_choice(page, "show_prerelease_play")
@@ -233,7 +226,7 @@ def test_a_text_select_keeps_its_value_after_the_live_save(
 def test_presentation_preferences_reload_with_the_updated_contract(
     live_server, authenticated_page, viewport
 ):
-    page, _preferred = authenticated_page
+    page = authenticated_page
     page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     _wait_for_live_settings(page)
@@ -311,8 +304,10 @@ def test_presentation_preferences_reload_with_the_updated_contract(
     expect(held_choice(page, "datetime_format")).to_have_value("mdy_12h")
 
 
-def test_a_time_zone_picked_and_reset_in_its_picker(live_server, authenticated_page):
-    page, _preferred = authenticated_page
+def test_a_time_zone_picked_and_reset_in_its_picker(
+    live_server, authenticated_page, e2e_user
+):
+    page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:settings')}")
     _wait_for_live_settings(page)
     picker = page.locator('search-select[name="display_time_zone"]')
@@ -342,5 +337,5 @@ def test_a_time_zone_picked_and_reset_in_its_picker(live_server, authenticated_p
     assert reset.value.request.post_data_json == {"value": None}
     _wait_for_live_settings(page)
     expect(search).to_have_value(re.compile(r"^Use site default \(.+\)$"))
-    preferences = UserPreferences.objects.get(user__username="tester")
+    preferences = UserPreferences.objects.get(user=e2e_user)
     assert preferences.display_time_zone is None

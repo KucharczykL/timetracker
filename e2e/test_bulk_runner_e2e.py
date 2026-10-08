@@ -11,18 +11,11 @@ from playwright.sync_api import Page, expect
 from session_rows import duration_only_row, tracked_run
 from tracked_games import create_tracked_game
 
+from e2e.helpers import log_in
 from games.models import HistoricalPlaytime, PlayerSession
 from games.views.session_reclassification import review_url
 
 ACT = "Record as historical playtime"
-
-
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 def _long_sessions(library, days: tuple[int, ...]) -> None:
@@ -59,7 +52,7 @@ def test_a_batch_runs_every_chunk_and_says_so(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = _state_the_whole_review(page, live_server, 3)
     page.get_by_role("button", name=ACT).click()
@@ -78,7 +71,7 @@ def test_the_batchs_toast_offers_an_undo_that_puts_every_session_back(
 ):
     """The press the act's words promise."""
     _long_sessions(e2e_library, (5, 6))
-    _login(page, live_server)
+    log_in(page, live_server)
 
     _state_the_whole_review(page, live_server, 2)
     page.get_by_role("button", name=ACT).click()
@@ -100,7 +93,7 @@ def test_a_held_batch_can_be_stopped_and_ends_on_the_next_load(
     """Stop, a closed page, then the end's Undo."""
     monkeypatch.setattr("games.bulk_jobs.CHUNK_BUDGET", timedelta(0))
     _long_sessions(e2e_library, (5, 6, 7))
-    _login(page, live_server)
+    log_in(page, live_server)
 
     listed = _state_the_whole_review(page, live_server, 3)
     page.get_by_role("button", name=ACT).click()
@@ -125,7 +118,7 @@ def test_a_page_refreshes_its_batch_while_it_runs(
 ):
     """The poll replaces the toast in place."""
     _long_sessions(e2e_library, (5, 6))
-    _login(page, live_server)
+    log_in(page, live_server)
 
     _state_the_whole_review(page, live_server, 2)
     page.get_by_role("button", name=ACT).click()
@@ -143,7 +136,7 @@ def test_an_undo_inside_a_dialog_shows_its_batch_at_once(
 ):
     """Its batch toasts inside the open dialog."""
     _long_sessions(e2e_library, (5, 6))
-    _login(page, live_server)
+    log_in(page, live_server)
 
     _state_the_whole_review(page, live_server, 2)
     page.get_by_role("button", name=ACT).click()

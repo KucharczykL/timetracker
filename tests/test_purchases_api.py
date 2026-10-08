@@ -8,6 +8,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase, remove_purchase, request_run
 
 from games import conversion, tasks
@@ -42,8 +43,8 @@ def library(user):
 
 
 @pytest.fixture
-def graph(library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=library), library)
+def graph(library):
+    return default_graph(Game(name="Tunic", library=library), library)
 
 
 @pytest.fixture
@@ -52,10 +53,10 @@ def entry(library, graph):
 
 
 @pytest.fixture
-def their_entry(django_user_model, stated_graph):
+def their_entry(django_user_model):
     """A copy another library holds."""
     other = django_user_model.objects.create_user(username="other").library
-    theirs = stated_graph(Game(name="Hades", library=other), other)
+    theirs = default_graph(Game(name="Hades", library=other), other)
     return record_entry(other, theirs.release)
 
 
@@ -217,11 +218,9 @@ def test_patch_moves_to_a_sibling_copy(auth_client, library, graph, entry):
     assert response.json()["entry_id"] == str(sibling.pk)
 
 
-def test_patch_onto_another_games_copy_is_409(
-    auth_client, library, stated_graph, entry
-):
+def test_patch_onto_another_games_copy_is_409(auth_client, library, entry):
     purchase = record_purchase(entry)
-    elsewhere = stated_graph(Game(name="Hades", library=library), library)
+    elsewhere = default_graph(Game(name="Hades", library=library), library)
     other = record_entry(library, elsewhere.release)
 
     response = _patch(auth_client, purchase.pk, {"entry_id": str(other.pk)})
@@ -263,9 +262,9 @@ def test_the_list_pages_in_recorded_order(auth_client, entry):
     assert listed("?limit=0") == ids
 
 
-def test_the_message_names_a_tracked_game(auth_client, library, graph, stated_graph):
+def test_the_message_names_a_tracked_game(auth_client, library, graph):
     held = _post(auth_client, _body(record_entry(library, graph.release)))
-    elsewhere = stated_graph(Game(name="Hades", library=library), library)
+    elsewhere = default_graph(Game(name="Hades", library=library), library)
     tracking = _post(
         auth_client,
         {

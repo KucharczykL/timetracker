@@ -4,7 +4,6 @@ The session list lives inside an ``overflow-x-auto`` wrapper. The menu opens
 in the top layer, so it stays whole and within the viewport.
 """
 
-import pytest
 from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
@@ -12,16 +11,6 @@ from playwright.sync_api import Page
 from session_rows import session_row
 
 from games.models import Game, Platform
-
-
-@pytest.fixture
-def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
 
 
 def test_device_dropdown_not_clipped_on_short_table(

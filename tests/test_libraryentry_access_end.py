@@ -6,6 +6,7 @@ from typing import get_args
 import pytest
 from django.db import transaction
 from entries import end_entry_access, record_entry, remove_entry
+from graphs import default_graph
 
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import (
@@ -46,8 +47,8 @@ JULY = TemporalValue.parse("2021-07")
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.fixture

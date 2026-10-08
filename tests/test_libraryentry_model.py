@@ -6,6 +6,7 @@ from typing import cast
 import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from graphs import default_graph
 from historical_playtime_rows import record_row
 from session_rows import timed_row, tracked_run
 
@@ -50,8 +51,8 @@ def _row(library, tracked: PlayerGame, release: Release, **words) -> LibraryEntr
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 @pytest.mark.parametrize(
@@ -142,9 +143,9 @@ def test_two_entries_on_one_release_are_two_copies(owned_library, graph):
 
 
 def test_an_entry_naming_a_foreign_private_release_is_reported(
-    owned_library, other_library, graph, stated_graph
+    owned_library, other_library, graph
 ):
-    theirs = stated_graph(Game(name="Hades", library=other_library), other_library)
+    theirs = default_graph(Game(name="Hades", library=other_library), other_library)
     tracked = _tracked(owned_library, graph.game)
     row = _row(owned_library, tracked, theirs.release)
 
@@ -180,10 +181,8 @@ def test_the_word_columns_fit_every_word() -> None:
     assert max(len(word) for word in EntryFormat.values) <= format
 
 
-def test_an_entry_on_another_games_release_is_reported(
-    owned_library, graph, stated_graph
-):
-    other = stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+def test_an_entry_on_another_games_release_is_reported(owned_library, graph):
+    other = default_graph(Game(name="Celeste", library=owned_library), owned_library)
     tracked = _tracked(owned_library, graph.game)
     row = _row(owned_library, tracked, other.release)
 
@@ -195,10 +194,8 @@ def test_an_entry_on_another_games_release_is_reported(
     assert release_game_violations([]) == []
 
 
-def test_a_session_or_record_on_another_games_release_is_reported(
-    owned_library, graph, stated_graph
-):
-    other = stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+def test_a_session_or_record_on_another_games_release_is_reported(owned_library, graph):
+    other = default_graph(Game(name="Celeste", library=owned_library), owned_library)
     run = tracked_run(owned_library, graph.game)
     session = timed_row(run, timezone.now(), None, release=other.release)
     record = record_row([run], release=other.release)

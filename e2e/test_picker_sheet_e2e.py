@@ -3,26 +3,17 @@
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
+from tracked_games import create_tracked_game
 
-from e2e.helpers import held_choice, open_facet, pick_choice
-from e2e.tracked_games import create_tracked_game
+from e2e.helpers import held_choice, log_in, open_facet, pick_choice
 from games.models import Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-LOGIN = ("tester", "secret123")
 PHONE = ViewportSize(width=375, height=812)
 DESKTOP = ViewportSize(width=1280, height=800)
 SHEET = "dialog[data-dropdown-sheet][open]"
 GAME_HOST = 'drop-down[behavior="inline-combobox"]:has(search-select[name="game"])'
-
-
-def _log_in(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', LOGIN[0])
-    page.fill('input[name="password"]', LOGIN[1])
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 @pytest.fixture
@@ -40,7 +31,7 @@ def errors(page: Page) -> list[str]:
 
 @pytest.fixture
 def signed_in(live_server, page: Page, e2e_user, errors) -> Page:
-    _log_in(page, live_server)
+    log_in(page, live_server)
     return page
 
 

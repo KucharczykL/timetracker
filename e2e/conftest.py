@@ -1,22 +1,19 @@
 import os
 import shutil
 import sys
-import uuid
 from pathlib import Path
 
 import pytest
-from django.db.models.signals import post_save
-from django.utils import timezone
-
-#: The row helpers the unit tests seed the projection with, for the
-#: browser tests too. pytest puts each suite's own directory on the path.
-sys.path.append(str(Path(__file__).resolve().parents[1] / "tests"))
-
 from bulk_batches import chunk_queue, failing_batches, held_batches  # noqa: F401
-from calendar_days import process_zone_off_the_calendar
+from calendar_days import _process_clock_off_the_calendar  # noqa: F401
+from column_choice import show_every_column
+from icon_names import unknown_icon_names_fail  # noqa: F401
+from password_hashing import _fast_password_hashing  # noqa: F401
+from playwright.sync_api import Page
+from settings_caches import _reset_settings_caches  # noqa: F401
+from tracked_games import _track_created_games  # noqa: F401
 
-from timetracker import config as config_module
-from timetracker import settings_resolver
+from e2e.helpers import E2E_LOGIN, log_in
 
 # Playwright runs an async event loop in the background, which triggers
 # Django's async safety checks when running synchronous tests. This allows
@@ -24,88 +21,35 @@ from timetracker import settings_resolver
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 
 
-@pytest.fixture(autouse=True)
-def _process_clock_off_the_calendar(settings):
-    """A process-clock day is wrong at every hour."""
-    settings.TIME_ZONE = process_zone_off_the_calendar()
-
-
-@pytest.fixture(autouse=True)
-def _reset_settings_caches():
-    """Isolate the settings resolver between e2e tests (flush teardown fires no
-    SiteSetting commit signal), mirroring tests/conftest.py."""
-    config_module.reset_caches()
-    settings_resolver.clear_cache()
-    yield
-    config_module.reset_caches()
-    settings_resolver.clear_cache()
-
-
 @pytest.fixture
 def e2e_user(django_user_model, live_server):
-    """Provision the explicit owner used by ordinary authenticated E2E tests."""
-    user, _created = django_user_model.objects.get_or_create(username="tester")
-    if not user.check_password("secret123"):
-        user.set_password("secret123")
+    """The default signed-in owner."""
+    user, _created = django_user_model.objects.get_or_create(
+        username=E2E_LOGIN.username
+    )
+    if not user.check_password(E2E_LOGIN.password):
+        user.set_password(E2E_LOGIN.password)
         user.save(update_fields=["password"])
     return user
 
 
 @pytest.fixture
+def every_column_user(e2e_user):
+    """The default user, every list column shown."""
+    show_every_column(e2e_user)
+    return e2e_user
+
+
+@pytest.fixture
+def authenticated_page(live_server, page: Page, e2e_user) -> Page:
+    """The page, signed in as ``e2e_user``."""
+    log_in(page, live_server)
+    return page
+
+
+@pytest.fixture
 def e2e_library(e2e_user):
     return e2e_user.library
-
-
-@pytest.fixture(autouse=True)
-def _track_created_games(request):
-    """Seed each created game its projection rows.
-
-    Rows, not TrackGame: the command wants an actor and a transaction.
-    Both rows: a write path that finds no run creates a second.
-    Other words come through ``create_tracked_game``.
-    A twin of tests/conftest.py: the suites share no conftest.
-    """
-    from games.models import (
-        Game,
-        PlayerGame,
-        PlayerGameStatus,
-        Playthrough,
-        PlaythroughKind,
-    )
-
-    if "untracked_games" in request.keywords:
-        yield
-        return
-
-    def track(sender, instance, created, raw, **kwargs):
-        #: raw is a loaddata row: the library may not exist yet.
-        if raw or not created or instance.library_id is None:
-            return
-        tracked, made = PlayerGame.objects.get_or_create(
-            library_id=instance.library_id,
-            game=instance,
-            defaults={
-                "pk": uuid.uuid7(),
-                "tracked_at": timezone.now(),
-                "status": PlayerGameStatus.UNPLAYED,
-                "mastered": False,
-            },
-        )
-        if not made:
-            return
-        Playthrough.objects.create(
-            pk=uuid.uuid7(),
-            library_id=instance.library_id,
-            player_game=tracked,
-            kind=PlaythroughKind.ORDINARY,
-            created_at=timezone.now(),
-        )
-
-    post_save.connect(track, sender=Game, dispatch_uid="test-track-created-games")
-    try:
-        yield
-    finally:
-        post_save.disconnect(sender=Game, dispatch_uid="test-track-created-games")
 
 
 def _find_system_chrome() -> str | None:
@@ -174,6 +118,3 @@ def browser_type_launch_args(browser_type_launch_args):
         }
     # Fallback to default Playwright behavior
     return browser_type_launch_args
-
-
-from icon_names import unknown_icon_names_fail  # noqa: F401

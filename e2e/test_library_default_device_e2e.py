@@ -13,16 +13,6 @@ DEFAULT_DEVICE_URL = "/api/library/default-device"
 
 
 @pytest.fixture
-def library_page(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
-@pytest.fixture
 def devices(e2e_library) -> dict[str, Device]:
     deck = create_device(e2e_library, "Deck")
     phone = create_device(e2e_library, "Phone")
@@ -55,9 +45,9 @@ def _stored(e2e_library):
 
 
 def test_a_pick_saves_and_none_saves_null(
-    library_page: Page, live_server, e2e_library, devices
+    authenticated_page: Page, live_server, e2e_library, devices
 ):
-    page = library_page
+    page = authenticated_page
     deck, phone = devices["deck"], devices["phone"]
     _open(page, live_server)
     picker = page.locator('search-select[name="default_device"]')
@@ -90,9 +80,9 @@ def test_a_pick_saves_and_none_saves_null(
 
 
 def test_a_refused_save_restores_the_stored_device(
-    library_page: Page, live_server, devices
+    authenticated_page: Page, live_server, devices
 ):
-    page = library_page
+    page = authenticated_page
     deck = devices["deck"]
     _open(page, live_server)
     page.route(

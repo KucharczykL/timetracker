@@ -13,16 +13,6 @@ pytestmark = pytest.mark.django_db(transaction=True)
 SUBMIT = "#add-form button[type=submit]"
 
 
-@pytest.fixture
-def signed_in(live_server, page: Page, e2e_user) -> Page:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-    return page
-
-
 def saved(page: Page, live_server) -> None:
     """Submit, and wait for the redirect."""
     page.click(SUBMIT)
@@ -43,9 +33,9 @@ def live_key(game: Game) -> str | None:
 
 
 def test_add_game_states_a_reference_and_detail_follows_it(
-    signed_in, live_server, e2e_library
+    authenticated_page, live_server, e2e_library
 ):
-    page = signed_in
+    page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_game')}")
 
     page.fill("input[name='name']", "Elite")
@@ -61,9 +51,9 @@ def test_add_game_states_a_reference_and_detail_follows_it(
 
 
 def test_editing_the_box_changes_the_key_then_lets_go_of_it(
-    signed_in, live_server, e2e_library
+    authenticated_page, live_server, e2e_library
 ):
-    page = signed_in
+    page = authenticated_page
     game = Game.objects.create(library=e2e_library, name="Elite")
     state_external_references(
         target=game, library=e2e_library, keys={"wikidata": "Q123"}
@@ -88,10 +78,10 @@ def test_editing_the_box_changes_the_key_then_lets_go_of_it(
 
 
 def test_a_taken_key_answers_beside_the_box_a_person_typed_into(
-    signed_in, live_server, e2e_library
+    authenticated_page, live_server, e2e_library
 ):
     """The refusal comes back with the value."""
-    page = signed_in
+    page = authenticated_page
     held = Game.objects.create(library=e2e_library, name="Held")
     state_external_references(
         target=held, library=e2e_library, keys={"wikidata": "Q123"}

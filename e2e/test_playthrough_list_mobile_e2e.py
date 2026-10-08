@@ -11,6 +11,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, ViewportSize, expect
 from session_rows import tracked_run
 
+from e2e.helpers import log_in
 from games.models import Game, Platform, Playthrough
 from timetracker.temporal import TemporalValue
 
@@ -37,11 +38,7 @@ def one_run(e2e_library) -> Playthrough:
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     page.set_viewport_size(PHONE)
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
+    log_in(page, live_server)
     return page
 
 

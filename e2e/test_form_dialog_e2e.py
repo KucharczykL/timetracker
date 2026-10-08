@@ -2,27 +2,19 @@
 
 import pytest
 from devices import create_device
+from django.conf import settings
 from django.urls import reverse
+from graphs import default_graph
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
-from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
+from e2e.helpers import E2E_LOGIN, log_in
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
 from games.models import Device, Game, LibraryEntry, Platform, Release
 from games.writes.libraryentry import record_entry
 from games.writes.playergame import new_correlation_id
 from timetracker.temporal import TemporalValue
-
-LOGIN = ("tester", "secret123")
-
-
-def _log_in(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', LOGIN[0])
-    page.fill('input[name="password"]', LOGIN[1])
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
 
 
 @pytest.fixture
@@ -40,7 +32,7 @@ def errors(page: Page) -> list[str]:
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user, errors) -> Page:
-    _log_in(page, live_server)
+    log_in(page, live_server)
     return page
 
 
@@ -280,12 +272,12 @@ def test_a_sign_in_inside_the_dialog_keeps_the_save(
     page = authenticated_page
     deck = create_device(e2e_library, "Deck")
     _open_device_edit(page, live_server, deck)
-    page.context.clear_cookies(name="sessionid")
+    page.context.clear_cookies(name=settings.SESSION_COOKIE_NAME)
     dialog = page.locator("dialog[data-modal][open]")
     dialog.get_by_role("button", name="Submit", exact=True).click()
 
-    dialog.locator('input[name="username"]').fill(LOGIN[0])
-    dialog.locator('input[name="password"]').fill(LOGIN[1])
+    dialog.locator('input[name="username"]').fill(E2E_LOGIN.username)
+    dialog.locator('input[name="password"]').fill(E2E_LOGIN.password)
     dialog.get_by_role("button", name="Login").click()
     name = dialog.locator('input[name="name"]')
     expect(name).to_have_value("Deck")
@@ -300,24 +292,12 @@ def test_a_sign_in_inside_the_dialog_keeps_the_save(
 def _copy_got_in_2099(user, library) -> LibraryEntry:
     """Any end the form offers precedes it."""
     platform = Platform.objects.create(name="PS5", group="Sony")
-    game: Game = create_tracked_game(library, "Tunic")
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
+    game = create_tracked_game(library, "Tunic")
+    release = default_graph(game, library, platform=platform).release
     answer = record_entry(
         user,
         EntryStatement(
-            release_id=Release.objects.get(edition__game=game).pk,
+            release_id=release.pk,
             access="owned",
             format="digital",
             note="",
@@ -402,21 +382,8 @@ def _mark_new_link(page: Page, href: str, text: str) -> None:
 
 
 def _game_on(library, name: str, platform: Platform) -> Game:
-    game: Game = create_tracked_game(library, name)
-    state_catalog_graph(
-        game=game,
-        library=library,
-        editions=[
-            EditionState(
-                key="edition",
-                is_default=True,
-                releases=(
-                    ReleaseState(key="release", platform=platform, is_default=True),
-                ),
-            )
-        ],
-    )
-    return game
+    game = create_tracked_game(library, name)
+    return default_graph(game, library, platform=platform).game
 
 
 def test_a_picker_works_inside_and_the_message_follows_the_page(

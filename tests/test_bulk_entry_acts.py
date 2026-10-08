@@ -9,6 +9,7 @@ from bulk_posts import act_url, newest_batch, posted, press, selection
 from django.http import Http404, QueryDict
 from django.urls import reverse
 from entries import record_entry, remove_entry
+from graphs import default_graph
 from purchases import record_purchase, remove_purchase
 
 from common.components.unset_field import unset_input_name
@@ -52,8 +53,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(
+def graph(owned_library):
+    return default_graph(
         Game(name="Tunic", library=owned_library),
         owned_library,
         platform=Platform.objects.create(name="PS5", group="Sony"),
@@ -138,13 +139,11 @@ def test_an_unreadable_filter_refuses_the_act(owned_library, first):
         ENTRY_EDIT.scope(owned_library, json.dumps({"nonsense": {}}))
 
 
-def test_another_librarys_copy_comes_out_lost(
-    owned_library, first, django_user_model, stated_graph
-):
+def test_another_librarys_copy_comes_out_lost(owned_library, first, django_user_model):
     stranger = django_user_model.objects.create_user("stranger").library
     theirs = record_entry(
         stranger,
-        stated_graph(Game(name="Hades", library=stranger), stranger).release,
+        default_graph(Game(name="Hades", library=stranger), stranger).release,
     )
 
     resolution = REMOVE_ENTRY.resolve(owned_library, [first.pk, theirs.pk])
@@ -316,11 +315,9 @@ def test_a_copy_removed_since_the_confirmation_is_left_alone(logged_in, first):
     assert first.removed_at is not None
 
 
-def test_an_undo_of_another_librarys_copy_is_absent(
-    owned_user, django_user_model, stated_graph
-):
+def test_an_undo_of_another_librarys_copy_is_absent(owned_user, django_user_model):
     stranger = django_user_model.objects.create_user("stranger").library
-    theirs = stated_graph(Game(name="Hades", library=stranger), stranger)
+    theirs = default_graph(Game(name="Hades", library=stranger), stranger)
     their_copy = remove_entry(record_entry(stranger, theirs.release))
 
     with pytest.raises(Http404):
@@ -469,9 +466,9 @@ def test_a_copy_already_on_the_platform_counts_unchanged(
 
 
 def test_a_game_with_no_release_there_is_refused(
-    logged_in, owned_library, first, switch, stated_graph
+    logged_in, owned_library, first, switch
 ):
-    hades = stated_graph(
+    hades = default_graph(
         Game(name="Hades", library=owned_library), owned_library, platform=switch
     )
     theirs = record_entry(owned_library, hades.release)

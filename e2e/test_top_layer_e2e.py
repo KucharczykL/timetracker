@@ -19,6 +19,7 @@ from common.components import (
     SearchSelect,
     collect_media,
 )
+from e2e.helpers import log_in
 
 OPTIONS = [
     {"value": "1", "label": "Hades", "data": {}},
@@ -225,20 +226,12 @@ def test_a_cancelled_touch_keeps_the_menu_open(live_server, page: Page):
     expect(page.locator("#acts")).to_be_hidden()
 
 
-def _login(page: Page, live_server) -> None:
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', "tester")
-    page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
-    page.wait_for_url(f"{live_server.url}/tracker**")
-
-
 def test_escape_clears_a_selection_under_the_quick_bar(
     live_server, page: Page, e2e_library
 ):
     """Facet takes first Escape; selection the next."""
     create_tracked_game(e2e_library, "Outer Wilds")
-    _login(page, live_server)
+    log_in(page, live_server)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     box = page.locator("tbody [data-selection-checkbox]").first
     box.click()

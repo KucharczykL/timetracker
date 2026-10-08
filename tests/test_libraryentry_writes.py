@@ -7,6 +7,7 @@ from django.http import Http404
 from django.utils import timezone
 from entries import record_entry as record_by_event
 from entries import remove_entry as remove_by_event
+from graphs import default_graph
 
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.libraryentry import (
@@ -53,8 +54,8 @@ def second_library(django_user_model):
 
 
 @pytest.fixture
-def graph(owned_library, stated_graph):
-    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library):
+    return default_graph(Game(name="Tunic", library=owned_library), owned_library)
 
 
 def _draft(release, **changes) -> EntryStatement:
@@ -276,7 +277,7 @@ def test_library_entries_reads_each_of_the_five_marks(
 
 
 def test_library_entries_never_answers_another_librarys_row(
-    owned_library, second_library, graph, stated_graph
+    owned_library, second_library, graph
 ):
     Game.objects.filter(pk=graph.game.pk).update(library=None)
     mine = record_by_event(owned_library, graph.release)
@@ -296,10 +297,8 @@ def test_library_entries_reads_the_tracked_games_library(
     assert not library_entries(owned_library).exists()
 
 
-def test_game_entries_and_readable_entries_narrow_the_same_rows(
-    owned_library, graph, stated_graph
-):
-    other = stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+def test_game_entries_and_readable_entries_narrow_the_same_rows(owned_library, graph):
+    other = default_graph(Game(name="Celeste", library=owned_library), owned_library)
     mine = record_by_event(owned_library, graph.release)
     record_by_event(owned_library, other.release)
 

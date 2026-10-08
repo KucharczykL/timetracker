@@ -1,10 +1,11 @@
-"""Seeding fixtures on the library's calendar day."""
+"""Calendar-day seeding; the process clock displaced."""
 
 import os
 import uuid
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from django.utils import timezone
 
 from games.commands.calendar import SetCalendarDayZone
@@ -87,3 +88,9 @@ def other_displaced_zone(zone: ZoneName) -> ZoneName:
     """The other zone; never the same date."""
     (other,) = (name for name in DISPLACED_ZONES if name != zone)
     return other
+
+
+@pytest.fixture(autouse=True)
+def _process_clock_off_the_calendar(settings):
+    """A process-clock day is wrong at every hour."""
+    settings.TIME_ZONE = process_zone_off_the_calendar()

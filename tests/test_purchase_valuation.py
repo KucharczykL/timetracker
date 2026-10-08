@@ -12,6 +12,7 @@ import pytest
 from django.core.management import CommandError, call_command
 from django.db import IntegrityError, transaction
 from entries import record_entry
+from graphs import default_graph
 from purchases import record_purchase, remove_purchase, request_run
 
 from games import conversion, exchange_rates, tasks
@@ -48,8 +49,8 @@ def no_stored_rates():
 
 
 @pytest.fixture
-def entry(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def entry(owned_library):
+    graph = default_graph(Game(name="Tunic", library=owned_library), owned_library)
     return record_entry(owned_library, graph.release)
 
 
@@ -244,9 +245,7 @@ def test_a_stray_same_currency_rate_stales_nothing(entry):
     assert _current(same) == (Decimal("5.00"), "CZK")
 
 
-def test_another_library_s_valuation_is_never_current(
-    entry, django_user_model, stated_graph
-):
+def test_another_library_s_valuation_is_never_current(entry, django_user_model):
     purchase = _published(entry)
     stranger = django_user_model.objects.create_user(username="stranger").library
     PurchaseValuation.objects.filter(purchase_id=purchase.pk).update(library=stranger)
@@ -323,11 +322,9 @@ def test_a_stale_worker_publishes_nothing(entry, rates):
     assert not PurchaseValuation.objects.exists()
 
 
-def test_one_library_s_publication_leaves_another_s_rows(
-    entry, django_user_model, stated_graph
-):
+def test_one_library_s_publication_leaves_another_s_rows(entry, django_user_model):
     other_library = django_user_model.objects.create_user(username="other").library
-    other_graph = stated_graph(
+    other_graph = default_graph(
         Game(name="Celeste", library=other_library), other_library
     )
     other = record_purchase(
