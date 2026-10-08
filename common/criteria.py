@@ -3128,7 +3128,8 @@ def duration_hours_to_q(
 
     Django stores DurationField as microseconds, so hours convert to
     ``timedelta``. EQUALS matches the whole hour bucket ``[h, h+1)``;
-    IS_NULL/NOT_NULL test against a zero duration. BETWEEN/NOT_BETWEEN require
+    IS_NULL is no duration (zero, or NULL over no rows) and NOT_NULL is more
+    than zero. BETWEEN/NOT_BETWEEN require
     ``value2``. This is the single home for the hours<->timedelta logic shared by
     the direct duration fields (playtime, session durations) and the
     duration-unit aggregates. Like ``_numeric_to_q`` it raises on an unsupported
@@ -3176,9 +3177,9 @@ def duration_hours_to_q(
             **{f"{field_name}__gt": upper_bound}
         )
     if modifier == Modifier.IS_NULL:
-        return Q(**{field_name: timedelta(0)})
+        return Q(**{field_name: timedelta(0)}) | Q(**{f"{field_name}__isnull": True})
     if modifier == Modifier.NOT_NULL:
-        return ~Q(**{field_name: timedelta(0)})
+        return Q(**{f"{field_name}__gt": timedelta(0)})
     raise FilterError(f"Unsupported modifier {modifier} for duration comparison")
 
 

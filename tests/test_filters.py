@@ -29,6 +29,7 @@ from django.utils import timezone
 from entries import record_entry
 from filter_contexts import unrestricted_filter_context
 from graphs import default_graph
+from historical_playtime_rows import record_row
 from purchases import record_purchase
 from session_rows import duration_only_row, session_row, tracked_run
 
@@ -4671,6 +4672,17 @@ class TestFilterFieldHandlers:
             effective_duration__lt=timedelta(hours=5),
         )
 
+    def test_duration_presence_is_zero_or_absent(self):
+        from datetime import timedelta
+
+        handler = duration_hours_handler("effective_duration")
+        assert handler(IntCriterion(modifier=Modifier.IS_NULL), None) == (
+            Q(effective_duration=timedelta(0)) | Q(effective_duration__isnull=True)
+        )
+        assert handler(IntCriterion(modifier=Modifier.NOT_NULL), None) == Q(
+            effective_duration__gt=timedelta(0)
+        )
+
     def test_duration_hours_between_passes_value2(self):
         # The refactor reads value2 via getattr — confirm it actually flows through.
         from datetime import timedelta
@@ -5934,14 +5946,12 @@ class TestScopedAggregateReducers:
         }
         assert self._games_matching(two_sessions_off_deck) == set()
 
-    def test_scoped_sum_is_null_when_no_row_matches_the_scope(self):
+    def test_scoped_sum_over_no_rows_is_none_not_zero(self):
         """SUM with a filter= that matches no rows yields SQL NULL (unlike the
-        count's 0): a game whose sessions all fail the scope matches neither
-        EQUALS 0 (NULL != 0) nor the duration IS_NULL (defined as *zero
-        duration*, see duration_hours_to_q) — identical to the pre-existing
-        unscoped no-session case. Pin it so a future 'coalesce to 0' change is
-        a deliberate decision, with a positive contrast proving the scoped sum
-        itself computes."""
+        count's 0). Under D2, IS_NULL means no duration (zero or NULL), so the
+        game matches IS_NULL but not EQUALS 0, which tests the bucket [0, 1 h).
+        Pin the NULL so a future 'coalesce to 0' change is deliberate, with a
+        positive contrast proving the scoped sum itself computes."""
         data = self._seed_two_device_games()
         deck_scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
 
@@ -5954,11 +5964,92 @@ class TestScopedAggregateReducers:
                 }
             }
 
-        # desktop_only's NULL deck-sum is invisible to both zero tests…
+        # desktop_only's NULL deck-sum is no duration, not the [0, 1 h) bucket.
         assert self._games_matching(scoped("EQUALS", 0)) == set()
-        assert self._games_matching(scoped("IS_NULL")) == set()
+        assert self._games_matching(scoped("IS_NULL")) == {data["desktop_only"]}
         # …while mixed's deck sessions (1h + 1h elapsed) sum normally.
         assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}
+
+
+@pytest.mark.django_db
+class TestDurationPresence:
+    """IS_NULL is no duration (zero or NULL); NOT_NULL is more than zero (D2).
+
+    Each game falls in exactly one bucket, so the two modifiers partition the
+    scope. The 'none' set for each field is pinned here.
+    """
+
+    def _world(self):
+        from datetime import datetime
+
+        from games.models import Game, Platform
+
+        platform = Platform.objects.create(name="PC")
+        games = {
+            name: Game.objects.create(name=name, platform=platform)
+            for name in ["unplayed", "half_hour", "running_only", "hist_only"]
+        }
+        start = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+        for game in games.values():
+            if game.name == "unplayed":
+                continue
+            run = tracked_run(game.library, game)
+            if game.name == "half_hour":
+                session_row(
+                    game,
+                    started_at=start,
+                    ended_at=start + timedelta(minutes=30),
+                    library=game.library,
+                )
+            elif game.name == "running_only":
+                session_row(
+                    game,
+                    started_at=start,
+                    ended_at=None,
+                    library=game.library,
+                )
+            else:
+                record_row([run], duration=timedelta(minutes=20))
+        return games
+
+    def _matching(self, field, modifier, games):
+        from games.filters import GameFilter, filter_query_context_for_library
+        from games.models import Game
+
+        game_filter = GameFilter.from_json({field: {"value": 0, "modifier": modifier}})
+        assert game_filter is not None
+        library = games["unplayed"].library
+        matched = execute_filter(
+            game_filter,
+            Game.objects.tracked_by(library),
+            filter_query_context_for_library(library),
+        )
+        ids = {g.id for g in games.values()}
+        return {game for game in matched if game.id in ids}
+
+    @pytest.mark.parametrize(
+        ("field", "expected_none"),
+        [
+            ("playtime_hours", {"unplayed", "running_only"}),
+            ("session_playtime_hours", {"unplayed", "running_only", "hist_only"}),
+        ],
+    )
+    def test_is_null_and_not_null_partition_the_scope(self, field, expected_none):
+        games = self._world()
+        none_set = self._matching(field, "IS_NULL", games)
+        more_set = self._matching(field, "NOT_NULL", games)
+        assert none_set == {games[name] for name in expected_none}
+        assert more_set == {games[name] for name in games if name not in expected_none}
+        assert none_set.isdisjoint(more_set)
+
+    def test_not_equals_zero_drops_games_without_sessions(self):
+        """Follow-up 3: NOT_EQUALS 0 on session playtime still drops games
+        whose only playtime is absent or a record; the pair is not
+        complete for that field until the follow-up lands."""
+        games = self._world()
+        not_zero = self._matching("session_playtime_hours", "NOT_EQUALS", games)
+        assert games["unplayed"] not in not_zero
+        assert games["hist_only"] not in not_zero
 
 
 class TestComparisonOperandPaths:
