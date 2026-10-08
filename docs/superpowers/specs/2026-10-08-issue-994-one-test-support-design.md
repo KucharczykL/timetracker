@@ -54,22 +54,19 @@ credentials=E2E_LOGIN)` in `e2e/helpers.py`, or through `authenticated_page`
 in `e2e/conftest.py`, which calls it. `create_login_user(credentials)` makes
 another user from the same `Credentials`.
 
-`log_in` presses Enter in the password field. A click leaves Playwright's
-virtual mouse on the button, and the next page can open a tooltip under it.
-When the page is then not `/tracker`, `log_in` fails at once with the form's
-text. It waits for nothing a script draws, so a context with JavaScript off
-can use it.
+`log_in` checks the credentials with `authenticate`, makes a session on the
+server, and puts its cookie into the browser context. It loads no page. The
+page stays where it was, so the test goes to the page it reads. A login form
+costs three page loads a test; the cookie took the suite from 63 s to 50 s.
+It waits for nothing a script draws, so a context with JavaScript off can use
+it. Bad credentials fail at once.
 
 A module that does setup before the login keeps its own `authenticated_page`:
 it does the setup, then calls `log_in`, and returns a `Page`. A test that
 needs the user asks for `e2e_user`. A module that shows every list column
 marks its tests with `usefixtures("every_column_user")`.
 
-A synthetic harness logs in before it swaps `ROOT_URLCONF`, or extends the
-base patterns. A module that swaps it in an autouse fixture cannot take
-`authenticated_page`.
+`log_in` resolves no URL, so a synthetic harness that swaps `ROOT_URLCONF`
+can sign in before or after the swap.
 
-Only a test whose subject is the login page states its own steps.
-
-The login stays a form login. A cookie login saves one page load a test;
-#1578 holds it.
+Only a test whose subject is the login page fills the form.

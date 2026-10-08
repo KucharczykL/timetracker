@@ -89,6 +89,7 @@ def test_account_menu_toggle_swaps_visible_icon_and_reopens_hovered_tooltip(
     create_login_user(login)
     page.emulate_media(color_scheme="light")
     log_in(page, live_server, login)
+    page.goto(f"{live_server.url}{reverse('games:index')}")
     page.get_by_role("button", name="Open account menu for theme-user").click()
     toggle = page.locator("theme-toggle [data-pop-over-trigger]")
     tooltip = page.locator("[data-theme-tooltip]")

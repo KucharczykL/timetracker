@@ -4,8 +4,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import NamedTuple
 
-from django.contrib.auth import get_user_model
-from django.urls import reverse
+from django.conf import settings
+from django.contrib.auth import authenticate, get_user_model
+from django.test import Client
 from playwright.sync_api import Locator, Page, expect
 
 
@@ -27,19 +28,22 @@ def create_login_user(credentials: Credentials, *, superuser: bool = False):
 
 
 def log_in(page: Page, live_server, credentials: Credentials = E2E_LOGIN) -> None:
-    """Sign in via the form, to ``/tracker``.
-
-    Enter, not a click: a click leaves the mouse on the button,
-    and the next page then hovers the element under it.
-    """
-    page.goto(f"{live_server.url}{reverse('login')}")
-    page.fill('input[name="username"]', credentials.username)
-    page.fill('input[name="password"]', credentials.password)
-    with page.expect_navigation():
-        page.press('input[name="password"]', "Enter")
-    if not page.url.startswith(f"{live_server.url}/tracker"):
-        refusal = page.locator("form").inner_text()
-        raise AssertionError(f"{credentials.username} was not signed in: {refusal}")
+    """Sign in by session cookie; the page stays put."""
+    user = authenticate(username=credentials.username, password=credentials.password)
+    if user is None:
+        raise AssertionError(f"{credentials.username} was not signed in")
+    client = Client()
+    client.force_login(user)
+    session = client.cookies[settings.SESSION_COOKIE_NAME].value
+    page.context.add_cookies(
+        [
+            {
+                "name": settings.SESSION_COOKIE_NAME,
+                "value": session,
+                "url": live_server.url,
+            }
+        ]
+    )
 
 
 TABLES_SETTLED = """
