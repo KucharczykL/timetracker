@@ -5277,7 +5277,7 @@ class TestFieldMetadata:
         assert entry["nullable"] is False
 
     def test_no_duration_field_offers_the_presence_pair(self):
-        # "none" is is 0, "any" is > 0; a duration field is never presence-nullable.
+        # Duration fields never offer presence.
         checked = 0
         for filter_cls in _ALL_FILTERS:
             for entry in field_metadata(filter_cls):
@@ -6106,7 +6106,7 @@ class TestScopedAggregateReducers:
                 }
             }
 
-        # No deck sessions is 0 h; presence is refused.
+        # No deck sessions reads 0 h.
         assert self._games_matching(scoped("EQUALS", 0)) == {data["desktop_only"]}
         with pytest.raises(FilterError):
             self._games_matching(scoped("IS_NULL"))

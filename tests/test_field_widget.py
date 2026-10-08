@@ -127,7 +127,7 @@ class TestFieldWidgetKindDispatch:
         assert 'value="NOT_NULL"' not in html
 
     def test_a_duration_average_offers_no_presence_pair(self):
-        # Avg answers NULL over no rows, but a duration aggregate reads 0 h.
+        # A duration average reads 0 h.
         html = str(field_widget(GameFilter, "session_average"))
         assert 'value="IS_NULL"' not in html
         assert 'value="NOT_NULL"' not in html

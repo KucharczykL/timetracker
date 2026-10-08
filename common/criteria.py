@@ -3648,7 +3648,7 @@ def aggregate_to_q(
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 
-    # No play is 0 h; a non-duration sum stays NULL.
+    # No play reads 0 h.
     if spec.unit == DURATION_HOURS:
         aggregate_expression = Coalesce(
             aggregate_expression,

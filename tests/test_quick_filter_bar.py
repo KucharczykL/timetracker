@@ -213,7 +213,7 @@ class IsQuickEditableTest(SimpleTestCase):
         )
 
     def test_an_averaged_facet_in_a_presence_mode_is_not_editable(self):
-        # A duration average reads 0 h over no rows, so it offers no presence mode.
+        # A duration average offers no presence.
         self.assertFalse(
             is_quick_editable(
                 {"session_average": {"modifier": "IS_NULL"}},
