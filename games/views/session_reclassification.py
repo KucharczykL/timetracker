@@ -24,7 +24,7 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.library_kit import EmptyState, StatisticCard, StatisticGrid
-from common.criteria import ChoiceCriterion, IntCriterion, Modifier
+from common.criteria import ChoiceCriterion, FloatCriterion, Modifier
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
@@ -148,7 +148,7 @@ def review_filter() -> str:
                 value=[PlayerSessionTimingMode.DURATION_ONLY.value],
                 modifier=Modifier.INCLUDES,
             ),
-            duration_hours=IntCriterion(
+            duration_hours=FloatCriterion(
                 value=REVIEW_THRESHOLD_HOURS,
                 modifier=Modifier.GREATER_THAN_OR_EQUAL,
             ),
