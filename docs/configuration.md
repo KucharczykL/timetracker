@@ -377,9 +377,9 @@ collected into the image at build time rather than on each boot.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `CREATE_DEFAULT_SUPERUSER` | `false` | Create an `admin` superuser on first start. Its random password is printed once to the container log. |
+| `CREATE_DEFAULT_SUPERUSER` | `false` | Create an `admin` superuser on a start that finds none. Its random password is printed once to the container log. |
 | `STAGING` | `false` | Scrub copied sessions / django-q schedule on staging. |
-| `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures when the database is empty. Also creates the `admin` superuser that owns them. |
+| `LOAD_SAMPLE_DATA` | `false` | Seed sample fixtures, owned by `admin`, when the database is empty. Creates that superuser as `CREATE_DEFAULT_SUPERUSER` does. |
 | `RUN_QCLUSTER` | `true` | Run the django-q cluster. `false` saves its ~260 MB where nothing schedules work; the image sets the default because supervisord cannot parse its config with this unset. |
 
 The container runs as uid 1000 — mounted data directories must be writable
