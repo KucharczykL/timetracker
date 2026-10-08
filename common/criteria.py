@@ -21,6 +21,7 @@ from typing import (
     ClassVar,
     Literal,
     NamedTuple,
+    NotRequired,
     Self,
     TypedDict,
     TypeVar,
@@ -1057,6 +1058,11 @@ class FilterField:
         """The handler reads two bound columns, so WITHIN is offered."""
         return getattr(self.handler, "interval_bounds", None) is not None
 
+    @property
+    def unit(self) -> DurationUnit | None:
+        """The handler's hours unit, so the widget reads hours."""
+        return getattr(self.handler, "unit", None)
+
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
         # config combinations whose widget/Q axes silently cancel each other, so a
@@ -1355,6 +1361,7 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
 
 type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
 type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
+DURATION_HOURS: DurationUnit = "duration_hours"
 type RelationAccessor = str  # a relation accessor on the parent model, e.g. "sessions"
 type RelationPath = str  # related row to parent, e.g. "entry__player_game__game"
 
@@ -2761,6 +2768,8 @@ class FieldMeta(TypedDict):
     # aggregate field reduces — the model whose fields build the aggregate's
     # ``scope`` sub-filter (issue #151). ``""`` for every non-aggregate field.
     scope_model: ModelKey
+    # Hours unit for a DurationField-backed field. Absent (not "") otherwise.
+    unit: NotRequired[DurationUnit]
 
 
 class ModelFieldBundle(TypedDict):
@@ -3040,6 +3049,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # loudly here matches the mis-typed-lookup contract above — a spec
             # gap is a wiring bug, not a degraded picker.
             scope_model: ModelKey = ""
+            unit: DurationUnit | None = None
             if is_aggregate:
                 spec = filter_cls.aggregates.get(name)
                 if spec is None:
@@ -3054,24 +3064,28 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                         f"{spec.scope_filter.__name__} has no comparison model"
                     )
                 scope_model = scope_target._meta.model_name or ""
-            entries.append(
-                FieldMeta(
-                    name=name,
-                    label=_field_label(filter_cls, name),
-                    kind=kind,
-                    nullable=nullable,
-                    choices=choices,
-                    modifiers=_modifiers_for_field(
-                        kind,
-                        nullable,
-                        interval=field_spec is not None and field_spec.interval,
-                    ),
-                    relations=[],
-                    search_url=search_url or "",
-                    is_m2m=is_m2m,
-                    scope_model=scope_model,
-                )
+                unit = spec.unit
+            elif field_spec is not None:
+                unit = field_spec.unit
+            entry = FieldMeta(
+                name=name,
+                label=_field_label(filter_cls, name),
+                kind=kind,
+                nullable=nullable,
+                choices=choices,
+                modifiers=_modifiers_for_field(
+                    kind,
+                    nullable,
+                    interval=field_spec is not None and field_spec.interval,
+                ),
+                relations=[],
+                search_url=search_url or "",
+                is_m2m=is_m2m,
+                scope_model=scope_model,
             )
+            if unit is not None:
+                entry["unit"] = unit
+            entries.append(entry)
             continue
         sub_filter_cls = _filter_class_for(filter_cls, name)
         if sub_filter_cls is not None:
@@ -3212,6 +3226,7 @@ def duration_hours_handler(field_name: str) -> FieldHandler:
             criterion.value, value2, criterion.modifier, field_name
         )
 
+    handler.unit = DURATION_HOURS  # type: ignore[attr-defined]
     return handler
 
 

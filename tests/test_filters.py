@@ -5172,6 +5172,37 @@ class TestFieldMetadata:
             assert entry["nullable"] is True
             assert entry["modifiers"][-2:] == ["IS_NULL", "NOT_NULL"]
 
+    def test_duration_fields_state_their_unit(self):
+        from games.filters import (
+            GameFilter,
+            HistoricalPlaytimeFilter,
+            PlayerSessionFilter,
+        )
+
+        marked = set()
+        for filter_cls in (GameFilter, PlayerSessionFilter, HistoricalPlaytimeFilter):
+            for entry in field_metadata(filter_cls):
+                if "unit" in entry:
+                    marked.add((filter_cls.__name__, entry["name"]))
+        assert marked == {
+            ("GameFilter", "playtime_hours"),
+            ("GameFilter", "session_playtime_hours"),
+            ("GameFilter", "session_average"),
+            ("PlayerSessionFilter", "duration_hours"),
+            ("HistoricalPlaytimeFilter", "duration_hours"),
+        }
+
+    def test_duration_fields_read_in_hours(self):
+        assert self._by_name(GameFilter)["playtime_hours"]["label"] == (
+            "Playtime (hrs)"
+        )
+        assert self._by_name(GameFilter)["session_average"]["label"] == (
+            "Session average (hrs)"
+        )
+        assert self._by_name(GameFilter)["session_playtime_hours"]["label"] == (
+            "Session playtime (hrs)"
+        )
+
     def test_multi_hop_descent_label(self):
         # platform_group (lookup platform__group) descends to Platform.group; the
         # label is the field name title-cased (not "Group" from verbose_name).
