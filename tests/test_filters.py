@@ -438,7 +438,7 @@ class TestGameDurationsExactAgainstDB:
             "hour_and_a_half": game_with(
                 "Hour and a half", [timedelta(hours=1)], timedelta(minutes=30)
             ),
-            # 1 h 59 m: a bucket's 1, but not exactly 1.
+            # 1 h 59 m is not exactly 1.
             "almost_two": game_with("Almost two", [timedelta(hours=1, minutes=59)]),
             # Two sessions: 2.5 h in all, averaging 1.25 h.
             "mixed": game_with("Mixed", [timedelta(hours=1), timedelta(minutes=90)]),

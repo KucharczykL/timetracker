@@ -281,7 +281,7 @@ def _coerce_float(raw: Any) -> float:
 
 
 def _coerce_number(raw: Any) -> int | float:
-    # Validate numerically; an integral value stays int.
+    # An integral value stays int.
     number = _coerce_float(raw)
     return int(number) if number.is_integer() else number
 
@@ -1094,7 +1094,7 @@ class FilterField:
                 "FilterField search_url has no effect on a handler-mapped field"
             )
         if self.nullable and self.unit is not None:
-            # A duration has no presence pair; "is 0" is none.
+            # A duration has no presence pair.
             raise TypeError("a duration field has no presence pair; nullable=False")
         for stated, what in ((self.choices, "choices"), (self.nullable, "nullable")):
             if stated is not None and self.handler is None:
@@ -3023,7 +3023,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # ``Count`` answers 0 over no rows, so a presence test on one
             # matches nothing. ``Sum`` and ``Avg`` answer NULL there, so "is
             # null" on one reads as "no related rows".
-            # A duration field states no presence pair: "is 0" is none, "> 0" any.
+            # A duration has no presence pair.
             unit: DurationUnit | None = None
             if is_aggregate:
                 aggregate_spec = filter_cls.aggregates.get(name)
