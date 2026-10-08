@@ -6,6 +6,12 @@ from django.core.management.base import BaseCommand
 
 from games.models import Game
 
+type Username = str
+
+DEFAULT_SUPERUSER: Username = "admin"
+OLD_DEFAULT_PASSWORD = "admin"
+PASSWORD_BYTES = 16
+
 
 class Command(BaseCommand):
     help = (
@@ -44,16 +50,40 @@ class Command(BaseCommand):
         should_create_default_user = options["default_superuser"] or should_load_sample
 
         if should_create_default_user:
-            user_model = get_user_model()
-            if not user_model.objects.filter(username="admin").exists():
-                password = secrets.token_urlsafe(16)
-                user_model.objects.create_superuser("admin", "", password)
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Created default superuser: admin / {password} (shown once)"
-                    )
-                )
+            self._ensure_default_superuser()
 
         if should_load_sample:
-            call_command("load_sample_data", "--user", "admin")
+            call_command("load_sample_data", "--user", DEFAULT_SUPERUSER)
             self.stdout.write(self.style.SUCCESS("Loaded sample data."))
+
+    def _ensure_default_superuser(self) -> None:
+        user_model = get_user_model()
+        existing = user_model.objects.filter(username=DEFAULT_SUPERUSER).first()
+        if existing is None:
+            password = secrets.token_urlsafe(PASSWORD_BYTES)
+            user_model.objects.create_superuser(DEFAULT_SUPERUSER, "", password)
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Created default superuser: {DEFAULT_SUPERUSER} / {password}"
+                    " (not shown again)"
+                )
+            )
+        elif not existing.is_superuser:
+            self.stderr.write(
+                self.style.WARNING(
+                    f"User '{DEFAULT_SUPERUSER}' exists but is no superuser;"
+                    " created none."
+                )
+            )
+        elif existing.check_password(OLD_DEFAULT_PASSWORD):
+            self.stderr.write(
+                self.style.ERROR(
+                    f"Superuser '{DEFAULT_SUPERUSER}' still has the old default"
+                    f" password. Run: manage.py changepassword {DEFAULT_SUPERUSER}"
+                )
+            )
+        else:
+            self.stdout.write(
+                f"Superuser '{DEFAULT_SUPERUSER}' exists; password unchanged"
+                f" (manage.py changepassword {DEFAULT_SUPERUSER} resets it)."
+            )

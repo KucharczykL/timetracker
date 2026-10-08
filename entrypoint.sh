@@ -3,9 +3,10 @@ set -euo pipefail
 
 # Container-bootstrap configuration. These variables are consumed only by this
 # entrypoint, NOT by Django (see timetracker/config.py for the app settings):
-#   CREATE_DEFAULT_SUPERUSER — create an admin user on first start, its random
-#     password printed once to the log
-#   STAGING / LOAD_SAMPLE_DATA — staging-only data bootstrap (see below)
+#   CREATE_DEFAULT_SUPERUSER — create an admin user on a start that finds none,
+#     its random password printed once to the log
+#   STAGING — scrub a database copied from production (see below)
+#   LOAD_SAMPLE_DATA — seed demo data into an empty database (see below)
 #
 # The flags are translated into arguments here rather than read from the
 # environment inside Django, and the work runs as ONE `manage.py` call: each
@@ -15,8 +16,8 @@ set -euo pipefail
 # STAGING=true scrubs a database seeded from a production snapshot — sessions
 # and the inherited django-q schedule/queue — so staging neither shares prod's
 # session cookies nor independently runs scheduled tasks (see issue #20).
-# LOAD_SAMPLE_DATA=true instead seeds demo data into a fresh database, owned by
-# the default superuser, and only while the games table is empty.
+# LOAD_SAMPLE_DATA=true seeds demo data, only while the games table is empty,
+# owned by the default superuser: created as CREATE_DEFAULT_SUPERUSER would.
 # if, not `[ … ] && …`: under `set -e` a false test as the last statement of the
 # script's flow would exit 1.
 bootstrap_args=()

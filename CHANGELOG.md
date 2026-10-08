@@ -11,6 +11,10 @@
 
 ### Fixed
 
+* The container's default superuser (`CREATE_DEFAULT_SUPERUSER`,
+  `LOAD_SAMPLE_DATA`) gets a random password printed once to the log instead
+  of `admin`/`admin`. A start that finds `admin` still on `admin` logs an
+  error naming `changepassword`.
 * Fix Method Not Allowed (GET) error when trying to finish a session by rendering a confirmation page instead of rejecting GET requests with a 405 error.
 
 ### New

@@ -58,7 +58,11 @@ lifecycle in the database unit.
 
 ## First account
 
-Create your account once the container runs. Pick one way:
+Create your account once the container runs. The commands name the
+Compose container `timetracker`; under the Quadlet unit use
+`podman exec systemd-timetracker` and `journalctl --user -u timetracker`.
+
+Pick one way:
 
 - Name it yourself:
 
@@ -73,16 +77,17 @@ Create your account once the container runs. Pick one way:
   docker logs timetracker 2>&1 | grep "Created default superuser"
   ```
 
-  The log shows it once, as `admin / <password>`. Remove the flag. To
-  set your own password:
+  The log shows `admin / <password>` and keeps it. Read it before you
+  recreate the container. Then set your own password and remove the flag:
 
   ```bash
   docker exec -it timetracker python manage.py changepassword admin
   ```
 
 *Why:* the password is random, so no deployment shares a known
-credential. With the flag still set, a container that finds no `admin`
-user creates one again.
+credential. With `CREATE_DEFAULT_SUPERUSER` or `LOAD_SAMPLE_DATA` still
+set, a container that finds no `admin` user creates one again. One
+that finds `admin` with the old password `admin` logs an error.
 
 ## Behind a TLS proxy
 
