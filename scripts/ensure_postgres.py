@@ -581,9 +581,10 @@ def relax_durability(
 ) -> None:
     """Stop waiting on the disk; reload.
 
-    A checkpoint's fsync took 30 s, and every DROP DATABASE waits
-    for one. An OS crash can then corrupt this local cluster; it is
-    rebuilt, never restored.
+    Every DROP DATABASE waits for a checkpoint, whose fsync can take
+    30 s; every commit waits for its WAL flush. An OS crash can then
+    corrupt this local cluster; it is rebuilt, never restored.
+    ON_ERROR_STOP: else only the last ``-c`` sets the exit status.
     """
     base = ["-h", "127.0.0.1", "-p", str(port), "-d", "postgres"]
     if account is not None:
@@ -594,7 +595,16 @@ def relax_durability(
         for arg in ("-c", f"ALTER SYSTEM SET {setting}")
     ]
     run(
-        [str(tools.psql), *base, "-Atq", *settings, "-c", "SELECT pg_reload_conf()"],
+        [
+            str(tools.psql),
+            *base,
+            "-Atq",
+            "-v",
+            "ON_ERROR_STOP=1",
+            *settings,
+            "-c",
+            "SELECT pg_reload_conf()",
+        ],
         capture=True,
     )
 
@@ -745,7 +755,9 @@ def main() -> None:
             args.makefile.write_text(contents)
     except (HarnessError, subprocess.CalledProcessError, OSError) as exc:
         operation_name = "stop-postgres" if args.stop else "ensure-postgres"
-        raise SystemExit(f"{operation_name}: {exc}") from exc
+        reason = getattr(exc, "stderr", None)
+        detail = f"\n{reason.strip()}" if reason else ""
+        raise SystemExit(f"{operation_name}: {exc}{detail}") from exc
 
 
 if __name__ == "__main__":

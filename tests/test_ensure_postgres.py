@@ -853,7 +853,7 @@ def test_root_still_uses_an_explicit_database_url(harness, monkeypatch, tmp_path
 
 
 def test_the_cluster_trades_durability_for_speed(harness, monkeypatch, tmp_path):
-    """ALTER SYSTEM refuses a transaction block."""
+    """One -c each: ALTER SYSTEM refuses a transaction block."""
     tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
     commands: list[list[str]] = []
     monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))
@@ -869,3 +869,36 @@ def test_the_cluster_trades_durability_for_speed(harness, monkeypatch, tmp_path)
         "ALTER SYSTEM SET synchronous_commit = off",
         "SELECT pg_reload_conf()",
     ]
+    assert "ON_ERROR_STOP=1" in command
+
+
+@pytest.mark.parametrize(
+    ("account", "role"),
+    [(None, None), (("postgres", 102, 104), "postgres")],
+)
+def test_the_durability_settings_run_under_the_cluster_role(
+    harness, monkeypatch, tmp_path, account, role
+):
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    commands: list[list[str]] = []
+    monkeypatch.setattr(harness, "run", lambda args, **kwargs: commands.append(args))
+    server_account = harness.ServerAccount(*account) if account else None
+
+    harness.relax_durability(tools, 5432, server_account)
+
+    (command,) = commands
+    named = command[command.index("-U") + 1] if "-U" in command else None
+    assert named == role
+
+
+def test_a_failed_client_names_its_reason(harness, monkeypatch):
+    def refuse(cache):
+        raise subprocess.CalledProcessError(
+            1, ["psql"], stderr="ERROR:  must be superuser\n"
+        )
+
+    monkeypatch.setattr(harness.sys, "argv", [str(HARNESS_PATH), "--makefile", "x"])
+    monkeypatch.setattr(harness, "ensure", refuse)
+
+    with pytest.raises(SystemExit, match="must be superuser"):
+        harness.main()

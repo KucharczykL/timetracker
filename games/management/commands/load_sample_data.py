@@ -7,7 +7,7 @@ from typing import NamedTuple
 
 import yaml
 from django.core import serializers
-from django.core.exceptions import ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, connection, transaction
@@ -48,6 +48,8 @@ type FixtureLabel = str  # e.g. "games.release"
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
 TARGET_LIBRARY_MARKER = "__target_library__"
+#: libyaml where PyYAML was built with it.
+SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 PRIVATE_MODELS: dict[FixtureLabel, type[Model]] = {
     "games.game": Game,
@@ -163,7 +165,12 @@ class Command(BaseCommand):
                     deserialized.save(force_insert=True)
                 #: Deferred keys hold before the replay.
                 connection.check_constraints()
-            except (DeserializationError, IntegrityError, ValueError) as error:
+            except (
+                DeserializationError,
+                FieldDoesNotExist,
+                IntegrityError,
+                ValueError,
+            ) as error:
                 raise CommandError(
                     f"Sample fixture could not be loaded: {error}"
                 ) from error
@@ -185,7 +192,7 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
-            #: Unanalyzed, the next read takes minutes.
+            #: stale_purchases plans blind without statistics.
             analyze_tables(loaded_tables())
             if (
                 state.requested_version != state.published_version
@@ -203,7 +210,7 @@ class Command(BaseCommand):
                     "Sample fixture references could not be written: "
                     f"{refusal.messages[0]}"
                 ) from refusal
-            #: Before the commit queues the task.
+            #: Backfill filled it after the first analyze.
             analyze_tables((ExternalReference,))
 
         if backfilled.taken:
@@ -238,10 +245,10 @@ class Command(BaseCommand):
         try:
             if FIXTURE_PATH.suffix == ".gz":
                 with gzip.open(FIXTURE_PATH, "rt") as fixture:
-                    records = yaml.load(fixture, Loader=yaml.CSafeLoader)
+                    records = yaml.load(fixture, Loader=SAFE_LOADER)
             else:
                 with FIXTURE_PATH.open() as fixture:
-                    records = yaml.load(fixture, Loader=yaml.CSafeLoader)
+                    records = yaml.load(fixture, Loader=SAFE_LOADER)
         except (OSError, yaml.YAMLError) as error:
             raise CommandError(
                 f"Sample fixture is unreadable: {FIXTURE_PATH}"
@@ -452,7 +459,7 @@ class Command(BaseCommand):
         translation here is load-bearing: without it every game and release
         would dangle.
 
-        Values are strings, like every key the fixture states.
+        Values are strings, matching the fixture's platform references.
         """
         platform_uuids = {}
         renamed_icons = 0

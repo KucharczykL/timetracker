@@ -31,10 +31,11 @@ added. Stop the cluster with `make stop-postgres`; the command waits for
 shutdown and succeeds when the managed server is already stopped or absent. It
 only targets the current worktree's managed cluster. The managed cluster runs
 with `fsync` and `synchronous_commit` off, set on every `make ensure-postgres`
-through `ALTER SYSTEM`: each `DROP DATABASE` waits for a checkpoint, and a
-checkpoint's fsync held every test worker's end for half a minute. An OS crash
-or power loss can then corrupt the cluster; rebuild it with `make loadsample`
-or `make restore-dump`. Set `DATABASE_URL` to use
+through `ALTER SYSTEM`: each `DROP DATABASE` waits for a checkpoint, whose
+fsync held a test worker's end for up to 30 s, and each commit waits for its
+WAL flush. An OS crash or power loss can then corrupt the cluster. It holds
+no data worth a backup, so rebuild it: `make stop-postgres`, delete
+`.cache/postgres/data`, then `make migrate` and `make loadsample`. Set `DATABASE_URL` to use
 an existing server instead; `make stop-postgres` never stops that external
 server. Deployments should provide the URL through `DATABASE_URL__FILE` so
 credentials need not appear in the environment or the Compose configuration.

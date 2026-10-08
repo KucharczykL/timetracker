@@ -33,7 +33,8 @@ import it under `# noqa: F401`:
 | `_reset_settings_caches` | `tests/settings_caches.py` |
 | `_track_created_games` | `tests/tracked_games.py` |
 
-Pytest orders the autouse fixtures of one conftest by name. Each suite has a
+Pytest orders the autouse fixtures of one conftest by name, so a rename
+can change their order. Each suite has a
 test that the shared fixtures apply. Tests hash passwords with MD5: the
 default hasher costs 0.1 s for each user.
 
@@ -43,8 +44,8 @@ module, `conftest`, and stops.
 ## The default graph
 
 `default_graph` in `tests/graphs.py` is the one way a test states a Game with
-one default Edition and one default Release. No fixture wraps it. It saves a
-new game only.
+one default Edition and one default Release. No fixture wraps it. It saves the
+game only when the game is new.
 
 ## One login
 
