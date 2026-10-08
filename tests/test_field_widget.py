@@ -167,6 +167,74 @@ class TestFieldWidgetNullableModifiers:
         assert "IS_NULL" not in str(field_widget(GameFilter, "status"))
 
 
+class TestFieldWidgetDurationUnit:
+    """Duration fields name none and more-than-zero."""
+
+    def test_duration_presence_labels(self):
+        html = str(field_widget(GameFilter, "playtime_hours"))
+        assert "is 0 (none)" in html
+        assert "is more than 0" in html
+        assert ">is null<" not in html
+
+    def test_other_numbers_keep_null_labels(self):
+        html = str(field_widget(GameFilter, "purchase_price_total"))
+        assert "is null" in html
+        assert "data-duration-bucket-hint" not in html
+
+    def test_bucket_hint_renders_server_side(self):
+        from common.components.filters import NumberFilter
+
+        html = str(
+            NumberFilter(
+                "playtime",
+                value="0",
+                modifier="EQUALS",
+                path=["playtime_hours"],
+                unit="duration_hours",
+            )
+        )
+        assert "0 h up to 1 h" in html
+
+    def test_hint_stays_hidden_for_a_range_modifier(self):
+        from common.components.filters import NumberFilter
+
+        html = str(
+            NumberFilter(
+                "playtime",
+                value="1",
+                modifier="GREATER_THAN",
+                path=["playtime_hours"],
+                unit="duration_hours",
+            )
+        )
+        assert 'data-duration-bucket-hint=""' in html
+        match = re.search(r"<p[^>]*data-duration-bucket-hint[^>]*>", html)
+        assert match is not None
+        assert 'hidden="true"' in match.group(0)
+        assert "1 h up to 2 h" not in html
+
+    @pytest.mark.parametrize(
+        ("modifier", "value", "text"),
+        [
+            ("EQUALS", "0", "0 h up to 1 h"),
+            ("EQUALS", "0.5", "0.5 h up to 1.5 h"),
+            ("NOT_EQUALS", "1", "outside 1 h up to 2 h"),
+            ("EQUALS", "", ""),
+            ("EQUALS", "x", ""),
+            ("EQUALS", "1.0", "1 h up to 2 h"),
+            ("EQUALS", " 1 ", "1 h up to 2 h"),
+            ("EQUALS", "nan", ""),
+            ("EQUALS", "inf", ""),
+            ("EQUALS", "1e16", ""),
+            ("GREATER_THAN", "1", ""),
+        ],
+    )
+    def test_duration_bucket_hint_table(self, modifier, value, text):
+        from common.components.filters import duration_bucket_hint
+
+        assert duration_bucket_hint(modifier, value) == text
+
+
 class TestFieldWidgetPrefill:
     """A criterion blob prefills the widget; None yields a blank widget."""
 

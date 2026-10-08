@@ -29,6 +29,7 @@ from django.utils import timezone
 from entries import record_entry
 from filter_contexts import unrestricted_filter_context
 from graphs import default_graph
+from historical_playtime_rows import record_row
 from purchases import record_purchase
 from session_rows import duration_only_row, session_row, tracked_run
 
@@ -68,7 +69,6 @@ from common.criteria import (
     _resolve_model_field,
     _ScalarCriterion,
     bool_isnull_handler,
-    bool_nonzero_duration_handler,
     comparable_columns,
     duration_hours_handler,
     field_metadata,
@@ -4671,6 +4671,17 @@ class TestFilterFieldHandlers:
             effective_duration__lt=timedelta(hours=5),
         )
 
+    def test_duration_presence_is_zero_or_absent(self):
+        from datetime import timedelta
+
+        handler = duration_hours_handler("effective_duration")
+        assert handler(IntCriterion(modifier=Modifier.IS_NULL), None) == (
+            Q(effective_duration=timedelta(0)) | Q(effective_duration__isnull=True)
+        )
+        assert handler(IntCriterion(modifier=Modifier.NOT_NULL), None) == Q(
+            effective_duration__gt=timedelta(0)
+        )
+
     def test_duration_hours_between_passes_value2(self):
         # The refactor reads value2 via getattr — confirm it actually flows through.
         from datetime import timedelta
@@ -4698,17 +4709,6 @@ class TestFilterFieldHandlers:
         assert bool_isnull_handler("date_refunded", invert=True)(
             BoolCriterion(value=False), None
         ) == Q(date_refunded__isnull=True)
-
-    def test_bool_nonzero_duration_handler(self):
-        from datetime import timedelta
-
-        handler = bool_nonzero_duration_handler("duration_manual")
-        assert handler(BoolCriterion(value=True), None) == ~Q(
-            duration_manual=timedelta(0)
-        )
-        assert handler(BoolCriterion(value=False), None) == Q(
-            duration_manual=timedelta(0)
-        )
 
     # ── wiring: the field maps to the intended handler via the generic to_q ──
 
@@ -5157,11 +5157,52 @@ class TestFieldMetadata:
         assert session_fields["device"]["nullable"] is True
         assert session_fields["game"]["nullable"] is False
 
-    def test_handler_field_defaults_not_nullable(self):
-        # playtime_hours is handler-mapped (no model column) → nullable False
-        entry = self._by_name(GameFilter)["playtime_hours"]
+    def test_a_handler_field_defaults_not_nullable(self):
+        # Record duration is never NULL.
+        entry = self._by_name(HistoricalPlaytimeFilter)["duration_hours"]
         assert entry["kind"] == "number"
         assert entry["nullable"] is False
+
+    def test_duration_fields_where_none_occurs_state_the_pair(self):
+        for filter_cls, name in (
+            (GameFilter, "playtime_hours"),
+            (PlayerSessionFilter, "duration_hours"),
+            (GameFilter, "session_average"),
+        ):
+            entry = self._by_name(filter_cls)[name]
+            assert entry["nullable"] is True
+            assert entry["modifiers"][-2:] == ["IS_NULL", "NOT_NULL"]
+
+    def test_duration_fields_state_their_unit(self):
+        from games.filters import (
+            GameFilter,
+            HistoricalPlaytimeFilter,
+            PlayerSessionFilter,
+        )
+
+        marked = set()
+        for filter_cls in (GameFilter, PlayerSessionFilter, HistoricalPlaytimeFilter):
+            for entry in field_metadata(filter_cls):
+                if "unit" in entry:
+                    marked.add((filter_cls.__name__, entry["name"]))
+        assert marked == {
+            ("GameFilter", "playtime_hours"),
+            ("GameFilter", "session_playtime_hours"),
+            ("GameFilter", "session_average"),
+            ("PlayerSessionFilter", "duration_hours"),
+            ("HistoricalPlaytimeFilter", "duration_hours"),
+        }
+
+    def test_duration_fields_read_in_hours(self):
+        assert self._by_name(GameFilter)["playtime_hours"]["label"] == (
+            "Playtime (hrs)"
+        )
+        assert self._by_name(GameFilter)["session_average"]["label"] == (
+            "Session average (hrs)"
+        )
+        assert self._by_name(GameFilter)["session_playtime_hours"]["label"] == (
+            "Session playtime (hrs)"
+        )
 
     def test_multi_hop_descent_label(self):
         # platform_group (lookup platform__group) descends to Platform.group; the
@@ -5934,14 +5975,8 @@ class TestScopedAggregateReducers:
         }
         assert self._games_matching(two_sessions_off_deck) == set()
 
-    def test_scoped_sum_is_null_when_no_row_matches_the_scope(self):
-        """SUM with a filter= that matches no rows yields SQL NULL (unlike the
-        count's 0): a game whose sessions all fail the scope matches neither
-        EQUALS 0 (NULL != 0) nor the duration IS_NULL (defined as *zero
-        duration*, see duration_hours_to_q) — identical to the pre-existing
-        unscoped no-session case. Pin it so a future 'coalesce to 0' change is
-        a deliberate decision, with a positive contrast proving the scoped sum
-        itself computes."""
+    def test_scoped_sum_over_no_rows_is_none_not_zero(self):
+        """Scoped SUM over no rows is NULL, not zero."""
         data = self._seed_two_device_games()
         deck_scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
 
@@ -5954,11 +5989,124 @@ class TestScopedAggregateReducers:
                 }
             }
 
-        # desktop_only's NULL deck-sum is invisible to both zero tests…
+        # NULL sum: no duration, not bucket zero.
         assert self._games_matching(scoped("EQUALS", 0)) == set()
-        assert self._games_matching(scoped("IS_NULL")) == set()
-        # …while mixed's deck sessions (1h + 1h elapsed) sum normally.
+        assert self._games_matching(scoped("IS_NULL")) == {data["desktop_only"]}
+        # Mixed's deck sessions (1h + 1h elapsed) sum normally.
         assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}
+
+
+@pytest.mark.django_db
+class TestDurationPresence:
+    """IS_NULL and NOT_NULL partition the scope."""
+
+    def _world(self):
+        from datetime import datetime
+
+        from games.models import Game, Platform
+
+        platform = Platform.objects.create(name="PC")
+        games = {
+            name: Game.objects.create(name=name, platform=platform)
+            for name in ["unplayed", "half_hour", "running_only", "hist_only"]
+        }
+        start = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+        for game in games.values():
+            if game.name == "unplayed":
+                continue
+            run = tracked_run(game.library, game)
+            if game.name == "half_hour":
+                session_row(
+                    game,
+                    started_at=start,
+                    ended_at=start + timedelta(minutes=30),
+                    library=game.library,
+                )
+            elif game.name == "running_only":
+                session_row(
+                    game,
+                    started_at=start,
+                    ended_at=None,
+                    library=game.library,
+                )
+            else:
+                record_row([run], duration=timedelta(minutes=20))
+        return games
+
+    def _matching(self, field, modifier, games):
+        from games.filters import GameFilter, filter_query_context_for_library
+        from games.models import Game
+
+        game_filter = GameFilter.from_json({field: {"value": 0, "modifier": modifier}})
+        assert game_filter is not None
+        library = games["unplayed"].library
+        matched = execute_filter(
+            game_filter,
+            Game.objects.tracked_by(library),
+            filter_query_context_for_library(library),
+        )
+        ids = {g.id for g in games.values()}
+        return {game for game in matched if game.id in ids}
+
+    @pytest.mark.parametrize(
+        ("field", "expected_none"),
+        [
+            ("playtime_hours", {"unplayed", "running_only"}),
+            ("session_playtime_hours", {"unplayed", "running_only", "hist_only"}),
+            ("session_average", {"unplayed", "running_only", "hist_only"}),
+        ],
+    )
+    def test_is_null_and_not_null_partition_the_scope(self, field, expected_none):
+        games = self._world()
+        none_set = self._matching(field, "IS_NULL", games)
+        more_set = self._matching(field, "NOT_NULL", games)
+        assert none_set == {games[name] for name in expected_none}
+        assert more_set == {games[name] for name in games if name not in expected_none}
+        assert none_set.isdisjoint(more_set)
+
+    def test_not_equals_zero_drops_games_without_sessions(self):
+        """A NULL sum falls outside NOT_EQUALS 0, so the game drops out."""
+        from datetime import datetime
+
+        from games.models import Game
+
+        games = self._world()
+        library = games["unplayed"].library
+        long_game = Game.objects.create(
+            name="Two Hours", platform=games["unplayed"].platform
+        )
+        games["two_hours"] = long_game
+        tracked_run(library, long_game)
+        start = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
+        session_row(
+            long_game,
+            started_at=start,
+            ended_at=start + timedelta(hours=2),
+            library=library,
+        )
+        not_zero = self._matching("session_playtime_hours", "NOT_EQUALS", games)
+        assert not_zero == {long_game}
+
+    def test_session_rows_split_on_no_duration(self):
+        from games.filters import filter_query_context_for_library
+        from games.models import PlayerSession
+
+        games = self._world()
+        library = games["unplayed"].library
+        sessions = PlayerSession.objects.filter(library=library)
+        context = filter_query_context_for_library(library)
+
+        def matching(modifier):
+            session_filter = PlayerSessionFilter.from_json(
+                {"duration_hours": {"modifier": modifier}}
+            )
+            return set(execute_filter(session_filter, sessions, context))
+
+        none_set = matching("IS_NULL")
+        more_set = matching("NOT_NULL")
+        assert {session.ended_at for session in none_set} == {None}
+        assert len(more_set) == 1
+        assert none_set.isdisjoint(more_set)
 
 
 class TestComparisonOperandPaths:

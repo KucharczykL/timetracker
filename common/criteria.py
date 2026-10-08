@@ -21,6 +21,7 @@ from typing import (
     ClassVar,
     Literal,
     NamedTuple,
+    NotRequired,
     Self,
     TypedDict,
     TypeVar,
@@ -1011,9 +1012,7 @@ class FieldComparisonCriterion(_Criterion):
 type AttrName = str  # a filter dataclass field name, e.g. "playtime_hours"
 type ORMLookup = str  # a Django query path, e.g. "platform__group"
 
-# A custom criterion→Q builder for a filter field whose mapping is not a plain
-# ``criterion.to_q(lookup)`` — e.g. hours→duration conversion or a bool
-# presence/zero test. Built by the factories below (see ``duration_hours_handler``).
+# Custom criterion→Q builder; see duration_hours_handler.
 # The context is the compile's library facts; a handler over the row ignores it.
 type FieldHandler = Callable[[_Criterion, FilterQueryContext | None], Q]
 
@@ -1025,10 +1024,10 @@ class FilterField:
     Lifts the per-field mapping a filter's ``to_q`` used to do imperatively into a
     single declarative table (see ``OperatorFilter.fields``). ``lookup`` overrides
     the ORM path (defaulting to the attribute name, so a plain field needs no
-    argument); ``handler`` supplies bespoke Q logic for fields whose mapping is not
-    a plain ``criterion.to_q(lookup)`` — the hours→duration and bool
-    presence/zero cases. The two are mutually exclusive: a handler is fully
-    self-contained, so a ``lookup`` alongside it would be silently ignored —
+    argument); ``handler`` supplies bespoke Q logic for fields whose mapping is
+    not a plain ``criterion.to_q(lookup)``, e.g. hours→duration. The two are
+    mutually exclusive: a handler is fully self-contained, so a ``lookup``
+    alongside it would be silently ignored —
     ``__post_init__`` rejects that misconfiguration at import time.
     """
 
@@ -1057,6 +1056,11 @@ class FilterField:
     def interval(self) -> bool:
         """The handler reads two bound columns, so WITHIN is offered."""
         return getattr(self.handler, "interval_bounds", None) is not None
+
+    @property
+    def unit(self) -> DurationUnit | None:
+        """Duration unit the handler marks."""
+        return getattr(self.handler, "unit", None)
 
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
@@ -1356,6 +1360,7 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
 
 type Reducer = Literal["count", "sum", "avg"]  # e.g. "count"
 type DurationUnit = Literal["duration_hours"]  # compare hours vs a DurationField
+DURATION_HOURS: DurationUnit = "duration_hours"
 type RelationAccessor = str  # a relation accessor on the parent model, e.g. "sessions"
 type RelationPath = str  # related row to parent, e.g. "entry__player_game__game"
 
@@ -2762,6 +2767,8 @@ class FieldMeta(TypedDict):
     # aggregate field reduces — the model whose fields build the aggregate's
     # ``scope`` sub-filter (issue #151). ``""`` for every non-aggregate field.
     scope_model: ModelKey
+    # Hours unit; absent for other fields.
+    unit: NotRequired[DurationUnit]
 
 
 class ModelFieldBundle(TypedDict):
@@ -3041,6 +3048,7 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # loudly here matches the mis-typed-lookup contract above — a spec
             # gap is a wiring bug, not a degraded picker.
             scope_model: ModelKey = ""
+            unit: DurationUnit | None = None
             if is_aggregate:
                 spec = filter_cls.aggregates.get(name)
                 if spec is None:
@@ -3055,24 +3063,28 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                         f"{spec.scope_filter.__name__} has no comparison model"
                     )
                 scope_model = scope_target._meta.model_name or ""
-            entries.append(
-                FieldMeta(
-                    name=name,
-                    label=_field_label(filter_cls, name),
-                    kind=kind,
-                    nullable=nullable,
-                    choices=choices,
-                    modifiers=_modifiers_for_field(
-                        kind,
-                        nullable,
-                        interval=field_spec is not None and field_spec.interval,
-                    ),
-                    relations=[],
-                    search_url=search_url or "",
-                    is_m2m=is_m2m,
-                    scope_model=scope_model,
-                )
+                unit = spec.unit
+            elif field_spec is not None:
+                unit = field_spec.unit
+            entry = FieldMeta(
+                name=name,
+                label=_field_label(filter_cls, name),
+                kind=kind,
+                nullable=nullable,
+                choices=choices,
+                modifiers=_modifiers_for_field(
+                    kind,
+                    nullable,
+                    interval=field_spec is not None and field_spec.interval,
+                ),
+                relations=[],
+                search_url=search_url or "",
+                is_m2m=is_m2m,
+                scope_model=scope_model,
             )
+            if unit is not None:
+                entry["unit"] = unit
+            entries.append(entry)
             continue
         sub_filter_cls = _filter_class_for(filter_cls, name)
         if sub_filter_cls is not None:
@@ -3128,8 +3140,9 @@ def duration_hours_to_q(
 
     Django stores DurationField as microseconds, so hours convert to
     ``timedelta``. EQUALS matches the whole hour bucket ``[h, h+1)``;
-    IS_NULL/NOT_NULL test against a zero duration. BETWEEN/NOT_BETWEEN require
-    ``value2``. This is the single home for the hours<->timedelta logic shared by
+    IS_NULL is no duration (zero, or NULL over no rows) and NOT_NULL is more
+    than zero. BETWEEN/NOT_BETWEEN require ``value2``. This is the single home
+    for the hours<->timedelta logic shared by
     the direct duration fields (playtime, session durations) and the
     duration-unit aggregates. Like ``_numeric_to_q`` it raises on an unsupported
     or incomplete modifier rather than silently matching everything.
@@ -3176,16 +3189,14 @@ def duration_hours_to_q(
             **{f"{field_name}__gt": upper_bound}
         )
     if modifier == Modifier.IS_NULL:
-        return Q(**{field_name: timedelta(0)})
+        return Q(**{field_name: timedelta(0)}) | Q(**{f"{field_name}__isnull": True})
     if modifier == Modifier.NOT_NULL:
-        return ~Q(**{field_name: timedelta(0)})
+        return Q(**{f"{field_name}__gt": timedelta(0)})
     raise FilterError(f"Unsupported modifier {modifier} for duration comparison")
 
 
 # ── Field-handler factories ──────────────────────────────────────────────────
-# Reusable criterion→Q builders for the non-plain ``FilterField`` mappings, so a
-# filter's descriptor table can express hours→duration and bool presence/zero
-# fields declaratively instead of in an imperative ``to_q`` block.
+# Reusable criterion→Q builders for non-plain ``FilterField`` mappings.
 
 
 def calendar_day_handler(column: ORMLookup) -> FieldHandler:
@@ -3212,6 +3223,7 @@ def duration_hours_handler(field_name: str) -> FieldHandler:
             criterion.value, value2, criterion.modifier, field_name
         )
 
+    handler.unit = DURATION_HOURS  # type: ignore[attr-defined]
     return handler
 
 
@@ -3264,21 +3276,6 @@ def beyond_bound_handler(
     if unless is not None:
         beyond &= ~unless
     return lambda criterion, context: beyond if criterion.value else ~beyond
-
-
-def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
-    """Map a ``BoolCriterion`` onto a non-zero DurationField test.
-
-    True selects rows whose duration differs from ``timedelta(0)`` (e.g. is_manual
-    → ``duration_manual`` was entered by hand); False selects the zero rows.
-    """
-    from datetime import timedelta
-
-    return lambda criterion, context: (
-        (~Q(**{field_name: timedelta(0)}))
-        if criterion.value
-        else Q(**{field_name: timedelta(0)})
-    )
 
 
 def _bound_at_most(field_name: str, value: Any) -> Q:
@@ -3660,7 +3657,7 @@ def aggregate_to_q(
     else:
         raise RuntimeError(f"Unknown aggregate reducer {spec.reducer!r}")
 
-    if spec.unit == "duration_hours":
+    if spec.unit == DURATION_HOURS:
         compare = duration_hours_to_q(
             criterion.value, criterion.value2, criterion.modifier, "_agg"
         )

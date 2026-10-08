@@ -35,6 +35,7 @@ from django.urls import reverse
 from django.utils.http import urlencode
 
 from common.criteria import (
+    DURATION_HOURS,
     AggregateCriterion,
     AggregateSpec,
     AttrName,
@@ -365,7 +366,11 @@ class GameFilter(OperatorFilter):
             "tracked__excluded_from_dropped",
             metadata_lookup="player_games__excluded_from_dropped",
         ),
-        "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
+        "playtime_hours": FilterField(
+            handler=duration_hours_handler("playtime"),
+            label="Playtime (hrs)",
+            nullable=True,  # Zero is "none"; see duration_hours_to_q.
+        ),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
         ),
@@ -394,7 +399,11 @@ class GameFilter(OperatorFilter):
         ),
     }
     #: A person reads "copy", never "entry".
-    labels: ClassVar[dict[str, str]] = {"entry_count": "Copies"}
+    labels: ClassVar[dict[str, str]] = {
+        "entry_count": "Copies",
+        "session_average": "Session average (hrs)",
+        "session_playtime_hours": "Session playtime (hrs)",
+    }
 
     # Overrides with a ``type`` field write ``builtins.type``.
     @classmethod
@@ -627,7 +636,8 @@ class PlayerSessionFilter(OperatorFilter):
         ),
         "duration_hours": FilterField(
             handler=duration_hours_handler("effective_duration"),
-            label="Duration (hours)",
+            label="Duration (hrs)",
+            nullable=True,  # Zero is "none"; see duration_hours_to_q.
         ),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
@@ -1008,7 +1018,7 @@ class HistoricalPlaytimeFilter(OperatorFilter):
         "emulated": FilterField(),
         "duration_hours": FilterField(
             handler=duration_hours_handler("duration"),
-            label="Duration (hours)",
+            label="Duration (hrs)",
         ),
         "when": FilterField(
             handler=temporal_interval_handler("when", "when_lower", "when_upper"),
@@ -1303,7 +1313,7 @@ GameFilter.aggregates = {
         GAME_SESSIONS,
         PlayerSessionFilter,
         source="effective_duration",
-        unit="duration_hours",
+        unit=DURATION_HOURS,
     ),
     "purchase_count": AggregateSpec("count", GAME_PURCHASES, PurchaseFilter),
     "entry_count": AggregateSpec("count", "player_games__entries", LibraryEntryFilter),
@@ -1320,7 +1330,7 @@ GameFilter.aggregates = {
         GAME_SESSIONS,
         PlayerSessionFilter,
         source="effective_duration",
-        unit="duration_hours",
+        unit=DURATION_HOURS,
     ),
     "purchase_price_total": AggregateSpec(
         "sum",

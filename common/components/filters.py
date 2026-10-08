@@ -3,6 +3,7 @@ widgets, and ``field_widget`` — the single dispatcher the quick filter bar
 and the nested builder render every leaf field through."""
 
 import json
+import math
 from collections.abc import Sequence
 from typing import Literal, NamedTuple
 
@@ -15,6 +16,7 @@ from common.components.primitives import (
     Div,
     FilterWidgetPath,
     Input,
+    P,
     Radio,
     Template,
     filter_widget_attributes,
@@ -32,6 +34,7 @@ from common.criteria import (
     AttrName,
     ComparableColumn,
     ComparisonGranularity,
+    DurationUnit,
     FieldMeta,
     FieldMetaKind,
     ModifierToken,
@@ -419,6 +422,7 @@ def field_widget(
             step=step,
             path=widget_path,
             modifiers=meta["modifiers"],
+            unit=meta.get("unit"),
         )
     if kind == "date":
         bounds = _range_from_field(blob)
@@ -919,6 +923,39 @@ NUMBER_MODIFIER_LABELS: dict[ModifierToken, str] = {
 }
 
 
+#: Number labels; duration presence reads as zero.
+DURATION_MODIFIER_LABELS: dict[ModifierToken, str] = {
+    **NUMBER_MODIFIER_LABELS,
+    "IS_NULL": "is 0 (none)",
+    "NOT_NULL": "is more than 0",
+}
+
+
+def _hour_text(hours: float) -> str:
+    """Print whole hours without decimals."""
+    return str(int(hours)) if hours.is_integer() else str(hours)
+
+
+#: Largest hour count a timedelta holds.
+MAX_DURATION_HOURS = 999_999_999 * 24
+
+
+def duration_bucket_hint(modifier: ModifierToken, value: str) -> str:
+    """Same table as duration-bucket.ts."""
+    try:
+        hours = float(value)
+    except ValueError:
+        return ""
+    if not math.isfinite(hours) or abs(hours) > MAX_DURATION_HOURS:
+        return ""
+    bucket = f"{_hour_text(hours)} h up to {_hour_text(hours + 1)} h"
+    if modifier == "EQUALS":
+        return bucket
+    if modifier == "NOT_EQUALS":
+        return f"outside {bucket}"
+    return ""
+
+
 def NumberFilter(
     input_name_prefix: str,
     value: str = "",
@@ -930,6 +967,7 @@ def NumberFilter(
     *,
     path: FilterWidgetPath,
     modifiers: Sequence[ModifierToken] | None = None,
+    unit: DurationUnit | None = None,
 ) -> Node:
     """A modifier picker and two number inputs.
 
@@ -937,15 +975,18 @@ def NumberFilter(
     cannot be NULL states no presence pair, and neither does a ``count``, which
     answers 0 over no rows rather than NULL.
 
+    A duration ``unit`` swaps in the presence labels and adds the hour hint.
+
     Both inputs disable for a presence modifier; the second shows only for a
     range one. Initial state is server-rendered, so the widget never flashes
     before its JS runs.
     """
-    offered = list(modifiers) if modifiers else list(NUMBER_MODIFIER_LABELS)
+    labels = DURATION_MODIFIER_LABELS if unit is not None else NUMBER_MODIFIER_LABELS
+    offered = list(modifiers) if modifiers else list(labels)
     if modifier not in offered:
         modifier = offered[0]
 
-    options = [(token, NUMBER_MODIFIER_LABELS[token]) for token in offered]
+    options = [(token, labels[token]) for token in offered]
 
     modifier_select = ChoicePicker(
         marker="data-number-modifier-select",
@@ -985,16 +1026,27 @@ def NumberFilter(
     if inputs_disabled:
         value2_attrs.append(("disabled", "true"))
 
-    return Div(
-        filter_widget_attributes(path, "number"),
-        class_="flex flex-col gap-2 @container",
-    )[
+    children: list[Node] = [
         modifier_select,
         Div(class_="flex items-center gap-2")[
             Input(value_attrs, type="number"),
             Input(value2_attrs, type="number"),
         ],
     ]
+    if unit is not None:
+        hint = duration_bucket_hint(modifier, value)
+        hint_attrs = [
+            ("data-duration-bucket-hint", ""),
+            ("class", "text-type-micro text-body-subtle"),
+        ]
+        if not hint:
+            hint_attrs.append(("hidden", "true"))
+        children.append(P(hint_attrs)[hint])
+
+    return Div(
+        filter_widget_attributes(path, "number"),
+        class_="flex flex-col gap-2 @container",
+    )[children]
 
 
 # ── Add-criterion field picker (issue #191, nested filter builder #168) ───────

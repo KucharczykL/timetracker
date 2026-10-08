@@ -17,6 +17,7 @@ function field(partial: Partial<FieldMeta> & { name: string }): FieldMeta {
     search_url: partial.search_url ?? "",
     is_m2m: partial.is_m2m ?? false,
     scope_model: partial.scope_model ?? "",
+    ...(partial.unit ? { unit: partial.unit } : {}),
   };
 }
 
@@ -47,6 +48,94 @@ const GAME: SummaryContext = {
 function root(...children: GroupNode["children"]): GroupNode {
   return { kind: "group", id: "g", connective: "AND", negate: false, children };
 }
+
+const DURATION: SummaryContext = {
+  modelKey: "game",
+  modelLabel: "Games",
+  models: {
+    game: {
+      fields: new Map([
+        [
+          "playtime_hours",
+          field({
+            name: "playtime_hours",
+            label: "Playtime (hrs)",
+            kind: "number",
+            nullable: true,
+            unit: "duration_hours",
+          }),
+        ],
+        [
+          "session_count",
+          field({ name: "session_count", label: "Sessions", kind: "number", nullable: true }),
+        ],
+      ]),
+    },
+  },
+};
+
+describe("summarize — duration fields", () => {
+  const leaf = (criterion: Record<string, unknown>) =>
+    summarize(
+      root({ kind: "criterion", id: "c", field: "playtime_hours", criterion, negate: false }),
+      DURATION,
+    );
+
+  it("names none and more-than-zero for the presence pair", () => {
+    expect(leaf({ modifier: "IS_NULL" })).toBe("Games where Playtime (hrs) is 0 (none).");
+    expect(leaf({ modifier: "NOT_NULL" })).toBe("Games where Playtime (hrs) is more than 0.");
+  });
+
+  it("names the hour bucket for equals and not-equals", () => {
+    expect(leaf({ modifier: "EQUALS", value: 0 })).toBe(
+      "Games where Playtime (hrs) is 0 h up to 1 h.",
+    );
+    expect(leaf({ modifier: "NOT_EQUALS", value: 1 })).toBe(
+      "Games where Playtime (hrs) is not 1 h up to 2 h.",
+    );
+  });
+
+  it("keeps the plain phrase for a number without a unit", () => {
+    const plain = (criterion: Record<string, unknown>) =>
+      summarize(
+        root({ kind: "criterion", id: "c", field: "session_count", criterion, negate: false }),
+        DURATION,
+      );
+    expect(plain({ modifier: "EQUALS", value: 0 })).toBe("Games where Sessions is 0.");
+    expect(plain({ modifier: "IS_NULL" })).toBe("Games where Sessions is empty.");
+  });
+
+  it("falls through to the plain phrase for other modifiers", () => {
+    const leaf = (criterion: Record<string, unknown>) =>
+      summarize(
+        root({
+          kind: "criterion",
+          id: "c",
+          field: "playtime_hours",
+          criterion,
+          negate: false,
+        }),
+        DURATION,
+      );
+    expect(leaf({ modifier: "GREATER_THAN", value: 5 })).toBe(
+      "Games where Playtime (hrs) is more than 5.",
+    );
+  });
+
+  it("falls through when the value is not a number", () => {
+    const leaf = summarize(
+      root({
+        kind: "criterion",
+        id: "c",
+        field: "playtime_hours",
+        criterion: { modifier: "EQUALS", value: "x" },
+        negate: false,
+      }),
+      DURATION,
+    );
+    expect(leaf).toBe("Games where Playtime (hrs) is x.");
+  });
+});
 
 describe("summarize — frame + scalar leaf", () => {
   it("renders the empty root as the all-items frame", () => {

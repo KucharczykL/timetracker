@@ -11,6 +11,7 @@ import { writeSideValue } from "./date-range-picker.js";
 import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
 import { readFilterSelect, writeFilterSelect } from "./search-select.js";
 import { choiceControl, isChoicePick } from "./choice-control.js";
+import { durationBucketHint } from "./duration-bucket.js";
 
 const STRING_MODIFIER = "data-string-modifier-select";
 const NUMBER_MODIFIER = "data-number-modifier-select";
@@ -239,6 +240,19 @@ export function toggleNumberFilterInput(root: HTMLElement, modifier: string): vo
     .forEach((input) => setInputDisabled(input, presence));
   const value2 = root.querySelector<HTMLInputElement>("[data-number-value2]");
   if (value2) value2.classList.toggle("hidden", presence || !isRangeModifier(modifier));
+  refreshDurationBucketHint(root);
+}
+
+// Refresh the duration hint; no-op otherwise.
+export function refreshDurationBucketHint(root: HTMLElement): void {
+  const hint = root.querySelector<HTMLElement>("[data-duration-bucket-hint]");
+  if (!hint) return;
+  const input = root.querySelector<HTMLInputElement>(
+    'input[type="number"]:not([data-number-value2])',
+  );
+  const text = durationBucketHint(numberModifier(root) ?? "", input?.value ?? "");
+  hint.textContent = text;
+  hint.hidden = text === "";
 }
 
 // Wires the modifier toggles under `root`.
@@ -254,6 +268,12 @@ export function setupModifierToggles(root: HTMLElement): void {
       const modifier = choiceControl(widget, NUMBER_MODIFIER)?.read();
       if (modifier) toggleNumberFilterInput(widget, modifier);
     }
+  });
+  root.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "number") return;
+    const widget = widgetRoot(target);
+    if (widget) refreshDurationBucketHint(widget);
   });
 }
 
@@ -293,7 +313,10 @@ export function writeStringWidget(element: HTMLElement, criterion: Record<string
 export function writeNumberWidget(element: HTMLElement, criterion: Record<string, unknown>): void {
   writeModifier(element, NUMBER_MODIFIER, criterion["modifier"]);
   const modifier = numberModifier(element);
-  if (modifier === null) return;
+  if (modifier === null) {
+    refreshDurationBucketHint(element);
+    return;
+  }
   toggleNumberFilterInput(element, modifier); // reveals value2 for BETWEEN, disables for presence
   if (isPresenceModifier(modifier)) return;
   const valueInput = element.querySelector<HTMLInputElement>(
@@ -301,6 +324,7 @@ export function writeNumberWidget(element: HTMLElement, criterion: Record<string
   );
   const value = scalarToInputValue(criterion["value"]);
   if (valueInput && value !== "") valueInput.value = value;
+  refreshDurationBucketHint(element);
   if (!isRangeModifier(modifier)) return;
   const value2Input = resolveValue2Input(element);
   const value2 = scalarToInputValue(criterion["value2"]);

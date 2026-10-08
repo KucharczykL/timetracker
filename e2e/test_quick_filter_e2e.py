@@ -120,6 +120,47 @@ def test_quick_scalar_facet_filters_sessions(
     ).to_have_value("2")
 
 
+def test_playtime_none_finds_the_unplayed_game(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """Playtime "is 0 (none)" finds the unplayed game."""
+    from datetime import datetime, timedelta
+
+    create_tracked_game(e2e_library, name="Never Played")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
+    timed = Game.objects.create(
+        library=e2e_library, name="Half Hour Game", platform=platform
+    )
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    session_row(timed, started_at=start, ended_at=start + timedelta(minutes=30))
+
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    open_facet(page, "playtime_hours")
+    playtime = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
+    pick_choice(playtime, "quick-playtime_hours-modifier", "IS_NULL")
+    _quick_apply(page)
+
+    page.wait_for_url("**filter=**")
+    assert _filter_from_url(page.url) == {"playtime_hours": {"modifier": "IS_NULL"}}
+    expect(page.get_by_role("link", name="Never Played")).to_be_visible()
+    expect(page.get_by_role("link", name="Half Hour Game")).to_have_count(0)
+
+
+def test_duration_hint_follows_typing(authenticated_page: Page, live_server):
+    """Typing 0 shows the hour bucket."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    open_facet(page, "duration_hours")
+    duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
+    duration.locator('input[name="quick-duration_hours"]').fill("0")
+    expect(duration.locator("[data-duration-bucket-hint]")).to_have_text(
+        "0 h up to 1 h"
+    )
+
+
 def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_server):
     """A filter with operator nesting renders the read-only pill (with working
     Advanced filter / Clear segments) instead of facet widgets."""

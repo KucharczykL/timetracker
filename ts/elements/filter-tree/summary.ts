@@ -21,6 +21,7 @@ import type {
 } from "./types.js";
 import { isComparisonComplete, isCriterionComplete } from "./operations.js";
 import { isPresenceModifier, isRangeModifier } from "../filter-tokens.js";
+import { durationBucketRange } from "../duration-bucket.js";
 
 // Transparent role aliases (CLAUDE.md "name primitive roles"): say *which* string a
 // bare string is. Zero-cost — they narrow to `string`, so the Python contract, not
@@ -65,6 +66,12 @@ export const MODIFIER_PHRASES: Record<ModifierToken, string> = {
   EXCLUDES: "is not",
   INCLUDES_ALL: "has all of",
   INCLUDES_ONLY: "is exactly",
+};
+
+// Duration-only phrases; partial override.
+const DURATION_MODIFIER_PHRASES: Partial<Record<ModifierToken, string>> = {
+  IS_NULL: "is 0 (none)",
+  NOT_NULL: "is more than 0",
 };
 
 const PLACEHOLDER = "…";
@@ -256,6 +263,10 @@ function renderCriterionClause(leaf: CriterionLeaf, model: SummaryModel | undefi
     return `${label} ${renderSet(leaf.criterion, meta, modifier)}`;
   }
   if (!isCriterionComplete(leaf)) return `${label} ${PLACEHOLDER}`;
+  if (meta?.unit === "duration_hours") {
+    const clause = durationClause(label, modifier, String(leaf.criterion["value"] ?? ""));
+    if (clause !== null) return clause;
+  }
   const phrase = MODIFIER_PHRASES[modifier] ?? modifier;
   // Presence modifiers carry no value: the phrase ("is empty"/"is set") is the whole clause.
   if (isPresenceModifier(modifier)) return `${label} ${phrase}`;
@@ -268,6 +279,18 @@ function renderCriterionClause(leaf: CriterionLeaf, model: SummaryModel | undefi
     return `${label} ${phrase} ${lower} and ${upper}`;
   }
   return `${label} ${phrase} ${renderValue(leaf.criterion["value"], meta)}`;
+}
+
+// Duration clause: hour range or none.
+// Null falls through to MODIFIER_PHRASES.
+function durationClause(label: string, modifier: string, value: string): string | null {
+  const presence = DURATION_MODIFIER_PHRASES[modifier as ModifierToken];
+  if (presence !== undefined) return `${label} ${presence}`;
+  const range = durationBucketRange(value);
+  if (range === "") return null;
+  if (modifier === "EQUALS") return `${label} is ${range}`;
+  if (modifier === "NOT_EQUALS") return `${label} is not ${range}`;
+  return null;
 }
 
 // A set is worth rendering once it has a modifier and any selection (included,
