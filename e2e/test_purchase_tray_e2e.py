@@ -27,7 +27,8 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 
 def _release(library: UserLibrary, name: str) -> Release:
-    return default_graph(create_tracked_game(library, name), library).release
+    game = create_tracked_game(library, name)
+    return default_graph(game, library).release
 
 
 @pytest.fixture
