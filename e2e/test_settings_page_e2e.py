@@ -139,7 +139,7 @@ def test_personal_settings_persist_and_drive_consumers(
     viewport,
     mobile,
 ):
-    page, preferred = authenticated_page, preferred_device
+    page = authenticated_page
     page.set_viewport_size(viewport)
     page.goto(f"{live_server.url}{reverse('games:settings')}")
 
@@ -197,7 +197,7 @@ def test_personal_settings_persist_and_drive_consumers(
     expect(page.locator('input[name="currency"]')).to_have_value("EUR")
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
     expect(page.locator('input[name="device"][type="hidden"]')).to_have_value(
-        str(preferred.pk)
+        str(preferred_device.pk)
     )
     page.goto(f"{live_server.url}{reverse('games:index')}")
     expect(page).to_have_url(f"{live_server.url}{reverse('games:list_games')}")

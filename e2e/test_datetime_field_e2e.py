@@ -79,7 +79,7 @@ def test_typed_wall_clock_means_the_picked_zone(
     _set_preferences(e2e_user, display_time_zone="Europe/Prague")
     Game.objects.create(library=e2e_user.library, name="Alpha Game")
     # Browser pinned to the account zone: the capture default stamps Prague,
-    # so the flip to Tokyo below is a deliberate e2e_user act, as in the report.
+    # so the flip to Tokyo below is a deliberate user act, as in the report.
     context = browser.new_context(timezone_id="Europe/Prague")
     try:
         page = context.new_page()
