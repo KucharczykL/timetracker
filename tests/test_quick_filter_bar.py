@@ -43,6 +43,7 @@ from common.date_time_presentation import (
 from games.filters import (
     MODE_PARSERS,
     GameFilter,
+    HistoricalPlaytimeFilter,
     PurchaseFilter,
     filter_for_model,
 )
@@ -218,6 +219,25 @@ class IsQuickEditableTest(SimpleTestCase):
                 {"session_average": {"modifier": "IS_NULL"}},
                 {"session_average"},
                 filter_cls=GameFilter,
+            )
+        )
+
+    def test_a_duration_facet_offers_none_as_a_mode(self):
+        self.assertTrue(
+            is_quick_editable(
+                {"playtime_hours": {"modifier": "IS_NULL"}},
+                {"playtime_hours"},
+                filter_cls=GameFilter,
+            )
+        )
+
+    def test_a_record_duration_facet_offers_no_none_mode(self):
+        # The record's duration is never NULL, so the pair is not offered.
+        self.assertFalse(
+            is_quick_editable(
+                {"duration_hours": {"modifier": "IS_NULL"}},
+                {"duration_hours"},
+                filter_cls=HistoricalPlaytimeFilter,
             )
         )
 

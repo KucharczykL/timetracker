@@ -69,7 +69,6 @@ from common.criteria import (
     _resolve_model_field,
     _ScalarCriterion,
     bool_isnull_handler,
-    bool_nonzero_duration_handler,
     comparable_columns,
     duration_hours_handler,
     field_metadata,
@@ -4711,17 +4710,6 @@ class TestFilterFieldHandlers:
             BoolCriterion(value=False), None
         ) == Q(date_refunded__isnull=True)
 
-    def test_bool_nonzero_duration_handler(self):
-        from datetime import timedelta
-
-        handler = bool_nonzero_duration_handler("duration_manual")
-        assert handler(BoolCriterion(value=True), None) == ~Q(
-            duration_manual=timedelta(0)
-        )
-        assert handler(BoolCriterion(value=False), None) == Q(
-            duration_manual=timedelta(0)
-        )
-
     # ── wiring: the field maps to the intended handler via the generic to_q ──
 
     def test_is_running_wired(self):
@@ -5169,11 +5157,20 @@ class TestFieldMetadata:
         assert session_fields["device"]["nullable"] is True
         assert session_fields["game"]["nullable"] is False
 
-    def test_handler_field_defaults_not_nullable(self):
-        # playtime_hours is handler-mapped (no model column) → nullable False
-        entry = self._by_name(GameFilter)["playtime_hours"]
+    def test_a_handler_field_defaults_not_nullable(self):
+        # The record's duration never answers NULL, so it states no pair.
+        entry = self._by_name(HistoricalPlaytimeFilter)["duration_hours"]
         assert entry["kind"] == "number"
         assert entry["nullable"] is False
+
+    def test_duration_fields_where_none_occurs_state_the_pair(self):
+        for filter_cls, name in (
+            (GameFilter, "playtime_hours"),
+            (PlayerSessionFilter, "duration_hours"),
+        ):
+            entry = self._by_name(filter_cls)[name]
+            assert entry["nullable"] is True
+            assert entry["modifiers"][-2:] == ["IS_NULL", "NOT_NULL"]
 
     def test_multi_hop_descent_label(self):
         # platform_group (lookup platform__group) descends to Platform.group; the

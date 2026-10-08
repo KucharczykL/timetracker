@@ -1012,8 +1012,8 @@ type AttrName = str  # a filter dataclass field name, e.g. "playtime_hours"
 type ORMLookup = str  # a Django query path, e.g. "platform__group"
 
 # A custom criterion→Q builder for a filter field whose mapping is not a plain
-# ``criterion.to_q(lookup)`` — e.g. hours→duration conversion or a bool
-# presence/zero test. Built by the factories below (see ``duration_hours_handler``).
+# ``criterion.to_q(lookup)`` — e.g. hours→duration conversion. Built by the
+# factories below (see ``duration_hours_handler``).
 # The context is the compile's library facts; a handler over the row ignores it.
 type FieldHandler = Callable[[_Criterion, FilterQueryContext | None], Q]
 
@@ -1026,8 +1026,7 @@ class FilterField:
     single declarative table (see ``OperatorFilter.fields``). ``lookup`` overrides
     the ORM path (defaulting to the attribute name, so a plain field needs no
     argument); ``handler`` supplies bespoke Q logic for fields whose mapping is not
-    a plain ``criterion.to_q(lookup)`` — the hours→duration and bool
-    presence/zero cases. The two are mutually exclusive: a handler is fully
+    a plain ``criterion.to_q(lookup)`` — the hours→duration cases. The two are mutually exclusive: a handler is fully
     self-contained, so a ``lookup`` alongside it would be silently ignored —
     ``__post_init__`` rejects that misconfiguration at import time.
     """
@@ -3185,8 +3184,8 @@ def duration_hours_to_q(
 
 # ── Field-handler factories ──────────────────────────────────────────────────
 # Reusable criterion→Q builders for the non-plain ``FilterField`` mappings, so a
-# filter's descriptor table can express hours→duration and bool presence/zero
-# fields declaratively instead of in an imperative ``to_q`` block.
+# filter's descriptor table can express hours→duration fields declaratively
+# instead of in an imperative ``to_q`` block.
 
 
 def calendar_day_handler(column: ORMLookup) -> FieldHandler:
@@ -3265,21 +3264,6 @@ def beyond_bound_handler(
     if unless is not None:
         beyond &= ~unless
     return lambda criterion, context: beyond if criterion.value else ~beyond
-
-
-def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
-    """Map a ``BoolCriterion`` onto a non-zero DurationField test.
-
-    True selects rows whose duration differs from ``timedelta(0)`` (e.g. is_manual
-    → ``duration_manual`` was entered by hand); False selects the zero rows.
-    """
-    from datetime import timedelta
-
-    return lambda criterion, context: (
-        (~Q(**{field_name: timedelta(0)}))
-        if criterion.value
-        else Q(**{field_name: timedelta(0)})
-    )
 
 
 def _bound_at_most(field_name: str, value: Any) -> Q:

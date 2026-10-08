@@ -365,7 +365,10 @@ class GameFilter(OperatorFilter):
             "tracked__excluded_from_dropped",
             metadata_lookup="player_games__excluded_from_dropped",
         ),
-        "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
+        "playtime_hours": FilterField(
+            handler=duration_hours_handler("playtime"),
+            nullable=True,  # Zero is "none"; see duration_hours_to_q.
+        ),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
         ),
@@ -628,6 +631,7 @@ class PlayerSessionFilter(OperatorFilter):
         "duration_hours": FilterField(
             handler=duration_hours_handler("effective_duration"),
             label="Duration (hours)",
+            nullable=True,  # Zero is "none"; see duration_hours_to_q.
         ),
         "created_at": FilterField(
             handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
