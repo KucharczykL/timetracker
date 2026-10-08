@@ -6,7 +6,8 @@
         "status",
         "year_released",
         "search",
-        "session_count"
+        "session_count",
+        "playtime_hours"
       ],
       "relations": {
         "session_filter": "playersession",
@@ -639,6 +640,15 @@
             }
           }
         ]
+      }
+    },
+    {
+      "description": "game: playtime none",
+      "model": "game",
+      "filter": {
+        "playtime_hours": {
+          "modifier": "IS_NULL"
+        }
       }
     }
   ]
