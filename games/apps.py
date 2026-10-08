@@ -1,9 +1,6 @@
 # from datetime import timedelta
 
-import logging
-
 from django.apps import AppConfig
-from django.conf import settings
 from django.core.management import call_command
 from django.db.backends.signals import connection_created
 from django.db.models.signals import post_migrate
@@ -14,8 +11,6 @@ from timetracker.database import (
 )
 
 # from django.utils.timezone import now
-
-logger = logging.getLogger(__name__)
 
 
 class GamesConfig(AppConfig):
@@ -35,11 +30,6 @@ class GamesConfig(AppConfig):
             dispatch_uid="timetracker.statement_limit",
         )
         post_migrate.connect(schedule_tasks, sender=self)
-        logger.info(
-            "Session and CSRF cookies are %s, from APP_URL %r.",
-            "Secure" if settings.SESSION_COOKIE_SECURE else "not Secure",
-            settings.APP_URL,
-        )
 
 
 def schedule_tasks(sender, **kwargs):

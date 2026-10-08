@@ -78,3 +78,20 @@ def test_entrypoint_sets_django_settings_before_importing_readiness(
     monkeypatch.setattr(builtins, "__import__", import_with_settings_check)
 
     importlib.import_module(entrypoint)
+
+
+@pytest.mark.parametrize(("secure", "flag"), [(True, "Secure"), (False, "not Secure")])
+def test_report_cookie_security_names_the_flag_and_app_url(
+    capture_games_logger, caplog, settings, secure, flag
+):
+    from games.readiness import report_cookie_security
+
+    settings.SESSION_COOKIE_SECURE = secure
+    settings.APP_URL = "https://tracker.example.com"
+    with capture_games_logger():
+        caplog.set_level("INFO", logger="games")
+        report_cookie_security()
+    assert (
+        f"Session and CSRF cookies are {flag}, "
+        "from APP_URL 'https://tracker.example.com'."
+    ) in caplog.messages

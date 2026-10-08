@@ -79,7 +79,7 @@ Your reverse proxy ends TLS; the container serves plain http on port 8000.
    *Why:* browsers then refuse plain http to your host
    ([MDN: HSTS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security)).
 
-3. Check the startup log for:
+3. Check the web server's startup log for:
 
    ```text
    Session and CSRF cookies are Secure, from APP_URL 'https://tracker.example.com'.
@@ -93,8 +93,7 @@ Do not:
 - reach the container port over plain http while `APP_URL` is https:
   login fails there;
 - set `SECURE_PROXY_SSL_HEADER` or `SECURE_SSL_REDIRECT` in Django:
-  the first lets a client mark its own request secure, the second
-  redirects forever. The app needs neither
+  the app needs neither, and the second redirects forever
   ([Caddy: trusted_proxies](https://caddyserver.com/docs/caddyfile/options#trusted-proxies)
   explains how the scheme travels between proxies).
 

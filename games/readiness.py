@@ -2,6 +2,7 @@
 
 import logging
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Exists, OuterRef
@@ -59,3 +60,12 @@ def assert_library_structure() -> None:
         detail = ", ".join(missing)
         logger.critical("Library structure readiness failed: %s", detail)
         raise ImproperlyConfigured(f"Library structure readiness failed: {detail}")
+
+
+def report_cookie_security() -> None:
+    """Log whether the session and CSRF cookies carry ``Secure``."""
+    logger.info(
+        "Session and CSRF cookies are %s, from APP_URL %r.",
+        "Secure" if settings.SESSION_COOKIE_SECURE else "not Secure",
+        settings.APP_URL,
+    )

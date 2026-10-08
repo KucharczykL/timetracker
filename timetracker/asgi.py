@@ -20,6 +20,7 @@ limit_request_statements()
 
 application = get_asgi_application()
 
-from games.readiness import assert_library_structure
+from games.readiness import assert_library_structure, report_cookie_security
 
 assert_library_structure()
+report_cookie_security()

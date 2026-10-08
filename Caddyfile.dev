@@ -11,5 +11,5 @@
 		root * games/static
 		file_server browse
 	}
-	reverse_proxy :8001
+	reverse_proxy 127.0.0.1:8001
 }

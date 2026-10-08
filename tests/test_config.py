@@ -303,8 +303,6 @@ def test_settings_mark_cookies_secure_from_app_url(app_url, secure):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.split() == [str(secure), str(secure)]
-    flag = "Secure" if secure else "not Secure"
-    assert f"cookies are {flag}, from APP_URL {app_url!r}" in result.stderr
 
 
 # --- Django integration: derived values are accepted by Django internals -----
