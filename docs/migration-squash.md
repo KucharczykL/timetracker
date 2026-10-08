@@ -404,8 +404,11 @@ update or delete on table "django_content_type" violates foreign key
 constraint "auth_permission_content_type_id_2f476e4b_fk_django_co"
 ```
 
-Order the deletes yourself: `auth_user_user_permissions`, then
-`auth_group_permissions`, then `auth_permission`, then `django_content_type`.
+Content types need no operator statement now: container startup runs
+`remove_stale_contenttypes --no-input`, which goes through the collector.
+Where other raw SQL meets a key like this, order the deletes yourself:
+`auth_user_user_permissions`, then `auth_group_permissions`, then
+`auth_permission`, then `django_content_type`.
 
 **Converge the deployment on the fresh build's names, not the reverse.** Six
 NOT NULL constraints were named after a column called `uuid` that had since

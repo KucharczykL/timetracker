@@ -1403,7 +1403,10 @@ becomes a TypeScript union whose reader throws on any other value.
 
 Multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as
 reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor managing
-Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via
+Caddy + Gunicorn + django-q2. Startup's `bootstrap_container` runs `migrate`,
+then `remove_stale_contenttypes --no-input`, so a dropped model's content type
+and permissions need no migration or cutover SQL. `make dev-prod` mimics
+production locally. CI/CD via
 `.github/workflows/build-docker.yml`: `check` job runs `make check-static`,
 the backup-restore rehearsal and the secret smoke, then `build-and-push`
 builds + pushes image on `main`. No test runs in CI.

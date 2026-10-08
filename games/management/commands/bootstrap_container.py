@@ -15,7 +15,8 @@ PASSWORD_BYTES = 16
 
 class Command(BaseCommand):
     help = (
-        "Run the container's one-shot startup work — migrate, plus whichever of "
+        "Run the container's one-shot startup work — migrate and the stale "
+        "content type sweep, plus whichever of "
         "the staging scrub, sample-data seed and default superuser the "
         "entrypoint asks for — in a single Django process."
     )
@@ -42,6 +43,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         call_command("migrate")
+        # A dropped model leaves its content type and permissions.
+        call_command("remove_stale_contenttypes", "--no-input")
 
         if options["scrub_staging"]:
             call_command("scrub_staging")

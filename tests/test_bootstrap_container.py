@@ -2,7 +2,7 @@
 
 The entrypoint translates its env flags into arguments, so every branch here is
 reachable only through one of them — a container that asks for nothing gets a
-migrate and nothing else.
+migrate and the stale content type sweep, nothing else.
 """
 
 import re
@@ -11,6 +11,8 @@ from typing import NamedTuple
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 from django.core.management import call_command
 from django.test import TestCase
 
@@ -50,8 +52,31 @@ def _printed_password(output: StringIO) -> str | None:
 
 
 class BootstrapContainerTest(TestCase):
-    def test_migrates_and_nothing_else_without_flags(self):
-        self.assertEqual(_run(), [("migrate", ())])
+    def test_migrates_and_sweeps_and_nothing_else_without_flags(self):
+        self.assertEqual(
+            _run(),
+            [("migrate", ()), ("remove_stale_contenttypes", ("--no-input",))],
+        )
+
+    def test_a_dropped_models_content_type_and_grants_go(self):
+        stale = ContentType.objects.create(app_label="games", model="droppedmodel")
+        permission = Permission.objects.create(
+            content_type=stale, codename="view_droppedmodel", name="Can view"
+        )
+        user = get_user_model().objects.create_user(username="granted")
+        user.user_permissions.add(permission)
+        group = Group.objects.create(name="granted")
+        group.permissions.add(permission)
+
+        call_command("bootstrap_container", verbosity=0, stdout=StringIO())
+
+        self.assertFalse(ContentType.objects.filter(pk=stale.pk).exists())
+        self.assertFalse(Permission.objects.filter(pk=permission.pk).exists())
+        self.assertFalse(user.user_permissions.exists())
+        self.assertFalse(group.permissions.exists())
+        self.assertTrue(
+            ContentType.objects.filter(app_label="games", model="game").exists()
+        )
 
     def test_scrub_staging_only_on_request(self):
         self.assertIn(("scrub_staging", ()), _run("--scrub-staging"))
