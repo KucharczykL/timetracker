@@ -1403,7 +1403,10 @@ becomes a TypeScript union whose reader throws on any other value.
 
 Multi-stage Dockerfile (uv builder → Node assets stage → slim runtime), Caddy as
 reverse proxy on port 8000, Gunicorn with UvicornWorker (ASGI), Supervisor managing
-Caddy + Gunicorn + django-q2. `make dev-prod` mimics production locally. CI/CD via
+Caddy + Gunicorn + django-q2. Startup's `bootstrap_container` runs `migrate`,
+then `remove_stale_contenttypes --no-input`, so a dropped model's content type
+and permissions need no migration or cutover SQL. `make dev-prod` mimics
+production locally. CI/CD via
 `.github/workflows/build-docker.yml`: `check` job runs `make check-static`,
 the backup-restore rehearsal and the secret smoke, then `build-and-push`
 builds + pushes image on `main`. No test runs in CI.
@@ -1451,7 +1454,7 @@ All configurable Django settings read through `config()` in
   overridden directly (e.g. `ALLOWED_HOSTS=*` behind reverse proxy);
   `CSRF_TRUSTED_ORIGINS` always derived from `APP_URL`.
 - `TIME_ZONE` reads `TZ` (defaults `UTC`); no library day read depends on it.
-- Django Admin, Debug Toolbar, and `django_extensions` are `DEBUG`-only.
+- Debug Toolbar and `django_extensions` are `DEBUG`-only; Django Admin is not installed.
 - `DEV_LOGIN_PREFILL` (**dev/staging only**, off by default): `username:password`
   prefills login form and sends `X-Robots-Tag: noindex` — login still POSTs and
   authenticates (not a bypass). `make dev` sets `admin:admin`; `make devlogin`
