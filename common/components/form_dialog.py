@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from typing import Final, Literal, TypedDict
 
-from common.components.core import Attributes, Node, require_every_key
+from common.components.core import HTMLAttribute, Node, require_every_key
 from common.components.custom_elements import OVERLAY_SURFACE_CLASS
 from common.components.elements import Div, P, Template
 from common.components.modal import (
@@ -183,7 +183,7 @@ _BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"
 _FormDialog = custom_element_builder("form-dialog")
 
 
-def form_dialog_link(chrome: FormDialogChrome = "header") -> Attributes:
+def form_dialog_link(chrome: FormDialogChrome = "header") -> tuple[HTMLAttribute, ...]:
     """Marks a link to open in a dialog."""
     return (
         (FORM_DIALOG_ATTRIBUTE, FORM_DIALOG_CHROME_VALUES[chrome]),

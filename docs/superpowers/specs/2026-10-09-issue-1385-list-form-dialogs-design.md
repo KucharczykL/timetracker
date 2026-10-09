@@ -1,8 +1,8 @@
 # Form pages from lists open in a modal
 
 A form page that a list opens, opens in a form dialog
-(`form_dialog_link()`). The page stays reachable at its own URL. No view
-changes: `render_page()` answers the dialog, and
+(`form_dialog_link()`). The page stays reachable at its own URL. No route
+or response changes. `render_page()` answers the dialog.
 `FormDialogResultMiddleware` answers its redirect.
 
 ## Scope
@@ -11,7 +11,7 @@ These build sites mark their links:
 
 | Build site | Links |
 |---|---|
-| `session_row_menu` | Edit, Record as historical playtime… |
+| `session_row_menu` | Edit, Record as historical playtime… (Duration-only rows) |
 | `playthrough_rows._row_menu` | Edit |
 | `record_row_menu` | Edit |
 | `device_row_menu`, `platform_row_menu`, `game_row_menu` | Edit |
@@ -40,23 +40,24 @@ marked. A one-click POST stays a POST.
   `done`. No dialog opens.
 - **Log game opens on every page.** On a host that is not `READ_ONLY`,
   `done` shows its messages in place. A `READ_ONLY` host reloads.
-- **Focus returns to a link that shows.** `focusOpener` takes the first
-  link with the href whose return target is reachable. A `SummaryRow`
-  renders its overflow item first, and at wide widths that menu is not
-  rendered.
+- **Focus returns to a reachable link.** `focusOpener` takes the opener
+  by id first. Then it takes the first link with the href whose return
+  target is reachable. Else it takes `#main-container`. A focus that does
+  not land is reported. A `SummaryRow` renders its overflow item first.
+  At wide widths that menu is not rendered.
 - **`isRendered` is shared** (`ts/rendered.ts`). It reads
-  `checkVisibility()` where the engine has it, and `[hidden]` in jsdom.
+  `checkVisibility()`. A browser without `checkVisibility()` reads
+  `[hidden]` only. The app supports no such browser.
   `isReachable` is `isRendered`, not inside `[hidden], [inert]`, and not
-  in a closed dialog. An element with no box (`display: contents`) is
-  not rendered.
+  in a closed dialog.
 
 ## Verification
 
 `tests/test_form_dialog_links.py` renders each build site and checks
 which links carry the marker. `e2e/test_list_form_dialogs_e2e.py`
-presses each real link. It checks that the dialog opens, that an
-invalid submit stays in the dialog, and that a save closes the dialog,
-reloads the host and returns focus. Where the act removes the opener,
-focus goes to `#main-container`. The price form's `x-mask` works inside
+presses each real link. It checks that the dialog opens. An invalid
+submit stays in the dialog. A save closes the dialog, reloads the host
+and returns focus. Where the act removes the opener, focus goes to
+`#main-container`. The price form's `x-mask` works inside
 the dialog. At phone width, "With details…" in a sheet level closes the
 sheet chain and opens the dialog.

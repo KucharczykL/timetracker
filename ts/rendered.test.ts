@@ -19,8 +19,9 @@ describe("isRendered", () => {
 
   it("reads a hidden ancestor where there is no checkVisibility", () => {
     document.body.innerHTML = `<div hidden><button id="inner">Edit</button></div><button id="outer">Add</button>`;
-    expect(document.getElementById("inner")!.checkVisibility).toBeUndefined();
-    expect(isRendered(document.getElementById("inner")!)).toBe(false);
+    const inner = document.getElementById("inner")!;
+    Object.defineProperty(inner, "checkVisibility", { value: undefined, configurable: true });
+    expect(isRendered(inner)).toBe(false);
     expect(isRendered(document.getElementById("outer")!)).toBe(true);
   });
 

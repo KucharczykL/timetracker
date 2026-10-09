@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from common.components.core import Attributes, Child, Fragment, Node, randomid
+from common.components.core import Child, Fragment, HTMLAttribute, Node, randomid
 from common.components.custom_elements import (
     DropdownLinkItem,
     RowActionMenu,
@@ -162,7 +162,7 @@ def CopyControl(
 class SummaryAction:
     label: str
     href: str
-    attributes: Attributes = ()
+    attributes: tuple[HTMLAttribute, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
