@@ -189,7 +189,7 @@ def test_blank_labels_leave_the_placeholder():
     assert _face_value(["", ""], "Pick one").placeholder == "Pick one"
 
 
-STEADY = " h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+STEADY = "group-data-[sheet-steady]/sheet:h-dvh"
 
 
 def test_a_picker_sheet_keeps_its_height():
