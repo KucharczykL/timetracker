@@ -183,6 +183,10 @@ def test_covered_modals_step_back_and_the_top_names_them(live_server, page: Page
     page.set_viewport_size({"width": 800, "height": 700})
     page.goto(f"{live_server.url}/settings-kit-test/")
     page.evaluate(MOUNT_STACKED_MODALS, _stacked_modals_markup())
+    # The depth cue moves before it rests.
+    page.wait_for_function(
+        "() => document.getAnimations().every((animation) => animation.playState !== 'running')"
+    )
 
     def box(selector: str) -> FloatRect:
         found = page.locator(selector).bounding_box()
