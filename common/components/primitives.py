@@ -1467,11 +1467,19 @@ def Input(
     return Element("input", merged)
 
 
-#: What a checkbox looks like, for the builder and for the two nameless ones
-#: a selectable table clones.
+#: The mixed dash, in the check mark's viewBox.
+#:
+#: One literal: Tailwind scans the source text.
+_INDETERMINATE_DASH_CLASS = (
+    "indeterminate:bg-[url(data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2024%2024%27%3e%3cpath%20stroke=%27white%27%20stroke-linecap=%27round%27%20stroke-width=%272%27%20d=%27M6%2012h12%27/%3e%3c/svg%3e)] "
+    "indeterminate:bg-[length:0.85em_0.85em]"
+)
+
+#: Every checkbox's look: one 24px touch target.
 CHECKBOX_LOOK_CLASS = (
-    "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
-    "text-brand focus:ring-brand"
+    "w-6 h-6 shrink-0 rounded border-default-medium "
+    "bg-neutral-secondary-medium text-brand focus:ring-brand "
+    f"{_INDETERMINATE_DASH_CLASS}"
 )
 
 
@@ -3314,9 +3322,6 @@ _UNDEFINED_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
 # Sticky while shown, under the menus.
 _SELECTION_LINE_STICKY_CLASS = "sticky bottom-0 z-10"
 
-# A checkbox is 24px, the touch target Checkbox() bakes no size for.
-SELECTION_CHECKBOX_CLASS = "w-6 h-6"
-
 # What stands between a row checkbox and the name beside it: 8px.
 SELECTION_CHECKBOX_GAP_CLASS = "me-2"
 
@@ -3352,7 +3357,7 @@ def _check_all(name: str, *, extra_class: str = "") -> Node:
             ("autocomplete", "off"),
         ],
         type="checkbox",
-        class_=f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS} {extra_class}".strip(),
+        class_=f"{CHECKBOX_LOOK_CLASS} {extra_class}".strip(),
     )
 
 
@@ -3524,8 +3529,7 @@ def SelectionLine(
             [("data-selection-checkbox", "")],
             type="checkbox",
             class_=(
-                f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS} "
-                f"{SELECTION_CHECKBOX_GAP_CLASS} align-middle"
+                f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_GAP_CLASS} align-middle"
             ),
         )
     ]

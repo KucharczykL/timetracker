@@ -143,7 +143,6 @@ from common.components.primitives import (
     PAGE_SIZE_PRESETS,
     ROW_SIZE_CLASS,
     SEGMENTED_FIELD_CLASS,
-    SELECTION_CHECKBOX_CLASS,
     SELECTION_STATEMENT_FIELD,
     A,
     AddForm,
@@ -291,6 +290,7 @@ from common.components.temporal_field import TemporalCopySource, TemporalField
 from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.time_zone_row import TimeZoneRow
 from common.components.toast import ToastStack
+from common.components.tri_state_checkbox import TriStateCheckbox
 from common.components.unset_field import (
     PostedName,
     UnsetField,
@@ -329,7 +329,6 @@ __all__ = [
     "ROW_SIZE_CLASS",
     "SEARCH_PLACEHOLDERS",
     "SEGMENTED_FIELD_CLASS",
-    "SELECTION_CHECKBOX_CLASS",
     "SELECTION_STATEMENT_FIELD",
     "A",
     "AccessBadge",
@@ -535,6 +534,7 @@ __all__ = [
     "TooltipDefinition",
     "TooltipDefinitionList",
     "Tr",
+    "TriStateCheckbox",
     "TruncatedText",
     "Truncation",
     "Ul",

@@ -8,12 +8,15 @@ half built.
 import json
 import logging
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, cast
 
 from django import forms
 from django.core.exceptions import NON_FIELD_ERRORS
 
+from common.components.custom_elements import TriState
+from common.components.tri_state_checkbox import PostedWord, TriStateWords
 from games.events.dispatch import CommandRejected, RowUnreadable
+from games.forms import TriStateCheckboxWidget
 from games.reads.fact_change import FactChange
 
 logger = logging.getLogger("games")
@@ -40,6 +43,46 @@ def keeping[RowT, ValueT](
     if len(held) != 1:
         return "Keep: mixed"
     return f"Keep: {shown(held.pop())}"
+
+
+#: A flag's two posted words.
+FLAG_CHECKED: PostedWord = "True"
+FLAG_UNCHECKED: PostedWord = "False"
+_FLAG_WORDS = TriStateWords(checked=FLAG_CHECKED, unchecked=FLAG_UNCHECKED)
+
+
+def flag_field(label: str) -> forms.TypedChoiceField:
+    """A flag: a word states, nothing keeps."""
+    return forms.TypedChoiceField(
+        label=label,
+        choices=((FLAG_CHECKED, "Yes"), (FLAG_UNCHECKED, "No")),
+        coerce=lambda value: value == FLAG_CHECKED,
+        empty_value=None,
+        required=False,
+        widget=TriStateCheckboxWidget(words=_FLAG_WORDS),
+    )
+
+
+def held_flag[RowT](rows: Sequence[RowT], value: Callable[[RowT], bool]) -> TriState:
+    """What the rows hold; mixed where they differ."""
+    if not rows:
+        raise ValueError("a flag holds nothing across no rows")
+    held = {value(row) for row in rows}
+    if held == {True}:
+        return "checked"
+    if held == {False}:
+        return "unchecked"
+    return "mixed"
+
+
+def hold_flag[RowT](
+    form: forms.BaseForm,
+    name: str,
+    rows: Sequence[RowT],
+    value: Callable[[RowT], bool],
+) -> None:
+    """Holds the rows' flag on the box ``name`` names."""
+    cast(TriStateCheckboxWidget, form.fields[name].widget).held = held_flag(rows, value)
 
 
 def statement_unreadable(message: str) -> CommandRejected:

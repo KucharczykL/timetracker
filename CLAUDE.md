@@ -891,9 +891,13 @@ its Undo states each changed fact's earlier value, read by
 `batch_fact_changes` in
 `games/reads/playergame_facts.py`; #1256's Undo reads `status_change`. Contract is
 [Edit many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-game-edit-design.md).
+Every bulk flag is a `<tri-state-checkbox>` (`flag_field`, `held_flag`
+in `games/bulk_edit.py`): it starts at what the rows hold, steps
+through mixed only where they differ, and posts `""` to keep
+([spec](docs/superpowers/specs/2026-10-09-issue-1293-tri-state-checkbox-design.md)).
 The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py`,
 `bulk_platform_edit.py`, `bulk_entry_edit.py` and `bulk_purchase_edit.py`; what they share (the "Keep:" placeholder, the
-carried statement's decode, the settled-choice guard, the form refusal,
+flag field, the carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
 imports no act, and `FactChange` is `games/reads/fact_change.py`,
 whose `Fact.read` takes the whole event (`payload_fact` reads one key).
@@ -1082,6 +1086,10 @@ Submodules re-exported via `common/components/__init__.py`:
   whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
   `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and
   `PLATFORM_ICONS` (`common/platform_icons.py`) names the icons
+- **`tri_state_checkbox.py`** — `TriStateCheckbox()`, a bulk flag's box,
+  hint and hidden input (`ts/elements/tri-state-checkbox.ts`); forms reach
+  it through `TriStateCheckboxWidget`. Every checkbox wears
+  `CHECKBOX_LOOK_CLASS`: 24px, its own mixed dash
 - **`unset_field.py`** — `UnsetField()`, one field joined to a ⊘ toggle
   (`ts/elements/unset-field.ts`) whose checkbox posts `<name>-unset`: a bulk
   form's "none" apart from "keep", which an empty field states. Forms reach it
