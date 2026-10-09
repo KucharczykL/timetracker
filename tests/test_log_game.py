@@ -156,6 +156,12 @@ def test_an_unheld_platform_on_a_standing_release_records_an_unknown_copy(
     assert entry.access == "unknown"
 
 
+def test_a_cleared_platform_records_no_copy(user, game):
+    _press(user, _statement(game, platform_id=None, platform_changed=True))
+
+    assert not LibraryEntry.objects.filter(library=user.library).exists()
+
+
 def test_playtime_on_an_untracked_game_names_the_run_track_made(user, game):
     _press(
         user,

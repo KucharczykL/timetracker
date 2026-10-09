@@ -29,6 +29,7 @@ from games.models import (
     Playthrough,
     Release,
     UserLibrary,
+    status_implied_over,
 )
 from games.reads.log_game import copy_release_for
 from games.reads.playthrough_runs import (
@@ -177,7 +178,7 @@ def _held_platform(
 
 
 def _release_for_copy(
-    actor: User, statement: LogStatement, platform: Platform | None
+    actor: User, statement: LogStatement, platform: Platform
 ) -> Release:
     """The standing Release a new copy names.
 
@@ -185,15 +186,15 @@ def _release_for_copy(
     its standing one.
     """
     game = statement.game
-    if game.library_id is None:
-        standing = standing_release_on(game, platform)
-        if standing is None:
-            raise CommandFailed(SHARED_GAME_RELEASE, CONFLICT_STATUS)
-        return standing
     try:
-        return release_on(actor.library, game, platform).release
+        if game.library_id is not None:
+            return release_on(actor.library, game, platform).release
+        standing = standing_release_on(game, platform)
     except RowRefused as refusal:
         raise CommandFailed(refusal.sentence, CONFLICT_STATUS) from refusal
+    if standing is None:
+        raise CommandFailed(SHARED_GAME_RELEASE, CONFLICT_STATUS)
+    return standing
 
 
 def _copy_step(
@@ -214,7 +215,8 @@ def _copy_step(
     with _answering("platform", written):
         platform = _held_platform(library, statement.platform_id)
         held = copy_release_for(library, statement.game, platform)
-    if held is not None or not statement.platform_changed:
+    # No platform records no copy.
+    if held is not None or platform is None or not statement.platform_changed:
         return held
     with _answering("platform", written):
         release = _release_for_copy(actor, statement, platform)
@@ -346,6 +348,8 @@ def _write_playtime(
 def _playtime_run(
     actor: User,
     statement: LogStatement,
+    *,
+    token: uuid.UUID,
     correlation_id: uuid.UUID,
     written: set[LogStep],
 ) -> PlaythroughId:
@@ -370,6 +374,7 @@ def _playtime_run(
                 implies_completed=False,
             ),
             correlation_id=correlation_id,
+            idempotency_key=f"log-run-{token}",
         )
         return recorded.playthrough_id
 
@@ -384,7 +389,8 @@ def _status_to_write(statement: LogStatement) -> PlayerGameStatus | None:
         return statement.status
     if (
         isinstance(statement.playtime, HistoricalHours)
-        and statement.seen_status == PlayerGameStatus.UNPLAYED
+        and statement.seen_status is not None
+        and status_implied_over(statement.seen_status, PlayerGameStatus.PLAYED)
     ):
         return PlayerGameStatus.PLAYED
     return None
@@ -430,7 +436,13 @@ def log_game(
 
     if statement.playtime is not None:
         if playthrough_id is None:
-            playthrough_id = _playtime_run(actor, statement, correlation_id, written)
+            playthrough_id = _playtime_run(
+                actor,
+                statement,
+                token=token,
+                correlation_id=correlation_id,
+                written=written,
+            )
         _write_playtime(
             actor,
             statement,

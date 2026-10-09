@@ -73,7 +73,7 @@ def _default_edition(game: Game) -> Edition | None:
     raise RowRefused(NO_DEFAULT_EDITION)
 
 
-def _standing(edition: Edition | None, platform: Platform | None) -> Release | None:
+def _standing(edition: Edition | None, platform: Platform) -> Release | None:
     if edition is None:
         return None
     return (
@@ -96,15 +96,13 @@ def release_on_platform(
     return release_on(library, game, _platform_named(library, platform_name.strip()))
 
 
-def standing_release_on(game: Game, platform: Platform | None) -> Release | None:
+def standing_release_on(game: Game, platform: Platform) -> Release | None:
     """The default Edition's live Release on that platform, read only."""
     return _standing(_default_edition(game), platform)
 
 
-def release_on(
-    library: UserLibrary, game: Game, platform: Platform | None
-) -> PlatformRelease:
-    """That platform's live Release, stated if absent; none is unset."""
+def release_on(library: UserLibrary, game: Game, platform: Platform) -> PlatformRelease:
+    """That platform's live Release, stated if absent."""
     if game.library_id is None:
         raise RowRefused(SHARED_GAME_RELEASE)
 
