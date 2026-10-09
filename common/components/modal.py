@@ -86,7 +86,7 @@ _TITLE_BLOCK_CLASS = (
 )
 
 #: The layer writes them; lengths in px.
-#: The depth cue owns transform.
+#: Depth cue writes transform; levels skip it.
 #: Scrim is ::after; opacity is --modal-scrim.
 #: Scrim never makes the panel translucent.
 _MODAL_PANEL_CLASS = (

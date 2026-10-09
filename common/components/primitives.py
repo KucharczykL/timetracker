@@ -349,7 +349,7 @@ _TOOLTIP_PANEL_CLASS = (
     "border border-brand/30 rounded-base shadow-xs max-w-7xl"
 )
 #: Enter and leave by data-motion, data-side.
-#: Sheet-hosted panels shed motion; body never fades.
+#: A sheet-hosted panel never animates.
 ANCHORED_MOTION_CLASS = (
     "transition-[opacity,scale,translate] ease-enter duration-(--duration-fast) "
     "data-[motion=leaving]:ease-exit data-[motion=leaving]:duration-(--duration-fast-exit) "

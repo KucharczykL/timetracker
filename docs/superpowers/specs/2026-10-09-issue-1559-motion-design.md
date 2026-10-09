@@ -35,7 +35,7 @@ TypeScript reads a duration with `motionDuration(token)` in
 - **Level:** the level slides in from the right. The sheet below moves
   30 % left and darkens under its scrim. The scrim keeps the panel
   opaque, so the page never shows through. The level casts a shadow on
-  its leading edge. Back reverses the slide.
+  its leading edge. Back reverses the slide; × slides it down.
 - **Depth cue:** a covered panel steps back and darkens under its scrim.
   The scrim is the panel's `::after`; no `filter` and no `opacity`.
 - **Toast:** fades in from the right and fades out.
@@ -62,7 +62,8 @@ Under `prefers-reduced-motion: reduce`, every surface crossfades for
   at once; geometry and listeners go when the leave ends. An open or
   `releaseFromTopLayer` cancels a held leave.
 - **Modals:** the layer's `leave` hook holds a modal under a 1 s cap.
-  A centred modal gets a default leave.
+  A centred modal gets a default leave. A step pressed during a leave
+  queues and runs once it ends; a leaving modal acts on no press.
 - **Levels** animate with the Web Animations API, `fill: "forwards"`. A
   slide keeps its last frame until the level settles, then the
   animations cancel. A slide that snaps back first shows the wrong panel

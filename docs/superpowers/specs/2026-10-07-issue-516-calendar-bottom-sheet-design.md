@@ -6,11 +6,13 @@ Part of #1485. Issue #516. #1537 uses the same switch for the form pickers.
 
 Every calendar (`DatePicker`, `DateTimePicker`, `DateRangePicker`,
 `YearPicker`) and every quick-bar facet opens its panel as a bottom sheet
-below 640 px. Above 640 px, the panel stays an anchored popup.
+below 640 px. Above 640 px, the panel stays an anchored popup. Since
+[#1559](2026-10-09-issue-1559-sheet-by-default-design.md) every `<drop-down>`
+does, with no opt-out.
 
 ## Markup
 
-A builder opts in with a `SheetSpec(title)`: `_assemble(sheet=...)`,
+A builder states its title with a `SheetSpec(title)`: `_assemble(sheet=...)`,
 `Dropdown(sheet=...)`, `ComboboxDropdown(sheet=...)`, or
 `dropdown_sheet(SheetSpec(title))` beside the picker inside `_Dropdown`. The host then
 contains two extra nodes:

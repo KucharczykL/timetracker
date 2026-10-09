@@ -12,12 +12,10 @@ its own controller. Above `sm`, nothing changes.
 ## Titles
 
 Every build site states its title in Python. `Dropdown`,
-`ComboboxDropdown` and `_assemble` require `sheet: SheetSpec`; only
-`behavior="sheet"` takes `None`. `SplitButtonDropdown` requires
-`aria_label`, `SelectDropdown` requires `sheet_title`.
-`tests/html_answers.py` refuses an answer with a `<drop-down>` that has
-no own sheet. It parses the answer, because one `<drop-down>` holds
-others.
+`ComboboxDropdown`, `SelectDropdown` and `_assemble` require
+`sheet: SheetSpec`; `behavior="sheet"` has its own path with no sheet.
+`SplitButtonDropdown` requires `aria_label`.
+`tests/html_answers.py` refuses a `<drop-down>` with no own sheet.
 
 ## Height
 
@@ -53,13 +51,17 @@ dialog stacks a plain sheet.
   level.
 - **In:** the level slides in. The panel below then goes
   `visibility: hidden`. Focus moves to the level's `sheetFocus`.
-- **Back:** the back control and a native `cancel` (Escape, the Android
-  back gesture) close the level only. `ModalOptions.cancel` states this
-  apart from `dismiss`.
+- **Back:** the back control (`data-modal-cancel`) and a native `cancel`
+  (Escape, the Android back gesture) close the level only.
+  `ModalOptions.cancel` states this apart from `dismiss`.
 - **Close:** × and the backdrop close the whole chain through
-  `closeTogether`. Only the top runs its leave; the layer then finishes
-  every sheet, top first, and returns focus once. A menu item that acts
-  closes the chain too. `closeAbove` finishes levels without focus.
+  `closeTogether`: the level slides down and lower backdrops fade. Only
+  the top runs its leave; the layer then finishes every sheet, top first,
+  and returns focus once. A menu item that acts closes the chain too.
+  `closeAbove` finishes levels without focus.
+- **Queue:** a step (cancel, dismiss, chain close) pressed during a leave
+  queues and runs once it ends, so two quick backs go back two steps. A
+  leaving modal acts on no press; a leaving panel takes no pointer.
 - A level does not move hosts on resize; the first sheet does.
 - A submenu opens through `presenter`. In a sheet, hover opens nothing.
 

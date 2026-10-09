@@ -1261,7 +1261,7 @@ SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "back_label": "data-sheet-back-label",
     #: A level of the sheet below it.
     "level": "data-sheet-level",
-    #: Content opens a level or searches.
+    #: A level, or content that nests or searches.
     "steady": "data-sheet-steady",
 }
 #: The ``host`` value of a panel lent to a sheet.
@@ -1400,7 +1400,6 @@ def Dropdown(
     )
 
 
-#: Only a close fades; uncovering stays instant.
 #: Backdrop fades with the slide.
 _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "

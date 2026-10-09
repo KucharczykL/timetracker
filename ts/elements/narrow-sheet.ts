@@ -13,7 +13,7 @@ import { bottomSheet, enclosingSheet, type LevelPlacement } from "./sheet-levels
 import { clearAnchoredPosition } from "./anchored-position.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
 
-//: Content that opens a level or filters.
+/** Content that opens a level or filters. */
 const STEADY_CONTENT_SELECTOR = "drop-down, [data-search-select-search]";
 
 export interface NarrowSheetOptions {
@@ -87,7 +87,7 @@ export function attachNarrowSheet(
   let frame: FrameHandle | null = null;
   let viewportFrame: FrameHandle | null = null;
   let cancelRetry: CancelSettled | null = null;
-  /** Sheet below a level host. */
+  /** Covered sheet while this one is a level. */
   let levelBelow: HTMLDialogElement | null = null;
 
   const isNarrow = (): boolean => sentinel.getClientRects().length > 0;

@@ -34,9 +34,8 @@ type ElementId = string;
 type Refresh = () => void;
 
 const SCALE_STEP = 0.05;
-// Covered panels darken to this at most.
 const SCRIM_STEP = 0.15;
-const SCRIM_MAX = 0.5;
+const SCRIM_MAX = 0.5; // Covered panels darken to this at most.
 const SEPARATOR = " › ";
 const SPOKEN_SEPARATOR = ", ";
 
@@ -101,7 +100,7 @@ function scale(depth: Depth): ScaleFactor {
   return 1 - SCALE_STEP * depth;
 }
 
-/** Scrim opacity; never translucent. */
+/** Scrim opacity; the panel stays opaque. */
 function scrim(depth: Depth): CssValue {
   return String(Math.round(Math.min(SCRIM_MAX, SCRIM_STEP * depth) * 100) / 100);
 }

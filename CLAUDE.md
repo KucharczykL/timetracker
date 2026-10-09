@@ -1701,7 +1701,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   [Stacked depth](docs/superpowers/specs/2026-10-06-issue-1514-stacked-modal-depth-design.md)
 - **Every dropdown becomes a bottom sheet below `sm`** (#516, #1559): no
   opt-out. A build site states its title: `Dropdown(sheet=SheetSpec(title))`,
-  `ComboboxDropdown(sheet=)`, `SelectDropdown(sheet_title=)`, or
+  `ComboboxDropdown(sheet=)`, `SelectDropdown(sheet=)`, or
   `dropdown_sheet(SheetSpec(label))` inside a raw `_Dropdown`;
   `tests/html_answers.py` refuses a `<drop-down>` without its own sheet.
   `attachNarrowSheet` (`ts/elements/narrow-sheet.ts`) lends the one panel
@@ -1732,7 +1732,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Motion is tokens** (#1559): every duration and easing is a
   `--duration-*`/`--ease-*` in `common/input.css`; a class writes
   `duration-(--duration-fast)`, TypeScript `motionDuration(token)`. Only
-  transform and opacity animate. An exit is held by `holdLeave`
+  transform, translate, scale and opacity animate. An exit is held by `holdLeave`
   (`ts/motion.ts`) under `data-motion="leaving"`; reduced motion
   crossfades. E2E runs `reduced_motion="reduce"` and waits on a settled
   state. Contract is
