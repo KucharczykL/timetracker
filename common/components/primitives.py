@@ -1916,7 +1916,7 @@ def FieldErrors(errors, *, form_wide: bool = False) -> Node | None:
 
 #: How a group shows its legend.
 #:
-#: "hidden": screen readers name it; space parts it.
+#: "hidden": legend for screen readers only.
 #: "panel": a section panel, legend inside.
 type FieldGroupLook = Literal["shown", "hidden", "panel"]
 #: Space-separated utility tokens.
@@ -1929,9 +1929,11 @@ _LEGEND_CLASSES: dict[FieldGroupLook, str] = {
 }
 _GROUP_LOOK_CLASSES: dict[FieldGroupLook, str] = {
     "shown": "",
-    "hidden": "mt-3 first-of-type:mt-0",
+    "hidden": "",
     "panel": SECTION_SURFACE_CLASS,
 }
+#: Parts each group from the one before.
+_GROUP_CLASS = "flex flex-col gap-3 mt-3 first-of-type:mt-0"
 
 
 class FormFieldGroup(NamedTuple):
@@ -2198,7 +2200,7 @@ def _grouped_form_fields(
             continue
         description_id = f"{group.id}-description" if group.id else ""
         attributes: list[HTMLAttribute] = [
-            ("class", "flex flex-col gap-3"),
+            ("class", _GROUP_CLASS),
             ("data-form-field-group", ""),
         ]
         if look_class := _GROUP_LOOK_CLASSES[group.look]:
