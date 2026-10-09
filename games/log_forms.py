@@ -265,7 +265,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, CopyField
     def _offer_sections(self, held: HeldFacts | None) -> None:
         """Each section a press has not yet written, its copy label read."""
         labels = dict(SECTION_LABELS)
-        if held is not None and held.copies:
+        if held is not None and held.platform is not None:
             labels["copy"] = ANOTHER_COPY_LABEL
         saved = self.saved_sections()
         cast(forms.MultipleChoiceField, self.fields["sections"]).choices = [

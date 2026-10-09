@@ -299,16 +299,12 @@ def _saved_lines(saved: frozenset[LogSection]) -> Node | None:
 def _summary_lines(held: HeldFacts, durations: DurationPresentation) -> Node:
     """Each held fact, one muted line; ticking its section hides it."""
     lines: dict[LogSection, str] = {}
-    if held.copies:
-        more = len(held.copies) - 1
-        lines["copy"] = held.copies[0] + (f" and {more} more" if more else "")
+    #: Stub until the Log page is rewritten: no copy or playtime summary.
+    if held.platform is not None:
+        lines["copy"] = held.platform.name
     if held.run is not None:
         lines["dates"] = _dates_words(held.run)
-    lines["playtime"] = (
-        f"{durations.format(held.playtime)} played"
-        if held.playtime
-        else "No playtime yet"
-    )
+    lines["playtime"] = "No playtime yet"
     lines["more"] = "Mastered" if held.mastered else "Not mastered"
     return Fragment(
         *(

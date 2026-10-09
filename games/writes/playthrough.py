@@ -6,7 +6,7 @@ An actor goes in here, not a request.
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import NamedTuple, Protocol
+from typing import Literal, NamedTuple, Protocol
 
 from django.contrib.auth.models import User
 
@@ -26,6 +26,8 @@ from games.commands.playthrough import (
     StartPlaythrough,
     UndoPlaythroughCompletion,
     UndoPlaythroughStart,
+    VoidPlaythroughCompletion,
+    VoidPlaythroughStart,
 )
 from games.events.append import SourceMetadata
 from games.events.dispatch import (
@@ -496,6 +498,7 @@ def record_run(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
 ) -> RecordedRun:
     """State one run at a game.
 
@@ -507,6 +510,9 @@ def record_run(
     A game nothing tracks is tracked first, which is a
     library-visible act of its own -- hence the answer,
     which the request-shaped caller tells the person about.
+
+    A key goes to the creation alone, so a repeat of a
+    creation under the same key writes no second run.
     Dispatch refuses to nest, so no transaction spans the
     two: a refusal after tracking leaves the game tracked
     with no run stated, and stating it again finishes it.
@@ -518,12 +524,24 @@ def record_run(
         )
     with answered("playthrough"):
         try:
-            recorded = _record_once(actor, game, draft, correlation_id=correlation_id)
+            recorded = _record_once(
+                actor,
+                game,
+                draft,
+                correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
+            )
         except PlayerGameNotTracked:
             #: One retry only. TrackGame states a run,
             #: so the branch runs again rather than re-dispatching.
             track_game(actor, game, correlation_id=correlation_id)
-            recorded = _record_once(actor, game, draft, correlation_id=correlation_id)
+            recorded = _record_once(
+                actor,
+                game,
+                draft,
+                correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
+            )
             return RecordedRun(playthrough_id=recorded, tracked_the_game=True)
     return RecordedRun(playthrough_id=recorded, tracked_the_game=False)
 
@@ -534,6 +552,7 @@ def _record_once(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
 ) -> uuid.UUID:
     """Adopt the game's run, or create one; answer its key.
 
@@ -568,8 +587,38 @@ def _record_once(
         actor=actor,
         library=actor.library,
         correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
     )
     return created_aggregate_id(result)
+
+
+#: The endpoint a run states, named for a caller that voids one.
+type RunEndpoint = Literal["start", "completion"]
+
+
+def void_run_endpoint(
+    actor: User,
+    run: Playthrough,
+    endpoint: RunEndpoint,
+    *,
+    correlation_id: uuid.UUID,
+) -> CommandResult:
+    """Take back the record of one endpoint.
+
+    Unchanged where the endpoint is unstated.
+    """
+    command: Command = (
+        VoidPlaythroughStart(playthrough_id=run.pk)
+        if endpoint == "start"
+        else VoidPlaythroughCompletion(playthrough_id=run.pk)
+    )
+    with answered("playthrough"):
+        return _dispatch(
+            command,
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
 
 
 def undo_start(

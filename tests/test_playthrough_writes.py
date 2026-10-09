@@ -1,5 +1,6 @@
 """The write path for a stated run."""
 
+import uuid
 from datetime import date
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from games.commands.playthrough import ActStatement
 from games.events.dispatch import CommandOutcome
 from games.models import Game, LibraryEvent, PlayerGame, Playthrough
+from games.reads.playthrough_endpoints import stated_start
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, track_game
 from games.writes.playthrough import (
@@ -15,6 +17,7 @@ from games.writes.playthrough import (
     remove_run,
     restate_run,
     restore_run,
+    void_run_endpoint,
 )
 from timetracker.temporal import TemporalValue
 
@@ -514,3 +517,42 @@ class TestRemoveRun:
         repeat = remove_run(user, second, correlation_id=new_correlation_id())
 
         assert repeat.outcome is CommandOutcome.UNCHANGED
+
+
+class TestLogGameWrites:
+    """#1517: a keyed creation and a void of one endpoint."""
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_keyed_record_run_twice_creates_one_run(self, user, game):
+        a_recorded_run(user, game, started=date(2024, 1, 2), ended=None)
+        draft = RunDraft(
+            started=None,
+            completed=_act(date(2024, 2, 3)),
+            note="",
+            implies_played=False,
+            implies_completed=True,
+        )
+        key = str(uuid.uuid7())
+
+        first = record_run(
+            user, game, draft, correlation_id=new_correlation_id(), idempotency_key=key
+        )
+        second = record_run(
+            user, game, draft, correlation_id=new_correlation_id(), idempotency_key=key
+        )
+
+        assert first.playthrough_id == second.playthrough_id
+        assert Playthrough.objects.filter(player_game__game=game).count() == 2
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_void_takes_the_start_back_and_a_repeat_is_unchanged(self, user, game):
+        run = a_recorded_run(user, game, started=date(2024, 1, 2), ended=None)
+
+        void_run_endpoint(user, run, "start", correlation_id=new_correlation_id())
+        run.refresh_from_db()
+        assert stated_start(run) is None
+
+        again = void_run_endpoint(
+            user, run, "start", correlation_id=new_correlation_id()
+        )
+        assert again.outcome is CommandOutcome.UNCHANGED

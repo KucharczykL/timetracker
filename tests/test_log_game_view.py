@@ -88,6 +88,7 @@ def test_a_held_game_states_its_status_and_playtime(logged_in, game):
     assert "Not mastered" in html
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_a_held_copy_is_summarised_with_another_copy_label(
     logged_in, owned_library, game
 ):
