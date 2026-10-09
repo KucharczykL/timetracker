@@ -1,5 +1,6 @@
 """Rendering tests: game-detail sections wire "View all" links to filtered lists (#66)."""
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -206,3 +207,12 @@ def test_the_organizer_icon_is_its_own_glyph():
 
     assert "list-tree" in ICON_NODES
     assert get_icon_node("list-tree") is not ICON_NODES["unspecified"]
+
+
+def test_played_menu_offers_a_log_item_in_a_dialog(game, rendered):
+    """The modal takes the game stated, so the item carries it."""
+    tag = re.search(
+        rf'<a\b[^>]*href="[^"]*log/\?[^"]*game={game.id}[^"]*"[^>]*>', rendered
+    )
+    assert tag is not None
+    assert "data-form-dialog" in tag.group(0)

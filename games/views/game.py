@@ -653,6 +653,15 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
         items=[
             DropdownLinkItem(
                 action_url(
+                    "games:log_game",
+                    origin=origin,
+                    facts={"game": str(game.pk)},
+                ),
+                "Log\u2026",
+                attributes=form_dialog_link(),
+            ),
+            DropdownLinkItem(
+                action_url(
                     "games:add_playthrough", origin=origin, facts=_game_fact(game)
                 ),
                 "Add playthrough\u2026",

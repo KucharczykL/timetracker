@@ -130,7 +130,7 @@ def NavbarLogButton(
     primary = ControlButton(
         form_dialog_link(),
         color="green",
-        href=action_url("games:add_session", origin=origin),
+        href=action_url("games:log_game", origin=origin),
         aria_label="Log game",
     )[Icon("play"), Span(class_="hidden sm:inline")["Log game"]]
 
