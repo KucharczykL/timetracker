@@ -3067,6 +3067,12 @@ class ComponentPrimitivesTest(SimpleTestCase):
         self.assertIn('type="checkbox"', html)
         self.assertIn('name="test-headless"', html)
 
+    def test_every_checkbox_meets_the_touch_target(self):
+        """One size: the table's boxes and a form's alike."""
+        html = str(components.Checkbox(name="sized"))
+        self.assertIn("w-6", html)
+        self.assertIn("h-6", html)
+
     def test_radio_primitive(self):
         html = str(
             components.Radio(
