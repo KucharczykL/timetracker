@@ -206,8 +206,22 @@ With a fixed game the view reads, once:
 - `tests/test_navbar_log_button.py` (extend): the primary carries
   `data-form-dialog` and the log URL.
 
-## Follow-up issues to file
+## Deliberate deviations from the mockup
 
-- #1595: segmented radio control and side-by-side rows (filed).
-- #1596: report every refusal before anything is written (filed by the
-  #1521 organizer).
+- The run has no name here. #1519's tab is where a run gets its name.
+- A held copy is a summary line with an "Another copy" tick, not a
+  card with a link.
+- The session states a Day, not "I played today" alone.
+- Status opens on "Leave as is".
+
+## Follow-up issues
+
+All four sit in #1521's order, after #1517.
+
+- #1595: segmented radios, toggle pills (the "Add" ticks) and
+  side-by-side field rows.
+- #1596: report every refusal before anything is written.
+- #1597: an icon and a caption on `FormFieldGroup`; the footer with
+  Cancel first and the primary right-aligned.
+- #1598: the game picker's subtitle and a "+ New game" text; a device
+  picker +.
