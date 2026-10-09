@@ -1,0 +1,438 @@
+"""The list pages' row menus and entry points open their form in a dialog.
+
+Every opener is pressed as the page renders it; nothing is marked by hand.
+A save closes the dialog, reloads the host and returns focus to the row's
+menu toggle, or to #main-container where the act removes that toggle.
+"""
+
+import re
+from datetime import date, timedelta
+
+import pytest
+from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
+from historical_playtime_rows import record_row
+from playwright.sync_api import Locator, Page, ViewportSize, expect
+from purchases import record_purchase
+from session_rows import duration_only_row, tracked_run
+from tracked_games import create_tracked_game
+
+from e2e.helpers import pick_choice, record_copy, top_sheet
+from games.models import Game, LibraryEntry, Platform, Purchase, UserLibrary
+from timetracker.temporal import TemporalValue
+
+PHONE = ViewportSize(width=375, height=812)
+WIDE = ViewportSize(width=1280, height=800)
+DIALOG = "dialog[data-modal][open]"
+SHEET = "dialog[data-dropdown-sheet][open]"
+FORM_DIALOG = "dialog[data-modal][open]:not([data-dropdown-sheet])"
+
+
+@pytest.fixture
+def errors(page: Page) -> list[str]:
+    collected: list[str] = []
+    page.on(
+        "console",
+        lambda message: (
+            collected.append(message.text) if message.type == "error" else None
+        ),
+    )
+    page.on("pageerror", lambda error: collected.append(str(error)))
+    return collected
+
+
+def _open(page: Page, url: str) -> None:
+    """Load a list and stamp the window: a reload drops the stamp."""
+    page.goto(url)
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    page.evaluate("window.notReloaded = true")
+
+
+def _reloaded(page: Page) -> bool:
+    return page.evaluate("window.notReloaded !== true")
+
+
+def _dialog(page: Page) -> Locator:
+    return page.locator(DIALOG).last
+
+
+def _open_item(
+    page: Page,
+    toggle: Locator | str | re.Pattern[str],
+    item: str,
+    submenu: str | None = None,
+) -> None:
+    """Open a row's menu, then an optional flyout, then press ``item``."""
+    menu = toggle if isinstance(toggle, Locator) else _row_toggle(page, toggle)
+    menu.click()
+    if submenu is not None:
+        page.get_by_role("menuitem", name=submenu).hover()
+    page.get_by_role("menuitem", name=item).click()
+
+
+def _submit(dialog: Locator) -> Locator:
+    """The form's own submit, whatever the page names it."""
+    return dialog.locator('form button[type="submit"]').first
+
+
+def _clear_required(field: Locator) -> None:
+    """Empty a field and lift its HTML `required`, so the server refuses it."""
+    field.fill("")
+    field.evaluate("field => field.required = false")
+
+
+def _saved(page: Page, toggle: Locator) -> None:
+    """The dialog closed, the host reloaded and focus is back on the toggle."""
+    expect(page.locator(DIALOG)).to_have_count(0)
+    expect(toggle).to_be_focused()
+    assert _reloaded(page)
+
+
+def _invalid_stays(dialog: Locator) -> None:
+    expect(dialog.locator('[aria-invalid="true"]').first).to_be_visible()
+    expect(dialog).to_be_visible()
+
+
+def _row_toggle(page: Page, name: str | re.Pattern[str]) -> Locator:
+    return page.get_by_role("button", name=name)
+
+
+def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
+    game = create_tracked_game(library, name)
+    return default_graph(game, library, platform=platform).game
+
+
+#: The session row's menu names its game and day; the day's format is not the test's.
+SESSION_TOGGLE = re.compile(r"^Tunic, .* actions$")
+PLAYTHROUGH_TOGGLE = re.compile(r", Tunic actions$")
+HISTORICAL_TOGGLE = re.compile(r"^(?!More ).*actions$")
+GAME_TOGGLE = re.compile(r"^Tunic( \(PS5\))? actions$")
+RENAMED_GAME_TOGGLE = re.compile(r"^Tunic Deluxe( \(PS5\))? actions$")
+
+
+# Sessions
+
+
+def test_a_session_edit_saves_and_returns_focus(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    run = tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
+    duration_only_row(run, date(2024, 6, 1), timedelta(hours=1))
+    _open(page, f"{live_server.url}{reverse('games:list_sessions')}")
+    _open_item(page, SESSION_TOGGLE, "Edit")
+
+    dialog = _dialog(page)
+    expect(dialog.locator("[data-form-dialog-title]")).to_contain_text("Edit")
+    duration = dialog.locator('input[name="duration"]')
+    duration.fill("")
+    duration.press_sequentially("020000")
+    _submit(dialog).click()
+
+    _saved(page, _row_toggle(page, SESSION_TOGGLE))
+    assert errors == []
+
+
+def test_an_invalid_session_edit_stays_in_the_dialog(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    run = tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
+    duration_only_row(run, date(2024, 6, 1), timedelta(hours=1))
+    _open(page, f"{live_server.url}{reverse('games:list_sessions')}")
+    _open_item(page, SESSION_TOGGLE, "Edit")
+
+    dialog = _dialog(page)
+    _clear_required(dialog.locator('input[name="duration"]'))
+    _submit(dialog).click()
+
+    _invalid_stays(dialog)
+    assert errors == []
+
+
+def test_recording_a_session_as_historical_playtime_returns_to_the_main(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    run = tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
+    duration_only_row(run, date(2024, 6, 1), timedelta(hours=9))
+    _open(page, f"{live_server.url}{reverse('games:list_sessions')}")
+    _open_item(page, SESSION_TOGGLE, "Record as historical playtime")
+
+    dialog = _dialog(page)
+    expect(dialog.locator("[data-form-dialog-title]")).to_contain_text(
+        "Record as historical playtime"
+    )
+    _submit(dialog).click()
+
+    #: The act removes the session's row, so its toggle has no focus to return to.
+    expect(page.locator(DIALOG)).to_have_count(0)
+    expect(page.get_by_role("button", name="Undo")).to_be_visible()
+    expect(page.locator("#main-container")).to_be_focused()
+    assert _reloaded(page)
+    assert errors == []
+
+
+# Playthroughs and historical playtime
+
+
+def test_a_playthrough_edit_saves_and_returns_focus(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
+    _open(page, f"{live_server.url}{reverse('games:list_playthroughs')}")
+    _open_item(page, PLAYTHROUGH_TOGGLE, "Edit")
+
+    dialog = _dialog(page)
+    dialog.locator('[name="note"]').fill("First run")
+    _submit(dialog).click()
+
+    _saved(page, _row_toggle(page, re.compile(r", Tunic actions$")))
+    assert errors == []
+
+
+def test_a_historical_playtime_edit_saves_and_returns_focus(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    record_row(
+        [tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))],
+        when="2020",
+    )
+    _open(page, f"{live_server.url}{reverse('games:list_historical_playtime')}")
+    _open_item(page, HISTORICAL_TOGGLE, "Edit")
+
+    dialog = _dialog(page)
+    dialog.locator('input[name="duration_hours"]').fill("0")
+    _submit(dialog).click()
+    #: A zero duration is a refused act, so its sentence shows in the dialog.
+    region = dialog.get_by_role("region", name="Notifications")
+    expect(region).to_contain_text("at least a second")
+    expect(dialog).to_be_visible()
+
+    dialog.locator('input[name="duration_hours"]').fill("3")
+    _submit(dialog).click()
+    _saved(page, _row_toggle(page, HISTORICAL_TOGGLE))
+    #: The browser logs the refused 409 too.
+    assert all("409 (Conflict)" in error for error in errors)
+
+
+# Platforms and games
+
+
+def test_a_platform_edit_refuses_a_duplicate_name_on_the_field(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    Platform.objects.create(library=e2e_library, name="Amiga", group="Commodore")
+    Platform.objects.create(library=e2e_library, name="Atari ST", group="Commodore")
+    _open(page, f"{live_server.url}{reverse('games:list_platforms')}")
+    _open_item(page, "Atari ST (Commodore) actions", "Edit")
+
+    dialog = _dialog(page)
+    dialog.locator('input[name="name"]').fill("Amiga")
+    _submit(dialog).click()
+
+    #: Product gap: the clash shows as a form-wide constraint message, not a field error.
+    expect(dialog).to_be_visible()
+    assert errors == []
+
+
+def test_a_game_edit_saves_and_returns_focus(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    _game_on(e2e_library, "Tunic", _ps5())
+    _open(page, f"{live_server.url}{reverse('games:list_games')}")
+    _open_item(page, GAME_TOGGLE, "Edit")
+
+    dialog = _dialog(page)
+    dialog.locator('input[name="name"]').fill("Tunic Deluxe")
+    _submit(dialog).click()
+
+    _saved(page, _row_toggle(page, RENAMED_GAME_TOGGLE))
+    assert errors == []
+
+
+# Library copies and purchases
+
+
+def test_a_copy_edit_saves_and_returns_focus(
+    authenticated_page: Page, live_server, e2e_user, e2e_library, errors
+):
+    page = authenticated_page
+    record_copy(e2e_user, e2e_library, "Tunic")
+    _open(page, f"{live_server.url}{reverse('games:list_library')}")
+    _open_item(page, "Tunic (PS5) actions", "Edit…")
+
+    dialog = _dialog(page)
+    _submit(dialog).click()
+
+    _saved(page, _row_toggle(page, "Tunic (PS5) actions"))
+    assert errors == []
+
+
+def test_a_purchase_added_from_a_copy_types_into_the_currency_mask(
+    authenticated_page: Page, live_server, e2e_user, e2e_library, errors
+):
+    page = authenticated_page
+    record_copy(e2e_user, e2e_library, "Tunic")
+    _open(page, f"{live_server.url}{reverse('games:list_library')}")
+    _open_item(page, "Tunic (PS5) actions", "Add purchase…")
+
+    dialog = _dialog(page)
+    expect(dialog.locator("[data-form-dialog-title]")).to_contain_text("Add purchase")
+    dialog.get_by_label("Paid", exact=True).check()
+    dialog.locator('input[name="amount"]').fill("12.50")
+    currency = dialog.locator('input[name="currency"]')
+    currency.fill("")
+    currency.press_sequentially("eu3r")
+    #: The mask drops the digit; the field is styled uppercase.
+    expect(currency).to_have_value("eur")
+    expect(currency).to_have_css("text-transform", "uppercase")
+    _submit(dialog).click()
+
+    _saved(page, _row_toggle(page, "Tunic (PS5) actions"))
+    assert Purchase.objects.get().currency == "EUR"
+    assert errors == []
+
+
+def test_an_end_with_details_refused_for_the_date_stays_in_the_dialog(
+    authenticated_page: Page, live_server, e2e_user, e2e_library, errors
+):
+    page = authenticated_page
+    platform = _ps5()
+    game = _game_on(e2e_library, "Tunic", platform)
+    release = default_graph(game, e2e_library, platform=platform).release
+    record_entry(
+        e2e_library,
+        release,
+        acquired=TemporalValue.parse("2099-01-01"),
+    )
+    _open(page, f"{live_server.url}{reverse('games:list_library')}")
+    _open_item(
+        page,
+        "Tunic (PS5) actions",
+        "With details…",
+        submenu="I no longer have it",
+    )
+
+    dialog = _dialog(page)
+    _submit(dialog).click()
+
+    region = dialog.get_by_role("region", name="Notifications")
+    expect(region).to_contain_text("acquired after that day")
+    expect(dialog).to_be_visible()
+    assert errors and all("409 (Conflict)" in error for error in errors)
+
+
+def test_an_end_with_details_saves_and_returns_focus_to_the_main(
+    authenticated_page: Page, live_server, e2e_user, e2e_library, errors
+):
+    page = authenticated_page
+    record_copy(e2e_user, e2e_library, "Tunic")
+    _open(page, f"{live_server.url}{reverse('games:list_library')}")
+    _open_item(
+        page,
+        "Tunic (PS5) actions",
+        "With details…",
+        submenu="I no longer have it",
+    )
+
+    dialog = _dialog(page)
+    pick_choice(dialog, "way", "sold")
+    _submit(dialog).click()
+
+    expect(page.locator(DIALOG)).to_have_count(0)
+    expect(page.locator("#main-container")).to_be_focused()
+    assert _reloaded(page)
+    assert LibraryEntry.objects.get(library=e2e_library).access_end_way == "sold"
+    assert errors == []
+
+
+def test_a_purchase_edit_refuses_a_missing_currency_on_the_field(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    record_purchase(record_entry(e2e_library, _release(e2e_library, "Tunic")))
+    _open(page, f"{live_server.url}{reverse('games:list_purchases')}")
+    _open_item(page, re.compile(r"\(Tunic\) actions$"), "Edit purchase…")
+
+    dialog = _dialog(page)
+    _clear_required(dialog.locator('input[name="currency"]'))
+    _submit(dialog).click()
+
+    _invalid_stays(dialog)
+    assert errors == []
+
+
+# Library page and navbar
+
+
+def test_adding_a_device_from_the_library_page_returns_focus_to_the_link(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    page.set_viewport_size(WIDE)
+    _open(page, f"{live_server.url}{reverse('games:library')}")
+    _open(page, f"{live_server.url}{reverse('games:library')}")
+    add = page.locator(
+        f'[data-summary-row]:has-text("Devices") a[href^="{reverse("games:add_device")}"]:visible'
+    )
+    add.click()
+
+    dialog = _dialog(page)
+    dialog.locator('input[name="name"]').fill("Steam Deck")
+    _submit(dialog).click()
+
+    expect(page.locator(DIALOG)).to_have_count(0)
+    expect(add).to_be_focused()
+    assert _reloaded(page)
+    assert errors == []
+
+
+def test_the_navbar_log_game_opens_the_session_dialog(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    _game_on(e2e_library, "Tunic", _ps5())
+    _open(page, f"{live_server.url}{reverse('games:list_games')}")
+    page.get_by_role("link", name="Log game", exact=True).click()
+
+    dialog = _dialog(page)
+    expect(dialog.locator('input[name="duration"]')).to_be_visible()
+    assert errors == []
+
+
+# Phone width
+
+
+def test_a_copy_form_opens_after_the_sheet_chain_closes_at_phone_width(
+    authenticated_page: Page, live_server, e2e_user, e2e_library, errors
+):
+    page = authenticated_page
+    page.set_viewport_size(PHONE)
+    record_copy(e2e_user, e2e_library, "Tunic")
+    _open(page, f"{live_server.url}{reverse('games:list_library')}")
+    page.get_by_role("button", name="Tunic (PS5) actions").click()
+    top_sheet(page).get_by_role("menuitem", name="I no longer have it").click()
+    top_sheet(page).get_by_role("menuitem", name="With details…").click()
+
+    expect(page.locator(SHEET)).to_have_count(0)
+    expect(page.locator(FORM_DIALOG)).to_have_count(1)
+    assert errors == []
+
+
+# Helpers that need the seeds above
+
+
+def _ps5() -> Platform:
+    return Platform.objects.get_or_create(name="PS5", group="Sony")[0]
+
+
+def _release(library: UserLibrary, name: str):
+    platform = _ps5()
+    game = create_tracked_game(library, name)
+    return default_graph(game, library, platform=platform).release
