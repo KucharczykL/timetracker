@@ -111,9 +111,7 @@ def test_no_device_and_emulated_are_stated_for_both_sessions(
     expect(toggle).to_have_attribute("aria-pressed", "true")
     expect(device.locator("[data-search-select-search]")).to_be_disabled()
 
-    emulated = page.locator("search-select[name='choice-emulated']")
-    emulated.locator("[data-search-select-search]").click()
-    emulated.get_by_role("option", name="Emulated", exact=True).click()
+    page.get_by_role("checkbox", name="Emulated", exact=True).check()
     page.get_by_role("button", name="Save", exact=True).click()
 
     page.wait_for_url(listed)

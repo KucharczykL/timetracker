@@ -49,9 +49,7 @@ def test_two_games_are_edited_and_the_undo_puts_theirs_back(
     )
     status.locator("[data-search-select-search]").click()
     status.get_by_role("option", name="Completed").click()
-    mastered = page.locator("search-select[name='choice-mastered']")
-    mastered.locator("[data-search-select-search]").click()
-    mastered.get_by_role("option", name="Mastered", exact=True).click()
+    page.get_by_role("checkbox", name="Mastered", exact=True).check()
     page.get_by_role("button", name="Save", exact=True).click()
 
     page.wait_for_url(listed)
@@ -68,3 +66,55 @@ def test_two_games_are_edited_and_the_undo_puts_theirs_back(
         PlayerGameStatus.UNPLAYED,
     ]
     assert not any(PlayerGame.objects.get(game=game).mastered for game in games)
+
+
+def test_a_flag_the_rows_differ_on_cycles_through_mixed(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    games = []
+    for name in ("Outer Wilds", "Tunic"):
+        game = Game.objects.create(library=e2e_library, name=name, sort_name=name)
+        track_game(e2e_user, game, correlation_id=new_correlation_id())
+        games.append(game)
+    record_facts(
+        e2e_user,
+        games[0],
+        mastered=True,
+        correlation_id=new_correlation_id(),
+    )
+    log_in(page, live_server)
+
+    listed = f"{live_server.url}{reverse('games:list_games')}"
+    page.goto(listed)
+    boxes = page.locator("tbody [data-selection-checkbox]")
+    boxes.nth(0).click()
+    boxes.nth(1).click()
+    page.get_by_role("button", name="Edit…").first.click()
+    page.wait_for_load_state()
+
+    box = page.get_by_role("checkbox", name="Mastered", exact=True)
+    hint = page.locator(
+        "tri-state-checkbox[name='choice-mastered'] [data-tri-state-hint]"
+    )
+    expect(box).to_be_checked(indeterminate=True)
+    expect(hint).to_have_text("Keep: mixed")
+
+    box.focus()
+    page.keyboard.press("Space")
+    expect(box).to_be_checked()
+    expect(hint).to_have_text("Will change")
+
+    page.keyboard.press("Space")
+    expect(box).not_to_be_checked()
+    expect(hint).to_have_text("Will change")
+
+    page.keyboard.press("Space")
+    expect(box).to_be_checked(indeterminate=True)
+    expect(hint).to_have_text("Keep: mixed")
+
+    page.keyboard.press("Space")
+    expect(box).to_be_checked()
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    assert all(PlayerGame.objects.get(game=game).mastered for game in games)
