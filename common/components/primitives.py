@@ -1950,6 +1950,8 @@ def FieldErrors(errors, *, form_wide: bool = False) -> Node | None:
 #: "hidden": legend for screen readers only.
 #: "panel": a section panel, legend inside.
 type FieldGroupLook = Literal["shown", "hidden", "panel"]
+#: Wraps adjacent groups' fieldsets, e.g. in a dialog.
+type FieldGroupContainer = Callable[[Sequence[Node]], Node]
 #: Space-separated utility tokens.
 type ClassNames = str
 
@@ -1984,6 +1986,8 @@ class FormFieldGroup(NamedTuple):
     look: FieldGroupLook = "shown"
     #: E.g. a named Tailwind group.
     class_: ClassNames = ""
+    #: Adjacent groups sharing one render inside it.
+    container: FieldGroupContainer | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2223,12 +2227,25 @@ def _grouped_form_fields(
             grouped_names.add(name)
 
     fieldsets: list[Node] = []
+    contained: list[Node] = []
+    open_container: FieldGroupContainer | None = None
+
+    def close_container() -> None:
+        nonlocal open_container
+        if open_container is not None and contained:
+            fieldsets.append(open_container(tuple(contained)))
+        contained.clear()
+        open_container = None
+
     for group in groups:
         group_fields = [
             form[name] for name in group.fields if not _is_silent(form[name], facts)
         ]
         if not group_fields:
             continue
+        if group.container is not open_container:
+            close_container()
+            open_container = group.container
         description_id = f"{group.id}-description" if group.id else ""
         attributes: list[HTMLAttribute] = [
             ("class", _GROUP_CLASS),
@@ -2256,7 +2273,12 @@ def _grouped_form_fields(
             _visible_field_row(field, presentations.get(field.name), facts)
             for field in group_fields
         )
-        fieldsets.append(Fieldset(attributes)[*group_children])
+        fieldset = Fieldset(attributes)[*group_children]
+        if open_container is None:
+            fieldsets.append(fieldset)
+        else:
+            contained.append(fieldset)
+    close_container()
 
     # Hidden controls and silent facts stay outside fieldsets, once. Visible
     # fields not named by a group follow the fieldsets in their normal order.

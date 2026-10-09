@@ -1,7 +1,7 @@
 """Log a game: one press states a copy, its dates, a playtime, a status."""
 
-from collections.abc import Mapping
-from typing import Final, cast
+from collections.abc import Mapping, Sequence
+from typing import Final, Literal, cast
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -11,14 +11,22 @@ from django.shortcuts import redirect
 
 from common.components import (
     AddForm,
+    ControlButton,
     Div,
+    FieldGroupContainer,
     FormFieldGroup,
     FormFieldPresentation,
     FormFields,
     Fragment,
+    ModalDialog,
+    ModalPanel,
     Node,
     P,
+    Span,
 )
+from common.components.form_dialog import MODAL_SURFACE_CLASS
+from common.components.modal import titled_header
+from common.components.primitives import custom_element_builder
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import (
     DurationPresentation,
@@ -26,10 +34,10 @@ from common.duration_presentation import (
 )
 from common.layout import render_page
 from games.log_forms import (
-    PANEL_SHOWN,
     RUN_ROW_SHOWN,
     SECTION_LABELS,
     SUMMARY_HIDDEN,
+    TICKED_SHOWN,
     LogGameForm,
 )
 from games.models import Game, Playthrough
@@ -59,14 +67,21 @@ REFUSED_FIELD: Final[Mapping[LogStep, str]] = {
     "more": "mastered",
 }
 
-#: The panels of each section, in the order the page shows them.
-PANEL_GROUPS: Final[tuple[tuple[str, tuple[str, ...], LogSection], ...]] = (
+#: The fieldsets of each section, in the order the page shows them.
+SECTION_GROUPS: Final[tuple[tuple[str, tuple[str, ...], LogSection], ...]] = (
     ("Your copy", ("release", "format", "access", "acquired"), "copy"),
     ("Price", ("price", "amount", "currency"), "copy"),
     ("Dates", ("started", "completed"), "dates"),
     ("Playtime", ("playtime_kind", "day", "duration", "device"), "playtime"),
     ("Mastered and note", ("mastered", "note"), "more"),
 )
+#: Read by ts/elements/log-sections.ts.
+SECTION_DIALOG: Final = "data-log-section"
+SECTION_DONE: Final = "data-log-section-done"
+SECTION_EDIT: Final = "data-log-section-edit"
+
+_LogSections = custom_element_builder("log-sections")
+_SECTION_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-xl {MODAL_SURFACE_CLASS}"
 
 
 def _build(
@@ -171,8 +186,9 @@ def _render(
                 _summary_lines(held, durations) if held is not None else None,
             )
         ),
+        "sections": FormFieldPresentation(after_control=_ticked_lines()),
     }
-    fields = Div(class_="group/log")[
+    fields = _LogSections(open_section=_open_section(form), class_="group/log")[
         FormFields(
             form,
             groups=_groups(),
@@ -195,21 +211,71 @@ def _render(
     )
 
 
+def _open_section(form: LogGameForm) -> LogSection | Literal[""]:
+    """The first ticked section a refusal names."""
+    if not form.is_bound:
+        return ""
+    ticked = set(form["sections"].value() or ())
+    for _, names, section in SECTION_GROUPS:
+        if section in ticked and any(form.has_error(name) for name in names):
+            return section
+    return ""
+
+
 def _groups() -> list[FormFieldGroup]:
-    """The top fields, the panels, then the Add ticks."""
-    groups = [FormFieldGroup("Game", ("game", "status", "playthrough"), look="hidden")]
-    for legend, names, section in PANEL_GROUPS:
-        shown = PANEL_SHOWN[section]
+    """The top fields, the Add ticks, then each section's dialog."""
+    groups = [
+        FormFieldGroup("Game", ("game", "status", "playthrough"), look="hidden"),
+        FormFieldGroup("Add", ("sections",), look="hidden"),
+    ]
+    containers = {section: _section_dialog(section) for _, _, section in SECTION_GROUPS}
+    shared = {section for _, _, section in SECTION_GROUPS if section == "copy"}
+    for legend, names, section in SECTION_GROUPS:
         groups.append(
             FormFieldGroup(
                 legend,
                 names,
-                look="panel",
-                class_=f"{shown} {PRICE_GROUP}" if "price" in names else shown,
+                # One fieldset: the dialog's title names it.
+                look="shown" if section in shared else "hidden",
+                class_=PRICE_GROUP if "price" in names else "",
+                container=containers[section],
             )
         )
-    groups.append(FormFieldGroup("Add", ("sections",), look="hidden"))
     return groups
+
+
+def _section_dialog(section: LogSection) -> FieldGroupContainer:
+    """One section's fieldsets in a nested dialog."""
+    label = SECTION_LABELS[section]
+    titled = titled_header(label, title_id=f"log-section-{section}-title")
+
+    def contain(fieldsets: Sequence[Node]) -> Node:
+        return ModalDialog([(SECTION_DIALOG, section), titled.labelled_by])[
+            ModalPanel(class_=_SECTION_PANEL_CLASS)[
+                titled.header,
+                Div(class_="min-h-0 overflow-y-auto overscroll-contain p-4")[
+                    *fieldsets,
+                    Div(class_="mt-4 flex justify-end")[
+                        ControlButton([(SECTION_DONE, "")])["Done"]
+                    ],
+                ],
+            ]
+        ]
+
+    return contain
+
+
+def _ticked_lines() -> Node:
+    """Each ticked section, named once, with Edit."""
+    return Fragment(
+        *(
+            Div(class_=f"items-center gap-2 {TICKED_SHOWN[section]}")[
+                Span(class_="text-type-body text-body")[f"{label} added"],
+                ControlButton([(SECTION_EDIT, section)], variant="ghost")["Edit"],
+            ]
+            for section, label in SECTION_LABELS.items()
+        )
+    )
 
 
 def _saved_lines(saved: frozenset[LogSection]) -> Node | None:

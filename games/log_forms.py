@@ -58,8 +58,8 @@ from timetracker.temporal import TemporalValue
 
 GAME_SEARCH_URL: Final = "/api/games/search"
 
-#: Literal, so Tailwind finds them. A tick shows its panel, hides its summary.
-PANEL_SHOWN: Final[Mapping[LogSection, str]] = {
+#: Literal, so Tailwind finds them. A tick shows its line, hides its summary.
+TICKED_SHOWN: Final[Mapping[LogSection, str]] = {
     "copy": "hidden group-has-[[value=copy]:checked]/log:flex",
     "dates": "hidden group-has-[[value=dates]:checked]/log:flex",
     "playtime": "hidden group-has-[[value=playtime]:checked]/log:flex",

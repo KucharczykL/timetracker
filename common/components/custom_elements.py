@@ -752,6 +752,14 @@ class FieldMirrorProps(TypedDict):
 register_element("field-mirror", "FieldMirror", FieldMirrorProps)
 
 
+class LogSectionsProps(TypedDict):
+    #: A section to open on connect; "" opens none.
+    open_section: str
+
+
+register_element("log-sections", "LogSections", LogSectionsProps)
+
+
 class CopyControlProps(TypedDict):
     value: str
 

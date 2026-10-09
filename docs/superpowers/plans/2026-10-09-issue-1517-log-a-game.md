@@ -120,16 +120,9 @@ CLAUDE.md line under Key patterns or the views list, comment #1519,
 #1520, #1596 where the log modal changes their work, full `make check`, draft PR, five
 reviewers.
 
-## Status (parked 2026-10-09)
+## Status (2026-10-09)
 
-Tasks 1–6 committed (through `ea43869f`); focused tests green; no full
-`make check` yet. Dev server config `dev-1517` on port 8017.
-
-Open UI redirect from the user: each section opens as a nested modal
-instead of a panel that grows the Log modal. Estimate ~half a day:
-`<log-section>` element opening a `ModalDialog` inside the same form;
-panels become dialogs with Done; check #1513's unsaved-changes guard
-with a nested dialog in one form; refusal marks the tick and reopens
-its modal; rewrite e2e. Undecided, mock first: after Done the tick
-becomes a summary line with Edit; × or Cancel unticks and drops the
-values (recommended). Then Task 7.
+Tasks 1–6 done, then the nested-dialog redirect: `FormFieldGroup.container`,
+`<log-sections>`, section dialogs with Done and Edit, × unticks, a
+refusal reopens its section. Focused tests, vitest and the log e2e
+green; no full `make check` yet. Next: the user's spot check, then Task 7.

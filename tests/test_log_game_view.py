@@ -165,13 +165,31 @@ def test_a_refused_game_step_names_the_game_field(
     assert "Restore it instead." in response.content.decode()
 
 
-def test_the_price_panel_is_the_price_group(logged_in):
+def test_each_section_renders_in_its_own_dialog(logged_in):
+    html = _page(logged_in)
+
+    for section in ("copy", "dates", "playtime", "more"):
+        assert f'data-log-section="{section}"' in html
+
+
+def test_the_price_fieldset_is_the_price_group(logged_in):
     # The amount row shows only inside its price group.
     html = _page(logged_in)
 
-    assert re.search(r"<fieldset[^>]*group/price[^>]*value=copy", html) or re.search(
-        r"<fieldset[^>]*value=copy[^>]*group/price", html
-    )
+    assert re.search(r"<fieldset[^>]*group/price", html)
+
+
+def test_a_refused_section_opens_on_load(logged_in, owned_library, game):
+    release = default_graph(game, owned_library).release
+    data = _copy_post(release) | {"price": "paid"}
+
+    response = logged_in.post(f"{reverse('games:log_game')}?game={game.pk}", data)
+
+    assert 'open-section="copy"' in response.content.decode()
+
+
+def test_a_fresh_page_opens_no_section(logged_in):
+    assert 'open-section=""' in _page(logged_in)
 
 
 def test_the_add_ticks_name_themselves_once(logged_in):

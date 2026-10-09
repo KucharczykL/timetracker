@@ -17,7 +17,9 @@ approved these changes to it:
 - The session option states a Day (the calendar's today by default),
   a Duration and a Device.
 - Opened with a held game, each held fact is one muted summary line.
-  Ticking a section hides its line and opens its panel.
+  Ticking a section hides its line and opens its dialog.
+- Each section opens as a nested dialog, not a panel that grows the
+  Log modal (redirect of 2026-10-09).
 - A refusal after earlier sections saved shows as below
   ("Partial refusal"). #1596 replaces this with a check before any
   write.
@@ -34,19 +36,30 @@ Layout, top to bottom:
 3. Playthrough: the run picker (`PlaythroughSelectWidget`), shown only
    while Dates, Playtime or More is ticked.
 4. Summary lines, opened with a held game only.
-5. Four panels (`FormFieldGroup(look="panel")`), each hidden until its
-   tick: Your copy, Price (both under "Copy and price"), Playthrough
-   (Dates), Playtime, More.
-6. "Add" ticks: Copy and price (reads "Another copy" where the game
-   holds one), Dates, Playtime, Mastered and note.
+5. "Add" ticks: Copy and price (reads "Another copy" where the game
+   holds one), Dates, Playtime, Mastered and note. The ticks are a
+   placeholder until #1595.
+6. Under the ticks, one line per ticked section: "<section> added"
+   and Edit.
 7. Log game, Cancel.
 
-A tick shows its panel through CSS alone: the form wrapper is
-`group/log`, a panel carries the literal class
-`hidden group-has-[[value=copy]:checked]/log:flex` beside the group's
-own `flex`. The 2026-10-09 prototype showed the unticked panel at
-`display: none` and the ticked one at `flex`; an e2e test holds both.
-Each class is a literal, so Tailwind finds it.
+Each section's fieldsets render inside a nested `ModalDialog` in the
+same form (`FormFieldGroup.container`: adjacent groups sharing one
+container render inside one call). The dialog moves no field, so its
+fields post with Log game. `<log-sections>`
+(`ts/elements/log-sections.ts`) wires them:
+
+- Ticking a section opens its dialog.
+- Done closes it and keeps the tick.
+- ×, Escape and the backdrop close it and untick the section. The
+  values stay in the DOM; the server ignores an unticked section.
+- Edit reopens it.
+- The `open-section` prop opens one on connect, once its own dialog
+  is open: the first ticked section with a field error.
+
+The run picker and the summary lines still show through CSS: the
+wrapper is `group/log`, and a literal class such as
+`hidden group-has-[[value=dates]:checked]/log:flex` reads the tick.
 
 No panel field is `required`. `LogGameForm` sets every copy, price and
 playtime field `required=False` after construction. `clean()` drops an
@@ -195,8 +208,8 @@ With a fixed game the view reads, once:
   on `game`; the held-fact summaries.
 - `tests/test_entry_forms.py` (extend): Add to library unchanged after
   the `CopyFields` extraction.
-- `e2e/test_log_game_e2e.py`: navbar opens the modal; a tick shows its
-  panel; New game hands the game back; logging from Game detail fixes
+- `e2e/test_log_game_e2e.py`: navbar opens the modal; a tick opens its
+  section, Done keeps it, Escape unticks it; a refusal reopens its section; New game hands the game back; logging from Game detail fixes
   the game and reloads Game detail.
 - Route lists: `tests/test_returns_classification.py`,
   `tests/test_form_dialog.py` (`test_each_route_states_its_width`),

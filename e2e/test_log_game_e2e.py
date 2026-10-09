@@ -1,4 +1,4 @@
-"""Log a game in one modal: its ticks, its panels, and a press from Game detail."""
+"""Log a game: its ticks, section dialogs and a press."""
 
 import pytest
 from django.urls import reverse
@@ -19,15 +19,13 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 def _open_log_from_navbar(page: Page, live_server) -> Locator:
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     page.locator('a[aria-label="Log game"]').click()
-    dialog = page.locator("dialog[data-modal][open]")
+    dialog = page.locator("dialog[data-modal][open]").first
     expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Log a game")
     return dialog
 
 
-def _panel(dialog: Locator, legend: str) -> Locator:
-    return dialog.locator("fieldset[data-form-field-group]").filter(
-        has=dialog.page.locator("legend", has_text=legend)
-    )
+def _section(page: Page, section: str) -> Locator:
+    return page.locator(f'dialog[data-log-section="{section}"]')
 
 
 def _tick(dialog: Locator, section: str) -> None:
@@ -44,26 +42,59 @@ def test_the_navbar_opens_the_log_modal(authenticated_page, live_server):
     expect(dialog.locator('input[name="sections"][value="copy"]')).to_have_count(1)
 
 
-def test_a_tick_shows_its_panel_and_an_untick_hides_it(authenticated_page, live_server):
-    dialog = _open_log_from_navbar(authenticated_page, live_server)
-    copy_panel = _panel(dialog, "Your copy")
+def test_a_tick_opens_its_section_and_done_keeps_it(authenticated_page, live_server):
+    page = authenticated_page
+    dialog = _open_log_from_navbar(page, live_server)
+    section = _section(page, "copy")
 
-    assert _display(copy_panel) == "none"
     _tick(dialog, "copy")
-    expect(copy_panel).to_be_visible()
-    assert _display(copy_panel) == "flex"
-    _tick(dialog, "copy")
-    assert _display(copy_panel) == "none"
+    expect(section).to_have_attribute("open", "")
+    section.get_by_role("button", name="Done").click()
+
+    expect(section).not_to_have_attribute("open", "")
+    expect(dialog.locator('input[name="sections"][value="copy"]')).to_be_checked()
+    expect(dialog.get_by_text("Copy and price added")).to_be_visible()
+
+
+def test_dismissing_a_section_unticks_it(authenticated_page, live_server):
+    page = authenticated_page
+    dialog = _open_log_from_navbar(page, live_server)
+    section = _section(page, "dates")
+
+    _tick(dialog, "dates")
+    expect(section).to_have_attribute("open", "")
+    page.keyboard.press("Escape")
+
+    expect(section).not_to_have_attribute("open", "")
+    expect(dialog.locator('input[name="sections"][value="dates"]')).not_to_be_checked()
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Log a game")
 
 
 def test_ticking_dates_shows_the_run_row(authenticated_page, live_server):
-    dialog = _open_log_from_navbar(authenticated_page, live_server)
+    page = authenticated_page
+    dialog = _open_log_from_navbar(page, live_server)
     run_row = dialog.locator('[data-field-row="playthrough"]')
 
     assert _display(run_row) == "none"
     _tick(dialog, "dates")
+    _section(page, "dates").get_by_role("button", name="Done").click()
     assert _display(run_row) == "flex"
-    assert _display(_panel(dialog, "Dates")) == "flex"
+
+
+def test_a_refusal_reopens_its_section(authenticated_page, live_server, e2e_library):
+    game = create_tracked_game(e2e_library, "Tunic")
+    release = default_graph(game, e2e_library).release
+    page = authenticated_page
+    dialog = _open_log_from_navbar(page, live_server)
+    pick_choice(dialog, "game", str(game.pk))
+    _tick(dialog, "copy")
+    section = _section(page, "copy")
+    pick_choice(section, "release", str(release.pk))
+    section.get_by_role("button", name="Done").click()
+    dialog.get_by_role("button", name="Log game", exact=True).click()
+
+    expect(section).to_have_attribute("open", "")
+    expect(section.get_by_text("State what you paid")).to_be_visible()
 
 
 def test_a_press_from_game_detail_logs_a_copy_to_that_game(
@@ -78,11 +109,13 @@ def test_a_press_from_game_detail_logs_a_copy_to_that_game(
     open_row_menu(page, f"played-{game.pk}")
     page.get_by_text("Log…", exact=True).click()
 
-    dialog = page.locator("dialog[data-modal][open]")
+    dialog = page.locator("dialog[data-modal][open]").first
     expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Log Outer Wilds")
     _tick(dialog, "copy")
-    pick_choice(dialog, "release", str(release.pk))
-    dialog.locator('label:has(input[name="price"][value="none"])').click()
+    section = _section(page, "copy")
+    pick_choice(section, "release", str(release.pk))
+    section.locator('label:has(input[name="price"][value="none"])').click()
+    section.get_by_role("button", name="Done").click()
     dialog.get_by_role("button", name="Log game", exact=True).click()
 
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
