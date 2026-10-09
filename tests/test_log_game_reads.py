@@ -1,4 +1,4 @@
-"""What a game already holds, read for Log a game."""
+"""Game holdings read for Log a game."""
 
 from datetime import UTC, datetime
 

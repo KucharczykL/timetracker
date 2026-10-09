@@ -100,11 +100,7 @@ PRERELEASE_DEFAULT = "Its default edition is a prerelease."
 
 
 def platform_refusal(game: Game, platform: Platform) -> str | None:
-    """Why `release_on` cannot land a Release on this platform, read only.
-
-    None where a standing Release reads or a new one can be made. Asked
-    before a write, so the refusal names its field and writes nothing.
-    """
+    """Why `release_on` refuses; None where it can."""
     try:
         edition = _default_edition(game)
     except RowRefused as refusal:
@@ -119,7 +115,7 @@ def platform_refusal(game: Game, platform: Platform) -> str | None:
 
 
 def standing_release_on(game: Game, platform: Platform) -> Release | None:
-    """The default Edition's live Release on that platform, read only."""
+    """Default Edition's live Release on that platform."""
     return _standing(_default_edition(game), platform)
 
 

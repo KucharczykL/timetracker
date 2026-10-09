@@ -210,7 +210,7 @@ def test_the_organizer_icon_is_its_own_glyph():
 
 
 def test_played_menu_offers_a_log_item_in_a_dialog(game, rendered):
-    """The modal takes the game stated, so the item carries it."""
+    """Modal item carries the stated game."""
     tag = re.search(
         rf'<a\b[^>]*href="[^"]*log/\?[^"]*game={game.id}[^"]*"[^>]*>', rendered
     )

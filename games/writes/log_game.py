@@ -1,4 +1,4 @@
-"""Log a game: what one press states, and the writes that state it.
+"""One press writes its steps in order.
 
 The form builds a `LogStatement`; `log_game` writes it, one dispatch
 per step. A step that is refused stops the press, and the steps
@@ -50,20 +50,19 @@ from games.writes.playthrough import (
     void_run_endpoint,
 )
 
-#: A refused step: the game's tracking, its copy, its dates, its playtime,
-#: its mastery and note, its status, or its platform.
+#: Steps a refusal can name.
 type LogStep = Literal[
     "track", "copy", "dates", "playtime", "more", "status", "platform"
 ]
 
 PICKED_RUN_GONE = "That playthrough is no longer held. Reload the page and try again."
 UNHELD_PLATFORM = "That platform is not held. Reload the page and try again."
-#: What a copy records about itself when the person states nothing.
+#: Copy's default record when unstated.
 UNKNOWN_WORD: Final = "unknown"
 
 
 class SessionTiming(NamedTuple):
-    """One sitting on a day, the duration it lasted."""
+    """One sitting: its day and duration."""
 
     day: datetime.date
     duration: datetime.timedelta
@@ -71,7 +70,7 @@ class SessionTiming(NamedTuple):
 
 
 class HistoricalHours(NamedTuple):
-    """Playtime a library states without a sitting."""
+    """Playtime stated without a sitting."""
 
     duration: datetime.timedelta
     device_id: uuid.UUID | None
@@ -82,30 +81,25 @@ type LogPlaytime = SessionTiming | HistoricalHours
 
 @dataclass(frozen=True, slots=True)
 class LogStatement:
-    """What one press of Log a game states.
-
-    A field the person did not change arrives as KEEP, so `log_game`
-    never writes it. A dated act arrives as its statement, and None
-    where a seen day was cleared, which voids the act.
-    """
+    """What one press states; KEEP where unchanged."""
 
     game: Game
-    #: The platform the person picked; None for none.
+    #: Picked platform; None for none.
     platform_id: PlatformId | None
-    #: Whether the platform differs from the one the form showed.
+    #: Whether the platform changed.
     platform_changed: bool
-    #: The run the form was given, else the newest live run.
+    #: Run given, else newest live run.
     run_id: PlaythroughId | None
     started: Restated[ActStatement]
     completed: Restated[ActStatement]
-    #: The run's note; KEEP where the person left it alone.
+    #: Note; KEEP where untouched.
     note: str | Keep
     playtime: LogPlaytime | None
-    #: The form's count of written playtimes, which keys each one.
+    #: Playtime count; keys each one.
     attempt: int
     mastered: bool | Keep
     status: PlayerGameStatus | Keep
-    #: The status the form showed, for the implied Played after a record.
+    #: Status shown, for implied Played.
     seen_status: PlayerGameStatus | None
 
 
@@ -118,7 +112,7 @@ class LoggedGame(NamedTuple):
 
 
 class LogRefused(Exception):
-    """A step refused the press; `written` names what came before it."""
+    """Refused press; `written` holds earlier steps."""
 
     def __init__(
         self,
@@ -134,7 +128,7 @@ class LogRefused(Exception):
 
 @contextmanager
 def _answering(step: LogStep, written: set[LogStep]) -> Iterator[None]:
-    """Turn a step's refusal into one that names the step."""
+    """Name the step in its refusal."""
     try:
         yield
     except CommandFailed as failure:
@@ -142,7 +136,7 @@ def _answering(step: LogStep, written: set[LogStep]) -> Iterator[None]:
 
 
 def _draft_act(restated: Restated[ActStatement]) -> ActStatement | None:
-    """The act a restatement states; KEEP and a void state none."""
+    """Act restated; KEEP and void state none."""
     return restated if isinstance(restated, ActStatement) else None
 
 
@@ -151,7 +145,7 @@ def _dates_changed(statement: LogStatement) -> bool:
 
 
 def _held_run(library: UserLibrary, statement: LogStatement) -> Playthrough | None:
-    """The run the form named, else the newest live ordinary one."""
+    """Run named, else newest live ordinary."""
     if statement.run_id is not None:
         run = library_runs(library).filter(pk=statement.run_id).first()
         if run is None:
@@ -164,7 +158,7 @@ def _held_run(library: UserLibrary, statement: LogStatement) -> Playthrough | No
 def _held_platform(
     library: UserLibrary, platform_id: PlatformId | None
 ) -> Platform | None:
-    """The platform the person named, held by this library."""
+    """Platform named and held by library."""
     if platform_id is None:
         return None
     platform = Platform.objects.visible_to(library).filter(pk=platform_id).first()
@@ -176,11 +170,7 @@ def _held_platform(
 def _release_for_copy(
     actor: User, statement: LogStatement, platform: Platform
 ) -> Release:
-    """The standing Release a new copy names.
-
-    An owned game states one where absent; a shared game only reads
-    its standing one.
-    """
+    """Standing Release a new copy names."""
     game = statement.game
     try:
         if game.library_id is not None:
@@ -201,12 +191,7 @@ def _copy_step(
     correlation_id: uuid.UUID,
     written: set[LogStep],
 ) -> Release | None:
-    """The Release the press's playtime names, recording a copy if need be.
-
-    A live copy on the platform is read first and wins. A changed
-    platform with no copy records an Unknown one on its standing
-    Release. An unchanged one with no copy names none.
-    """
+    """Release a press's playtime names."""
     library = actor.library
     with _answering("platform", written):
         platform = _held_platform(library, statement.platform_id)
@@ -239,11 +224,7 @@ def _write_run(
     correlation_id: uuid.UUID,
     written: set[LogStep],
 ) -> tuple[PlaythroughId, bool]:
-    """The run step: state the dates and note, creating a run if none exists.
-
-    Answers the run's id and whether the step tracked the game. An act
-    implies its status unless the person changed Status.
-    """
+    """State a run's dates and note."""
     library = actor.library
     step: LogStep = "dates" if _dates_changed(statement) else "more"
     implies = statement.status is KEEP
@@ -285,7 +266,7 @@ def _void_endpoints(
     *,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Take back each endpoint whose seen day the person cleared."""
+    """Void each endpoint the person cleared."""
     if statement.started is None:
         void_run_endpoint(actor, run, "start", correlation_id=correlation_id)
     if statement.completed is None:
@@ -349,12 +330,7 @@ def _playtime_run(
     correlation_id: uuid.UUID,
     written: set[LogStep],
 ) -> PlaythroughId:
-    """The run playtime names, where no run step answered.
-
-    The newest run, which Track made when the game was untracked; else
-    a run made with nothing stated, since a session and a record each
-    name a run.
-    """
+    """Newest run, else a new bare run."""
     with _answering("playtime", written):
         run = _held_run(actor.library, statement)
         if run is not None:
@@ -376,11 +352,7 @@ def _playtime_run(
 
 
 def _status_to_write(statement: LogStatement) -> PlayerGameStatus | None:
-    """The status the press states, else the Played a historical record implies.
-
-    A record implies nothing in its command, so the Status step states
-    Played over an Unplayed game the form showed.
-    """
+    """Status stated, else Played a record implies."""
     if statement.status is not KEEP:
         return statement.status
     if (
@@ -399,12 +371,7 @@ def log_game(
     correlation_id: uuid.UUID,
     token: uuid.UUID,
 ) -> LoggedGame:
-    """Write the statement's steps, in the order the page states them.
-
-    Track, copy, run, playtime, mastered, status. Each key carries
-    `token`, so a resubmit of the same press replays what it wrote.
-    One correlation id covers every dispatch.
-    """
+    """Write the press's steps in page order."""
     library = actor.library
     game = statement.game
     written: set[LogStep] = set()

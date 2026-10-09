@@ -1,4 +1,4 @@
-"""The form Log a game states one press from."""
+"""Form for one Log a game press."""
 
 import datetime
 from functools import partial
@@ -52,7 +52,7 @@ from timetracker.temporal import TemporalValue
 
 GAME_SEARCH_URL: Final = "/api/games/search"
 
-#: The one sentence each refusal states, read by the page and the tests.
+#: Sentence each refusal states, for the page.
 DATES_REVERSED = "This run finished before it started. Check the days."
 DAY_REQUIRED = "Give the day you played."
 ZERO_DURATION = "Give a duration above zero."
@@ -60,7 +60,7 @@ REMOVED_GAME = "This game is removed from your library. Restore it instead."
 ANOTHER_GAMES_RUN = "That playthrough is another game's."
 
 PLAYTIME_KINDS: Final = (("session", "Session"), ("historical", "Historical playtime"))
-#: The status a game the library does not track shows.
+#: Status an untracked game shows.
 UNTRACKED_STATUS: Final = PlayerGameStatus.UNPLAYED
 STATUS_CHOICES: Final = tuple(
     (status.value, status.label) for status in PlayerGameStatus
@@ -76,7 +76,7 @@ def normalised_note(value: str) -> str:
 
 
 class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
-    """One press of Log a game: the game's status, platform, dates, playtime.
+    """One Log a game press, as posted.
 
     Each `*_seen` field posts what the page showed. A field equal to its
     seen value states nothing, so an unchanged word keeps the status an
@@ -97,7 +97,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
     run = forms.ModelChoiceField(
         queryset=Playthrough.objects.none(), required=False, widget=forms.HiddenInput
     )
-    #: The count of playtimes the page wrote; keys each one.
+    #: Count of playtimes written; keys each.
     attempt = forms.IntegerField(
         required=False, min_value=0, initial=0, widget=forms.HiddenInput
     )
@@ -132,7 +132,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         super().__init__(*args, **kwargs)
         self.library = library
         self.fields["game"] = SingleGameChoiceField(
-            # Removed games stay: a refusal names them, rather than "not a choice".
+            # Removed games stay; refusals name them.
             queryset=Game.objects.filter(
                 Q(library__isnull=True) | Q(library=library)
             ).in_display_order(),
@@ -212,7 +212,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         )
 
     def _seed(self, held: HeldFacts) -> None:
-        """What the game holds, as the form's first state and its seen values."""
+        """Held state and the seen values."""
         shown = UNTRACKED_STATUS if held.status is None else held.status
         self.initial["status"] = shown.value
         self.initial["status_seen"] = shown.value
@@ -250,7 +250,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self._refuse_a_removed_game(game)
             self._refuse_a_platform(game, cleaned.get("platform"))
             self._refuse_a_run(game, cleaned.get("run"))
-        # Every endpoint shows; an empty field is cleared.
+        # Empty field clears the endpoint.
         if certainly_reversed(
             earlier=cleaned.get("started"), later=cleaned.get("completed")
         ):
@@ -263,7 +263,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self.add_error("game", REMOVED_GAME)
 
     def _refuse_a_platform(self, game: Game, platform: Platform | None) -> None:
-        """A changed platform with no copy on it must land a Release."""
+        """Changed platform, no copy: needs a Release."""
         if "platform" in self.errors or platform is None:
             return
         if str(platform.pk) == self.cleaned_data.get("platform_seen"):
@@ -279,7 +279,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self.add_error("run", ANOTHER_GAMES_RUN)
 
     def _duration_typed(self) -> bool:
-        """Whether the page's duration boxes hold anything at all.
+        """Whether any duration box holds a value.
 
         A stated playtime is one whose boxes hold a number, zero included;
         an empty pair states no playtime.
@@ -302,7 +302,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self.add_error("day", DAY_REQUIRED)
 
     def statement(self) -> LogStatement:
-        """What the valid form states; a field equal to its seen value states nothing."""
+        """Valid form's statement; unchanged fields none."""
         cleaned = self.cleaned_data
         platform: Platform | None = cleaned.get("platform")
         run: Playthrough | None = cleaned.get("run")
@@ -327,7 +327,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         )
 
     def _act(self, name: str, cleaned: dict[str, Any]) -> Restated[ActStatement]:
-        """The day where it differs from the one the page showed; None where a seen day was cleared."""
+        """Changed day; None if cleared."""
         when: TemporalValue | None = cleaned.get(name)
         seen = cleaned.get(f"{name}_seen") or ""
         if when is None:

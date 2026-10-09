@@ -1,4 +1,4 @@
-"""A copy whose access is Unknown is held but not owned."""
+"""Unknown access is held, not owned."""
 
 import pytest
 from entries import record_entry

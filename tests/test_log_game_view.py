@@ -1,4 +1,4 @@
-"""The Log a game page: what it renders, writes and says when a step refuses."""
+"""Log a game page: render, write, refuse."""
 
 import re
 import uuid
@@ -48,7 +48,7 @@ def _title(html: str) -> str:
 
 
 def _press(game: Game, **fields: object) -> dict[str, object]:
-    """A press that changes nothing but what `fields` names."""
+    """Press stating only `fields`."""
     posted: dict[str, object] = {
         "submission": SUBMISSION,
         "game": str(game.pk),

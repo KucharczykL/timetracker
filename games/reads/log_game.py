@@ -1,4 +1,4 @@
-"""What a game already holds, read once for Log a game."""
+"""What a game already holds, read once."""
 
 from typing import NamedTuple
 
@@ -23,25 +23,25 @@ from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 
 
 class HeldFacts(NamedTuple):
-    """What a game already holds, read once for the page."""
+    """What a game holds, read once."""
 
-    #: The library tracked the game and removed it.
+    #: Library removed the tracked game.
     removed: bool
     #: The tracked status, else none.
     status: PlayerGameStatus | None
-    #: The newest live ordinary run, a placeholder rule for now.
+    #: Newest live run; a placeholder rule.
     run: Playthrough | None
-    #: The run's endpoints; None where the run states nothing.
+    #: Run's endpoints; None where unstated.
     started: StatedEndpoint | None
     completed: StatedEndpoint | None
-    #: The platform of the Release the newest play or copy names.
+    #: Platform of the newest play or copy.
     platform: Platform | None
     mastered: bool
     note: str
 
 
 def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
-    """The status, the newest run's acts, the platform, the mastery."""
+    """Status, newest run's acts, platform, mastery."""
     tracked = tracked_game(library, game)
     if tracked is None:
         removed = PlayerGame.objects.filter(
@@ -71,7 +71,7 @@ def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
 
 
 def _live_releases(library: UserLibrary, game: Game):
-    """The game's Releases this library sees, on a live Platform."""
+    """Releases this library sees for a game."""
     return Release.objects.visible_to(library).filter(
         edition__game=game,
         platform__in=Platform.objects.visible_to(library),
@@ -79,7 +79,7 @@ def _live_releases(library: UserLibrary, game: Game):
 
 
 def _held_platform(library: UserLibrary, game: Game) -> Platform | None:
-    """The newest session's, else the newest record's, else the newest copy's."""
+    """Newest session, else record, else copy."""
     releases = _live_releases(library, game)
     named = (
         library_sessions(library)
@@ -112,11 +112,7 @@ def _held_platform(library: UserLibrary, game: Game) -> Platform | None:
 def copy_release_for(
     library: UserLibrary, game: Game, platform: Platform | None
 ) -> Release | None:
-    """The Release of a live copy on that platform, if one is held.
-
-    With several, the one the newest session names, else the
-    newest copy's.
-    """
+    """Live copy's Release on that platform."""
     copies = (
         library_entries(library)
         .filter(release__edition__game=game, release__platform=platform)

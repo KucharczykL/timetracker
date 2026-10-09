@@ -1,4 +1,4 @@
-"""Log a game: one press states a game's status, platform, dates, playtime and mastery."""
+"""Views for the Log a game modal."""
 
 from collections.abc import Mapping, Sequence
 from typing import Final, Literal, cast
@@ -41,7 +41,7 @@ from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 type NestedSection = Literal["playtime", "more"]
 
-#: The field a refused step's sentence sits on: a section's first field.
+#: Field where a refusal's sentence sits.
 REFUSED_FIELD: Final[Mapping[LogStep, str]] = {
     "track": "game",
     "status": "status",
@@ -52,12 +52,12 @@ REFUSED_FIELD: Final[Mapping[LogStep, str]] = {
     "more": "mastered",
 }
 
-#: The fields each nested section holds, in the order the page shows them.
+#: Fields each nested section holds, in order.
 SECTION_FIELDS: Final[Mapping[NestedSection, tuple[str, ...]]] = {
     "playtime": ("playtime_kind", "day", "duration", "device"),
     "more": ("mastered", "note"),
 }
-#: The fields that state a section held once one of them holds a value.
+#: Fields that mark a section held.
 SECTION_HOLDS: Final[Mapping[NestedSection, tuple[str, ...]]] = {
     "playtime": ("duration_hours", "duration_minutes"),
     "more": ("mastered", "note"),
@@ -78,7 +78,7 @@ SECTION_HOLDS_ATTRIBUTE: Final = "data-log-section-holds"
 SECTION_IDLE: Final = "data-log-section-idle"
 SECTION_HELD: Final = "data-log-section-held"
 
-#: Dates sit side by side from the small breakpoint up.
+#: Dates side by side from sm up.
 DATES_ROW_CLASS: Final = "sm:flex-row sm:gap-4 sm:[&>*]:flex-1"
 _LogSections = custom_element_builder("log-sections")
 _SECTION_PANEL_CLASS: Final = f"flex w-[calc(100%-2rem)] max-w-xl {MODAL_SURFACE_CLASS}"
@@ -105,7 +105,7 @@ def _build(
 
 
 def _game_keyed(library: UserLibrary, raw: str) -> Game | None:
-    """The game a key names, removed or not; None for no such game."""
+    """Game a key names; None if absent."""
     try:
         key = parse_uuidv7(raw)
     except UUIDv7ParseError:
@@ -118,7 +118,7 @@ def _game_keyed(library: UserLibrary, raw: str) -> Game | None:
 
 
 def _named_game(request: HttpRequest, library: UserLibrary) -> Game | None:
-    """The game the page is about: posted, opened from, or prefilled."""
+    """Page's game: posted, opened, or prefilled."""
     if request.method == "POST":
         raw = request.POST.get("game", "")
     else:
@@ -169,11 +169,7 @@ def _attempt(raw: str | None) -> int:
 def _refused(
     request: HttpRequest, refused: LogRefused, statement: LogStatement
 ) -> HttpResponse:
-    """Rebuild the form from the post; the step's sentence on it, its section open.
-
-    A playtime the press already wrote leaves the form, and the next one
-    posts under a new attempt key.
-    """
+    """Rebuild a refused form; sentence, section open."""
     data = request.POST.copy()
     if "playtime" in refused.written:
         data["duration_hours"] = ""
@@ -235,7 +231,7 @@ def _open_section(form: LogGameForm) -> NestedSection | Literal[""]:
 
 
 def _groups() -> list[FormFieldGroup]:
-    """The inline fields, then each nested section's fieldsets in its dialog."""
+    """Inline fields, then nested dialogs' fieldsets."""
     return [
         FormFieldGroup("Game", ("game", "status", "platform"), look="hidden"),
         FormFieldGroup(
@@ -260,7 +256,7 @@ def _groups() -> list[FormFieldGroup]:
 
 
 def _section_dialog(section: NestedSection) -> FieldGroupContainer:
-    """One section's opener, and its fieldsets in a nested dialog."""
+    """Section's opener and its dialog fieldsets."""
     titled = titled_header(
         SECTION_TITLES[section], title_id=f"log-section-{section}-title"
     )

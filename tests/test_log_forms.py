@@ -1,4 +1,4 @@
-"""The Log a game form: what it refuses, and what each press states."""
+"""Log a game form refusals and presses."""
 
 import datetime
 import uuid
@@ -71,7 +71,7 @@ def _form(library, data=None, **kwargs) -> LogGameForm:
 
 
 def _posted(game=None, **fields) -> dict[str, object]:
-    """A press that changes nothing: every seen value posted as shown."""
+    """Press changing nothing: seen values posted."""
     posted: dict[str, object] = {
         "submission": SUBMISSION,
         "status": "unplayed",
@@ -179,7 +179,7 @@ def test_reversed_days_are_refused_on_finished_on(owned_library, game):
 
 
 def test_a_cleared_start_is_not_checked_against_the_finish(owned_library, game):
-    # Clearing the start voids it, so an earlier finish is fine.
+    # Cleared start voids it; earlier finish ok.
     data = _posted(
         game,
         started_seen="2026-05-01",

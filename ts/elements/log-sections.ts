@@ -8,7 +8,7 @@ import type { SearchSelectChangeDetail } from "./search-select.js";
 export const SECTION_DIALOG = "data-log-section";
 export const SECTION_DONE = "data-log-section-done";
 export const SECTION_EDIT = "data-log-section-edit";
-/** Space-separated field names; one held value marks the section held. */
+/** Space-separated fields that mark a section held. */
 export const SECTION_HOLDS = "data-log-section-holds";
 export const SECTION_IDLE = "data-log-section-idle";
 export const SECTION_HELD = "data-log-section-held";
@@ -25,7 +25,7 @@ function fieldHolds(field: HTMLInputElement | HTMLTextAreaElement): boolean {
   return field.value.trim() !== "";
 }
 
-/** A section holds a value once one of its named fields does. */
+/** Section holds once any field does. */
 function sectionHolds(dialog: HTMLDialogElement): boolean {
   const names = (dialog.getAttribute(SECTION_HOLDS) ?? "").split(" ").filter(Boolean);
   return names.some((name) =>
@@ -35,7 +35,7 @@ function sectionHolds(dialog: HTMLDialogElement): boolean {
   );
 }
 
-/** Each section's dialog opens from its opener; a picked game reloads the form. */
+/** Opens each section's dialog from its opener. */
 class LogSectionsElement extends HTMLElement {
   private readonly modals = new Map<Section, Modal>();
   /** Opens once the layer allows it. */
@@ -45,7 +45,7 @@ class LogSectionsElement extends HTMLElement {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
       const section = dialog.getAttribute(SECTION_DIALOG) ?? "";
       if (this.modals.has(section)) continue;
-      // Done, ×, Escape and the backdrop all close it and keep its fields.
+      // Every close keeps the fields.
       this.modals.set(section, attachModal(dialog));
     }
     this.addEventListener("input", this.syncHeld);
@@ -68,11 +68,11 @@ class LogSectionsElement extends HTMLElement {
     this.removeEventListener("search-select:change", this.onGamePick);
     window.removeEventListener(MODAL_CHANGE, this.openPending);
     this.pending = null;
-    // A reload replaces the body, and its dialogs with it.
+    // Reload replaces dialogs too.
     this.modals.clear();
   }
 
-  /** Each opener reads "held" while its section holds a value. */
+  /** Opener reads "held" while section holds. */
   private readonly syncHeld = (): void => {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
       const section = dialog.getAttribute(SECTION_DIALOG) ?? "";
@@ -102,7 +102,7 @@ class LogSectionsElement extends HTMLElement {
     window.removeEventListener(MODAL_CHANGE, this.openPending);
   };
 
-  /** A pick of a game reloads the page for that game; typed fields below it go. */
+  /** Picking a game reloads the page. */
   private readonly onGamePick = (event: Event): void => {
     const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
     if (detail.name !== GAME_FIELD || detail.none) return;

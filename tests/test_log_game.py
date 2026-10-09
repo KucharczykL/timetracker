@@ -1,4 +1,4 @@
-"""The write a Log a game press makes, step by step."""
+"""Writes one Log a game press makes."""
 
 import datetime
 from typing import Any
@@ -64,7 +64,7 @@ def _day(day: datetime.date) -> ActStatement:
 
 
 def _statement(game, **fields: Any) -> LogStatement:
-    """A press that states nothing but what `fields` names."""
+    """Press stating only `fields`."""
     defaults: dict[str, Any] = {
         "platform_id": None,
         "platform_changed": False,

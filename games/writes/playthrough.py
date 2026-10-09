@@ -502,20 +502,14 @@ def record_run(
 ) -> RecordedRun:
     """State one run at a game.
 
-    The run a tracked game already holds is filled in
-    rather than left beside a second one: #679 gives every
-    tracked game a run, and creating another would leave a
-    never-played game holding an empty one forever.
+    Fills a tracked game's run rather than adding a second beside it:
+    a never-played game would hold an empty one forever. A game nothing
+    tracks is tracked first, a library-visible act of its own.
 
-    A game nothing tracks is tracked first, which is a
-    library-visible act of its own -- hence the answer,
-    which the request-shaped caller tells the person about.
-
-    A key goes to the creation alone, so a repeat of a
-    creation under the same key writes no second run.
-    Dispatch refuses to nest, so no transaction spans the
-    two: a refusal after tracking leaves the game tracked
-    with no run stated, and stating it again finishes it.
+    The key goes to the creation alone, so a repeat writes no second run.
+    Dispatch refuses to nest, so no transaction spans the two: a refusal
+    after tracking leaves the game tracked with no run stated, and stating
+    it again finishes it.
     """
     if draft.game_id not in (None, game.pk):
         raise ValueError(
@@ -592,7 +586,7 @@ def _record_once(
     return created_aggregate_id(result)
 
 
-#: The endpoint a run states, named for a caller that voids one.
+#: Endpoint a voiding caller names.
 type RunEndpoint = Literal["start", "completion"]
 
 
@@ -603,10 +597,7 @@ def void_run_endpoint(
     *,
     correlation_id: uuid.UUID,
 ) -> CommandResult:
-    """Take back the record of one endpoint.
-
-    Unchanged where the endpoint is unstated.
-    """
+    """Take back one endpoint; Unchanged if unstated."""
     command: Command = (
         VoidPlaythroughStart(playthrough_id=run.pk)
         if endpoint == "start"

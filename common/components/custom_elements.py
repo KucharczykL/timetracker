@@ -753,11 +753,11 @@ register_element("field-mirror", "FieldMirror", FieldMirrorProps)
 
 
 class LogSectionsProps(TypedDict):
-    #: A section to open on connect; "" opens none.
+    #: Opened on connect; "" opens none.
     open_section: str
-    #: The Log a game route a picked game reloads.
+    #: Route reloaded when a game is picked.
     route: str
-    #: The page's origin, carried through a reload; "" carries none.
+    #: Origin kept across reload; "" for none.
     origin: str
 
 

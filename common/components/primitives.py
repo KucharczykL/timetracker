@@ -1950,7 +1950,7 @@ def FieldErrors(errors, *, form_wide: bool = False) -> Node | None:
 #: "hidden": legend for screen readers only.
 #: "panel": a section panel, legend inside.
 type FieldGroupLook = Literal["shown", "hidden", "panel"]
-#: Wraps adjacent groups' fieldsets, e.g. in a dialog.
+#: Wraps adjacent fieldsets, e.g. in a dialog.
 type FieldGroupContainer = Callable[[Sequence[Node]], Node]
 #: Space-separated utility tokens.
 type ClassNames = str

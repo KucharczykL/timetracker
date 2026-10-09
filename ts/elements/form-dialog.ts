@@ -483,7 +483,7 @@ export class FormDialogElement extends HTMLElement {
     this.requestReload();
   };
 
-  /** Refetches a dialog's page in place; what it now shows is the baseline. */
+  /** Refetches the dialog page in place. */
   private readonly onReload = (event: Event): void => {
     const detail = (event as CustomEvent<FormDialogReloadDetail>).detail;
     const holding = event.target instanceof Node ? this.entryHolding(event.target) : undefined;

@@ -195,11 +195,7 @@ class Submission(forms.Form):
 
 
 class CopyFields(PriceFields):
-    """One copy and its price: the fields a copy states.
-
-    Shared by Add to library and the Log a game form. The release
-    picker names the host form's game field through `params`.
-    """
+    """Fields for one copy and its price."""
 
     price_choices = (PriceChoice.PAID, PriceChoice.FREE, PriceChoice.NONE)
 
@@ -221,7 +217,7 @@ class CopyFields(PriceFields):
         game_field: str,
         game: Game | None,
     ) -> None:
-        """Build the release and acquired fields the copy needs."""
+        """Build the release and acquired fields."""
         params: ParamSources = {"game_id": {"field": self.add_prefix(game_field)}}
         create = game is None or game.library_id == library.pk
         if game is not None:
@@ -259,7 +255,7 @@ class CopyFields(PriceFields):
         )
 
     def refuse_release_of_other_game(self, game: Game | None) -> None:
-        """A copy's Release names the game it holds."""
+        """A copy's Release names the held game."""
         release = cast(Release | None, self.cleaned_data.get("release"))
         if (
             release is not None

@@ -520,7 +520,7 @@ class TestRemoveRun:
 
 
 class TestLogGameWrites:
-    """#1517: a keyed creation and a void of one endpoint."""
+    """Keyed creation, then void of an endpoint."""
 
     @pytest.mark.django_db(transaction=True)
     def test_a_keyed_record_run_twice_creates_one_run(self, user, game):

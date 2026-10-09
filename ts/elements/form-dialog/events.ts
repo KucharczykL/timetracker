@@ -7,10 +7,7 @@ export const PAGE_STALE = "page:stale";
 export const FORM_DIALOG_CREATED = "form-dialog:created";
 export type FormDialogCreatedDetail = Readonly<CreatedOption>;
 
-/**
- * Dispatched inside a form dialog: fetch `url` into it, and take the
- * result as its new baseline, so no unsaved-changes prompt fires.
- */
+/** Load a URL as the dialog's baseline. */
 export const FORM_DIALOG_RELOAD = "form-dialog:reload";
 export interface FormDialogReloadDetail {
   url: string;

@@ -1,4 +1,4 @@
-"""Log a game: the modal, its nested dialogs, a picked game and a refusal."""
+"""Log a game modal end to end."""
 
 import pytest
 from django.urls import reverse
