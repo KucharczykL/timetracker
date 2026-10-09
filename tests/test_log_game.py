@@ -316,3 +316,19 @@ def test_a_removed_game_is_refused_on_the_game(user, game):
     assert refused.value.step == "game"
     assert refused.value.written == frozenset()
     assert not HistoricalPlaytime.objects.filter(library=user.library).exists()
+
+
+def test_playtime_alone_names_its_own_step_when_its_run_is_gone(user, game):
+    statement = _statement(
+        game,
+        sections=frozenset({"playtime"}),
+        run_id=new_correlation_id(),
+        playtime=SessionTiming(
+            day=DAY, duration=datetime.timedelta(hours=1), device_id=None
+        ),
+    )
+
+    with pytest.raises(LogRefused) as refused:
+        _press(user, statement)
+
+    assert refused.value.step == "playtime"

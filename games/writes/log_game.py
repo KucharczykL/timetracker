@@ -41,6 +41,8 @@ type LogSection = Literal["copy", "dates", "playtime", "more"]
 SECTIONS: Final[tuple[LogSection, ...]] = ("copy", "dates", "playtime", "more")
 #: Sections whose writes name a run.
 RUN_SECTIONS: Final[frozenset[LogSection]] = frozenset({"dates", "playtime", "more"})
+#: Sections the run step states.
+RUN_STEP_SECTIONS: Final[frozenset[LogSection]] = frozenset({"dates", "more"})
 
 #: A refused step: a section, or the game and the status, which are none.
 type LogStep = LogSection | Literal["game", "status"]
@@ -262,7 +264,7 @@ def log_game(
                 )
         written.add("copy")
 
-    run_sections = statement.sections & RUN_SECTIONS
+    run_sections = statement.sections & RUN_STEP_SECTIONS
     playthrough_id: PlaythroughId | None = None
     if run_sections:
         playthrough_id, created_tracked = _write_run(
@@ -270,7 +272,8 @@ def log_game(
         )
         tracked = tracked or created_tracked
         #: More is written once its mastered step has also answered.
-        written.update(run_sections - {"more"})
+        if "dates" in run_sections:
+            written.add("dates")
 
     if statement.playtime is not None:
         if playthrough_id is None:
