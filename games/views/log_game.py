@@ -60,7 +60,7 @@ REFUSED_FIELD: Final[Mapping[LogStep, FieldName]] = {
     "mastered": "mastered",
 }
 
-#: What each written step reads as in a refused press, in page order.
+#: Each written step's words, in order.
 SAVED_WORDS: Final[Mapping[LogStep, str]] = {
     "copy": "the copy",
     "dates": "the dates",
@@ -71,7 +71,7 @@ SAVED_WORDS: Final[Mapping[LogStep, str]] = {
 }
 TRACKED_WORDS: Final = "the game in your library"
 
-#: The `*_seen` fields each step re-reads once it is written.
+#: Seen fields each written step refreshes.
 SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
     "track": (
         "status_seen",
@@ -94,7 +94,7 @@ SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
 
 @dataclass(frozen=True, slots=True)
 class SectionSpec:
-    """One nested section: its fields, what holds it, and its opener."""
+    """One nested section and its opener."""
 
     title: str
     fields: tuple[FieldName, ...]
@@ -169,7 +169,7 @@ def _game_keyed(library: UserLibrary, raw: str) -> Game | None:
 
 
 def _prefill_game(library: UserLibrary, raw: str) -> Game | None:
-    """The navbar's pick; a WARNING where it names no held game."""
+    """The navbar's pick; warns on a bad one."""
     if not raw:
         return None
     game = _game_keyed(library, raw)
@@ -222,7 +222,7 @@ def log_game_page(request: HttpRequest) -> HttpResponse:
         return redirect(game_page(request, statement.game))
 
     if data is not None and form.stale_game and game is not None:
-        # The page showed another game's values: show this game's, unposted.
+        # Stale seen values: show this game fresh.
         messages.error(request, STALE_GAME)
         fresh = held_facts(library, game)
         return _render(
@@ -248,7 +248,7 @@ def _endpoint_seen(endpoint: StatedEndpoint | None) -> str:
 
 
 def _seen_values(held: HeldFacts) -> dict[FieldName, str]:
-    """Each seen field, as the page shows a game it holds."""
+    """Seen fields for a held game."""
     status = UNTRACKED_STATUS if held.status is None else held.status
     return {
         "status_seen": status.value,
@@ -264,7 +264,7 @@ def _seen_values(held: HeldFacts) -> dict[FieldName, str]:
 def _reseen(
     data: QueryDict, held: HeldFacts, written: frozenset[LogStep], tracked: bool
 ) -> None:
-    """Re-read the seen values the written steps changed."""
+    """Refresh seen values the written steps changed."""
     fresh = _seen_values(held)
     steps: Iterable[LogStep] = ("track",) if tracked else written
     names = {name for step in steps for name in SEEN_FIELDS[step]}
@@ -279,7 +279,7 @@ def _join(words: Sequence[str]) -> str:
 
 
 def _saved_line(written: frozenset[LogStep], tracked: bool) -> str | None:
-    """What a refused press kept, in page order; None if it kept nothing."""
+    """What a refused press kept, if anything."""
     words = [TRACKED_WORDS] if tracked else []
     words += [word for step, word in SAVED_WORDS.items() if step in written]
     if not words:

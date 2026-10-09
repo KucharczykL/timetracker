@@ -67,7 +67,7 @@ interface OpenDialog {
   baseline: FormSnapshot;
   /** A late baseline checks it. */
   baselineGeneration: number;
-  /** The latest reload's serial; an older answer is dropped. */
+  /** Latest reload's serial; older answers drop. */
   reloadSerial: number;
 }
 
@@ -155,7 +155,7 @@ function whenLeaveSettles(): Promise<void> {
   });
 }
 
-/** Shown when a reload could not replace the body. */
+/** Shown when a reload fails. */
 const RELOAD_FAILED = "Could not load that game. Close and open Log again.";
 
 function errorToast(message: string): void {
@@ -503,7 +503,7 @@ export class FormDialogElement extends HTMLElement {
     void this.reloadInto(holding, new URL(detail.url, location.href));
   };
 
-  /** Only the latest reload of an entry is applied. */
+  /** Only an entry's latest reload applies. */
   private async reloadInto(entry: OpenDialog, url: URL): Promise<void> {
     entry.reloadSerial += 1;
     const serial = entry.reloadSerial;

@@ -97,7 +97,7 @@ def release_on_platform(
 
 
 def _landing_refusal(game: Game) -> str | None:
-    """Why no new Release can land; None where it can."""
+    """Why no new Release can land."""
     return SHARED_GAME_RELEASE if game.library_id is None else None
 
 

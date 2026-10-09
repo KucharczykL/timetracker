@@ -74,7 +74,7 @@ STATUS_CHOICES: Final = tuple(
 
 
 def canonical_text(value: TemporalValue | None) -> str:
-    """The day's canonical text; "" where it states none."""
+    """The day's canonical text, else ""."""
     return "" if value is None or value.canonical is None else value.canonical
 
 
@@ -88,10 +88,10 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
 
     opener_fields = ("game",)
     kind: ClassVar[SubmissionKind] = "log"
-    #: Set where the posted game is not the one the page showed.
+    #: The posted game differs from the shown one.
     stale_game: bool = False
 
-    #: The game the `*_seen` values were read for; "" for none.
+    #: Game the seen values belong to.
     seen_game = forms.CharField(required=False, widget=forms.HiddenInput)
     status_seen = forms.ChoiceField(
         required=False,
@@ -328,7 +328,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         )
 
     def _platform(self, cleaned: dict[str, Any]) -> PlatformId | None | Keep:
-        """Picked platform; KEEP where the page showed it."""
+        """Picked platform; KEEP where unchanged."""
         platform: Platform | None = cleaned.get("platform")
         current = "" if platform is None else str(platform.pk)
         if current == cleaned.get("platform_seen", ""):

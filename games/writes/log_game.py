@@ -1,4 +1,4 @@
-"""One press writes its steps in page order.
+"""One press writes its steps, status last.
 
 The form builds a `LogStatement`; `log_game` writes it, one or more
 dispatches per step. A step that is refused stops the press, and the
@@ -160,7 +160,7 @@ def _dates_changed(statement: LogStatement) -> bool:
 
 
 def _run_step(statement: LogStatement) -> LogStep:
-    """The step a refusal of the press's run names."""
+    """The step a run refusal names."""
     if _dates_changed(statement):
         return "dates"
     return "playtime" if statement.playtime is not None else "note"
@@ -190,7 +190,7 @@ def _named_platform(library: UserLibrary, platform_id: PlatformId) -> Platform:
 
 
 def _check_named(library: UserLibrary, statement: LogStatement) -> None:
-    """Refuse a named platform or run before any write."""
+    """Refuse a gone platform or run first."""
     if statement.platform is not KEEP and statement.platform is not None:
         with _answering("platform", set()):
             _named_platform(library, statement.platform)
@@ -314,7 +314,7 @@ def _void_endpoints(
     written: set[LogStep],
     correlation_id: uuid.UUID,
 ) -> None:
-    """Void each endpoint the person cleared, before any restatement."""
+    """Void each cleared endpoint before restating."""
     cleared: tuple[tuple[RunEndpoint, bool], ...] = (
         ("start", statement.started is None),
         ("completion", statement.completed is None),
@@ -412,7 +412,7 @@ def _playtime_run(
 def _status_to_write(
     statement: LogStatement, live_status: PlayerGameStatus | None
 ) -> PlayerGameStatus | None:
-    """Status stated, else Played a record implies over the live one."""
+    """Stated status, else a record's implied Played."""
     if statement.status is not KEEP:
         return statement.status
     if (
@@ -493,7 +493,7 @@ def log_game(
                 )
             written.add("mastered")
 
-        # Read after the run's writes: a completion has already stated Completed.
+        # After run writes: completion may imply Completed.
         live = tracked_game(library, game)
         status = _status_to_write(
             statement, None if live is None else PlayerGameStatus(live.status)
