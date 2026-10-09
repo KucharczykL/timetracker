@@ -67,6 +67,12 @@ from common.components.primitives import (
     field_label_id,
 )
 from common.components.search_select import DialogCreate, ParamSources
+from common.components.tri_state_checkbox import (
+    TriState,
+    TriStateCheckbox,
+    TriStateHints,
+    TriStateWords,
+)
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.opener_facts import OpenerFacts, OpenerFactsMixin
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
@@ -204,6 +210,54 @@ class PrimitiveCheckboxWidget(forms.CheckboxInput):
         )
 
 
+#: What a tri-state flag's box says beside itself.
+TRI_STATE_HINTS: Final = TriStateHints(
+    mixed="Keep: mixed", kept="Keep", changed="Will change"
+)
+
+
+class TriStateCheckboxWidget(forms.Widget):
+    """A flag's tri-state box; the field's choices decide what posts.
+
+    Its value is the posted string as it came, so a choice the field does
+    not hold is refused by the field, not dropped here.
+    """
+
+    input_type = "checkbox"
+    component_media: ClassVar[Media] = Media(
+        js=("dist/elements/tri-state-checkbox.js",)
+    )
+
+    def __init__(self, *, words: TriStateWords, attrs=None):
+        super().__init__(attrs)
+        self.words = words
+        #: Written by the form from its rows.
+        self.held: TriState = "mixed"
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+    def _stated(self, value: object) -> TriState:
+        if value in (self.words.checked, True):
+            return "checked"
+        if value in (self.words.unchecked, False):
+            return "unchecked"
+        return self.held
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        return render(
+            TriStateCheckbox(
+                name=name,
+                box_id=final_attrs.get("id", f"id_{name}"),
+                held=self.held,
+                stated=self._stated(value),
+                words=self.words,
+                hints=TRI_STATE_HINTS,
+            )
+        )
+
+
 def _holds_a_plain_select(field: forms.Field) -> TypeGuard[forms.ChoiceField]:
     """A fixed-choice field on Django's default select."""
     return (
@@ -254,6 +308,7 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
                 HoursMinutesWidget,
                 # Shapes its own control.
                 UnsetWidget,
+                TriStateCheckboxWidget,
             ),
         ):
             continue

@@ -13,7 +13,9 @@ from typing import Any
 from django import forms
 from django.core.exceptions import NON_FIELD_ERRORS
 
+from common.components.tri_state_checkbox import TriState, TriStateWords
 from games.events.dispatch import CommandRejected, RowUnreadable
+from games.forms import TriStateCheckboxWidget
 from games.reads.fact_change import FactChange
 
 logger = logging.getLogger("games")
@@ -40,6 +42,34 @@ def keeping[RowT, ValueT](
     if len(held) != 1:
         return "Keep: mixed"
     return f"Keep: {shown(held.pop())}"
+
+
+#: The two words a flag posts; its choice keys and its box's props.
+FLAG_CHECKED = "True"
+FLAG_UNCHECKED = "False"
+_FLAG_WORDS = TriStateWords(checked=FLAG_CHECKED, unchecked=FLAG_UNCHECKED)
+
+
+def flag_field(label: str) -> forms.TypedChoiceField:
+    """A flag: posts a word to state, nothing to keep."""
+    return forms.TypedChoiceField(
+        label=label,
+        choices=((FLAG_CHECKED, "Yes"), (FLAG_UNCHECKED, "No")),
+        coerce=lambda value: value == FLAG_CHECKED,
+        empty_value=None,
+        required=False,
+        widget=TriStateCheckboxWidget(words=_FLAG_WORDS),
+    )
+
+
+def held_flag[RowT](rows: Sequence[RowT], value: Callable[[RowT], bool]) -> TriState:
+    """What the rows hold; mixed where they differ."""
+    held = {value(row) for row in rows}
+    if held == {True}:
+        return "checked"
+    if held == {False}:
+        return "unchecked"
+    return "mixed"
 
 
 def statement_unreadable(message: str) -> CommandRejected:

@@ -43,7 +43,9 @@ def hint_text(markup: str) -> str:
 
 
 def hidden_value(markup: str) -> str:
-    return re.search(r'value="([^"]*)"', tag(markup, "data-tri-state-value")).group(1)
+    value = re.search(r'value="([^"]*)"', tag(markup, "data-tri-state-value"))
+    assert value
+    return value.group(1)
 
 
 def is_checked(markup: str) -> bool:
