@@ -1467,10 +1467,19 @@ def Input(
     return Element("input", merged)
 
 
+#: The mixed dash, on the check mark's grid.
+#:
+#: One literal: Tailwind scans the source text.
+_INDETERMINATE_DASH_CLASS = (
+    "indeterminate:bg-[url(data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20fill=%27none%27%20viewBox=%270%200%2024%2024%27%3e%3cpath%20stroke=%27white%27%20stroke-linecap=%27round%27%20stroke-width=%272%27%20d=%27M6%2012h12%27/%3e%3c/svg%3e)] "
+    "indeterminate:bg-[length:0.85em_0.85em]"
+)
+
 #: Every checkbox's look: one 24px touch target.
 CHECKBOX_LOOK_CLASS = (
     "w-6 h-6 shrink-0 rounded border-default-medium "
-    "bg-neutral-secondary-medium text-brand focus:ring-brand"
+    "bg-neutral-secondary-medium text-brand focus:ring-brand "
+    f"{_INDETERMINATE_DASH_CLASS}"
 )
 
 
