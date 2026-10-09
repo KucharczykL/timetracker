@@ -96,6 +96,24 @@ class GroupedFormFieldsTest(SimpleTestCase):
                 )
             )
 
+    def test_every_look_is_parted_from_the_group_before(self):
+        looks = ("shown", "hidden", "panel")
+        html = str(
+            FormFields(
+                KitForm(),
+                groups=[
+                    FormFieldGroup(look, (name,), look=look)
+                    for look, name in zip(
+                        looks, ("enabled", "limit", "display_name"), strict=True
+                    )
+                ],
+            )
+        )
+        classes = re.findall(r'<fieldset class="([^"]*)"', html)
+        assert len(classes) == len(looks)
+        for group_classes in classes:
+            assert {"mt-3", "first-of-type:mt-0"} <= set(group_classes.split())
+
     def test_a_group_class_and_row_classes_reach_their_elements(self):
         html = str(
             FormFields(
