@@ -79,6 +79,7 @@ SECTION_GROUPS: Final[tuple[tuple[str, tuple[str, ...], LogSection], ...]] = (
 SECTION_DIALOG: Final = "data-log-section"
 SECTION_DONE: Final = "data-log-section-done"
 SECTION_EDIT: Final = "data-log-section-edit"
+SECTIONS_HINT: Final = "data-log-sections-hint"
 
 _LogSections = custom_element_builder("log-sections")
 _SECTION_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-xl {MODAL_SURFACE_CLASS}"
@@ -268,13 +269,16 @@ def _section_dialog(section: LogSection) -> FieldGroupContainer:
 def _ticked_lines() -> Node:
     """Each ticked section, named once, with Edit."""
     return Fragment(
+        P([(SECTIONS_HINT, ""), ("hidden", "")], class_="text-type-body text-body")[
+            "Pick a game first."
+        ],
         *(
             Div(class_=f"items-center gap-2 {TICKED_SHOWN[section]}")[
                 Span(class_="text-type-body text-body")[f"{label} added"],
                 ControlButton([(SECTION_EDIT, section)], variant="ghost")["Edit"],
             ]
             for section, label in SECTION_LABELS.items()
-        )
+        ),
     )
 
 

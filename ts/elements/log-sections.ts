@@ -5,6 +5,7 @@ import { MODAL_CHANGE, attachModal, type Modal } from "./modal-layer.js";
 export const SECTION_DIALOG = "data-log-section";
 export const SECTION_DONE = "data-log-section-done";
 export const SECTION_EDIT = "data-log-section-edit";
+export const SECTIONS_HINT = "data-log-sections-hint";
 const TICK_SELECTOR = 'input[type="checkbox"][name="sections"]';
 
 type Section = string; // e.g. "copy"
@@ -37,6 +38,8 @@ class LogSectionsElement extends HTMLElement {
     }
     this.addEventListener("change", this.onChange);
     this.addEventListener("click", this.onClick);
+    this.addEventListener("search-select:change", this.syncTicks);
+    this.syncTicks();
     const { openSection } = readLogSectionsProps(this);
     if (openSection) {
       this.pending = openSection;
@@ -48,9 +51,23 @@ class LogSectionsElement extends HTMLElement {
   disconnectedCallback(): void {
     this.removeEventListener("change", this.onChange);
     this.removeEventListener("click", this.onClick);
+    this.removeEventListener("search-select:change", this.syncTicks);
     window.removeEventListener(MODAL_CHANGE, this.openPending);
     this.pending = null;
   }
+
+  /** Every section needs a game. */
+  private readonly syncTicks = (): void => {
+    const held = Array.from(this.querySelectorAll<HTMLInputElement>('input[name="game"]')).some(
+      (input) => input.value !== "",
+    );
+    for (const tick of this.querySelectorAll<HTMLInputElement>(TICK_SELECTOR)) {
+      tick.disabled = !held;
+    }
+    for (const hint of this.querySelectorAll<HTMLElement>(`[${SECTIONS_HINT}]`)) {
+      hint.hidden = held;
+    }
+  };
 
   private tick(section: Section): HTMLInputElement | null {
     return (

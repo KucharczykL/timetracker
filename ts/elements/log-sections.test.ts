@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import "./log-sections.js";
 
-function mount(openSection = ""): HTMLElement {
+function mount(openSection = "", game = "1"): HTMLElement {
   document.body.innerHTML = `
     <form><log-sections open-section="${openSection}">
+      <input type="hidden" name="game" value="${game}">
+      <p data-log-sections-hint hidden>Pick a game first.</p>
       <label><input type="checkbox" name="sections" value="copy">Copy</label>
       <button type="button" data-log-section-edit="copy">Edit</button>
       <dialog data-modal data-log-section="copy">
@@ -64,6 +66,16 @@ describe("log-sections", () => {
     const host = mount("copy");
     await Promise.resolve();
     expect(dialog(host).open).toBe(true);
+  });
+
+  it("disables the ticks until a game is held", () => {
+    const host = mount("", "");
+    expect(tick(host).disabled).toBe(true);
+    expect(host.querySelector<HTMLElement>("[data-log-sections-hint]")!.hidden).toBe(false);
+    host.querySelector<HTMLInputElement>('input[name="game"]')!.value = "7";
+    host.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true }));
+    expect(tick(host).disabled).toBe(false);
+    expect(host.querySelector<HTMLElement>("[data-log-sections-hint]")!.hidden).toBe(true);
   });
 
   it("keeps the fields in the form", () => {

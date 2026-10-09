@@ -24,6 +24,12 @@ def _open_log_from_navbar(page: Page, live_server) -> Locator:
     return dialog
 
 
+def _open_log_for(page: Page, live_server, game: Game) -> Locator:
+    dialog = _open_log_from_navbar(page, live_server)
+    pick_choice(dialog, "game", str(game.pk))
+    return dialog
+
+
 def _section(page: Page, section: str) -> Locator:
     return page.locator(f'dialog[data-log-section="{section}"]')
 
@@ -39,12 +45,15 @@ def _display(panel: Locator) -> str:
 def test_the_navbar_opens_the_log_modal(authenticated_page, live_server):
     dialog = _open_log_from_navbar(authenticated_page, live_server)
 
-    expect(dialog.locator('input[name="sections"][value="copy"]')).to_have_count(1)
+    expect(dialog.locator('input[name="sections"][value="copy"]')).to_be_disabled()
+    expect(dialog.get_by_text("Pick a game first.")).to_be_visible()
 
 
-def test_a_tick_opens_its_section_and_done_keeps_it(authenticated_page, live_server):
+def test_a_tick_opens_its_section_and_done_keeps_it(
+    authenticated_page, live_server, e2e_library
+):
     page = authenticated_page
-    dialog = _open_log_from_navbar(page, live_server)
+    dialog = _open_log_for(page, live_server, create_tracked_game(e2e_library, "Tunic"))
     section = _section(page, "copy")
 
     _tick(dialog, "copy")
@@ -56,9 +65,9 @@ def test_a_tick_opens_its_section_and_done_keeps_it(authenticated_page, live_ser
     expect(dialog.get_by_text("Copy and price added")).to_be_visible()
 
 
-def test_dismissing_a_section_unticks_it(authenticated_page, live_server):
+def test_dismissing_a_section_unticks_it(authenticated_page, live_server, e2e_library):
     page = authenticated_page
-    dialog = _open_log_from_navbar(page, live_server)
+    dialog = _open_log_for(page, live_server, create_tracked_game(e2e_library, "Tunic"))
     section = _section(page, "dates")
 
     _tick(dialog, "dates")
@@ -70,9 +79,9 @@ def test_dismissing_a_section_unticks_it(authenticated_page, live_server):
     expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Log a game")
 
 
-def test_ticking_dates_shows_the_run_row(authenticated_page, live_server):
+def test_ticking_dates_shows_the_run_row(authenticated_page, live_server, e2e_library):
     page = authenticated_page
-    dialog = _open_log_from_navbar(page, live_server)
+    dialog = _open_log_for(page, live_server, create_tracked_game(e2e_library, "Tunic"))
     run_row = dialog.locator('[data-field-row="playthrough"]')
 
     assert _display(run_row) == "none"
@@ -85,8 +94,7 @@ def test_a_refusal_reopens_its_section(authenticated_page, live_server, e2e_libr
     game = create_tracked_game(e2e_library, "Tunic")
     release = default_graph(game, e2e_library).release
     page = authenticated_page
-    dialog = _open_log_from_navbar(page, live_server)
-    pick_choice(dialog, "game", str(game.pk))
+    dialog = _open_log_for(page, live_server, game)
     _tick(dialog, "copy")
     section = _section(page, "copy")
     pick_choice(section, "release", str(release.pk))
