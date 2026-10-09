@@ -691,6 +691,14 @@ describe("a dropdown sheet inside an open sheet", () => {
     );
   });
 
+  it("stamps the level before the stack sees it open", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    expect(outerDialog.hasAttribute("data-modal-covered")).toBe(false);
+    expect(innerDialog.hasAttribute("aria-describedby")).toBe(false);
+  });
+
   it("backs out of a level alone on Escape", () => {
     const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
     mouseClick(outerToggle);

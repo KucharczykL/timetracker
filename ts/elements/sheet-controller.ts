@@ -146,7 +146,13 @@ export function attachSheetCore(
 
   const open = (opener?: HTMLElement): boolean => {
     if (modal.state() !== "closed") return false;
-    if (!modal.open(opener)) return false;
+    const level = options.levelOf?.() ?? null;
+    // The stack reads the stamp on open.
+    dialog.toggleAttribute(SHEET_ATTRIBUTES.level, level !== null);
+    if (!modal.open(opener)) {
+      dialog.removeAttribute(SHEET_ATTRIBUTES.level);
+      return false;
+    }
     try {
       options.beforeShow?.();
     } catch (error) {
@@ -154,7 +160,6 @@ export function attachSheetCore(
       modal.close();
       throw error;
     }
-    const level = options.levelOf?.() ?? null;
     if (level) {
       // A level's push is its entry; no slide-up follows.
       entered = true;
