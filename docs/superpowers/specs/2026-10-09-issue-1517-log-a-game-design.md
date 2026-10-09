@@ -47,8 +47,7 @@ A refused press that wrote something says what it kept. The line reads
   platform with no copy records a copy with access Unknown and format
   Unknown, through `release_on`, or on a shared game's standing Release.
   No platform records no copy. `platform_refusal` refuses, before any
-  write, a platform no Release can land on. `release_on` refuses a
-  prerelease default Edition.
+  write, a platform no Release can land on.
 - **Run.** A changed day corrects its endpoint. A cleared day voids it
   (`void_run_endpoint`); the status stays. A game with no run gets one
   from `record_run`, keyed.

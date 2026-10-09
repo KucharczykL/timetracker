@@ -15,7 +15,7 @@ from games.api_creation import RowRefused
 from games.catalog_compat import write_and_mirror
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.events.dispatch import RowNotHeld
-from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
+from games.models import Edition, Game, Platform, Release, UserLibrary
 from games.writes.answers import absent_as_404
 
 SHARED_GAME_RELEASE = "Record this game as your own game to add a release to it."
@@ -96,16 +96,9 @@ def release_on_platform(
     return release_on(library, game, _platform_named(library, platform_name.strip()))
 
 
-PRERELEASE_DEFAULT = "Its default edition is a prerelease."
-
-
-def _landing_refusal(game: Game, edition: Edition | None) -> str | None:
-    """Why a new Release on the default Edition cannot land; None where it can."""
-    if edition is not None and edition.kind == EditionKind.PRERELEASE:
-        return PRERELEASE_DEFAULT
-    if game.library_id is None:
-        return SHARED_GAME_RELEASE
-    return None
+def _landing_refusal(game: Game) -> str | None:
+    """Why no new Release can land; None where it can."""
+    return SHARED_GAME_RELEASE if game.library_id is None else None
 
 
 def platform_refusal(game: Game, platform: Platform) -> str | None:
@@ -116,7 +109,7 @@ def platform_refusal(game: Game, platform: Platform) -> str | None:
         return refusal.sentence
     if _standing(edition, platform) is not None:
         return None
-    return _landing_refusal(game, edition)
+    return _landing_refusal(game)
 
 
 def standing_release_on(game: Game, platform: Platform) -> Release | None:
@@ -139,9 +132,6 @@ def release_on(library: UserLibrary, game: Game, platform: Platform) -> Platform
         standing = _standing(edition, platform)
         if standing is not None:
             return PlatformRelease(standing, created=False)
-        refusal = _landing_refusal(game, edition)
-        if refusal is not None:
-            raise RowRefused(refusal)
         statement = EditionState(
             key="edition",
             edition=edition,

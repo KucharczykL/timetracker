@@ -17,7 +17,6 @@ from common.date_time_presentation import (
 from common.opener_facts import Fixed
 from games.catalog_release import (
     NO_DEFAULT_EDITION,
-    PRERELEASE_DEFAULT,
     SHARED_GAME_RELEASE,
 )
 from games.commands.endpoint import ActStatement
@@ -130,7 +129,7 @@ def test_a_changed_platform_with_no_release_on_a_shared_game_is_refused(
     assert form.errors["platform"] == [SHARED_GAME_RELEASE]
 
 
-def test_a_changed_platform_on_a_prerelease_default_is_refused(
+def test_a_changed_platform_on_a_prerelease_default_is_accepted(
     owned_library, game, pc, console
 ):
     default_graph(
@@ -139,8 +138,7 @@ def test_a_changed_platform_on_a_prerelease_default_is_refused(
 
     form = _form(owned_library, _posted(game, platform=str(pc.pk)))
 
-    assert not form.is_valid()
-    assert form.errors["platform"] == [PRERELEASE_DEFAULT]
+    assert form.is_valid(), form.errors
 
 
 def test_several_editions_with_none_default_are_refused(owned_library, game, pc):
