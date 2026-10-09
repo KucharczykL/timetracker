@@ -23,6 +23,12 @@ def _open_log_from_navbar(page: Page, live_server) -> Locator:
     return dialog
 
 
+def _pick_tracked_game(dialog: Locator, game_id: int) -> None:
+    """Pick, then wait out the body's reload."""
+    pick_choice(dialog, "game", str(game_id))
+    expect(dialog.get_by_role("button", name="Save", exact=True)).to_be_visible()
+
+
 def _section(page: Page, section: str) -> Locator:
     return page.locator(f'dialog[data-log-section="{section}"]')
 
@@ -59,7 +65,7 @@ def test_add_playtime_opens_and_done_keeps_what_was_typed(
     game = create_tracked_game(e2e_library, "Tunic")
     page = authenticated_page
     dialog = _open_log_from_navbar(page, live_server)
-    pick_choice(dialog, "game", str(game.pk))
+    _pick_tracked_game(dialog, game.pk)
     section = _section(page, "playtime")
 
     _open_section(dialog, "playtime")
@@ -76,7 +82,7 @@ def test_a_refusal_reopens_its_section(authenticated_page, live_server, e2e_libr
     game = create_tracked_game(e2e_library, "Tunic")
     page = authenticated_page
     dialog = _open_log_from_navbar(page, live_server)
-    pick_choice(dialog, "game", str(game.pk))
+    _pick_tracked_game(dialog, game.pk)
     _open_section(dialog, "playtime")
     section = _section(page, "playtime")
     section.locator('input[name="duration_hours"]').fill("0")
