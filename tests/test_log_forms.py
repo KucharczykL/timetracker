@@ -178,19 +178,17 @@ def test_reversed_days_are_refused_on_finished_on(owned_library, game):
     assert form.errors["completed"] == [DATES_REVERSED]
 
 
-def test_an_unchanged_start_is_checked_against_the_page_it_showed(owned_library, game):
-    # The page showed a start after the finish; the finish alone changed.
+def test_a_cleared_start_is_not_checked_against_the_finish(owned_library, game):
+    # Clearing the start voids it, so an earlier finish is fine.
     data = _posted(
         game,
         started_seen="2026-05-01",
-        **_day("started", datetime.date(2026, 5, 1)),
         **_day("completed", datetime.date(2026, 4, 1)),
     )
 
     form = _form(owned_library, data)
 
-    assert not form.is_valid()
-    assert form.errors["completed"] == [DATES_REVERSED]
+    assert form.is_valid(), form.errors
 
 
 def test_a_typed_zero_duration_is_refused(owned_library, game):

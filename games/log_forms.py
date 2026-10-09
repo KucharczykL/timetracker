@@ -71,11 +71,6 @@ def _canonical(value: TemporalValue | None) -> str:
     return "" if value is None or value.canonical is None else value.canonical
 
 
-def _seen_day(seen: str) -> TemporalValue | None:
-    """The day a seen value names; None where it names none."""
-    return TemporalValue.parse(seen) if seen else None
-
-
 def normalised_note(value: str) -> str:
     return value.replace("\r\n", "\n").strip()
 
@@ -255,20 +250,13 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self._refuse_a_removed_game(game)
             self._refuse_a_platform(game, cleaned.get("platform"))
             self._refuse_a_run(game, cleaned.get("run"))
+        # Every endpoint shows; an empty field is cleared.
         if certainly_reversed(
-            earlier=self._day_or_seen(cleaned, "started"),
-            later=self._day_or_seen(cleaned, "completed"),
+            earlier=cleaned.get("started"), later=cleaned.get("completed")
         ):
             self.add_error("completed", DATES_REVERSED)
         self._refuse_a_playtime(cleaned)
         return cleaned
-
-    def _day_or_seen(self, cleaned: dict[str, Any], name: str) -> TemporalValue | None:
-        """The posted day, else the day the page showed."""
-        when: TemporalValue | None = cleaned.get(name)
-        if when is not None:
-            return when
-        return _seen_day(cleaned.get(f"{name}_seen") or "")
 
     def _refuse_a_removed_game(self, game: Game) -> None:
         if held_facts(self.library, game).removed:
