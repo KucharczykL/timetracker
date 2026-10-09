@@ -18,7 +18,6 @@ from games.models import (
     Game,
     LibraryEntry,
     Platform,
-    PlayerSession,
     Playthrough,
     Purchase,
     UserLibrary,
@@ -475,7 +474,7 @@ def test_adding_to_the_library_from_the_library_page_opens_the_dialog(
     assert errors == []
 
 
-def test_the_navbar_log_game_opens_the_session_dialog(
+def test_the_navbar_log_game_opens_the_log_dialog(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
     page = authenticated_page
@@ -484,7 +483,7 @@ def test_the_navbar_log_game_opens_the_session_dialog(
     page.get_by_role("link", name="Log game", exact=True).click()
 
     dialog = _dialog(page)
-    expect(dialog.locator('input[name="duration"]')).to_be_visible()
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Log a game")
     assert errors == []
 
 
@@ -498,15 +497,16 @@ def test_the_navbar_log_game_from_a_form_page_saves_without_reloading_the_host(
 
     dialog = _dialog(page)
     pick_choice(dialog, "game", str(game.pk))
+    #: The pick reloads the body for that game.
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Log Tunic")
     _submit(dialog).click()
 
     #: A form page is no read-only origin, so the host stays put.
     expect(page.locator(DIALOG)).to_have_count(0)
     expect(page.get_by_role("region", name="Notifications")).to_contain_text(
-        "Session added."
+        "Logged Tunic."
     )
     assert not _reloaded(page)
-    assert PlayerSession.objects.alive().count() == 1
     assert errors == []
 
 

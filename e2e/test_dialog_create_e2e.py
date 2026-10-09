@@ -70,7 +70,7 @@ def test_the_navbar_log_game_dialog_names_itself_under_a_picker_dialog(
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     page.get_by_role("link", name="Log game", exact=True).click()
     lower = page.locator("dialog[data-modal][open]").first
-    expect(lower.locator("[data-form-dialog-title]")).to_have_text("Add New Session")
+    expect(lower.locator("[data-form-dialog-title]")).to_have_text("Log a game")
 
     lower.locator('search-select[name="game"]').get_by_role(
         "link", name="New game"
@@ -79,7 +79,7 @@ def test_the_navbar_log_game_dialog_names_itself_under_a_picker_dialog(
     upper = page.locator("dialog[data-modal][open]").last
     expect(upper.locator("[data-form-dialog-title]")).to_have_text("Add New Game")
     #: Trail names the dialog it covers.
-    expect(upper.locator("[data-modal-trail]").first).to_have_text("Add New Session")
+    expect(upper.locator("[data-modal-trail]").first).to_have_text("Log a game")
     assert errors == []
 
 

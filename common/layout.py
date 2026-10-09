@@ -112,7 +112,7 @@ def NavbarLogButton(
     csrf_token: str = "",
     origin: OriginUrl | None = None,
 ) -> Node:
-    """The always-visible split button: primary opens the general add-session form,
+    """The always-visible split button: primary opens Log a game,
     the caret dropdown one-click-resumes each recent game. ``id`` identifies the
     control and its associated dropdown."""
     from common.components import (
