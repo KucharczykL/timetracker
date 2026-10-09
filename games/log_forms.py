@@ -46,6 +46,7 @@ from games.reads.playthrough_runs import (
     live_ordinary_runs,
     tracked_game,
 )
+from games.writes.endpoint import KEEP, Keep, Restated
 from games.writes.log_game import (
     RUN_SECTIONS,
     SECTIONS,
@@ -360,34 +361,34 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, CopyField
             self.add_error("playthrough", PICK_A_RUN)
 
     def statement(self) -> LogStatement:
-        """What the valid form states; each part only where ticked."""
+        """What the valid form states; a stub until the form is rewritten."""
         cleaned = self.cleaned_data
         ticked = self._ticked()
         run: Playthrough | None = cleaned.get("playthrough")
-        copy_ticked = "copy" in ticked
         return LogStatement(
             game=cleaned["game"],
-            sections=ticked,
-            copy=self.copy_statement("") if copy_ticked else None,
-            purchase=self.copy_purchase_draft("") if copy_ticked else None,
+            platform_id=None,
+            platform_changed=False,
             run_id=None if run is None else run.pk,
-            started=self._act("started", "started_seen") if "dates" in ticked else None,
+            started=self._act("started", "started_seen") if "dates" in ticked else KEEP,
             completed=(
-                self._act("completed", "completed_seen") if "dates" in ticked else None
+                self._act("completed", "completed_seen") if "dates" in ticked else KEEP
             ),
-            note=cleaned["note"] if "more" in ticked else None,
+            note=cleaned["note"] if "more" in ticked else KEEP,
             playtime=self._playtime() if "playtime" in ticked else None,
-            mastered=self._mastered() if "more" in ticked else None,
+            attempt=0,
+            mastered=self._mastered() if "more" in ticked else KEEP,
             status=(
-                PlayerGameStatus(cleaned["status"]) if cleaned.get("status") else None
+                PlayerGameStatus(cleaned["status"]) if cleaned.get("status") else KEEP
             ),
+            seen_status=None,
         )
 
-    def _act(self, name: str, seen_name: str) -> ActStatement | None:
+    def _act(self, name: str, seen_name: str) -> Restated[ActStatement]:
         """The day, where it differs from the one the page showed."""
         when: TemporalValue | None = self.cleaned_data.get(name)
         if when is None or _canonical(when) == self.cleaned_data.get(seen_name, ""):
-            return None
+            return KEEP
         return ActStatement(when, "")
 
     def _playtime(self) -> SessionTiming | HistoricalHours:
@@ -400,11 +401,11 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, CopyField
             day=cleaned["day"], duration=cleaned["duration"], device_id=device_id
         )
 
-    def _mastered(self) -> bool | None:
+    def _mastered(self) -> bool | Keep:
         cleaned = self.cleaned_data
         mastered = bool(cleaned["mastered"])
         if mastered == bool(cleaned.get("mastered_seen")):
-            return None
+            return KEEP
         return mastered
 
 

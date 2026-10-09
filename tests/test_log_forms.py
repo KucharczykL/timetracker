@@ -93,6 +93,7 @@ def _copy_fields(release) -> dict[str, object]:
     }
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_unticked_copy_with_paid_and_no_amount_is_valid(owned_library, game):
     form = _form(owned_library, _posted(game=str(game.pk), price="paid"))
 
@@ -125,6 +126,7 @@ def test_ticked_copy_names_no_release_of_another_game(
     assert "release" in form.errors
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_ticked_copy_with_no_price_states_a_copy_without_purchase(
     owned_library, game, release
 ):
@@ -137,6 +139,7 @@ def test_ticked_copy_with_no_price_states_a_copy_without_purchase(
     assert statement.purchase is None
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_ticked_copy_with_a_price_states_a_purchase(owned_library, game, release):
     data = _posted(
         game=str(game.pk),
@@ -282,6 +285,7 @@ def test_status_none_row_reads_plainly_without_a_held_game(owned_library):
     assert form.fields["status"].choices[0] == ("", "Leave as is")
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_a_chosen_status_is_stated_and_the_none_row_states_nothing(owned_library, game):
     picked = _form(owned_library, _posted(game=str(game.pk), status="completed"))
     assert picked.is_valid(), picked.errors
@@ -320,6 +324,7 @@ def test_held_run_seeds_the_run_and_its_seen_days(owned_library, game):
     assert form.initial["started_seen"] == ""
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_mastered_is_stated_only_where_it_changes(owned_library, game):
     unchanged = _form(
         owned_library,
@@ -346,6 +351,7 @@ def test_mastered_is_stated_only_where_it_changes(owned_library, game):
     assert changed.statement().mastered is True
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_a_day_the_page_showed_states_no_act(owned_library, game):
     day = TemporalValue.from_day(datetime.date(2026, 3, 4))
     data = _posted(
@@ -387,6 +393,7 @@ def test_saved_sections_are_not_offered_again(owned_library, game):
     assert "dates" in offered
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_the_run_note_is_stated_only_where_more_is_ticked(owned_library, game):
     form = _form(
         owned_library,

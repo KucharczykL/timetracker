@@ -1,40 +1,42 @@
 """The write a Log a game press makes, step by step."""
 
 import datetime
-from decimal import Decimal
+from typing import Any
 
 import pytest
+from entries import record_entry
 from graphs import default_graph
 
 from games.commands.endpoint import ActStatement
-from games.commands.libraryentry import EntryStatement
-from games.commands.purchase import StatedPrice
 from games.models import (
     Game,
     HistoricalPlaytime,
+    HistoricalPlaytimeRun,
     LibraryEntry,
     LibraryEvent,
+    Platform,
     PlayerGame,
     PlayerGameStatus,
     PlayerSession,
-    Purchase,
+    Playthrough,
 )
+from games.reads.playthrough_endpoints import stated_start
+from games.writes.endpoint import KEEP
 from games.writes.log_game import (
     HistoricalHours,
-    LogPlaytime,
     LogRefused,
-    LogSection,
     LogStatement,
     SessionTiming,
     log_game,
 )
-from games.writes.playergame import new_correlation_id, track_game, untrack_game
-from games.writes.purchase import PurchaseDraft
+from games.writes.playergame import new_correlation_id, track_game
+from games.writes.playthrough import start_run
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
 DAY = datetime.date(2026, 9, 1)
+LATER = datetime.date(2026, 9, 9)
 
 
 @pytest.fixture
@@ -48,55 +50,38 @@ def game(owned_library):
 
 
 @pytest.fixture
-def release(owned_library, game):
-    return default_graph(game, owned_library).release
+def pc(owned_library):
+    return Platform.objects.create(library=owned_library, name="PC")
+
+
+@pytest.fixture
+def console(owned_library):
+    return Platform.objects.create(library=owned_library, name="Xbox")
 
 
 def _day(day: datetime.date) -> ActStatement:
     return ActStatement(TemporalValue.from_day(day), "")
 
 
-def _copy(release) -> EntryStatement:
-    return EntryStatement(
-        release_id=release.pk,
-        access="owned",
-        format="digital",
-        note="",
-        acquired=_day(DAY),
-    )
+def _statement(game, **fields: Any) -> LogStatement:
+    """A press that states nothing but what `fields` names."""
+    defaults: dict[str, Any] = {
+        "platform_id": None,
+        "platform_changed": False,
+        "run_id": None,
+        "started": KEEP,
+        "completed": KEEP,
+        "note": KEEP,
+        "playtime": None,
+        "attempt": 0,
+        "mastered": KEEP,
+        "status": KEEP,
+        "seen_status": None,
+    }
+    return LogStatement(game=game, **(defaults | fields))
 
 
-def _statement(
-    game,
-    *,
-    sections: frozenset[LogSection] = frozenset(),
-    copy: EntryStatement | None = None,
-    purchase: PurchaseDraft | None = None,
-    run_id=None,
-    started: ActStatement | None = None,
-    completed: ActStatement | None = None,
-    note: str | None = None,
-    playtime: LogPlaytime | None = None,
-    mastered: bool | None = None,
-    status: PlayerGameStatus | None = None,
-) -> LogStatement:
-    """A press that ticks `sections` and states what it is given."""
-    return LogStatement(
-        game=game,
-        sections=sections,
-        copy=copy,
-        purchase=purchase,
-        run_id=run_id,
-        started=started,
-        completed=completed,
-        note=note,
-        playtime=playtime,
-        mastered=mastered,
-        status=status,
-    )
-
-
-def _press(user, statement, token=None, correlation_id=None):
+def _press(user, statement: LogStatement, token=None, correlation_id=None):
     return log_game(
         user,
         statement,
@@ -105,198 +90,204 @@ def _press(user, statement, token=None, correlation_id=None):
     )
 
 
+def _tracked(user, game) -> Playthrough:
+    track_game(user, game, correlation_id=new_correlation_id())
+    return Playthrough.objects.get(library=user.library, player_game__game=game)
+
+
 def _player_game(user, game) -> PlayerGame:
     return PlayerGame.objects.get(library=user.library, game=game)
 
 
-def test_a_copy_alone_records_one_entry(user, game, release):
-    statement = _statement(game, sections=frozenset({"copy"}), copy=_copy(release))
+def _session_timing(day: datetime.date = DAY) -> SessionTiming:
+    return SessionTiming(day=day, duration=datetime.timedelta(hours=2), device_id=None)
 
-    logged = _press(user, statement)
 
+def test_a_copy_alone_records_an_unknown_copy_on_a_created_release(user, game, pc):
+    logged = _press(
+        user,
+        _statement(game, platform_id=pc.pk, platform_changed=True),
+    )
+
+    entry = LibraryEntry.objects.get(library=user.library)
     assert logged.written == frozenset({"copy"})
     assert logged.tracked_the_game is True
-    assert LibraryEntry.objects.filter(library=user.library).count() == 1
+    assert (entry.access, entry.format) == ("unknown", "unknown")
+    assert entry.release.platform == pc
 
 
-def test_a_priced_copy_records_its_purchase(user, game, release):
-    purchase = PurchaseDraft(
-        copy=_copy(release),
-        kind="game",
-        name="",
-        price=StatedPrice(Decimal("9.99"), "EUR"),
-        note="",
-        purchased=_day(DAY),
-    )
-    statement = _statement(
-        game,
-        sections=frozenset({"copy"}),
-        copy=purchase.copy,
-        purchase=purchase,
-    )
+def test_an_unchanged_platform_records_no_copy(user, game, pc):
+    _tracked(user, game)
 
-    _press(user, statement)
+    _press(user, _statement(game, platform_id=pc.pk, platform_changed=False))
 
-    assert Purchase.objects.filter(entry__library=user.library).count() == 1
-    assert LibraryEntry.objects.filter(library=user.library).count() == 1
+    assert not LibraryEntry.objects.filter(library=user.library).exists()
 
 
-def test_a_session_alone_records_one_sitting_on_a_run(user, game):
-    statement = _statement(
-        game,
-        sections=frozenset({"playtime"}),
-        playtime=SessionTiming(
-            day=DAY, duration=datetime.timedelta(hours=2), device_id=None
+def test_a_held_platform_records_no_copy_and_the_session_names_its_release(
+    user, game, pc, owned_library
+):
+    held = default_graph(game, owned_library, platform=pc).release
+    record_entry(owned_library, held)
+
+    _press(
+        user,
+        _statement(
+            game,
+            platform_id=pc.pk,
+            platform_changed=True,
+            playtime=_session_timing(),
         ),
     )
 
-    logged = _press(user, statement)
-
-    assert logged.written == frozenset({"playtime"})
-    session = PlayerSession.objects.get(library=user.library)
-    assert session.effective_duration == datetime.timedelta(hours=2)
-    assert session.playthrough.player_game.game == game
+    assert LibraryEntry.objects.filter(library=user.library).count() == 1
+    assert PlayerSession.objects.get(library=user.library).release == held
 
 
-def test_a_historical_record_alone_states_no_day(user, game):
-    statement = _statement(
-        game,
-        sections=frozenset({"playtime"}),
-        playtime=HistoricalHours(
-            duration=datetime.timedelta(minutes=45), device_id=None
+def test_an_unheld_platform_on_a_standing_release_records_an_unknown_copy(
+    user, game, pc, owned_library
+):
+    standing = default_graph(game, owned_library, platform=pc).release
+
+    _press(user, _statement(game, platform_id=pc.pk, platform_changed=True))
+
+    entry = LibraryEntry.objects.get(library=user.library)
+    assert entry.release == standing
+    assert entry.access == "unknown"
+
+
+def test_playtime_on_an_untracked_game_names_the_run_track_made(user, game):
+    _press(
+        user,
+        _statement(
+            game,
+            playtime=HistoricalHours(
+                duration=datetime.timedelta(hours=3), device_id=None
+            ),
         ),
     )
 
-    _press(user, statement)
-
+    run = Playthrough.objects.get(library=user.library, player_game__game=game)
     record = HistoricalPlaytime.objects.get(library=user.library)
-    assert record.duration == datetime.timedelta(minutes=45)
-    assert record.when_lower is None
+    assert HistoricalPlaytimeRun.objects.filter(record=record, playthrough=run).exists()
 
 
-def test_mastered_alone_states_the_fact(user, game):
-    track_game(user, game, correlation_id=new_correlation_id())
-    statement = _statement(game, sections=frozenset({"more"}), mastered=True)
-
-    logged = _press(user, statement)
-
-    assert logged.written == frozenset({"more"})
-    assert _player_game(user, game).mastered is True
-
-
-def test_dates_state_the_run_and_the_completion_implies_completed(user, game):
-    statement = _statement(
-        game,
-        sections=frozenset({"dates"}),
-        started=_day(DAY),
-        completed=_day(DAY + datetime.timedelta(days=3)),
-    )
-
-    logged = _press(user, statement)
-
-    assert logged.written == frozenset({"dates"})
-    assert _player_game(user, game).status == PlayerGameStatus.COMPLETED
-
-
-def test_all_sections_on_an_untracked_game_track_it_once(user, game, release):
+def test_an_untracked_game_with_every_field_writes_under_one_correlation_id(
+    user, game, pc
+):
     correlation_id = new_correlation_id()
-    purchase = PurchaseDraft(
-        copy=_copy(release),
-        kind="game",
-        name="",
-        price=StatedPrice(Decimal("5.00"), "EUR"),
-        note="",
-        purchased=_day(DAY),
-    )
-    statement = _statement(
-        game,
-        sections=frozenset({"copy", "dates", "playtime", "more"}),
-        copy=purchase.copy,
-        purchase=purchase,
-        started=_day(DAY),
-        completed=_day(DAY),
-        note="Good run",
-        playtime=SessionTiming(
-            day=DAY, duration=datetime.timedelta(hours=1), device_id=None
+
+    logged = _press(
+        user,
+        _statement(
+            game,
+            platform_id=pc.pk,
+            platform_changed=True,
+            started=_day(DAY),
+            note="Saved the crew",
+            playtime=_session_timing(),
+            mastered=True,
+            status=PlayerGameStatus.SHELVED,
         ),
-        mastered=True,
-        status=PlayerGameStatus.ABANDONED,
+        correlation_id=correlation_id,
     )
 
-    logged = _press(user, statement, correlation_id=correlation_id)
-
-    assert logged.written == frozenset({"copy", "dates", "playtime", "more"})
-    assert logged.tracked_the_game is True
-    assert PlayerGame.objects.filter(library=user.library, game=game).count() == 1
-    events = LibraryEvent.objects.filter(library=user.library)
-    assert set(events.values_list("correlation_id", flat=True)) == {correlation_id}
     player_game = _player_game(user, game)
-    assert player_game.status == PlayerGameStatus.ABANDONED
+    assert logged.written == frozenset({"copy", "dates", "playtime", "more", "status"})
+    assert player_game.status == PlayerGameStatus.SHELVED
     assert player_game.mastered is True
-
-
-def test_a_picked_status_stands_over_an_implied_one(user, game):
-    statement = _statement(
-        game,
-        sections=frozenset({"dates"}),
-        completed=_day(DAY),
-        status=PlayerGameStatus.SHELVED,
+    assert (
+        LibraryEvent.objects.filter(
+            library=user.library, correlation_id=correlation_id
+        ).count()
+        > 1
     )
 
-    _press(user, statement)
+
+def test_an_unchanged_status_keeps_the_status_a_session_implies(user, game):
+    _tracked(user, game)
+
+    _press(user, _statement(game, playtime=_session_timing()))
+
+    assert _player_game(user, game).status == PlayerGameStatus.PLAYED
+
+
+def test_a_status_alone_records_it(user, game):
+    _tracked(user, game)
+
+    _press(user, _statement(game, status=PlayerGameStatus.SHELVED))
 
     assert _player_game(user, game).status == PlayerGameStatus.SHELVED
 
 
-def test_an_unpicked_status_leaves_the_implied_one(user, game):
-    statement = _statement(game, sections=frozenset({"dates"}), completed=_day(DAY))
-
-    _press(user, statement)
-
-    assert _player_game(user, game).status == PlayerGameStatus.COMPLETED
-
-
-def test_a_refused_run_after_a_saved_copy_keeps_the_copy(user, game, release):
-    reversed_run = _statement(
-        game,
-        sections=frozenset({"copy", "dates"}),
-        copy=_copy(release),
-        started=_day(DAY),
-        completed=_day(DAY - datetime.timedelta(days=30)),
+def test_a_changed_day_corrects_the_endpoint(user, game):
+    run = _tracked(user, game)
+    start_run(
+        user,
+        run,
+        TemporalValue.from_day(DAY),
+        implies_status=False,
+        correlation_id=new_correlation_id(),
     )
+
+    _press(user, _statement(game, started=_day(LATER)))
+
+    run.refresh_from_db()
+    assert stated_start(run).when == TemporalValue.from_day(LATER)
+
+
+def test_a_cleared_day_voids_the_act_and_keeps_the_status(user, game):
+    run = _tracked(user, game)
+    start_run(
+        user,
+        run,
+        TemporalValue.from_day(DAY),
+        implies_status=True,
+        correlation_id=new_correlation_id(),
+    )
+
+    _press(user, _statement(game, started=None))
+
+    run.refresh_from_db()
+    assert stated_start(run) is None
+    assert _player_game(user, game).status == PlayerGameStatus.PLAYED
+
+
+def test_a_dayless_act_survives_an_untouched_press(user, game):
+    run = _tracked(user, game)
+    start_run(
+        user,
+        run,
+        None,
+        implies_status=False,
+        correlation_id=new_correlation_id(),
+    )
+
+    _press(user, _statement(game, note="Something else"))
+
+    run.refresh_from_db()
+    assert stated_start(run) is not None
+    assert stated_start(run).when is None
+
+
+def test_a_note_alone_restates_the_run_note(user, game):
+    run = _tracked(user, game)
+
+    logged = _press(user, _statement(game, note="Left at the bridge"))
+
+    run.refresh_from_db()
+    assert run.note == "Left at the bridge"
+    assert logged.written == frozenset({"more"})
+
+
+def test_a_double_press_writes_once(user, game, pc):
     token = new_correlation_id()
-
-    with pytest.raises(LogRefused) as refused:
-        _press(user, reversed_run, token=token)
-
-    assert refused.value.step == "dates"
-    assert refused.value.written == frozenset({"copy"})
-    assert LibraryEntry.objects.filter(library=user.library).count() == 1
-
-    #: The page drops the saved copy and finishes the rest.
-    finished = _statement(
-        game,
-        sections=frozenset({"dates"}),
-        started=_day(DAY),
-        completed=_day(DAY + datetime.timedelta(days=1)),
-    )
-    logged = _press(user, finished, token=token)
-
-    assert logged.written == frozenset({"dates"})
-    assert LibraryEntry.objects.filter(library=user.library).count() == 1
-
-
-def test_a_double_press_writes_once(user, game, release):
     statement = _statement(
         game,
-        sections=frozenset({"copy", "playtime"}),
-        copy=_copy(release),
-        playtime=SessionTiming(
-            day=DAY, duration=datetime.timedelta(hours=1), device_id=None
-        ),
-        status=PlayerGameStatus.PLAYED,
+        platform_id=pc.pk,
+        platform_changed=True,
+        playtime=_session_timing(),
     )
-    token = new_correlation_id()
 
     _press(user, statement, token=token)
     _press(user, statement, token=token)
@@ -305,30 +296,13 @@ def test_a_double_press_writes_once(user, game, release):
     assert PlayerSession.objects.filter(library=user.library).count() == 1
 
 
-def test_a_removed_game_is_refused_on_the_game(user, game):
-    track_game(user, game, correlation_id=new_correlation_id())
-    untrack_game(user, game, correlation_id=new_correlation_id())
-    statement = _statement(game, sections=frozenset({"more"}), mastered=True)
+def test_a_refused_platform_on_a_shared_game_stops_at_platform(user, pc):
+    shared = Game.objects.create(library=None, name="Shared Game")
 
     with pytest.raises(LogRefused) as refused:
-        _press(user, statement)
+        _press(
+            user,
+            _statement(shared, platform_id=pc.pk, platform_changed=True),
+        )
 
-    assert refused.value.step == "game"
-    assert refused.value.written == frozenset()
-    assert not HistoricalPlaytime.objects.filter(library=user.library).exists()
-
-
-def test_playtime_alone_names_its_own_step_when_its_run_is_gone(user, game):
-    statement = _statement(
-        game,
-        sections=frozenset({"playtime"}),
-        run_id=new_correlation_id(),
-        playtime=SessionTiming(
-            day=DAY, duration=datetime.timedelta(hours=1), device_id=None
-        ),
-    )
-
-    with pytest.raises(LogRefused) as refused:
-        _press(user, statement)
-
-    assert refused.value.step == "playtime"
+    assert refused.value.step == "platform"

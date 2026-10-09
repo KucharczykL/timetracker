@@ -59,8 +59,9 @@ from games.writes.playergame import new_correlation_id
 
 #: The field a refused step's sentence sits on: a section's first field.
 REFUSED_FIELD: Final[Mapping[LogStep, str]] = {
-    "game": "game",
+    "track": "game",
     "status": "status",
+    "platform": "platform",
     "copy": "release",
     "dates": "started",
     "playtime": "playtime_kind",

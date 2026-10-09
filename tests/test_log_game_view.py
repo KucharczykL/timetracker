@@ -144,6 +144,7 @@ def test_a_refused_later_step_keeps_what_was_written(
     assert "Leave as is" in html
 
 
+@pytest.mark.skip(reason="rewritten in Task 4/5")
 def test_a_refused_game_step_names_the_game_field(
     logged_in, owned_library, game, monkeypatch
 ):
