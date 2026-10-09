@@ -1369,10 +1369,12 @@ _SHEET_DIALOG_CLASS = (
 #: Section sheet cap; calendars need more.
 _SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
 #: Content height; steady fills the screen.
+#: Steady never moves: the keyboard slides over it.
 _DROPDOWN_SHEET_SIZE_CLASS = (
     "mb-[var(--sheet-keyboard-inset,0px)] "
     "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))] "
-    "group-data-[sheet-steady]/sheet:h-[var(--sheet-visible-height,100dvh)] "
+    "group-data-[sheet-steady]/sheet:mb-0 "
+    "group-data-[sheet-steady]/sheet:h-dvh "
     "group-data-[sheet-steady]/sheet:max-h-none "
     "group-data-[sheet-steady]/sheet:rounded-t-none"
 )
@@ -1396,7 +1398,9 @@ def _sheet_dialog(
             class_=(
                 f"flex w-full {size_class} flex-col "
                 "overflow-hidden rounded-t-base border border-b-0 border-default-medium "
-                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
+                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} "
+                # A level's leading edge over the sheet below.
+                "group-data-[sheet-level]/sheet:shadow-[-12px_0_24px_-8px_rgb(0_0_0/0.3)]"
             ),
             motion="sheet",
         )[
@@ -1405,7 +1409,9 @@ def _sheet_dialog(
                 [(SHEET_ATTRIBUTES["body"], "")],
                 class_=(
                     "min-h-0 overflow-y-auto overscroll-contain px-2 pt-2 "
-                    "pb-[max(1rem,env(safe-area-inset-bottom))]"
+                    "pb-[max(1rem,env(safe-area-inset-bottom))] "
+                    # Content ends above the keyboard.
+                    "group-data-[sheet-steady]/sheet:pb-[calc(max(1rem,env(safe-area-inset-bottom))+var(--sheet-keyboard-inset,0px))]"
                 ),
             )[*as_children(children)],
         ]

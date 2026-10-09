@@ -146,10 +146,14 @@ def test_a_dropdown_sheet_rises_above_the_keyboard():
 
 def test_a_steady_dropdown_sheet_fills_the_screen():
     html = dropdown(sheet=SheetSpec("Day"))
-    assert (
-        "group-data-[sheet-steady]/sheet:h-[var(--sheet-visible-height,100dvh)]" in html
-    )
+    assert "group-data-[sheet-steady]/sheet:h-dvh" in html
     assert "group-data-[sheet-steady]/sheet:max-h-none" in html
+
+
+def test_a_steady_dropdown_sheet_stays_put_under_the_keyboard():
+    html = dropdown(sheet=SheetSpec("Day"))
+    assert "group-data-[sheet-steady]/sheet:mb-0" in html
+    assert "+var(--sheet-keyboard-inset,0px))]" in html
 
 
 def test_the_section_sheet_keeps_its_own_shape():
@@ -304,6 +308,14 @@ def test_a_sheet_leads_its_header_with_a_hidden_back_control():
 def test_a_sheet_level_backdrop_is_transparent():
     html = dropdown(sheet=SheetSpec("Day"))
     assert "data-sheet-level:backdrop:opacity-0!" in html
+
+
+def test_a_sheet_level_casts_a_leading_edge_shadow():
+    html = dropdown(sheet=SheetSpec("Day"))
+    assert (
+        "group-data-[sheet-level]/sheet:shadow-[-12px_0_24px_-8px_rgb(0_0_0/0.3)]"
+        in html
+    )
 
 
 def test_the_answer_check_refuses_a_sheetless_drop_down():

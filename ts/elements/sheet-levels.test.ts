@@ -4,6 +4,7 @@ import { clearLevel, popLevel, pushLevel } from "./sheet-levels.js";
 
 interface FakeAnimation {
   element: HTMLElement;
+  frames: Keyframe[];
   options: KeyframeAnimationOptions;
   cancel: ReturnType<typeof vi.fn>;
   finished: Promise<void>;
@@ -34,12 +35,12 @@ beforeEach(() => {
   document.documentElement.style.setProperty("--duration-slow-exit", "240ms");
   Object.defineProperty(HTMLElement.prototype, "animate", {
     configurable: true,
-    value(this: HTMLElement, _frames: Keyframe[], options: KeyframeAnimationOptions) {
+    value(this: HTMLElement, frames: Keyframe[], options: KeyframeAnimationOptions) {
       let end = (): void => {};
       const finished = new Promise<void>((resolve) => {
         end = resolve;
       });
-      const animation = { element: this, options, cancel: vi.fn(), finished, end };
+      const animation = { element: this, frames, options, cancel: vi.fn(), finished, end };
       animations.push(animation);
       return animation;
     },
@@ -62,7 +63,25 @@ async function settle(): Promise<void> {
 describe("level slides", () => {
   it("hold their last frame until the level settles", () => {
     pushLevel(sheet(), sheet(), "More filters");
-    expect(animations.map((animation) => animation.options.fill)).toEqual(["forwards", "forwards"]);
+    expect(animations.map((animation) => animation.options.fill)).toEqual([
+      "forwards",
+      "forwards",
+      "forwards",
+    ]);
+  });
+
+  it("darken the sheet below, never fade it", () => {
+    const below = sheet();
+    pushLevel(sheet(), below, "More filters");
+    const onBelow = animations.filter((animation) => animation.element === panelOf(below));
+    const panelFrames = onBelow.filter((animation) => !animation.options.pseudoElement);
+    const scrimFrames = onBelow.filter((animation) => animation.options.pseudoElement === "::after");
+    for (const animation of panelFrames) {
+      for (const frame of animation.frames) expect(frame).not.toHaveProperty("opacity");
+    }
+    expect(scrimFrames.map((animation) => animation.frames.map((frame) => frame.opacity))).toEqual([
+      [0, 0.3],
+    ]);
   });
 
   it("hide the sheet below before a push lets go of it", async () => {

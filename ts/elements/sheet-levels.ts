@@ -79,28 +79,44 @@ function easingOf(): string {
 
 type Direction = "push" | "pop";
 
-/** The level's frames and the sheet below's, for one direction. */
-function framesFor(direction: Direction): { level: Keyframe[]; below: Keyframe[] } {
-  const levelFrom = { transform: "translateX(100%)" };
-  const levelTo = { transform: "translateX(0)" };
-  const belowFrom = { transform: "translateX(0)", opacity: 1 };
-  const belowTo = { transform: "translateX(-30%)", opacity: 0.7 };
-  if (direction === "push") {
-    return { level: [levelFrom, levelTo], below: [belowFrom, belowTo] };
-  }
-  return { level: [levelTo, levelFrom], below: [belowTo, belowFrom] };
+/** The scrim darkens the sheet below; the page never shows. */
+const BELOW_SCRIM = 0.3;
+
+interface LevelFrames {
+  level: Keyframe[];
+  /** Empty: the sheet below stays still. */
+  below: Keyframe[];
+  scrim: Keyframe[];
 }
 
-/** Reduced motion: a crossfade, no slide. */
-function crossfadeFor(direction: Direction): { level: Keyframe[]; below: Keyframe[] } {
-  const shown = [{ opacity: 0 }, { opacity: 1 }];
-  const hidden = [{ opacity: 1 }, { opacity: 0 }];
-  return direction === "push"
-    ? { level: shown, below: hidden }
-    : { level: [...shown].reverse(), below: [...hidden].reverse() };
+function reversedFor(direction: Direction, frames: LevelFrames): LevelFrames {
+  if (direction === "push") return frames;
+  return {
+    level: [...frames.level].reverse(),
+    below: [...frames.below].reverse(),
+    scrim: [...frames.scrim].reverse(),
+  };
 }
 
-/** Plays the pair; no animation where the API or the duration is absent. */
+/** The level slides; the sheet below moves aside, darkening. */
+function framesFor(direction: Direction): LevelFrames {
+  return reversedFor(direction, {
+    level: [{ transform: "translateX(100%)" }, { transform: "translateX(0)" }],
+    below: [{ transform: "translateX(0)" }, { transform: "translateX(-30%)" }],
+    scrim: [{ opacity: 0 }, { opacity: BELOW_SCRIM }],
+  });
+}
+
+/** Reduced motion: the level fades over a still sheet. */
+function crossfadeFor(direction: Direction): LevelFrames {
+  return reversedFor(direction, {
+    level: [{ opacity: 0 }, { opacity: 1 }],
+    below: [],
+    scrim: [{ opacity: 0 }, { opacity: BELOW_SCRIM }],
+  });
+}
+
+/** Plays the slide; no animation where the API or the duration is absent. */
 function playLevel(
   level: HTMLDialogElement,
   below: HTMLDialogElement,
@@ -119,7 +135,12 @@ function playLevel(
     // No snap back before the settle.
     fill: "forwards",
   };
-  return [levelPanel.animate(frames.level, timing), belowPanel.animate(frames.below, timing)];
+  const animations = [
+    levelPanel.animate(frames.level, timing),
+    belowPanel.animate(frames.scrim, { ...timing, pseudoElement: "::after" }),
+  ];
+  if (frames.below.length > 0) animations.push(belowPanel.animate(frames.below, timing));
+  return animations;
 }
 
 function cancelAll(animations: readonly Animation[]): void {
