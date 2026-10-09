@@ -1360,8 +1360,7 @@ No template renders at runtime; UI is Python components.
 
 - **Alpine.js** (vendored) — three `x-mask` inputs in the session, price and
   settings forms, nothing else; the toasts and both domain selectors are custom elements
-- **Flowbite** — its CSS theme and semantic tokens still in use; legacy
-  `flowbite.min.js` bundle is vendored static asset only
+- **Flowbite** — its CSS theme and semantic tokens still in use
 - **Tailwind CSS** — compiled from `common/input.css` → `games/static/base.css`
 - All third-party JS served locally from `games/static/js/` (no CDNs), so pages
   and browser tests work offline
