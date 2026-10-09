@@ -1,20 +1,41 @@
 import { reportClientError } from "../client-errors.js";
 import { readLogSectionsProps } from "../generated/props.js";
+import { FORM_DIALOG_RELOAD, type FormDialogReloadDetail } from "./form-dialog/events.js";
+import { browser } from "./form-dialog/navigation.js";
 import { MODAL_CHANGE, attachModal, type Modal } from "./modal-layer.js";
+import type { SearchSelectChangeDetail } from "./search-select.js";
 
 export const SECTION_DIALOG = "data-log-section";
 export const SECTION_DONE = "data-log-section-done";
 export const SECTION_EDIT = "data-log-section-edit";
-export const SECTIONS_HINT = "data-log-sections-hint";
-const TICK_SELECTOR = 'input[type="checkbox"][name="sections"]';
+/** Space-separated field names; one held value marks the section held. */
+export const SECTION_HOLDS = "data-log-section-holds";
+export const SECTION_IDLE = "data-log-section-idle";
+export const SECTION_HELD = "data-log-section-held";
+const GAME_FIELD = "game";
 
-type Section = string; // e.g. "copy"
+type Section = string; // e.g. "playtime"
 
 function report(detail: string): void {
   reportClientError("log-sections", detail, { toast: false });
 }
 
-/** Each ticked section opens its own dialog. */
+function fieldHolds(field: HTMLInputElement | HTMLTextAreaElement): boolean {
+  if (field instanceof HTMLInputElement && field.type === "checkbox") return field.checked;
+  return field.value.trim() !== "";
+}
+
+/** A section holds a value once one of its named fields does. */
+function sectionHolds(dialog: HTMLDialogElement): boolean {
+  const names = (dialog.getAttribute(SECTION_HOLDS) ?? "").split(" ").filter(Boolean);
+  return names.some((name) =>
+    Array.from(
+      dialog.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`),
+    ).some(fieldHolds),
+  );
+}
+
+/** Each section's dialog opens from its opener; a picked game reloads the form. */
 class LogSectionsElement extends HTMLElement {
   private readonly modals = new Map<Section, Modal>();
   /** Opens once the layer allows it. */
@@ -24,22 +45,14 @@ class LogSectionsElement extends HTMLElement {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
       const section = dialog.getAttribute(SECTION_DIALOG) ?? "";
       if (this.modals.has(section)) continue;
-      this.modals.set(
-        section,
-        attachModal(dialog, {
-          // ×, Escape, backdrop: the section is not added.
-          dismiss: () => {
-            const tick = this.tick(section);
-            if (tick) tick.checked = false;
-            this.modals.get(section)?.close();
-          },
-        }),
-      );
+      // Done, ×, Escape and the backdrop all close it and keep its fields.
+      this.modals.set(section, attachModal(dialog));
     }
-    this.addEventListener("change", this.onChange);
+    this.addEventListener("input", this.syncHeld);
+    this.addEventListener("change", this.syncHeld);
     this.addEventListener("click", this.onClick);
-    this.addEventListener("search-select:change", this.syncTicks);
-    this.syncTicks();
+    this.addEventListener("search-select:change", this.onGamePick);
+    this.syncHeld();
     const { openSection } = readLogSectionsProps(this);
     if (openSection) {
       this.pending = openSection;
@@ -49,33 +62,27 @@ class LogSectionsElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    this.removeEventListener("change", this.onChange);
+    this.removeEventListener("input", this.syncHeld);
+    this.removeEventListener("change", this.syncHeld);
     this.removeEventListener("click", this.onClick);
-    this.removeEventListener("search-select:change", this.syncTicks);
+    this.removeEventListener("search-select:change", this.onGamePick);
     window.removeEventListener(MODAL_CHANGE, this.openPending);
     this.pending = null;
+    // A reload replaces the body, and its dialogs with it.
+    this.modals.clear();
   }
 
-  /** Every section needs a game. */
-  private readonly syncTicks = (): void => {
-    const held = Array.from(this.querySelectorAll<HTMLInputElement>('input[name="game"]')).some(
-      (input) => input.value !== "",
-    );
-    for (const tick of this.querySelectorAll<HTMLInputElement>(TICK_SELECTOR)) {
-      tick.disabled = !held;
-    }
-    for (const hint of this.querySelectorAll<HTMLElement>(`[${SECTIONS_HINT}]`)) {
-      hint.hidden = held;
+  /** Each opener reads "held" while its section holds a value. */
+  private readonly syncHeld = (): void => {
+    for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
+      const section = dialog.getAttribute(SECTION_DIALOG) ?? "";
+      const held = sectionHolds(dialog);
+      for (const opener of this.querySelectorAll<HTMLElement>(`[${SECTION_EDIT}="${section}"]`)) {
+        opener.querySelector(`[${SECTION_IDLE}]`)?.toggleAttribute("hidden", held);
+        opener.querySelector(`[${SECTION_HELD}]`)?.toggleAttribute("hidden", !held);
+      }
     }
   };
-
-  private tick(section: Section): HTMLInputElement | null {
-    return (
-      Array.from(this.querySelectorAll<HTMLInputElement>(TICK_SELECTOR)).find(
-        (input) => input.value === section,
-      ) ?? null
-    );
-  }
 
   private open(section: Section, opener?: HTMLElement): boolean {
     const modal = this.modals.get(section);
@@ -95,10 +102,26 @@ class LogSectionsElement extends HTMLElement {
     window.removeEventListener(MODAL_CHANGE, this.openPending);
   };
 
-  private readonly onChange = (event: Event): void => {
-    const tick = event.target;
-    if (!(tick instanceof HTMLInputElement) || !tick.matches(TICK_SELECTOR)) return;
-    if (tick.checked) this.open(tick.value, tick);
+  /** A pick of a game reloads the page for that game; typed fields below it go. */
+  private readonly onGamePick = (event: Event): void => {
+    const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
+    if (detail.name !== GAME_FIELD || detail.none) return;
+    const picked = detail.values[0];
+    if (!picked) return;
+    const { route, origin } = readLogSectionsProps(this);
+    const url = new URL(route, location.href);
+    url.searchParams.set("prefill_game", picked);
+    if (origin) url.searchParams.set("origin", origin);
+    if (this.closest("dialog[data-modal]")) {
+      this.dispatchEvent(
+        new CustomEvent<FormDialogReloadDetail>(FORM_DIALOG_RELOAD, {
+          bubbles: true,
+          detail: { url: url.href },
+        }),
+      );
+      return;
+    }
+    browser.assign(url.href);
   };
 
   private readonly onClick = (event: MouseEvent): void => {

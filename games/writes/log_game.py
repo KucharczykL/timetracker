@@ -50,15 +50,11 @@ from games.writes.playthrough import (
     void_run_endpoint,
 )
 
-type LogSection = Literal["copy", "dates", "playtime", "more"]
-
-#: The order the page lists its sections in.
-SECTIONS: Final[tuple[LogSection, ...]] = ("copy", "dates", "playtime", "more")
-#: Sections whose writes name a run.
-RUN_SECTIONS: Final[frozenset[LogSection]] = frozenset({"dates", "playtime", "more"})
-
-#: A refused step: a section, or the game's tracking, its status or its platform.
-type LogStep = LogSection | Literal["track", "status", "platform"]
+#: A refused step: the game's tracking, its copy, its dates, its playtime,
+#: its mastery and note, its status, or its platform.
+type LogStep = Literal[
+    "track", "copy", "dates", "playtime", "more", "status", "platform"
+]
 
 PICKED_RUN_GONE = "That playthrough is no longer held. Reload the page and try again."
 UNHELD_PLATFORM = "That platform is not held. Reload the page and try again."

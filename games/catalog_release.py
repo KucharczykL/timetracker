@@ -15,7 +15,7 @@ from games.api_creation import RowRefused
 from games.catalog_compat import write_and_mirror
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.events.dispatch import RowNotHeld
-from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
 from games.writes.answers import absent_as_404
 
 SHARED_GAME_RELEASE = "Record this game as your own game to add a release to it."
@@ -94,6 +94,28 @@ def release_on_platform(
     if game.library_id is None:
         raise RowRefused(SHARED_GAME_RELEASE)
     return release_on(library, game, _platform_named(library, platform_name.strip()))
+
+
+PRERELEASE_DEFAULT = "Its default edition is a prerelease."
+
+
+def platform_refusal(game: Game, platform: Platform) -> str | None:
+    """Why `release_on` cannot land a Release on this platform, read only.
+
+    None where a standing Release reads or a new one can be made. Asked
+    before a write, so the refusal names its field and writes nothing.
+    """
+    try:
+        edition = _default_edition(game)
+    except RowRefused as refusal:
+        return refusal.sentence
+    if _standing(edition, platform) is not None:
+        return None
+    if edition is not None and edition.kind == EditionKind.PRERELEASE:
+        return PRERELEASE_DEFAULT
+    if game.library_id is None:
+        return SHARED_GAME_RELEASE
+    return None
 
 
 def standing_release_on(game: Game, platform: Platform) -> Release | None:

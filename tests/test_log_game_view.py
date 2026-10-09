@@ -1,6 +1,5 @@
 """The Log a game page: what it renders, writes and says when a step refuses."""
 
-import datetime
 import re
 import uuid
 
@@ -8,18 +7,18 @@ import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from graphs import default_graph
+from stated_runs import state_run
 from tracked_games import create_tracked_game
 
-from games.models import Game, LibraryEntry
+from games.models import Game, LibraryEntry, PlayerGameStatus
 from games.views import log_game as log_game_view
 from games.writes.answers import CommandFailed
 from games.writes.log_game import LogRefused
-from timetracker.temporal import temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 SUBMISSION = str(uuid.UUID("01928e5e-4f6b-7c3a-8e9d-000000000002"))
-DAY = datetime.date(2026, 9, 1)
+DAY = "2026-09-01"
 
 
 @pytest.fixture
@@ -33,10 +32,12 @@ def game(owned_library):
     return create_tracked_game(owned_library, "Tunic")
 
 
-def _page(client, game: Game | None = None) -> str:
+def _page(client, game: Game | None = None, *, prefill: Game | None = None) -> str:
     url = reverse("games:log_game")
     if game is not None:
         url = f"{url}?game={game.pk}"
+    if prefill is not None:
+        url = f"{url}?prefill_game={prefill.pk}"
     return client.get(url).content.decode()
 
 
@@ -46,25 +47,30 @@ def _title(html: str) -> str:
     return found.group(1).strip().removeprefix("Timetracker - ")
 
 
-def _day(name: str, day: datetime.date) -> dict[str, str]:
-    return {
-        temporal_input_name(name, "kind"): "date",
-        temporal_input_name(name, "start_year"): str(day.year),
-        temporal_input_name(name, "start_month"): str(day.month),
-        temporal_input_name(name, "start_day"): str(day.day),
-    }
-
-
-def _copy_post(release) -> dict[str, object]:
+def _press(game: Game, **fields: object) -> dict[str, object]:
+    """A press that changes nothing but what `fields` names."""
     posted: dict[str, object] = {
         "submission": SUBMISSION,
-        "sections": ["copy"],
-        "release": str(release.pk),
-        "access": "owned",
-        "format": "digital",
-        "price": "none",
+        "game": str(game.pk),
+        "status": "unplayed",
+        "status_seen": "unplayed",
+        "platform_seen": "",
+        "started_seen": "",
+        "completed_seen": "",
+        "note_seen": "",
+        "mastered_seen": "False",
+        "attempt": "0",
+        "playtime_kind": "session",
+        "duration_hours": "",
+        "duration_minutes": "",
+        "device": "",
+        "day": DAY,
     }
-    return posted | _day("acquired", DAY)
+    return posted | fields
+
+
+def _post(client, game: Game, data: dict[str, object]):
+    return client.post(f"{reverse('games:log_game')}?game={game.pk}", data)
 
 
 def test_the_page_renders_under_its_plain_title(logged_in):
@@ -80,48 +86,97 @@ def test_a_fixed_game_titles_the_page_with_its_name(logged_in, game):
     assert _title(html) == "Log Tunic"
 
 
-def test_a_held_game_states_its_status_and_playtime(logged_in, game):
-    html = _page(logged_in, game)
+def test_a_prefilled_game_titles_the_page_and_stays_editable(logged_in, game):
+    html = _page(logged_in, prefill=game)
 
-    assert "Leave as is: Unplayed" in html
-    assert "No playtime yet" in html
-    assert "Not mastered" in html
+    assert _title(html) == "Log Tunic"
+    assert f'value="{game.pk}"' in html
+    assert "Save" in html
 
 
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_a_held_copy_is_summarised_with_another_copy_label(
-    logged_in, owned_library, game
+def test_a_tracked_game_prefills_its_status_mastery_and_note(
+    logged_in, owned_user, owned_library
 ):
-    release = default_graph(game, owned_library).release
-    response = logged_in.post(
-        f"{reverse('games:log_game')}?game={game.pk}",
-        _copy_post(release),
+    game = create_tracked_game(
+        owned_library, "Hades", status=PlayerGameStatus.COMPLETED, mastered=True
     )
+    state_run(owned_user, game, note="Second pass")
 
-    assert response.status_code == 302
-    assert LibraryEntry.objects.filter(library=owned_library).count() == 1
     html = _page(logged_in, game)
-    assert "Another copy" in html
+
+    assert 'name="status_seen" value="completed"' in html
+    assert 'name="mastered_seen" value="True"' in html
+    assert 'name="note_seen" value="Second pass"' in html
+    assert "Second pass" in html
+
+
+def test_an_untracked_game_is_logged_by_create_log(logged_in):
+    html = _page(logged_in)
+
+    assert ">Create log<" in html
+
+
+def test_a_tracked_game_is_saved(logged_in, game):
+    html = _page(logged_in, game)
+
+    assert ">Save<" in html
+
+
+def test_the_inline_fields_and_the_two_openers_render(logged_in, game):
+    html = _page(logged_in, game)
+
+    assert 'name="status"' in html
+    assert 'name="platform"' in html
+    assert 'data-log-section-edit="playtime"' in html
+    assert 'data-log-section-edit="more"' in html
+    assert "Add playtime…" in html
+    assert "Mastered and note…" in html
+
+
+def test_each_nested_section_renders_in_its_own_dialog(logged_in):
+    html = _page(logged_in)
+
+    for section in ("playtime", "more"):
+        assert f'data-log-section="{section}"' in html
+
+
+def test_a_fresh_page_opens_no_section(logged_in):
+    assert 'open-section=""' in _page(logged_in)
+
+
+def test_the_element_names_the_route_and_no_origin(logged_in):
+    html = _page(logged_in)
+
+    assert f'route="{reverse("games:log_game")}"' in html
+    assert 'origin=""' in html
 
 
 def test_a_valid_press_redirects_to_game_detail_with_a_toast(
     logged_in, owned_library, game
 ):
-    release = default_graph(game, owned_library).release
-    response = logged_in.post(
-        f"{reverse('games:log_game')}?game={game.pk}",
-        _copy_post(release),
-    )
+    response = _post(logged_in, game, _press(game))
 
     assert response.url == reverse("games:view_game", args=[game.pk, game.url_slug])
     texts = [message.message for message in get_messages(response.wsgi_request)]
     assert "Logged Tunic." in texts
 
 
+def test_a_changed_platform_records_a_copy(logged_in, owned_library, game, owned_user):
+    from games.models import Platform
+
+    pc = Platform.objects.create(library=owned_library, name="PC")
+    default_graph(game, owned_library, platform=pc)
+
+    response = _post(logged_in, game, _press(game, platform=str(pc.pk)))
+
+    assert response.status_code == 302
+    entry = LibraryEntry.objects.get(library=owned_library)
+    assert (entry.access, entry.format) == ("unknown", "unknown")
+
+
 def test_a_refused_later_step_keeps_what_was_written(
     logged_in, owned_library, game, monkeypatch
 ):
-    release = default_graph(game, owned_library).release
     refusal = LogRefused(
         "dates",
         CommandFailed("That playthrough has ended.", 409),
@@ -132,70 +187,81 @@ def test_a_refused_later_step_keeps_what_was_written(
         raise refusal
 
     monkeypatch.setattr(log_game_view, "log_game", refuse)
-    data = _copy_post(release) | {"sections": ["copy", "dates"]}
 
-    response = logged_in.post(f"{reverse('games:log_game')}?game={game.pk}", data)
+    response = _post(logged_in, game, _press(game))
 
     assert response.status_code == 409
     html = response.content.decode()
-    assert "Saved: Copy and price" in html
     assert "That playthrough has ended." in html
-    assert not re.search(r'<input[^>]*value="copy"[^>]*type="checkbox"', html)
-    assert "Leave as is" in html
 
 
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_a_refused_game_step_names_the_game_field(
-    logged_in, owned_library, game, monkeypatch
-):
+def test_a_refused_step_names_its_field(logged_in, game, monkeypatch):
     refusal = LogRefused(
-        "game",
-        CommandFailed("Restore it instead.", 409),
-        frozenset(),
+        "track", CommandFailed("Restore it instead.", 409), frozenset()
     )
 
     def refuse(*args, **kwargs):
         raise refusal
 
     monkeypatch.setattr(log_game_view, "log_game", refuse)
-    response = logged_in.post(
-        f"{reverse('games:log_game')}?game={game.pk}",
-        {"submission": SUBMISSION, "sections": ["more"], "mastered": "on"},
-    )
+
+    response = _post(logged_in, game, _press(game))
 
     assert response.status_code == 409
     assert "Restore it instead." in response.content.decode()
 
 
-def test_each_section_renders_in_its_own_dialog(logged_in):
-    html = _page(logged_in)
+def test_a_written_playtime_is_dropped_and_its_attempt_raised(
+    logged_in, game, monkeypatch
+):
+    refusal = LogRefused(
+        "more",
+        CommandFailed("That run is removed.", 409),
+        frozenset({"playtime"}),
+    )
 
-    for section in ("copy", "dates", "playtime", "more"):
-        assert f'data-log-section="{section}"' in html
+    def refuse(*args, **kwargs):
+        raise refusal
 
+    monkeypatch.setattr(log_game_view, "log_game", refuse)
 
-def test_the_price_fieldset_is_the_price_group(logged_in):
-    # The amount row shows only inside its price group.
-    html = _page(logged_in)
+    response = _post(
+        logged_in,
+        game,
+        _press(game, duration_hours="2", duration_minutes="0", attempt="1"),
+    )
 
-    assert re.search(r"<fieldset[^>]*group/price", html)
-
-
-def test_a_refused_section_opens_on_load(logged_in, owned_library, game):
-    release = default_graph(game, owned_library).release
-    data = _copy_post(release) | {"price": "paid"}
-
-    response = logged_in.post(f"{reverse('games:log_game')}?game={game.pk}", data)
-
-    assert 'open-section="copy"' in response.content.decode()
-
-
-def test_a_fresh_page_opens_no_section(logged_in):
-    assert 'open-section=""' in _page(logged_in)
+    html = response.content.decode()
+    assert 'name="attempt" value="2"' in html
+    assert 'name="duration_hours" value="2"' not in html
 
 
-def test_the_add_ticks_name_themselves_once(logged_in):
-    html = _page(logged_in)
+def test_a_zero_duration_refusal_opens_its_section(logged_in, game):
+    response = _post(
+        logged_in,
+        game,
+        _press(game, duration_hours="0", duration_minutes="0"),
+    )
 
-    shown = re.sub(r'<legend class="sr-only">[^<]*</legend>', "", html)
-    assert len(re.findall(r">\s*Add\s*<", shown)) == 1
+    assert response.status_code == 200
+    assert 'open-section="playtime"' in response.content.decode()
+
+
+def test_a_removed_game_is_refused_on_the_page(logged_in, owned_library, game):
+    from games.models import PlayerGame
+
+    PlayerGame.objects.filter(library=owned_library, game=game).update(
+        removed_at="2026-09-01T00:00:00+00:00"
+    )
+
+    response = _post(logged_in, game, _press(game))
+
+    assert response.status_code == 200
+    assert "Restore it instead." in response.content.decode()
+
+
+def test_the_fresh_page_is_not_a_refused_one(logged_in, game):
+    html = _page(logged_in, game)
+
+    assert "Restore it instead." not in html
+    assert "aria-invalid" not in html

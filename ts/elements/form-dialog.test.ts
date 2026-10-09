@@ -1802,3 +1802,25 @@ describe("unsaved changes", () => {
     expect(unload()).toBe(true);
   });
 });
+
+describe("reload", () => {
+  it("replaces the dialog's body and takes it as the baseline", async () => {
+    const dialog = await openPage();
+    body(dialog).querySelector<HTMLInputElement>('input[name="name"]')!.value = "typed";
+    replies.push(
+      reply(page(`<form method="post"><input name="name" value="Fresh"></form>`)),
+    );
+
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail: { url: EDIT } }),
+    );
+    await settle();
+
+    expect(body(dialog).querySelector<HTMLInputElement>('input[name="name"]')!.value).toBe(
+      "Fresh",
+    );
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+  });
+});

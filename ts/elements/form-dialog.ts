@@ -22,6 +22,8 @@ import { type Answer, type Messages, type Page, readAnswer, sameUrl } from "./fo
 import {
   FORM_DIALOG_CREATED,
   type FormDialogCreatedDetail,
+  FORM_DIALOG_RELOAD,
+  type FormDialogReloadDetail,
   PAGE_STALE,
 } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
@@ -300,6 +302,7 @@ export class FormDialogElement extends HTMLElement {
     document.addEventListener("click", this.onClick);
     document.addEventListener("submit", this.onSubmit);
     document.addEventListener(PAGE_STALE, this.onPageStale);
+    document.addEventListener(FORM_DIALOG_RELOAD, this.onReload);
     window.addEventListener("beforeunload", this.onBeforeUnload);
     const opener = takeHandedOffOpener();
     if (opener) focusOpener(opener);
@@ -309,6 +312,7 @@ export class FormDialogElement extends HTMLElement {
     document.removeEventListener("click", this.onClick);
     document.removeEventListener("submit", this.onSubmit);
     document.removeEventListener(PAGE_STALE, this.onPageStale);
+    document.removeEventListener(FORM_DIALOG_RELOAD, this.onReload);
     window.removeEventListener("beforeunload", this.onBeforeUnload);
     window.removeEventListener(MODAL_CHANGE, this.onModalChange);
   }
@@ -478,6 +482,29 @@ export class FormDialogElement extends HTMLElement {
     this.reload = mergeReload(this.reload, { opener });
     this.requestReload();
   };
+
+  /** Refetches a dialog's page in place; what it now shows is the baseline. */
+  private readonly onReload = (event: Event): void => {
+    const detail = (event as CustomEvent<FormDialogReloadDetail>).detail;
+    const holding = event.target instanceof Node ? this.entryHolding(event.target) : undefined;
+    const entry = holding ?? this.stack[this.stack.length - 1];
+    if (!entry || !detail?.url) return;
+    void this.reloadInto(entry, new URL(detail.url, location.href));
+  };
+
+  private async reloadInto(entry: OpenDialog, url: URL): Promise<void> {
+    try {
+      const route = routeOpen(await this.fetchAnswer(url));
+      if (route.kind !== "present") {
+        report(`reload of ${url.href} answered ${route.kind}`);
+        return;
+      }
+      await this.present(entry, route.page, route.url, entry.controller.signal, false);
+      if (this.stack.includes(entry)) this.rebaseline(entry);
+    } catch (error) {
+      report(`reload of ${url.href} failed: ${String(error)}`);
+    }
+  }
 
   private entryHolding(node: Node): OpenDialog | undefined {
     return this.stack.find((entry) => entry.body.contains(node));

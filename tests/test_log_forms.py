@@ -1,4 +1,4 @@
-"""The Log a game form: each section's checks, and what it states."""
+"""The Log a game form: what it refuses, and what each press states."""
 
 import datetime
 import uuid
@@ -15,16 +15,29 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from common.opener_facts import Fixed
+from games.catalog_release import (
+    NO_DEFAULT_EDITION,
+    PRERELEASE_DEFAULT,
+    SHARED_GAME_RELEASE,
+)
 from games.commands.endpoint import ActStatement
 from games.log_forms import (
+    ANOTHER_GAMES_RUN,
     DATES_REVERSED,
     DAY_REQUIRED,
-    PICK_A_RUN,
+    REMOVED_GAME,
     ZERO_DURATION,
     LogGameForm,
 )
-from games.models import Game, PlayerGameStatus
+from games.models import (
+    EditionKind,
+    Game,
+    Platform,
+    PlayerGame,
+    PlayerGameStatus,
+)
 from games.reads.log_game import HeldFacts
+from games.writes.endpoint import KEEP
 from games.writes.log_game import HistoricalHours, SessionTiming
 from timetracker.temporal import TemporalValue, temporal_input_name
 
@@ -46,26 +59,10 @@ def _day(name: str, day: datetime.date) -> dict[str, str]:
     }
 
 
-@pytest.fixture
-def game(owned_library):
-    return create_tracked_game(owned_library, "Tunic")
-
-
-@pytest.fixture
-def release(owned_library, game):
-    return default_graph(game, owned_library).release
-
-
-@pytest.fixture
-def other_release(owned_library):
-    other = create_tracked_game(owned_library, "Hades")
-    return default_graph(other, owned_library).release
-
-
-def _form(owned_library, data=None, **kwargs):
+def _form(library, data=None, **kwargs) -> LogGameForm:
     return LogGameForm(
         data,
-        library=owned_library,
+        library=library,
         presentation=PRESENTATION,
         today=TODAY,
         prefix=None,
@@ -73,95 +70,104 @@ def _form(owned_library, data=None, **kwargs):
     )
 
 
-def _posted(**fields) -> dict[str, object]:
-    """A press with nothing ticked: every section left as it is."""
-    return {
+def _posted(game=None, **fields) -> dict[str, object]:
+    """A press that changes nothing: every seen value posted as shown."""
+    posted: dict[str, object] = {
         "submission": SUBMISSION,
-        "price": "paid",
+        "status": "unplayed",
+        "status_seen": "unplayed",
+        "platform_seen": "",
+        "started_seen": "",
+        "completed_seen": "",
+        "note_seen": "",
+        "mastered_seen": "False",
+        "attempt": "0",
         "playtime_kind": "session",
-    } | fields
-
-
-def _copy_fields(release) -> dict[str, object]:
-    return {
-        "sections": ["copy"],
-        "release": str(release.pk),
-        "access": "owned",
-        "format": "digital",
-        "price": "none",
-        **_day("acquired", datetime.date(2026, 9, 1)),
+        "duration_hours": "",
+        "duration_minutes": "",
     }
+    if game is not None:
+        posted["game"] = str(game.pk)
+    return posted | fields
 
 
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_unticked_copy_with_paid_and_no_amount_is_valid(owned_library, game):
-    form = _form(owned_library, _posted(game=str(game.pk), price="paid"))
-
-    assert form.is_valid(), form.errors
-    statement = form.statement()
-    assert statement.sections == frozenset()
-    assert statement.copy is None
-    assert statement.purchase is None
+@pytest.fixture
+def game(owned_library):
+    return create_tracked_game(owned_library, "Tunic")
 
 
-def test_ticked_copy_paid_without_amount_is_refused_on_amount(
-    owned_library, game, release
-):
-    data = _posted(game=str(game.pk), **(_copy_fields(release) | {"price": "paid"}))
-
-    form = _form(owned_library, data)
-
-    assert not form.is_valid()
-    assert "amount" in form.errors
+@pytest.fixture
+def pc(owned_library):
+    return Platform.objects.create(library=owned_library, name="PC")
 
 
-def test_ticked_copy_names_no_release_of_another_game(
-    owned_library, game, other_release
-):
-    data = _posted(game=str(game.pk), **_copy_fields(other_release))
-
-    form = _form(owned_library, data)
-
-    assert not form.is_valid()
-    assert "release" in form.errors
+@pytest.fixture
+def console(owned_library):
+    return Platform.objects.create(library=owned_library, name="Xbox")
 
 
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_ticked_copy_with_no_price_states_a_copy_without_purchase(
-    owned_library, game, release
-):
-    form = _form(owned_library, _posted(game=str(game.pk), **_copy_fields(release)))
-
-    assert form.is_valid(), form.errors
-    statement = form.statement()
-    assert statement.copy is not None
-    assert statement.copy.release_id == release.pk
-    assert statement.purchase is None
-
-
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_ticked_copy_with_a_price_states_a_purchase(owned_library, game, release):
-    data = _posted(
-        game=str(game.pk),
-        **(
-            _copy_fields(release)
-            | {"price": "paid", "amount": "12.50", "currency": "eur"}
-        ),
+def test_a_removed_game_is_refused_on_the_game(owned_library, game):
+    PlayerGame.objects.filter(library=owned_library, game=game).update(
+        removed_at=datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC)
     )
 
-    form = _form(owned_library, data)
+    form = _form(owned_library, _posted(game))
+
+    assert not form.is_valid()
+    assert form.errors["game"] == [REMOVED_GAME]
+
+
+def test_a_changed_platform_with_no_release_on_a_shared_game_is_refused(
+    owned_library, pc
+):
+    shared = Game.objects.create(library=None, name="Celeste")
+
+    form = _form(owned_library, _posted(shared, platform=str(pc.pk)))
+
+    assert not form.is_valid()
+    assert form.errors["platform"] == [SHARED_GAME_RELEASE]
+
+
+def test_a_changed_platform_on_a_prerelease_default_is_refused(
+    owned_library, game, pc, console
+):
+    default_graph(
+        game, owned_library, platform=console, edition_kind=EditionKind.PRERELEASE
+    )
+
+    form = _form(owned_library, _posted(game, platform=str(pc.pk)))
+
+    assert not form.is_valid()
+    assert form.errors["platform"] == [PRERELEASE_DEFAULT]
+
+
+def test_several_editions_with_none_default_are_refused(owned_library, game, pc):
+    from games.models import Edition
+
+    Edition.objects.create(game=game, name="A", is_default=False)
+    Edition.objects.create(game=game, name="B", is_default=False)
+
+    form = _form(owned_library, _posted(game, platform=str(pc.pk)))
+
+    assert not form.is_valid()
+    assert form.errors["platform"] == [NO_DEFAULT_EDITION]
+
+
+def test_an_unchanged_platform_is_never_refused_on_its_release(owned_library, game, pc):
+    form = _form(
+        owned_library,
+        _posted(game, platform=str(pc.pk), platform_seen=str(pc.pk)),
+    )
 
     assert form.is_valid(), form.errors
-    purchase = form.statement().purchase
-    assert purchase is not None
-    assert str(purchase.price.amount) == "12.50"
-    assert purchase.price.currency == "EUR"
+    assert form.statement().platform_changed is False
 
 
-def test_ticked_dates_reversed_are_refused_on_completed(owned_library, game):
+def test_reversed_days_are_refused_on_finished_on(owned_library, game):
     data = _posted(
-        game=str(game.pk),
-        sections=["dates"],
+        game,
+        started_seen="2026-05-01",
+        completed_seen="",
         **_day("started", datetime.date(2026, 5, 1)),
         **_day("completed", datetime.date(2026, 1, 1)),
     )
@@ -172,27 +178,27 @@ def test_ticked_dates_reversed_are_refused_on_completed(owned_library, game):
     assert form.errors["completed"] == [DATES_REVERSED]
 
 
-def test_ticked_playtime_needs_a_day_in_session_form(owned_library, game):
+def test_an_unchanged_start_is_checked_against_the_page_it_showed(owned_library, game):
+    # The page showed a start after the finish; the finish alone changed.
     data = _posted(
-        game=str(game.pk),
-        sections=["playtime"],
-        duration_hours="1",
-        duration_minutes="30",
+        game,
+        started_seen="2026-05-01",
+        **_day("started", datetime.date(2026, 5, 1)),
+        **_day("completed", datetime.date(2026, 4, 1)),
     )
 
     form = _form(owned_library, data)
 
     assert not form.is_valid()
-    assert form.errors["day"] == [DAY_REQUIRED]
+    assert form.errors["completed"] == [DATES_REVERSED]
 
 
-def test_ticked_playtime_refuses_zero_duration(owned_library, game):
+def test_a_typed_zero_duration_is_refused(owned_library, game):
     data = _posted(
-        game=str(game.pk),
-        sections=["playtime"],
+        game,
+        duration_hours="0",
+        duration_minutes="0",
         day="2026-09-01",
-        duration_hours="",
-        duration_minutes="",
     )
 
     form = _form(owned_library, data)
@@ -201,23 +207,30 @@ def test_ticked_playtime_refuses_zero_duration(owned_library, game):
     assert form.errors["duration"] == [ZERO_DURATION]
 
 
-def test_unticked_playtime_drops_its_zero_duration(owned_library, game):
-    data = _posted(game=str(game.pk), duration_hours="", duration_minutes="", day="x")
+def test_an_empty_duration_states_no_playtime(owned_library, game):
+    form = _form(owned_library, _posted(game))
+
+    assert form.is_valid(), form.errors
+    assert form.statement().playtime is None
+
+
+def test_a_session_needs_its_day(owned_library, game):
+    data = _posted(game, duration_hours="1", duration_minutes="0", day="")
 
     form = _form(owned_library, data)
 
-    assert form.is_valid(), form.errors
+    assert not form.is_valid()
+    assert form.errors["day"] == [DAY_REQUIRED]
 
 
 def test_playtime_states_a_session_or_a_historical_record(owned_library, game):
     session = _form(
         owned_library,
         _posted(
-            game=str(game.pk),
-            sections=["playtime"],
-            day="2026-09-01",
+            game,
             duration_hours="2",
             duration_minutes="0",
+            day="2026-09-01",
         ),
     )
     assert session.is_valid(), session.errors
@@ -230,8 +243,7 @@ def test_playtime_states_a_session_or_a_historical_record(owned_library, game):
     historical = _form(
         owned_library,
         _posted(
-            game=str(game.pk),
-            sections=["playtime"],
+            game,
             playtime_kind="historical",
             duration_hours="1",
             duration_minutes="15",
@@ -246,54 +258,141 @@ def test_playtime_states_a_session_or_a_historical_record(owned_library, game):
 def test_a_run_of_another_game_is_refused(owned_library, game):
     other = create_tracked_game(owned_library, "Hades")
     run = another_run(owned_library.user, other)
-    data = _posted(game=str(game.pk), sections=["more"], playthrough=str(run.pk))
+
+    form = _form(owned_library, _posted(game, run=str(run.pk)))
+
+    assert not form.is_valid()
+    assert form.errors["run"] == [ANOTHER_GAMES_RUN]
+
+
+def test_an_unchanged_status_states_nothing(owned_library, game):
+    form = _form(
+        owned_library, _posted(game, status="completed", status_seen="completed")
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.statement().status is KEEP
+
+
+def test_a_changed_status_is_stated_with_the_word_the_page_showed(owned_library, game):
+    form = _form(
+        owned_library,
+        _posted(game, status="played", status_seen="unplayed"),
+    )
+
+    assert form.is_valid(), form.errors
+    statement = form.statement()
+    assert statement.status is PlayerGameStatus.PLAYED
+    assert statement.seen_status is PlayerGameStatus.UNPLAYED
+
+
+def test_a_changed_day_states_an_act(owned_library, game):
+    data = _posted(game, **_day("started", datetime.date(2026, 3, 4)))
 
     form = _form(owned_library, data)
 
-    assert not form.is_valid()
-    assert "playthrough" in form.errors
+    assert form.is_valid(), form.errors
+    assert form.statement().started == ActStatement(
+        TemporalValue.from_day(datetime.date(2026, 3, 4)), ""
+    )
 
 
-def test_several_runs_with_none_picked_are_refused(owned_library, game):
-    another_run(owned_library.user, game)
-    data = _posted(game=str(game.pk), sections=["more"], note="A note", playthrough="")
+def test_a_day_the_page_showed_states_no_act(owned_library, game):
+    day = TemporalValue.from_day(datetime.date(2026, 3, 4))
+    data = _posted(
+        game,
+        started_seen=day.canonical,
+        **_day("started", datetime.date(2026, 3, 4)),
+    )
 
     form = _form(owned_library, data)
 
-    assert not form.is_valid()
-    assert form.errors["playthrough"] == [PICK_A_RUN]
+    assert form.is_valid(), form.errors
+    assert form.statement().started is KEEP
 
 
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_status_none_row_reads_what_the_game_holds(owned_library, game):
+def test_a_cleared_day_voids_the_act_it_showed(owned_library, game):
+    day = TemporalValue.from_day(datetime.date(2026, 3, 4))
+
+    form = _form(owned_library, _posted(game, started_seen=day.canonical))
+
+    assert form.is_valid(), form.errors
+    assert form.statement().started is None
+
+
+def test_an_act_stated_with_no_day_survives_an_untouched_press(owned_library, game):
+    form = _form(owned_library, _posted(game))
+
+    assert form.is_valid(), form.errors
+    assert form.statement().started is KEEP
+    assert form.statement().completed is KEEP
+
+
+def test_mastered_is_stated_only_where_it_changes(owned_library, game):
+    unchanged = _form(owned_library, _posted(game, mastered="on", mastered_seen="True"))
+    assert unchanged.is_valid(), unchanged.errors
+    assert unchanged.statement().mastered is KEEP
+
+    changed = _form(owned_library, _posted(game, mastered="on", mastered_seen="False"))
+    assert changed.is_valid(), changed.errors
+    assert changed.statement().mastered is True
+
+
+def test_the_note_is_stated_only_where_it_changes(owned_library, game):
+    unchanged = _form(owned_library, _posted(game, note="kept", note_seen="kept"))
+    assert unchanged.is_valid(), unchanged.errors
+    assert unchanged.statement().note is KEEP
+
+    changed = _form(owned_library, _posted(game, note=" hello ", note_seen="kept"))
+    assert changed.is_valid(), changed.errors
+    assert changed.statement().note == "hello"
+
+
+def test_the_form_seeds_what_a_held_game_shows(owned_library, game, pc):
+    run = another_run(
+        owned_library.user,
+        game,
+        started=ActStatement(TemporalValue.from_day(datetime.date(2026, 2, 2)), ""),
+        note="A note",
+    )
     held = HeldFacts(
-        copies=(),
-        run=None,
+        removed=False,
         status=PlayerGameStatus.COMPLETED,
-        mastered=False,
-        playtime=datetime.timedelta(0),
+        run=run,
+        started=None,
+        completed=None,
+        platform=pc,
+        mastered=True,
+        note="A note",
     )
 
     form = _form(owned_library, held=held)
 
-    assert form.fields["status"].choices[0] == ("", "Leave as is: Completed")
+    assert form.initial["status"] == "completed"
+    assert form.initial["status_seen"] == "completed"
+    assert form.initial["platform_seen"] == str(pc.pk)
+    assert form.initial["run"] == run.pk
+    assert form.initial["started_seen"] == "2026-02-02"
+    assert form.initial["mastered"] is True
+    assert form.initial["note_seen"] == "A note"
 
 
-def test_status_none_row_reads_plainly_without_a_held_game(owned_library):
-    form = _form(owned_library)
+def test_an_untracked_game_shows_unplayed(owned_library):
+    held = HeldFacts(
+        removed=False,
+        status=None,
+        run=None,
+        started=None,
+        completed=None,
+        platform=None,
+        mastered=False,
+        note="",
+    )
 
-    assert form.fields["status"].choices[0] == ("", "Leave as is")
+    form = _form(owned_library, held=held)
 
-
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_a_chosen_status_is_stated_and_the_none_row_states_nothing(owned_library, game):
-    picked = _form(owned_library, _posted(game=str(game.pk), status="completed"))
-    assert picked.is_valid(), picked.errors
-    assert picked.statement().status is PlayerGameStatus.COMPLETED
-
-    none = _form(owned_library, _posted(game=str(game.pk), status=""))
-    assert none.is_valid(), none.errors
-    assert none.statement().status is None
+    assert form.initial["status"] == "unplayed"
+    assert form.initial["status_seen"] == "unplayed"
 
 
 def test_opener_fact_fixes_the_game(owned_library, game):
@@ -306,122 +405,15 @@ def test_opener_fact_fixes_the_game(owned_library, game):
     assert isinstance(form.facts["game"], Fixed)
 
 
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_held_run_seeds_the_run_and_its_seen_days(owned_library, game):
-    run = another_run(owned_library.user, game)
-    held = HeldFacts(
-        copies=(),
-        run=run,
-        status=None,
-        mastered=True,
-        playtime=datetime.timedelta(0),
-    )
+def test_a_prefilled_game_is_editable(owned_library, game):
+    form = _form(owned_library, prefill=game)
 
-    form = _form(owned_library, held=held)
-
-    assert form.initial["playthrough"] == run.pk
-    assert form.initial["mastered"] is True
-    assert form.initial["started_seen"] == ""
-
-
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_mastered_is_stated_only_where_it_changes(owned_library, game):
-    unchanged = _form(
-        owned_library,
-        _posted(
-            game=str(game.pk),
-            sections=["more"],
-            mastered="on",
-            mastered_seen="True",
-        ),
-    )
-    assert unchanged.is_valid(), unchanged.errors
-    assert unchanged.statement().mastered is None
-
-    changed = _form(
-        owned_library,
-        _posted(
-            game=str(game.pk),
-            sections=["more"],
-            mastered="on",
-            mastered_seen="False",
-        ),
-    )
-    assert changed.is_valid(), changed.errors
-    assert changed.statement().mastered is True
-
-
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_a_day_the_page_showed_states_no_act(owned_library, game):
-    day = TemporalValue.from_day(datetime.date(2026, 3, 4))
-    data = _posted(
-        game=str(game.pk),
-        sections=["dates"],
-        started_seen=day.canonical,
-        **_day("started", datetime.date(2026, 3, 4)),
-    )
-
-    form = _form(owned_library, data)
-
-    assert form.is_valid(), form.errors
-    assert form.statement().started is None
-
-
-def test_a_changed_day_states_an_act(owned_library, game):
-    data = _posted(
-        game=str(game.pk),
-        sections=["dates"],
-        started_seen="",
-        **_day("started", datetime.date(2026, 3, 4)),
-    )
-
-    form = _form(owned_library, data)
-
-    assert form.is_valid(), form.errors
-    started = form.statement().started
-    assert started == ActStatement(
-        TemporalValue.from_day(datetime.date(2026, 3, 4)), ""
-    )
-
-
-def test_saved_sections_are_not_offered_again(owned_library, game):
-    form = _form(owned_library, {"saved": ["copy"]}, facts=None)
-
-    assert form.is_bound
-    offered = [value for value, _ in form.fields["sections"].choices]
-    assert "copy" not in offered
-    assert "dates" in offered
-
-
-@pytest.mark.skip(reason="rewritten in Task 4/5")
-def test_the_run_note_is_stated_only_where_more_is_ticked(owned_library, game):
-    form = _form(
-        owned_library,
-        _posted(game=str(game.pk), note=" hello ", sections=[]),
-    )
-
-    assert form.is_valid(), form.errors
-    assert form.statement().note is None
+    assert not form.fields["game"].disabled
+    assert form.initial["game"] == game.pk
 
 
 def test_an_unknown_run_pick_is_refused_by_the_field(owned_library, game):
-    data = _posted(game=str(game.pk), sections=["more"], playthrough=str(uuid.uuid7()))
-
-    form = _form(owned_library, data)
+    form = _form(owned_library, _posted(game, run=str(uuid.uuid7())))
 
     assert not form.is_valid()
-    assert "playthrough" in form.errors
-
-
-def test_statement_reads_the_day_when_the_playtime_is_ticked(owned_library, game):
-    data = _posted(
-        game=str(game.pk),
-        sections=["playtime"],
-        day="2026-09-01",
-        duration_hours="1",
-        duration_minutes="0",
-    )
-    form = _form(owned_library, data)
-    assert form.is_valid(), form.errors
-
-    assert form.statement().game == game
+    assert "run" in form.errors
