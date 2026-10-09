@@ -613,7 +613,7 @@ docs/           — Additional documentation
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
 - **LibraryEntry** — projection (#719, #720, #722): one route of access
   to one Release — `access` (owned/borrowed/rented/subscription/trial/demo/
-  pirated), `format` (physical/digital/unknown), `note`, and the acquired
+  pirated/unknown; unknown is not owned), `format` (physical/digital/unknown), `note`, and the acquired
   day as the **opening endpoint** `acquisition` (`acquired` beside
   `acquisition_recorded_at`, which admits no null: the creation states the
   day, `acquisition_corrected` moves it, nothing voids it;
@@ -1746,7 +1746,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   the element reloads a read-only host once no modal is open, or on `page:stale` (a batch from
   this page ends, or a toast action answers `done` or `created`); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
-  is an element (`<field-mirror>`).
+  is an element (`<field-mirror>`). `form-dialog:reload` `{url}` refetches
+  the body and takes a new baseline, so nothing asks.
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
   [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md).
@@ -1776,10 +1777,19 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `fix_field` without a statement posts the hidden input alone. Read a fact
   with `form.stated(name, Type)`. A value the form cannot use (malformed,
   absent row) is refused, never 404: editable field, sentence, WARNING on
-  `games.opener_facts`. A fact locks; an editable prefill is #1526. No
+  `games.opener_facts`. A fact locks; `?prefill_<field>=` is an editable
+  prefill (Log a game's `prefill_game`). No
   chained `..._for_game` route: a path names only a route's subject.
   Contract is
   [A form states the facts its opener knows](docs/superpowers/specs/2026-10-06-issue-1516-opener-facts-design.md)
+- **Log a game is one add-and-edit modal** (#1517): `games/views/log_game.py`,
+  `LogGameForm` (`games/log_forms.py`), `log_game` (`games/writes/log_game.py`)
+  over `held_facts` (`games/reads/log_game.py`). Each prefilled field posts a
+  `<name>_seen`; an equal value states nothing. Playtime and mastered-and-note
+  are nested `ModalDialog`s in the form (`FormFieldGroup.container`,
+  `<log-sections>`). A new platform records an Unknown copy through
+  `release_on`. Contract is
+  [Log a game in one modal](docs/superpowers/specs/2026-10-09-issue-1517-log-a-game-design.md)
 - **A bulk write analyzes what it filled** — a command or task that
   fills or replaces many rows ends with `analyze_tables` from
   `games/planner_statistics.py`, naming its tables, inside its transaction
