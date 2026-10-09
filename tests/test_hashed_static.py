@@ -70,7 +70,7 @@ def test_asset_urls_are_hashed(tmp_path):
             "js/dist/toast.js",
             "js/dist/theme-bootstrap.js",
             "base.css",
-            "js/flowbite.min.js",
+            "js/alpine.min.js",
         ):
             url = static(name)
             assert _HASHED_FRAGMENT.search(url), f"{name} not hashed: {url}"
@@ -181,7 +181,8 @@ def test_post_process_passes_clear_the_dist_import_depth():
 def test_no_vendored_js_has_dangling_sourcemap():
     """A `//# sourceMappingURL=x.map` whose `.map` isn't shipped fails
     collectstatic under the hashed storage (Django tries to rewrite the ref).
-    Guards the flowbite fix from silently regressing. Needs no dist build.
+    Every vendored script ships no reference to a missing map. Needs no
+    dist build.
     (A source comment needs no guard: tsc strips comments, so one never
     reaches dist.)"""
     offenders: list[str] = []

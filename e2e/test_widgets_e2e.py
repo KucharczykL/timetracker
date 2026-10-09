@@ -2,8 +2,8 @@
 
 These run a real Chromium via pytest-playwright against pytest-django's
 ``live_server``. All JavaScript under test is served locally from
-``games/static/js/`` (Alpine, Flowbite and the widget files are
-vendored), so no network access is needed beyond the live server itself.
+``games/static/js/`` (Alpine and the widget files are vendored), so no
+network access is needed beyond the live server itself.
 
 Browser binaries must be installed once: ``uv run playwright install chromium``.
 """
