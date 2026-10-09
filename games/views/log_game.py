@@ -1,7 +1,7 @@
 """Views for the Log a game modal."""
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
@@ -32,7 +32,7 @@ from common.components.primitives import custom_element_builder
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from common.opener_facts import LOGGED_VALUE_LENGTH
-from games.log_forms import STALE_GAME, UNTRACKED_STATUS, LogGameForm
+from games.log_forms import STALE_GAME, UNTRACKED_STATUS, LogGameForm, canonical_text
 from games.models import Game, UserLibrary
 from games.reads.endpoints import StatedEndpoint
 from games.reads.log_game import HeldFacts, held_facts
@@ -41,7 +41,6 @@ from games.views.general import request_calendar_today
 from games.views.returns import origin_from
 from games.writes.log_game import LogRefused, LogStatement, LogStep, log_game
 from games.writes.playergame import new_correlation_id
-from timetracker.temporal import TemporalValue
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 type NestedSection = Literal["playtime", "more"]
@@ -187,10 +186,8 @@ def _prefill_game(library: UserLibrary, raw: str) -> Game | None:
 
 def _named_game(request: HttpRequest, library: UserLibrary) -> Game | None:
     """Page's game: posted or opener-stated."""
-    if request.method == "POST":
-        raw = request.POST.get("game", "")
-    else:
-        raw = request.GET.get("game", "")
+    source = request.POST if request.method == "POST" else request.GET
+    raw = source.get("game", "")
     return _game_keyed(library, raw) if raw else None
 
 
@@ -247,8 +244,7 @@ def _attempt(raw: str | None) -> int:
 
 
 def _endpoint_seen(endpoint: StatedEndpoint | None) -> str:
-    when: TemporalValue | None = None if endpoint is None else endpoint.when
-    return "" if when is None or when.canonical is None else when.canonical
+    return canonical_text(None if endpoint is None else endpoint.when)
 
 
 def _seen_values(held: HeldFacts) -> dict[FieldName, str]:
@@ -270,10 +266,8 @@ def _reseen(
 ) -> None:
     """Re-read the seen values the written steps changed."""
     fresh = _seen_values(held)
-    if tracked:
-        names = set(SEEN_FIELDS["track"])
-    else:
-        names = {name for step in written for name in SEEN_FIELDS[step]}
+    steps: Iterable[LogStep] = ("track",) if tracked else written
+    names = {name for step in steps for name in SEEN_FIELDS[step]}
     for name in names:
         data[name] = fresh[name]
 

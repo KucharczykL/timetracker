@@ -12,7 +12,7 @@ from common.date_time_presentation import DateTimePresentation
 from common.opener_facts import OpenerFacts, OpenerFactsMixin
 from games.catalog_release import platform_refusal
 from games.commands.endpoint import ActStatement, certainly_reversed
-from games.entry_forms import Submission, SubmissionKind
+from games.entry_forms import Submission, SubmissionKind, normalised_note
 from games.forms import (
     DEVICE_CREATE_URL,
     DEVICE_SEARCH_URL,
@@ -73,12 +73,9 @@ STATUS_CHOICES: Final = tuple(
 )
 
 
-def _canonical(value: TemporalValue | None) -> str:
+def canonical_text(value: TemporalValue | None) -> str:
+    """The day's canonical text; "" where it states none."""
     return "" if value is None or value.canonical is None else value.canonical
-
-
-def normalised_note(value: str) -> str:
-    return value.replace("\r\n", "\n").strip()
 
 
 class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
@@ -239,8 +236,8 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self.initial["run"] = run.pk
             self.initial["started"] = started_when
             self.initial["completed"] = completed_when
-            self.initial["started_seen"] = _canonical(started_when)
-            self.initial["completed_seen"] = _canonical(completed_when)
+            self.initial["started_seen"] = canonical_text(started_when)
+            self.initial["completed_seen"] = canonical_text(completed_when)
             self.initial["note"] = run.note
             self.initial["note_seen"] = run.note
         self.initial["mastered"] = held.mastered
@@ -345,7 +342,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         seen = cleaned.get(f"{name}_seen") or ""
         if when is None:
             return None if seen else KEEP
-        if _canonical(when) == seen:
+        if canonical_text(when) == seen:
             return KEEP
         return ActStatement(when, "")
 

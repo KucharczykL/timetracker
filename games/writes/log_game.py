@@ -66,7 +66,7 @@ type LogStep = Literal[
     "platform",
 ]
 
-#: Raised per written-then-refused playtime.
+#: Keys a retried playtime write apart.
 type PlaytimeAttempt = int
 
 PICKED_RUN_GONE = "That playthrough is no longer held. Reload the page and try again."
@@ -181,7 +181,7 @@ def _held_run(library: UserLibrary, statement: LogStatement) -> Playthrough | No
     return None if tracked is None else live_ordinary_runs(library, tracked).last()
 
 
-def _held_platform(library: UserLibrary, platform_id: PlatformId) -> Platform:
+def _named_platform(library: UserLibrary, platform_id: PlatformId) -> Platform:
     """Platform named and held by library."""
     platform = Platform.objects.visible_to(library).filter(pk=platform_id).first()
     if platform is None:
@@ -193,7 +193,7 @@ def _check_named(library: UserLibrary, statement: LogStatement) -> None:
     """Refuse a named platform or run before any write."""
     if statement.platform is not KEEP and statement.platform is not None:
         with _answering("platform", set()):
-            _held_platform(library, statement.platform)
+            _named_platform(library, statement.platform)
     if statement.run_id is not None:
         with _answering(_run_step(statement), set()):
             _held_run(library, statement)
@@ -235,12 +235,11 @@ def _copy_step(
     if statement.platform is None:
         return None
     with _answering("platform", written):
-        named = _held_platform(library, statement.platform)
+        named = _named_platform(library, statement.platform)
         held = copy_release_for(library, game, named)
-        if held is None:
-            release = _release_for_copy(actor, statement, named)
-    if held is not None:
-        return held
+        if held is not None:
+            return held
+        release = _release_for_copy(actor, statement, named)
     with _answering("copy", written):
         record_entry(
             actor,
@@ -510,11 +509,7 @@ def log_game(
                 )
             written.add("status")
     except LogRefused as refused:
-        raise LogRefused(
-            refused.step,
-            refused.failure,
-            refused.written,
-            tracked_the_game=tracked,
-        ) from refused.failure
+        refused.tracked_the_game = tracked
+        raise
 
     return LoggedGame(written=frozenset(written), tracked_the_game=tracked)

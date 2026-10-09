@@ -22,6 +22,11 @@ function report(detail: string): void {
   reportClientError("log-sections", detail, { toast: false });
 }
 
+/** The section a dialog holds. */
+function sectionOf(dialog: Element): Section {
+  return dialog.getAttribute(SECTION_DIALOG) ?? "";
+}
+
 function fieldHolds(field: HTMLInputElement | HTMLTextAreaElement): boolean {
   if (field instanceof HTMLInputElement && field.type === "checkbox") return field.checked;
   return field.value.trim() !== "";
@@ -45,7 +50,7 @@ class LogSectionsElement extends HTMLElement {
 
   connectedCallback(): void {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
-      const section = dialog.getAttribute(SECTION_DIALOG) ?? "";
+      const section = sectionOf(dialog);
       if (this.modals.has(section)) continue;
       // Every close keeps the fields.
       this.modals.set(section, attachModal(dialog));
@@ -77,7 +82,7 @@ class LogSectionsElement extends HTMLElement {
   /** Opener reads "held" while section holds. */
   private readonly syncHeld = (): void => {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
-      const section = dialog.getAttribute(SECTION_DIALOG) ?? "";
+      const section = sectionOf(dialog);
       const held = sectionHolds(dialog);
       for (const opener of this.querySelectorAll<HTMLElement>(`[${SECTION_EDIT}="${section}"]`)) {
         opener.querySelector(`[${SECTION_IDLE}]`)?.toggleAttribute("hidden", held);
@@ -135,7 +140,7 @@ class LogSectionsElement extends HTMLElement {
     }
     const done = target?.closest(`[${SECTION_DONE}]`);
     const dialog = done?.closest(`dialog[${SECTION_DIALOG}]`);
-    if (dialog) this.modals.get(dialog.getAttribute(SECTION_DIALOG) ?? "")?.close();
+    if (dialog) this.modals.get(sectionOf(dialog))?.close();
   };
 }
 
