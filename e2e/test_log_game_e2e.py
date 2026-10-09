@@ -6,7 +6,7 @@ from playwright.sync_api import Locator, Page, expect
 from tracked_games import create_tracked_game
 
 from e2e.helpers import log_in, open_row_menu, pick_choice
-from games.models import PlayerGameStatus
+from games.models import PlayerGameStatus, Playthrough
 
 
 @pytest.fixture
@@ -76,6 +76,26 @@ def test_add_playtime_opens_and_done_keeps_what_was_typed(
     expect(section).not_to_have_attribute("open", "")
     expect(section.locator('input[name="duration_hours"]')).to_have_value("2")
     expect(dialog.get_by_role("button", name="Playtime added")).to_be_visible()
+
+
+def test_save_writes_the_started_day(authenticated_page, live_server, e2e_library):
+    game = create_tracked_game(e2e_library, "Tunic")
+    page = authenticated_page
+    dialog = _open_log_from_navbar(page, live_server)
+    _pick_tracked_game(dialog, game.pk)
+    started = dialog.locator("temporal-field:has(input[name='started-year'])")
+    for part, value in {"year": "2024", "month": "03", "day": "15"}.items():
+        started.locator(f"[data-date-part='{part}'][data-date-side='start']").click()
+        page.keyboard.type(value)
+
+    dialog.get_by_role("button", name="Save", exact=True).click()
+
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    assert (
+        str(Playthrough.objects.get(player_game__game=game).started_lower)
+        == "2024-03-15"
+    )
 
 
 def test_a_refusal_reopens_its_section(authenticated_page, live_server, e2e_library):

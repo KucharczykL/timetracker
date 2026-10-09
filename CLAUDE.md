@@ -1747,7 +1747,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   this page ends, or a toast action answers `done` or `created`); messages and
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
   is an element (`<field-mirror>`). `form-dialog:reload` `{url}` refetches
-  the body and takes a new baseline, so nothing asks.
+  the body and takes a new baseline, so nothing asks; a failed reload toasts
+  and only the latest applies.
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
   [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md).
@@ -1788,7 +1789,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `<name>_seen`; an equal value states nothing. Playtime and mastered-and-note
   are nested `ModalDialog`s in the form (`FormFieldGroup.container`,
   `<log-sections>`). A new platform records an Unknown copy through
-  `release_on`. Contract is
+  `release_on`, or on a shared game's standing Release. Contract is
   [Log a game in one modal](docs/superpowers/specs/2026-10-09-issue-1517-log-a-game-design.md)
 - **A bulk write analyzes what it filled** — a command or task that
   fills or replaces many rows ends with `analyze_tables` from
