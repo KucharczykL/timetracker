@@ -1,11 +1,25 @@
 """What a fixed game already holds, read once for Log a game."""
 
-from games.log_forms import HeldFacts
-from games.models import Game, PlayerGameStatus, Release, UserLibrary
+import datetime
+from typing import NamedTuple
+
+from games.models import Game, PlayerGameStatus, Playthrough, Release, UserLibrary
 from games.reads.entries import access_summaries
 from games.reads.playthrough_runs import sole_ordinary_run, tracked_game
 from games.reads.playtime import game_playtime
 from games.reads.releases import edition_words, platform_words
+
+
+class HeldFacts(NamedTuple):
+    """What a fixed game already holds, read once for the page."""
+
+    #: Release words of each copy had now, first one first.
+    copies: tuple[str, ...]
+    #: The game's sole live ordinary run, or none.
+    run: Playthrough | None
+    status: PlayerGameStatus | None
+    mastered: bool
+    playtime: datetime.timedelta
 
 
 def held_facts(library: UserLibrary, game: Game) -> HeldFacts:

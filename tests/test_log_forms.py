@@ -21,10 +21,10 @@ from games.log_forms import (
     DAY_REQUIRED,
     PICK_A_RUN,
     ZERO_DURATION,
-    HeldFacts,
     LogGameForm,
 )
 from games.models import Game, PlayerGameStatus
+from games.reads.log_game import HeldFacts
 from games.writes.log_game import HistoricalHours, SessionTiming
 from timetracker.temporal import TemporalValue, temporal_input_name
 

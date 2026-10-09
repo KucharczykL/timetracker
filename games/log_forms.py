@@ -3,7 +3,7 @@
 import datetime
 from collections.abc import Mapping
 from functools import partial
-from typing import Any, ClassVar, Final, NamedTuple, cast
+from typing import Any, ClassVar, Final, cast
 
 from django import forms
 
@@ -39,6 +39,7 @@ from games.models import (
     UserLibrary,
 )
 from games.price_fields import ignore_fields
+from games.reads.log_game import HeldFacts
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.reads.playthrough_runs import (
     library_runs,
@@ -100,18 +101,6 @@ PICK_A_RUN = "This game holds several playthroughs. Pick the one this is for."
 ANOTHER_GAMES_RUN = "That playthrough is another game's."
 DAY_REQUIRED = "Give the day you played."
 ZERO_DURATION = "Give a duration above zero."
-
-
-class HeldFacts(NamedTuple):
-    """What a fixed game already holds, read once for the page."""
-
-    #: Release words of each copy had now, first one first.
-    copies: tuple[str, ...]
-    #: The game's sole live ordinary run, or none.
-    run: Playthrough | None
-    status: PlayerGameStatus | None
-    mastered: bool
-    playtime: datetime.timedelta
 
 
 def _canonical(value: TemporalValue | None) -> str:

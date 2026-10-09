@@ -30,13 +30,12 @@ from games.log_forms import (
     RUN_ROW_SHOWN,
     SECTION_LABELS,
     SUMMARY_HIDDEN,
-    HeldFacts,
     LogGameForm,
 )
 from games.models import Game, Playthrough
 from games.price_fields import price_presentations
 from games.reads.endpoints import StatedEndpoint
-from games.reads.log_game import held_facts
+from games.reads.log_game import HeldFacts, held_facts
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.views.copy_pages import cancel_url, game_page
 from games.views.general import request_calendar_today
