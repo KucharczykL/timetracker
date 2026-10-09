@@ -1,50 +1,20 @@
-name: Django CI/CD
+# Builds the image on every push and publishes it from main. The checks run
+# locally (`make check`) and on GitHub; this workflow only builds.
+name: Build image
 
 on:
   push:
+    branches: ['**']
     paths-ignore: [ 'README.md' ]
+  workflow_dispatch:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: false
-          python-version: "3.14"
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install pnpm and JS dependencies
-        run: corepack enable && pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Build TypeScript
-        run: make ts
-
-      - name: Install Playwright browsers
-        run: uv run playwright install --with-deps chromium
-
-      - name: Run Migrations
-        run: uv run python manage.py migrate
-
-      - name: Run Tests
-        run: uv run --with pytest-django pytest
-
   build-and-push:
-    needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Compute short SHA
         run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
@@ -56,7 +26,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
             registry.kucharczyk.xyz/timetracker:latest
             registry.kucharczyk.xyz/timetracker:main-${{ env.SHORT_SHA }}
