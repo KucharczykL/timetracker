@@ -1,9 +1,16 @@
 """Unknown access is held, not owned."""
 
+from zoneinfo import ZoneInfo
+
 import pytest
 from entries import record_entry
 from graphs import default_graph
 
+from common.components import AccessBadge
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 from games.commands.purchase import refund_ends_the_copy
 from games.models import EditionKind, EntryAccess, Game, LibraryEntry, PurchaseKind
 from games.reads.copy_figures import copies_matching, owned, owned_held
@@ -13,6 +20,9 @@ from timetracker.temporal import TemporalValue
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 
 YEAR = 2021
+PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 def _record(library, name: str, access: str) -> LibraryEntry:
@@ -24,11 +34,6 @@ def _record(library, name: str, access: str) -> LibraryEntry:
         access=access,
         acquired=TemporalValue.parse(f"{YEAR}-03-01"),
     )
-
-
-def test_unknown_is_a_stored_access_word():
-    assert EntryAccess.UNKNOWN == "unknown"
-    assert "unknown" in EntryAccess.values
 
 
 def test_an_unknown_copy_is_not_an_owned_copy(owned_library):
@@ -44,10 +49,13 @@ def test_an_unknown_copy_is_not_an_owned_copy(owned_library):
 
 
 def test_an_unknown_copy_leaves_the_badge_hollow():
-    unknown = LibraryEntry(access=EntryAccess.UNKNOWN)
+    unknown = LibraryEntry(access=EntryAccess.UNKNOWN, format="unknown")
     summary = AccessSummary(held=(unknown,), ended=())
+    html = str(AccessBadge(summary, PRESENTATION, id="access-1"))
 
     assert summary.owned_now is False
+    assert "solid-brand" not in html
+    assert "border-default-medium" in html
 
 
 def test_a_game_purchase_refund_ends_no_unknown_copy():

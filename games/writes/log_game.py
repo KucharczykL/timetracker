@@ -200,7 +200,7 @@ def _run_step(statement: LogStatement) -> WrittenStep:
 
 
 def _held_run(library: UserLibrary, statement: LogStatement) -> Playthrough | None:
-    """Run named, else newest live ordinary."""
+    """Run given, else newest live ordinary."""
     if statement.run_id is not None:
         run = (
             library_runs(library)

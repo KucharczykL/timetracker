@@ -126,7 +126,7 @@ def _held_platform(library: UserLibrary, game: Game) -> Platform | None:
 def copy_release_for(
     library: UserLibrary, game: Game, platform: Platform | None
 ) -> Release | None:
-    """Live copy's Release on that platform."""
+    """Live copy's Release there; newest play breaks ties."""
     copies = (
         library_entries(library)
         .filter(release__edition__game=game, release__platform=platform)

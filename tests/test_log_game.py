@@ -10,8 +10,13 @@ from entries import record_entry
 from graphs import default_graph
 from stated_runs import another_run
 
+from games.catalog_release import release_on
 from games.commands.endpoint import ActStatement
 from games.events.dispatch import RowNotHeld
+from games.events.libraryentry import LIBRARYENTRY_CREATED
+from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGED
+from games.events.playersession import PLAYERSESSION_CREATED
+from games.log_forms import seen_values
 from games.models import (
     Game,
     HistoricalPlaytime,
@@ -24,6 +29,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
+from games.reads.log_game import held_facts
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.writes import log_game as log_game_writes
 from games.writes.answers import CommandFailed
@@ -208,12 +214,17 @@ def test_an_untracked_game_with_every_field_writes_under_one_correlation_id(
     )
     assert player_game.status == PlayerGameStatus.SHELVED
     assert player_game.mastered is True
-    assert (
+    recorded = set(
         LibraryEvent.objects.filter(
             library=user.library, correlation_id=correlation_id
-        ).count()
-        > 1
+        ).values_list("event_type", flat=True)
     )
+    assert {
+        PLAYERGAME_CREATED.event_type,
+        PLAYERSESSION_CREATED.event_type,
+        LIBRARYENTRY_CREATED.event_type,
+        PLAYERGAME_STATUS_CHANGED.event_type,
+    } <= recorded
 
 
 def test_an_unchanged_status_keeps_the_status_a_session_implies(user, game):
@@ -518,8 +529,7 @@ def test_a_correlation_id_marks_every_event_the_press_appended(user, game, pc):
     marked = LibraryEvent.objects.filter(
         library=user.library, correlation_id=correlation_id
     ).count()
-    assert appended > 1
-    assert marked == appended
+    assert marked == appended == 8
 
 
 def test_a_refused_status_after_a_write_keeps_the_write(user, game, monkeypatch):
@@ -740,3 +750,115 @@ def test_a_run_finishing_before_it_starts_is_refused_by_the_statement(game):
 def test_a_reversed_pair_with_one_side_unstated_is_not_refused_by_the_statement(game):
     _statement(game, started=None, completed=_day(DAY))
     _statement(game, started=_day(LATER), completed=None)
+
+
+def test_a_press_with_no_run_named_moves_only_the_newest_run(user, game):
+    _tracked(user, game)
+    newer = another_run(user, game, note="Newest")
+
+    _press(user, _statement(game, started=_day(DAY)))
+
+    newer.refresh_from_db()
+    older = Playthrough.objects.exclude(pk=newer.pk).get(
+        library=user.library, player_game__game=game
+    )
+    assert stated_start(newer).when == TemporalValue.from_day(DAY)
+    assert stated_start(older) is None
+    held = held_facts(user.library, game)
+    assert held.run.run == newer
+    assert seen_values(held)["note_seen"] == "Newest"
+
+
+def test_historical_hours_on_an_untracked_game_end_played(user, game):
+    _press(user, _statement(game, playtime=_historical()))
+
+    assert _player_game(user, game).status == PlayerGameStatus.PLAYED
+
+
+def test_a_stated_played_status_wins_over_a_finish_on_the_day(user, game):
+    _tracked(user, game)
+
+    _press(
+        user,
+        _statement(game, completed=_day(DAY), status=PlayerGameStatus.PLAYED),
+    )
+
+    assert _player_game(user, game).status == PlayerGameStatus.PLAYED
+
+
+def test_a_retried_session_keys_apart_by_attempt(user, game):
+    token = new_correlation_id()
+
+    _press(user, _statement(game, playtime=_session_timing()), token=token)
+    _press(
+        user,
+        _statement(game, playtime=_session_timing(), attempt=1),
+        token=token,
+    )
+
+    assert PlayerSession.objects.filter(library=user.library).count() == 2
+
+
+def test_a_retried_historical_record_keys_apart_by_attempt(user, game):
+    token = new_correlation_id()
+
+    _press(user, _statement(game, playtime=_historical()), token=token)
+    _press(user, _statement(game, playtime=_historical(), attempt=1), token=token)
+
+    assert HistoricalPlaytime.objects.filter(library=user.library).count() == 2
+
+
+def test_the_same_attempt_twice_writes_one_historical_record(user, game):
+    token = new_correlation_id()
+
+    _press(user, _statement(game, playtime=_historical()), token=token)
+    _press(user, _statement(game, playtime=_historical()), token=token)
+
+    assert HistoricalPlaytime.objects.filter(library=user.library).count() == 1
+
+
+def test_playtime_with_the_platform_kept_names_the_held_release(
+    user, game, pc, owned_library
+):
+    held = release_on(owned_library, game, pc).release
+    record_entry(owned_library, held)
+
+    _press(user, _statement(game, playtime=_session_timing()))
+
+    assert PlayerSession.objects.get(library=user.library).release == held
+
+
+def test_playtime_with_a_changed_platform_names_the_copy_it_records(user, game, pc):
+    _press(user, _statement(game, platform=pc.pk, playtime=_session_timing()))
+
+    entry = LibraryEntry.objects.get(library=user.library)
+    assert PlayerSession.objects.get(library=user.library).release == entry.release
+
+
+def test_a_double_press_of_every_keyed_step_appends_nothing_new(user, game, pc):
+    token = new_correlation_id()
+    statement = _statement(
+        game,
+        platform=pc.pk,
+        started=_day(DAY),
+        playtime=_historical(),
+        mastered=True,
+        status=PlayerGameStatus.SHELVED,
+    )
+    _press(user, statement, token=token)
+    before = LibraryEvent.objects.filter(library=user.library).count()
+
+    _press(user, statement, token=token)
+
+    assert LibraryEvent.objects.filter(library=user.library).count() == before
+
+
+def test_a_gone_run_under_playtime_alone_names_playtime(user, game):
+    run = _tracked(user, game)
+    _remove_every_run(user, game)
+
+    with pytest.raises(LogRefused) as refused:
+        _press(user, _statement(game, run_id=run.pk, playtime=_session_timing()))
+
+    assert refused.value.step == "playtime"
+    assert refused.value.failure.message == PICKED_RUN_GONE

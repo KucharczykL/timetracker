@@ -59,7 +59,7 @@ from timetracker.temporal import TemporalValue
 
 GAME_SEARCH_URL: Final = "/api/games/search"
 
-#: Sentence each refusal states, for the page.
+# Sentence each refusal states, for the page.
 DATES_REVERSED = "This run finished before it started. Check the days."
 DAY_REQUIRED = "Give the day you played."
 ZERO_DURATION = "Give a duration above zero."

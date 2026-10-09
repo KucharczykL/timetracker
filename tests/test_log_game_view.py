@@ -11,11 +11,13 @@ from django.contrib.messages import get_messages
 from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
+from entries import record_entry
 from graphs import default_graph
 from stated_runs import state_run
 from tracked_games import create_tracked_game
 
 from common.components.modal import MODAL_ATTRIBUTES
+from games.catalog_release import release_on
 from games.log_forms import STALE_FORM, STALE_GAME
 from games.models import (
     Game,
@@ -129,6 +131,9 @@ def test_a_prefilled_game_titles_the_page_and_stays_editable(logged_in, game):
     assert _title(html) == "Log Tunic"
     assert f'value="{game.pk}"' in html
     assert "Save" in html
+    picker = re.search(r"<input[^>]*data-search-select-search[^>]*>", html)
+    assert picker is not None
+    assert not re.search(r"\sdisabled[\s>=]", picker.group(0))
 
 
 def test_a_tracked_game_prefills_its_status_mastery_and_note(
@@ -223,6 +228,9 @@ def test_a_changed_platform_records_a_copy(logged_in, owned_library, game, owned
 def test_a_refused_later_step_keeps_what_was_written(
     logged_in, owned_library, game, monkeypatch
 ):
+    pc = Platform.objects.create(library=owned_library, name="PC")
+    default_graph(game, owned_library, platform=pc)
+    record_entry(owned_library, release_on(owned_library, game, pc).release)
     refusal = LogRefused(
         "dates",
         CommandFailed("That playthrough has ended.", 409),
@@ -239,22 +247,8 @@ def test_a_refused_later_step_keeps_what_was_written(
     assert response.status_code == 409
     html = response.content.decode()
     assert "That playthrough has ended." in html
-
-
-def test_a_refused_step_names_its_field(logged_in, game, monkeypatch):
-    refusal = LogRefused(
-        "track", CommandFailed("Restore it instead.", 409), frozenset()
-    )
-
-    def refuse(*args, **kwargs):
-        raise refusal
-
-    monkeypatch.setattr(log_game_view, "log_game", refuse)
-
-    response = _post(logged_in, game, _press(game))
-
-    assert response.status_code == 409
-    assert "Restore it instead." in response.content.decode()
+    assert "Saved: the copy. Fix the field below and save again." in html
+    assert f'name="platform_seen" value="{pc.pk}"' in html
 
 
 def test_a_written_playtime_is_dropped_and_its_attempt_raised(
@@ -584,3 +578,46 @@ def test_refused_field_names_a_field_for_every_refused_step():
     steps = set(get_args(written.__value__)) | set(get_args(refused_only))
 
     assert steps <= set(log_game_view.REFUSED_FIELD)
+
+
+@pytest.mark.untracked_games
+def test_a_refusal_on_an_untracked_game_saves_it_and_a_repost_adds_no_run(
+    logged_in, owned_library, monkeypatch
+):
+    untracked = Game.objects.create(library=owned_library, name="Celeste")
+    real_record_facts = writes_log_game.record_facts
+    refused: list[bool] = []
+
+    def refuse_the_first_status(actor, game_, **kwargs):
+        if "status" in kwargs and not refused:
+            refused.append(True)
+            raise CommandFailed("That game is removed.", 409)
+        return real_record_facts(actor, game_, **kwargs)
+
+    monkeypatch.setattr(writes_log_game, "record_facts", refuse_the_first_status)
+
+    first = _post(logged_in, untracked, _press(untracked, status="completed"))
+
+    html = first.content.decode()
+    assert first.status_code == 409
+    assert "Saved: the game in your library. Fix the field below" in html
+    assert f'name="seen_game" value="{untracked.pk}"' in html
+    assert 'name="status_seen" value="unplayed"' in html
+
+    resubmit = _hidden_inputs(html) | {
+        "game": str(untracked.pk),
+        "status": "completed",
+        "playtime_kind": "session",
+    }
+    second = _post(logged_in, untracked, resubmit)
+
+    assert second.status_code == 302
+    assert (
+        Playthrough.objects.filter(
+            library=owned_library, player_game__game=untracked, removed_at__isnull=True
+        ).count()
+        == 1
+    )
+    assert PlayerGame.objects.get(library=owned_library, game=untracked).status == (
+        PlayerGameStatus.COMPLETED
+    )

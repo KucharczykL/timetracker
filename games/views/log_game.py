@@ -185,8 +185,7 @@ def _prefill_game(library: UserLibrary, raw: str) -> Game | None:
     game = _game_keyed(library, raw)
     if game is None:
         logger.warning(
-            "Opener fact %s.%s=%s %s.",
-            LogGameForm.__name__,
+            "Prefill %s=%s %s.",
             "prefill_game",
             repr(raw)[:LOGGED_VALUE_LENGTH],
             "is malformed or names no game this library holds",

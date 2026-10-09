@@ -1986,7 +1986,7 @@ class FormFieldGroup(NamedTuple):
     look: FieldGroupLook = "shown"
     #: E.g. a named Tailwind group.
     class_: ClassNames = ""
-    #: Adjacent groups sharing one render inside it.
+    #: Consecutive groups with this container share one.
     container: FieldGroupContainer | None = None
 
 
