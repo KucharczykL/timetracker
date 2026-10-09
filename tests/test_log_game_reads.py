@@ -5,9 +5,11 @@ from datetime import UTC, datetime
 import pytest
 from django.utils import timezone
 from entries import record_entry
+from historical_playtime_rows import record_row
 from session_rows import timed_row, tracked_run
 
 from games.catalog_release import release_on
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import Game, Platform, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.log_game import copy_release_for, held_facts
 from games.writes.playergame import new_correlation_id, track_game
@@ -155,3 +157,47 @@ def test_several_copies_of_one_release_name_that_release(library, game, pc):
     record_entry(library, held)
 
     assert copy_release_for(library, game, pc) == held
+
+
+def test_a_record_names_the_platform_over_an_older_copy(library, game, pc, console):
+    record_entry(library, _release(library, game, pc))
+    record_row([tracked_run(library, game)], release=_release(library, game, console))
+
+    assert held_facts(library, game).platform == console
+
+
+def test_a_dated_record_names_the_platform_over_an_undated_one(
+    library, game, pc, console
+):
+    run = tracked_run(library, game)
+    record_row([run], when="2020/2022", release=_release(library, game, pc))
+    record_row([run], release=_release(library, game, console))
+
+    assert held_facts(library, game).platform == pc
+
+
+def test_copy_release_for_names_the_release_the_newest_session_names(library, game, pc):
+    first = _release(library, game, pc)
+    second = _release_beside(library, game, pc)
+    record_entry(library, first)
+    record_entry(library, second)
+    timed_row(
+        tracked_run(library, game),
+        datetime(2024, 5, 1, 12, tzinfo=UTC),
+        datetime(2024, 5, 1, 13, tzinfo=UTC),
+        release=second,
+    )
+
+    assert copy_release_for(library, game, pc) == second
+
+
+def _release_beside(library, game, platform):
+    edition_state = EditionState(
+        key="edition-1",
+        edition=None,
+        name="Deluxe",
+        is_default=False,
+        releases=(ReleaseState(key="edition-1-release-0", platform=platform),),
+    )
+    written = state_catalog_graph(game=game, library=library, editions=[edition_state])
+    return written.editions[0].releases[0].release

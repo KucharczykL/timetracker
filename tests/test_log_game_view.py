@@ -1,5 +1,6 @@
 """Log a game page: render, write, refuse."""
 
+import logging
 import re
 import uuid
 
@@ -11,8 +12,18 @@ from stated_runs import state_run
 from tracked_games import create_tracked_game
 
 from common.components.modal import MODAL_ATTRIBUTES
-from games.models import Game, LibraryEntry, PlayerGameStatus
+from games.log_forms import STALE_GAME
+from games.models import (
+    Game,
+    LibraryEntry,
+    Platform,
+    PlayerGame,
+    PlayerGameStatus,
+    PlayerSession,
+    Playthrough,
+)
 from games.views import log_game as log_game_view
+from games.writes import log_game as writes_log_game
 from games.writes.answers import CommandFailed
 from games.writes.log_game import LogRefused
 
@@ -53,6 +64,7 @@ def _press(game: Game, **fields: object) -> dict[str, object]:
     posted: dict[str, object] = {
         "submission": SUBMISSION,
         "game": str(game.pk),
+        "seen_game": str(game.pk),
         "status": "unplayed",
         "status_seen": "unplayed",
         "platform_seen": "",
@@ -225,7 +237,7 @@ def test_a_written_playtime_is_dropped_and_its_attempt_raised(
     logged_in, game, monkeypatch
 ):
     refusal = LogRefused(
-        "more",
+        "note",
         CommandFailed("That run is removed.", 409),
         frozenset({"playtime"}),
     )
@@ -275,3 +287,156 @@ def test_the_fresh_page_is_not_a_refused_one(logged_in, game):
 
     assert "Restore it instead." not in html
     assert "aria-invalid" not in html
+
+
+def test_a_game_the_page_never_showed_writes_nothing_and_shows_its_own(
+    logged_in, owned_library, game
+):
+    hades = create_tracked_game(
+        owned_library, "Hades", status=PlayerGameStatus.COMPLETED
+    )
+
+    response = _post(
+        logged_in,
+        hades,
+        _press(hades, seen_game=str(game.pk), status="shelved"),
+    )
+
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert STALE_GAME in html
+    assert 'name="status_seen" value="completed"' in html
+    assert 'name="seen_game" value="' + str(hades.pk) + '"' in html
+    assert PlayerGame.objects.get(library=owned_library, game=hades).status == (
+        PlayerGameStatus.COMPLETED
+    )
+
+
+def test_a_refusal_after_a_write_keeps_it_says_so_and_a_second_press_adds_nothing(
+    logged_in, owned_library, game, monkeypatch
+):
+    pc = Platform.objects.create(library=owned_library, name="PC")
+    default_graph(game, owned_library, platform=pc)
+    real_record_facts = writes_log_game.record_facts
+    refused_once: list[bool] = []
+
+    def refuse_the_first_status(actor, game_, **kwargs):
+        if "status" in kwargs and not refused_once:
+            refused_once.append(True)
+            raise CommandFailed("That game is removed.", 409)
+        return real_record_facts(actor, game_, **kwargs)
+
+    monkeypatch.setattr(writes_log_game, "record_facts", refuse_the_first_status)
+
+    first = _post(
+        logged_in,
+        game,
+        _press(
+            game,
+            platform=str(pc.pk),
+            status="completed",
+            duration_hours="2",
+            duration_minutes="0",
+        ),
+    )
+
+    html = first.content.decode()
+    assert first.status_code == 409
+    assert (
+        "Saved: the copy and the playtime. Fix the field below and save again." in html
+    )
+    assert 'name="attempt" value="1"' in html
+    assert 'name="duration_hours" value="2"' not in html
+    assert LibraryEntry.objects.filter(library=owned_library).count() == 1
+    assert PlayerSession.objects.filter(library=owned_library).count() == 1
+
+    second = _post(
+        logged_in,
+        game,
+        _press(
+            game,
+            platform=str(pc.pk),
+            platform_seen=str(pc.pk),
+            status="completed",
+            attempt="1",
+        ),
+    )
+
+    assert second.status_code == 302
+    assert LibraryEntry.objects.filter(library=owned_library).count() == 1
+    assert PlayerSession.objects.filter(library=owned_library).count() == 1
+    assert Playthrough.objects.filter(library=owned_library).count() == 1
+    assert PlayerGame.objects.get(library=owned_library, game=game).status == (
+        PlayerGameStatus.COMPLETED
+    )
+
+
+def test_a_refused_note_opens_the_more_section(logged_in, game, monkeypatch):
+    refusal = LogRefused(
+        "note", CommandFailed("That run is removed.", 409), frozenset()
+    )
+
+    def refuse(*args, **kwargs):
+        raise refusal
+
+    monkeypatch.setattr(log_game_view, "log_game", refuse)
+
+    response = _post(logged_in, game, _press(game, note="Kept"))
+
+    html = response.content.decode()
+    assert 'open-section="more"' in html
+    assert "That run is removed." in html
+
+
+def test_a_refused_mastered_opens_the_more_section(logged_in, game, monkeypatch):
+    refusal = LogRefused(
+        "mastered", CommandFailed("That game is removed.", 409), frozenset()
+    )
+
+    def refuse(*args, **kwargs):
+        raise refusal
+
+    monkeypatch.setattr(log_game_view, "log_game", refuse)
+
+    response = _post(logged_in, game, _press(game, mastered="True"))
+
+    assert 'open-section="more"' in response.content.decode()
+
+
+def test_a_refused_track_marks_the_game_field(logged_in, owned_library, monkeypatch):
+    untracked = Game.objects.create(library=owned_library, name="Celeste")
+    refusal = LogRefused(
+        "track", CommandFailed("Restore it instead.", 409), frozenset()
+    )
+
+    def refuse(*args, **kwargs):
+        raise refusal
+
+    monkeypatch.setattr(log_game_view, "log_game", refuse)
+
+    html = _post(logged_in, untracked, _press(untracked)).content.decode()
+
+    sentence = html.index("Restore it instead.")
+    assert html.index('name="game"') < sentence < html.index('name="status"')
+
+
+@pytest.mark.untracked_games
+def test_a_new_tracked_game_says_so_on_the_redirect(logged_in, owned_library):
+    untracked = Game.objects.create(library=owned_library, name="Celeste")
+
+    response = _post(logged_in, untracked, _press(untracked))
+
+    texts = [message.message for message in get_messages(response.wsgi_request)]
+    assert "Celeste is now tracked in your library." in texts
+
+
+def test_a_malformed_prefill_game_is_logged(logged_in, capture_games_logger):
+    with capture_games_logger() as captured:
+        logged_in.get(f"{reverse('games:log_game')}?prefill_game=not-a-key")
+
+    assert any(
+        record.name == "games.opener_facts"
+        and record.levelno == logging.WARNING
+        and "prefill_game" in record.getMessage()
+        for record in captured.records
+    )

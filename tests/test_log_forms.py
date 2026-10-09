@@ -26,6 +26,7 @@ from games.log_forms import (
     DATES_REVERSED,
     DAY_REQUIRED,
     REMOVED_GAME,
+    STALE_GAME,
     ZERO_DURATION,
     LogGameForm,
 )
@@ -88,6 +89,7 @@ def _posted(game=None, **fields) -> dict[str, object]:
     }
     if game is not None:
         posted["game"] = str(game.pk)
+        posted["seen_game"] = str(game.pk)
     return posted | fields
 
 
@@ -160,7 +162,7 @@ def test_an_unchanged_platform_is_never_refused_on_its_release(owned_library, ga
     )
 
     assert form.is_valid(), form.errors
-    assert form.statement().platform_changed is False
+    assert form.statement().platform is KEEP
 
 
 def test_reversed_days_are_refused_on_finished_on(owned_library, game):
@@ -279,9 +281,7 @@ def test_a_changed_status_is_stated_with_the_word_the_page_showed(owned_library,
     )
 
     assert form.is_valid(), form.errors
-    statement = form.statement()
-    assert statement.status is PlayerGameStatus.PLAYED
-    assert statement.seen_status is PlayerGameStatus.UNPLAYED
+    assert form.statement().status is PlayerGameStatus.PLAYED
 
 
 def test_a_changed_day_states_an_act(owned_library, game):
@@ -354,6 +354,7 @@ def test_the_form_seeds_what_a_held_game_shows(owned_library, game, pc):
         note="A note",
     )
     held = HeldFacts(
+        game_id=game.pk,
         removed=False,
         status=PlayerGameStatus.COMPLETED,
         run=run,
@@ -375,8 +376,9 @@ def test_the_form_seeds_what_a_held_game_shows(owned_library, game, pc):
     assert form.initial["note_seen"] == "A note"
 
 
-def test_an_untracked_game_shows_unplayed(owned_library):
+def test_an_untracked_game_shows_unplayed(owned_library, game):
     held = HeldFacts(
+        game_id=game.pk,
         removed=False,
         status=None,
         run=None,
@@ -415,3 +417,23 @@ def test_an_unknown_run_pick_is_refused_by_the_field(owned_library, game):
 
     assert not form.is_valid()
     assert "run" in form.errors
+
+
+def test_a_game_the_page_never_showed_is_refused_on_the_game(owned_library, game):
+    other = Game.objects.create(library=owned_library, name="Hades")
+
+    form = _form(owned_library, _posted(game, seen_game=str(other.pk)))
+
+    assert not form.is_valid()
+    assert form.stale_game
+    assert form.errors["game"] == [STALE_GAME]
+
+
+def test_a_cleared_platform_is_stated_as_none(owned_library, game, pc):
+    form = _form(
+        owned_library,
+        _posted(game, platform="", platform_seen=str(pc.pk)),
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.statement().platform is None

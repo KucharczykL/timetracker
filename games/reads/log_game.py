@@ -2,9 +2,9 @@
 
 from typing import NamedTuple
 
-from django.db.models import F
+from django.db.models import F, QuerySet
 
-from games.ids import ReleaseId
+from games.ids import GameId, ReleaseId
 from games.models import (
     Game,
     Platform,
@@ -25,11 +25,14 @@ from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 class HeldFacts(NamedTuple):
     """What a game holds, read once."""
 
+    #: The game these facts were read for.
+    game_id: GameId
     #: Library removed the tracked game.
     removed: bool
     #: The tracked status, else none.
     status: PlayerGameStatus | None
-    #: Newest live run; a placeholder rule.
+    #: Newest live ordinary run.
+    # TODO(#1519): a run picker.
     run: Playthrough | None
     #: Run's endpoints; None where unstated.
     started: StatedEndpoint | None
@@ -48,6 +51,7 @@ def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
             library=library, game=game, removed_at__isnull=False
         ).exists()
         return HeldFacts(
+            game_id=game.pk,
             removed=removed,
             status=None,
             run=None,
@@ -59,6 +63,7 @@ def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
         )
     run = live_ordinary_runs(library, tracked).last()
     return HeldFacts(
+        game_id=game.pk,
         removed=False,
         status=PlayerGameStatus(tracked.status),
         run=run,
@@ -70,7 +75,7 @@ def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
     )
 
 
-def _live_releases(library: UserLibrary, game: Game):
+def _live_releases(library: UserLibrary, game: Game) -> QuerySet[Release, Release]:
     """Releases this library sees for a game."""
     return Release.objects.visible_to(library).filter(
         edition__game=game,

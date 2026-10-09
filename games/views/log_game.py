@@ -1,13 +1,15 @@
 """Views for the Log a game modal."""
 
+import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Final, Literal, cast
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Q
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, QueryDict
 from django.shortcuts import redirect
 from django.urls import reverse
 
@@ -29,47 +31,97 @@ from common.components.modal import titled_header
 from common.components.primitives import custom_element_builder
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
-from games.log_forms import LogGameForm
+from common.opener_facts import LOGGED_VALUE_LENGTH
+from games.log_forms import STALE_GAME, UNTRACKED_STATUS, LogGameForm
 from games.models import Game, UserLibrary
+from games.reads.endpoints import StatedEndpoint
 from games.reads.log_game import HeldFacts, held_facts
 from games.views.copy_pages import cancel_url, game_page
 from games.views.general import request_calendar_today
 from games.views.returns import origin_from
 from games.writes.log_game import LogRefused, LogStatement, LogStep, log_game
 from games.writes.playergame import new_correlation_id
+from timetracker.temporal import TemporalValue
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 type NestedSection = Literal["playtime", "more"]
+type FieldName = str
+
+logger = logging.getLogger("games.opener_facts")
 
 #: Field where a refusal's sentence sits.
-REFUSED_FIELD: Final[Mapping[LogStep, str]] = {
+REFUSED_FIELD: Final[Mapping[LogStep, FieldName]] = {
     "track": "game",
     "status": "status",
     "platform": "platform",
     "copy": "platform",
     "dates": "started",
+    "note": "note",
     "playtime": "playtime_kind",
-    "more": "mastered",
+    "mastered": "mastered",
 }
 
-#: Fields each nested section holds, in order.
-SECTION_FIELDS: Final[Mapping[NestedSection, tuple[str, ...]]] = {
-    "playtime": ("playtime_kind", "day", "duration", "device"),
-    "more": ("mastered", "note"),
+#: What each written step reads as in a refused press, in page order.
+SAVED_WORDS: Final[Mapping[LogStep, str]] = {
+    "copy": "the copy",
+    "dates": "the dates",
+    "note": "the note",
+    "playtime": "the playtime",
+    "mastered": "mastered",
+    "status": "the status",
 }
-#: Fields that mark a section held.
-SECTION_HOLDS: Final[Mapping[NestedSection, tuple[str, ...]]] = {
-    "playtime": ("duration_hours", "duration_minutes"),
-    "more": ("mastered", "note"),
+TRACKED_WORDS: Final = "the game in your library"
+
+#: The `*_seen` fields each step re-reads once it is written.
+SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
+    "track": (
+        "status_seen",
+        "platform_seen",
+        "started_seen",
+        "completed_seen",
+        "note_seen",
+        "mastered_seen",
+        "run",
+    ),
+    "copy": ("platform_seen",),
+    "platform": ("platform_seen",),
+    "dates": ("started_seen", "completed_seen", "run"),
+    "note": ("note_seen", "run"),
+    "playtime": ("run",),
+    "mastered": ("mastered_seen",),
+    "status": ("status_seen",),
 }
-SECTION_TITLES: Final[Mapping[NestedSection, str]] = {
-    "playtime": "Add playtime",
-    "more": "Mastered and note",
+
+
+@dataclass(frozen=True, slots=True)
+class SectionSpec:
+    """One nested section: its fields, what holds it, and its opener."""
+
+    title: str
+    fields: tuple[FieldName, ...]
+    #: Fields whose value marks the section held.
+    holds: tuple[FieldName, ...]
+    idle: str
+    held: str
+
+
+SECTIONS: Final[Mapping[NestedSection, SectionSpec]] = {
+    "playtime": SectionSpec(
+        title="Add playtime",
+        fields=("playtime_kind", "day", "duration", "device"),
+        holds=("duration_hours", "duration_minutes"),
+        idle="Add playtime…",
+        held="Playtime added",
+    ),
+    "more": SectionSpec(
+        title="Mastered and note",
+        fields=("mastered", "note"),
+        holds=("mastered", "note"),
+        idle="Mastered and note…",
+        held="Mastered and note set",
+    ),
 }
-SECTION_OPENER: Final[Mapping[NestedSection, tuple[str, str]]] = {
-    "playtime": ("Add playtime…", "Playtime added"),
-    "more": ("Mastered and note…", "Mastered and note set"),
-}
+
 #: Read by ts/elements/log-sections.ts.
 SECTION_DIALOG: Final = "data-log-section"
 SECTION_DONE: Final = "data-log-section-done"
@@ -117,8 +169,24 @@ def _game_keyed(library: UserLibrary, raw: str) -> Game | None:
     )
 
 
+def _prefill_game(library: UserLibrary, raw: str) -> Game | None:
+    """The navbar's pick; a WARNING where it names no held game."""
+    if not raw:
+        return None
+    game = _game_keyed(library, raw)
+    if game is None:
+        logger.warning(
+            "Opener fact %s.%s=%s %s.",
+            LogGameForm.__name__,
+            "prefill_game",
+            repr(raw)[:LOGGED_VALUE_LENGTH],
+            "is malformed or names no game this library holds",
+        )
+    return game
+
+
 def _named_game(request: HttpRequest, library: UserLibrary) -> Game | None:
-    """Page's game: posted, opened, or prefilled."""
+    """Page's game: posted or opener-stated."""
     if request.method == "POST":
         raw = request.POST.get("game", "")
     else:
@@ -135,7 +203,7 @@ def log_game_page(request: HttpRequest) -> HttpResponse:
     held = None if game is None else held_facts(library, game)
     prefill = None
     if data is None and game is None:
-        prefill = _game_keyed(library, request.GET.get("prefill_game", ""))
+        prefill = _prefill_game(library, request.GET.get("prefill_game", ""))
         if prefill is not None:
             held = held_facts(library, prefill)
     form = _build(request, data=data, held=held, prefill=prefill)
@@ -156,6 +224,18 @@ def log_game_page(request: HttpRequest) -> HttpResponse:
             messages.info(request, f"{statement.game} is now tracked in your library.")
         return redirect(game_page(request, statement.game))
 
+    if data is not None and form.stale_game and game is not None:
+        # The page showed another game's values: show this game's, unposted.
+        messages.error(request, STALE_GAME)
+        fresh = held_facts(library, game)
+        return _render(
+            request,
+            _build(request, data=None, held=fresh, prefill=game),
+            game=game,
+            held=fresh,
+            status=200,
+        )
+
     return _render(request, form, game=game or prefill, held=held, status=200)
 
 
@@ -164,6 +244,53 @@ def _attempt(raw: str | None) -> int:
         return int(raw or 0)
     except ValueError:
         return 0
+
+
+def _endpoint_seen(endpoint: StatedEndpoint | None) -> str:
+    when: TemporalValue | None = None if endpoint is None else endpoint.when
+    return "" if when is None or when.canonical is None else when.canonical
+
+
+def _seen_values(held: HeldFacts) -> dict[FieldName, str]:
+    """Each seen field, as the page shows a game it holds."""
+    status = UNTRACKED_STATUS if held.status is None else held.status
+    return {
+        "status_seen": status.value,
+        "platform_seen": "" if held.platform is None else str(held.platform.pk),
+        "started_seen": _endpoint_seen(held.started),
+        "completed_seen": _endpoint_seen(held.completed),
+        "note_seen": held.note,
+        "mastered_seen": "True" if held.mastered else "False",
+        "run": "" if held.run is None else str(held.run.pk),
+    }
+
+
+def _reseen(
+    data: QueryDict, held: HeldFacts, written: frozenset[LogStep], tracked: bool
+) -> None:
+    """Re-read the seen values the written steps changed."""
+    fresh = _seen_values(held)
+    if tracked:
+        names = set(SEEN_FIELDS["track"])
+    else:
+        names = {name for step in written for name in SEEN_FIELDS[step]}
+    for name in names:
+        data[name] = fresh[name]
+
+
+def _join(words: Sequence[str]) -> str:
+    if len(words) == 1:
+        return words[0]
+    return f"{', '.join(words[:-1])} and {words[-1]}"
+
+
+def _saved_line(written: frozenset[LogStep], tracked: bool) -> str | None:
+    """What a refused press kept, in page order; None if it kept nothing."""
+    words = [TRACKED_WORDS] if tracked else []
+    words += [word for step, word in SAVED_WORDS.items() if step in written]
+    if not words:
+        return None
+    return f"Saved: {_join(words)}. Fix the field below and save again."
 
 
 def _refused(
@@ -177,8 +304,13 @@ def _refused(
         data[ATTEMPT_FIELD] = str(_attempt(request.POST.get(ATTEMPT_FIELD)) + 1)
     library = cast(User, request.user).library
     held = held_facts(library, statement.game)
+    kept = _saved_line(refused.written, refused.tracked_the_game)
+    if kept is not None:
+        _reseen(data, held, refused.written, refused.tracked_the_game)
     rebuilt = _build(request, data=data, held=held)
     rebuilt.is_valid()
+    if kept is not None:
+        rebuilt.add_error(None, kept)
     rebuilt.add_error(REFUSED_FIELD[refused.step], refused.failure.message)
     return _render(
         request,
@@ -199,7 +331,7 @@ def _render(
 ) -> HttpResponse:
     tracked = held is not None and held.status is not None
     fields = _LogSections(
-        open_section=_open_section(form),
+        open_section=_open_section(form) or "",
         route=reverse("games:log_game"),
         origin=origin_from(request) or "",
         class_="group/log",
@@ -220,14 +352,14 @@ def _render(
     )
 
 
-def _open_section(form: LogGameForm) -> NestedSection | Literal[""]:
+def _open_section(form: LogGameForm) -> NestedSection | None:
     """The first nested section a refusal names."""
     if not form.is_bound:
-        return ""
-    for section, names in SECTION_FIELDS.items():
-        if any(form.has_error(name) for name in names):
+        return None
+    for section, spec in SECTIONS.items():
+        if any(form.has_error(name) for name in spec.fields):
             return section
-    return ""
+    return None
 
 
 def _groups() -> list[FormFieldGroup]:
@@ -242,13 +374,13 @@ def _groups() -> list[FormFieldGroup]:
         ),
         FormFieldGroup(
             "Playtime",
-            SECTION_FIELDS["playtime"],
+            SECTIONS["playtime"].fields,
             look="hidden",
             container=_section_dialog("playtime"),
         ),
         FormFieldGroup(
             "Mastered and note",
-            SECTION_FIELDS["more"],
+            SECTIONS["more"].fields,
             look="hidden",
             container=_section_dialog("more"),
         ),
@@ -257,17 +389,15 @@ def _groups() -> list[FormFieldGroup]:
 
 def _section_dialog(section: NestedSection) -> FieldGroupContainer:
     """Section's opener and its dialog fieldsets."""
-    titled = titled_header(
-        SECTION_TITLES[section], title_id=f"log-section-{section}-title"
-    )
-    idle, held = SECTION_OPENER[section]
-    holds = " ".join(SECTION_HOLDS[section])
+    spec = SECTIONS[section]
+    titled = titled_header(spec.title, title_id=f"log-section-{section}-title")
+    holds = " ".join(spec.holds)
 
     def contain(fieldsets: Sequence[Node]) -> Node:
         return Fragment(
             ControlButton([(SECTION_EDIT, section)], variant="outline", class_="mt-2")[
-                Span([(SECTION_IDLE, "")])[idle],
-                Span([(SECTION_HELD, ""), ("hidden", "")])[held],
+                Span([(SECTION_IDLE, "")])[spec.idle],
+                Span([(SECTION_HELD, ""), ("hidden", "")])[spec.held],
             ],
             ModalDialog(
                 [
