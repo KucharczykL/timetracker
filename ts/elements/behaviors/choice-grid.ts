@@ -30,6 +30,9 @@ registerBehavior("choice-grid", {
     itemSelector: "[data-choice-grid-no-items]",
     keepOpenOnTab: true,
   }),
+  sheetFocus: (menu) =>
+    menu.querySelector<HTMLInputElement>(`${RADIO}:checked`) ??
+    menu.querySelector<HTMLInputElement>(RADIO),
   wire: ({ host, toggle, menu, controller }) => {
     const pick = () => {
       controller.close();

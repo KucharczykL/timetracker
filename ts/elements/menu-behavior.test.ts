@@ -512,3 +512,46 @@ describe("attachMenu close motion", () => {
     expect(menu.getAttribute("data-side")).toBe("bottom");
   });
 });
+
+describe("a submenu toggle", () => {
+  const mountSubmenu = (
+    presenter?: () => MenuController,
+  ): { childHost: HTMLElement; child: MenuController } => {
+    document.body.innerHTML = `
+      <div id="child">
+        <button data-child-toggle type="button">More</button>
+        <div data-child-menu popover="manual" hidden><button>Deep</button></div>
+      </div>`;
+    const childHost = document.querySelector<HTMLElement>("#child")!;
+    const child = attachMenu(
+      childHost,
+      childHost.querySelector<HTMLElement>("[data-child-toggle]")!,
+      childHost.querySelector<HTMLElement>("[data-child-menu]")!,
+      { placement: "right-start", submenu: true, presenter },
+    );
+    return { childHost, child };
+  };
+
+  it("opens through its presenter on click", () => {
+    const presented = {
+      open: vi.fn(),
+      close: vi.fn(),
+      isOpen: () => false,
+      focusFirst: vi.fn(),
+    };
+    const { childHost } = mountSubmenu(() => presented);
+    click(childHost.querySelector<HTMLElement>("[data-child-toggle]")!);
+    expect(presented.open).toHaveBeenCalledOnce();
+    expect(presented.close).not.toHaveBeenCalled();
+  });
+
+  it("stays open when clicked while already open", () => {
+    let self: MenuController | null = null;
+    const { childHost, child } = mountSubmenu(() => self!);
+    self = child;
+    child.open();
+    click(childHost.querySelector<HTMLElement>("[data-child-toggle]")!);
+    expect(child.isOpen()).toBe(true);
+    expect(openSurfaces()).toHaveLength(1);
+  });
+});

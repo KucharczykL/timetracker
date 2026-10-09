@@ -3437,7 +3437,11 @@ def _selection_actions_slot(
     Declaration order is priority order: the rightmost overflows first.
     """
     # Deferred: `custom_elements` reads this module at import.
-    from common.components.custom_elements import Dropdown, DropdownPanel
+    from common.components.custom_elements import (
+        Dropdown,
+        DropdownPanel,
+        SheetSpec,
+    )
 
     offered = list(actions)
     slot = Div([("data-selection-actions", "")], class_="flex gap-2")
@@ -3468,6 +3472,7 @@ def _selection_actions_slot(
             target_element=panel,
             id=overflow_id,
             placement="bottom-end",
+            sheet=SheetSpec("More actions"),
         )
     ]
     return slot[

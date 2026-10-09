@@ -512,6 +512,7 @@ def GameStatusSelector(
         body_key="status",
         event="status-changed",
         csrf=csrf_token,
+        sheet_title="Status",
         class_=class_,
     )
 
@@ -539,6 +540,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         body_key="device_id",
         event="device-changed",
         csrf=csrf_token,
+        sheet_title="Device",
         empty_is_null=True,
     )
 

@@ -99,7 +99,8 @@ def test_only_the_column_trigger_states_a_title():
 
 def test_the_glyph_takes_the_colour_of_the_button_it_sits_in():
     """The row menu's own glyph does, and the two sit one above the other."""
-    [glyph] = re.findall(r"<svg[^>]*>", picker())
+    #: The first glyph is the trigger's; the sheet's back control follows.
+    [glyph, *_sheet_icons] = re.findall(r"<svg[^>]*>", picker())
 
     assert "text-black" not in glyph
     assert "dark:text-white" not in glyph

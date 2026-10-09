@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "../drop-down.js";
+import { getBehavior } from "../dropdown-behaviors.js";
 import { selectPayloadValue } from "./select.js";
 
 describe("selectPayloadValue", () => {
@@ -72,5 +73,32 @@ describe("select behavior on a refused PATCH", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     choose({});
     await vi.waitFor(() => expect(window.toast).toHaveBeenCalledOnce());
+  });
+});
+
+describe("select sheetFocus", () => {
+  const mountOptions = (selected: number | null): HTMLElement => {
+    document.body.innerHTML = `
+      <div data-menu id="menu" role="listbox">
+        ${[0, 1, 2]
+          .map(
+            (index) =>
+              `<a data-option id="option-${index}" aria-selected="${
+                index === selected ? "true" : "false"
+              }">Option ${index}</a>`,
+          )
+          .join("")}
+      </div>`;
+    return document.querySelector<HTMLElement>("#menu")!;
+  };
+
+  it("focuses the selected option", () => {
+    const menu = mountOptions(1);
+    expect(getBehavior("select")?.sheetFocus?.(menu)?.id).toBe("option-1");
+  });
+
+  it("focuses the first option when none is selected", () => {
+    const menu = mountOptions(null);
+    expect(getBehavior("select")?.sheetFocus?.(menu)?.id).toBe("option-0");
   });
 });

@@ -7,6 +7,7 @@ from django.urls import path, reverse
 from playwright.sync_api import FloatRect, Page
 
 from common.components import ComboboxDropdown, FilterSelect, SearchSelect
+from common.components.custom_elements import SheetSpec
 from e2e.helpers import log_in
 
 OPTIONS = [{"value": "1", "label": "Hades", "data": {}}]
@@ -22,6 +23,7 @@ def harness_view(request):
             search_aria_label="Game",
         ),
         id="facet-dropdown",
+        sheet=SheetSpec("Game"),
     )
     field = SearchSelect(name="device", selected=OPTIONS, options=OPTIONS)
     return HttpResponse(f"""<!DOCTYPE html><html><head>

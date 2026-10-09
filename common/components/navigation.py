@@ -7,6 +7,7 @@ from common.components.custom_elements import (
     DropdownLinkItem,
     DropdownMenuPanel,
     DropdownPostItem,
+    SheetSpec,
 )
 from common.components.primitives import Button, Div, Li, PlainH4, Span
 from common.components.theme import ThemeToggle
@@ -87,6 +88,7 @@ def AccountMenu(
         ),
         id=id,
         placement="bottom-end",
+        sheet=SheetSpec(username),
     )
 
 

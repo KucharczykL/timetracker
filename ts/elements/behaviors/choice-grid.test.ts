@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
+import { getBehavior } from "../dropdown-behaviors.js";
 import "../drop-down.js";
 
 const mount = (): HTMLElement => {
@@ -93,5 +94,32 @@ describe("choice-grid behavior", () => {
     expect(steam.checked).toBe(true);
     expect(parts(host).label()).toBe("Steam");
     expect(menu.hidden).toBe(true);
+  });
+});
+
+describe("choice-grid sheetFocus", () => {
+  const mountRadios = (checked: number | null): HTMLElement => {
+    document.body.innerHTML = `
+      <div data-menu id="menu">
+        ${["gog", "steam", "epic"]
+          .map(
+            (value, index) =>
+              `<input type="radio" name="icon" value="${value}" id="${value}" ${
+                index === checked ? "checked" : ""
+              }>`,
+          )
+          .join("")}
+      </div>`;
+    return document.querySelector<HTMLElement>("#menu")!;
+  };
+
+  it("focuses the checked radio", () => {
+    const menu = mountRadios(1);
+    expect(getBehavior("choice-grid")?.sheetFocus?.(menu)?.id).toBe("steam");
+  });
+
+  it("focuses the first radio when none is checked", () => {
+    const menu = mountRadios(null);
+    expect(getBehavior("choice-grid")?.sheetFocus?.(menu)?.id).toBe("gog");
   });
 });

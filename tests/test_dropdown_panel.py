@@ -18,7 +18,7 @@ from common.components import (
     Safe,
     Span,
 )
-from common.components.custom_elements import SelectOption
+from common.components.custom_elements import SelectOption, SheetSpec
 from common.components.primitives import ANCHORED_MOTION_CLASS, _selection_actions_slot
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -98,7 +98,9 @@ SITES = {
     "menu": lambda: str(DropdownMenuPanel(items=[DropdownActionItem()["Go"]])),
     "listbox": lambda: str(ListboxPanel(options=[SelectOption("a", "A", True)])),
     "combobox": lambda: str(
-        ComboboxDropdown(label="Pick", content=Span()["x"], id="pick")
+        ComboboxDropdown(
+            label="Pick", content=Span()["x"], id="pick", sheet=SheetSpec("Pick")
+        )
     ),
     "column picker": _column_picker,
     "selection overflow": _selection_overflow,

@@ -304,7 +304,8 @@ export function attachMenu(
       // without grabbing focus so hover drives the single highlight. A submenu opens
       // idempotently (hover-opened on mouse, so the click must not toggle it closed).
       const fromKeyboard = event.detail === 0;
-      const target = isSubmenu ? self : presenter();
+      // The presenter decides: a narrow host opens its sheet as a level.
+      const target = presenter();
       if (isSubmenu || !target.isOpen()) {
         target.open(toggle);
         if (fromKeyboard) target.focusFirst();

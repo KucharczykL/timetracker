@@ -7,7 +7,12 @@ import "./form-dialog.js";
 import type { FormDialogElement } from "./form-dialog.js";
 import { FORM_DIALOG_CREATED, PAGE_STALE } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
-import { attachModal, openModals, resetModalLayerForTests, topModal } from "./modal-layer.js";
+import {
+  attachModal,
+  openModals,
+  resetModalLayerForTests,
+  topModal,
+} from "./modal-layer.js";
 
 const ORIGIN = "http://localhost:3000";
 const HOST = `${ORIGIN}/device/list`;
@@ -459,6 +464,27 @@ describe("open", () => {
     vi.useRealTimers();
     await settle();
     expect(assigned).toEqual([EDIT]);
+  });
+
+  it("opens over the page once a leaving sheet has left", async () => {
+    // A menu sheet closes on the item's click, before the link's handler runs.
+    const finishes: (() => void)[] = [];
+    const sheet = document.createElement("dialog");
+    sheet.setAttribute("data-modal", "");
+    document.body.append(sheet);
+    const modal = attachModal(sheet, { leave: (finish) => finishes.push(finish) });
+    modal.open();
+    replies.push(reply(EDIT_FORM));
+    modal.close();
+    click(mountLink());
+    await settle();
+    expect(openModals()).toEqual([]);
+    expect(finishes).toHaveLength(1);
+    finishes[0]();
+    await settle();
+    expect(openModals()).toHaveLength(1);
+    expect(openDialog().hasAttribute("data-modal")).toBe(true);
+    expect(toasts).toEqual([]);
   });
 
   it("drops the answer when the top modal changed", async () => {

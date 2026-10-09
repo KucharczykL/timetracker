@@ -6,21 +6,31 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+from html_answers import sheetless_dropdown_faults
 
 from common.components import (
+    ControlButton,
     DatePicker,
     DateRangePicker,
     DateTimePicker,
     Dropdown,
+    DropdownSubmenuItem,
+    RowActionMenu,
+    SelectDropdown,
+    SplitButtonDropdown,
 )
 from common.components.custom_elements import (
     SHEET_ATTRIBUTES,
     SHEET_HOST_VALUE,
     BottomSheet,
+    ButtonDropdown,
+    SelectOption,
     SheetSpec,
+    _assemble,
 )
 from common.components.primitives import Button, Div, YearPicker
 from common.components.quick_filter import QUICK_FACETS, QuickFilterBar
+from common.components.search_select import ComboboxDropdown
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -44,6 +54,7 @@ def sheet_title(html: str) -> str:
 
 
 def dropdown(**kwargs: object) -> str:
+    kwargs.setdefault("sheet", SheetSpec("Example"))
     return str(
         Dropdown(
             trigger_element=Button(type="button")["Open"],
@@ -54,10 +65,63 @@ def dropdown(**kwargs: object) -> str:
     )
 
 
-def test_a_dropdown_without_a_title_carries_no_sheet():
-    html = dropdown()
-    assert sheets(html) == []
-    assert not SENTINEL.search(html)
+def test_a_dropdown_without_a_sheet_is_refused_outside_the_sheet_behavior():
+    with pytest.raises(ValueError):
+        _assemble(
+            Button(type="button")["Open"],
+            Div()["panel"],
+            id="example",
+            placement="bottom-start",
+            submenu=False,
+            wrapper_class="relative inline-flex",
+            sheet=None,
+        )
+
+
+#: Each builder's sheet title, from the site that states it.
+SHEET_TITLE_SITES = {
+    "row action menu": lambda: RowActionMenu([], label="Game actions", id="row"),
+    "button dropdown": lambda: ButtonDropdown(
+        label="Acts", items=[], id="acts", aria_label="Model"
+    ),
+    "button dropdown label": lambda: ButtonDropdown(label="Acts", items=[], id="acts"),
+    "split button": lambda: SplitButtonDropdown(
+        primary=ControlButton()["Add"],
+        items=[],
+        id="split",
+        aria_label="More ways to add",
+    ),
+    "select dropdown": lambda: SelectDropdown(
+        current_label="Played",
+        options=[SelectOption("p", "Played", True)],
+        id="status",
+        patch_url="/api/games/1/status",
+        body_key="status",
+        event="status-changed",
+        csrf="t",
+        sheet_title="Status",
+    ),
+    "submenu item": lambda: DropdownSubmenuItem("More", items=[], id="more"),
+    "combobox": lambda: ComboboxDropdown(
+        label="Game", content=Div()["x"], id="game", sheet=SheetSpec("Game")
+    ),
+}
+
+SHEET_TITLES = {
+    "row action menu": "Game actions",
+    "button dropdown": "Model",
+    "button dropdown label": "Acts",
+    "split button": "More ways to add",
+    "select dropdown": "Status",
+    "submenu item": "More",
+    "combobox": "Game",
+}
+
+
+@pytest.mark.parametrize("site", SHEET_TITLE_SITES)
+def test_each_builder_titles_its_sheet(site):
+    html = str(SHEET_TITLE_SITES[site]())
+    assert sheet_title(html) == SHEET_TITLES[site]
 
 
 def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
@@ -281,3 +345,33 @@ def test_a_sheet_leads_its_header_with_a_hidden_back_control():
 def test_a_sheet_level_backdrop_is_transparent():
     html = dropdown(sheet=SheetSpec("Day"))
     assert "data-sheet-level:backdrop:opacity-0!" in html
+
+
+def test_the_answer_check_refuses_a_sheetless_drop_down():
+    html = (
+        '<drop-down behavior="menu"><button aria-label="Row actions">x</button>'
+        "<div>panel</div></drop-down>"
+    )
+    [fault] = sheetless_dropdown_faults(html)
+    assert "behavior='menu'" in fault
+    assert "aria-label='Row actions'" in fault
+
+
+def test_the_answer_check_passes_a_drop_down_with_its_own_sheet():
+    html = dropdown(sheet=SheetSpec("Day"))
+    assert sheetless_dropdown_faults(html) == []
+
+
+def test_the_answer_check_leaves_the_sheet_behavior_alone():
+    html = '<drop-down behavior="sheet"><div>panel</div></drop-down>'
+    assert sheetless_dropdown_faults(html) == []
+
+
+def test_the_answer_check_names_a_nested_sheetless_drop_down_alone():
+    outer = dropdown(sheet=SheetSpec("Day"))
+    inner = (
+        '<drop-down behavior="menu"><button aria-label="Inner">x</button></drop-down>'
+    )
+    html = outer[: -len("</drop-down>")] + inner + "</drop-down>"
+    [fault] = sheetless_dropdown_faults(html)
+    assert "aria-label='Inner'" in fault

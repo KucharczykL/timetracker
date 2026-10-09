@@ -23,6 +23,7 @@ from common.components import (
     searchselect_selected,
 )
 from common.components.core import collect_media
+from common.components.custom_elements import SheetSpec
 from common.components.search_select import (
     OVERWRITE_PRESET_VERB,
     PRESET_SEARCH_PLACEHOLDER,
@@ -1015,7 +1016,11 @@ class ComboboxDropdownTest(unittest.TestCase):
     def _html(**kwargs) -> str:
         return str(
             ComboboxDropdown(
-                label="Game", content=Div()["panel content"], id="cbd", **kwargs
+                label="Game",
+                content=Div()["panel content"],
+                id="cbd",
+                sheet=SheetSpec("Game"),
+                **kwargs,
             )
         )
 

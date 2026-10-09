@@ -14,6 +14,9 @@ registerBehavior("select", {
     itemSelector: "[data-option]",
     matchToggleWidth: true,
   }),
+  sheetFocus: (menu) =>
+    menu.querySelector<HTMLElement>('[data-option][aria-selected="true"]') ??
+    menu.querySelector<HTMLElement>("[data-option]"),
   wire: ({ host, controller }) => {
     const label = host.querySelector<HTMLElement>("[data-label]");
     const patchUrl = host.dataset.patchUrl ?? "";

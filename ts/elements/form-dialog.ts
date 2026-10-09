@@ -43,6 +43,7 @@ import {
   MODAL_CHANGE,
   refreshModalStack,
   topModal,
+  whenSettled,
 } from "./modal-layer.js";
 
 interface OpenDialog {
@@ -131,6 +132,13 @@ function showToasts(messages: Messages): void {
 
 function report(detail: string): string {
   return reportClientError("form-dialog", detail, { toast: false });
+}
+
+/** Resolves once no modal leaves. */
+function whenLeaveSettles(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    whenSettled(() => resolve());
+  });
 }
 
 function errorToast(message: string): void {
@@ -517,6 +525,8 @@ export class FormDialogElement extends HTMLElement {
         this.followLink(url, route.page.messages, `the page at ${url.href} could not be fitted`);
         return;
       }
+      // A sheet the link's click closed leaves first; a dialog cannot open over it.
+      if (isModalLeaving()) await whenLeaveSettles();
       if (topModal() !== topAtClick) {
         // The server consumed them; show them anyway.
         report(`a modal overtook the link to ${url.href}`);

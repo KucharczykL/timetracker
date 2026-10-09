@@ -586,20 +586,32 @@ class AppliedFacetMarkTest(TestCase):
     """Applied facets are stamped and marked."""
 
     def test_a_dropdown_not_applied_renders_as_before(self):
+        from common.components.custom_elements import SheetSpec
         from common.components.search_select import ComboboxDropdown
 
-        arguments = {"label": "Device", "content": Span()["x"], "id": "d"}
+        arguments = {
+            "label": "Device",
+            "content": Span()["x"],
+            "id": "d",
+            "sheet": SheetSpec("Device"),
+        }
         self.assertEqual(
             str(ComboboxDropdown(**arguments)),
             str(ComboboxDropdown(**arguments, applied=False)),
         )
 
     def test_an_applied_dropdown_puts_a_dot_in_its_corner(self):
+        from common.components.custom_elements import SheetSpec
         from common.components.search_select import ComboboxDropdown
 
         html = str(
             ComboboxDropdown(
-                label="Device", content=Span()["x"], id="d", ghost=True, applied=True
+                label="Device",
+                content=Span()["x"],
+                id="d",
+                ghost=True,
+                applied=True,
+                sheet=SheetSpec("Device"),
             )
         )
         button = html[html.index("<button") : html.index("</button>")]

@@ -246,8 +246,27 @@ describe("a sheet's first focus", () => {
     expect(document.activeElement?.getAttribute("data-date")).toBe("2026-10-02");
   });
 
+  it("is the first enabled item of a menu", () => {
+    const { host } = mount(
+      "menu",
+      '<button role="menuitem" disabled>Off</button><button role="menuitem" data-first>One</button>',
+    );
+    host.open();
+    expect(document.activeElement?.hasAttribute("data-first")).toBe(true);
+  });
+
+  it("closes the sheet when an acting menu item is clicked", () => {
+    const { toggle, dialog } = mount(
+      "menu",
+      '<button role="menuitem" data-acting type="button">One</button>',
+    );
+    mouseClick(toggle);
+    mouseClick(dialog.querySelector<HTMLElement>("[data-acting]")!);
+    expect(dialog.open).toBe(false);
+  });
+
   it("falls back to the dismiss button", () => {
-    const { host, dialog } = mount();
+    const { host, dialog } = mount("menu", "<p>Nothing to focus</p>");
     host.open();
     expect(document.activeElement).toBe(dialog.querySelector("[data-modal-dismiss]"));
   });
@@ -258,7 +277,7 @@ describe("a sheet's first focus", () => {
       new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
     );
     expect(dialog.open).toBe(true);
-    expect(document.activeElement).toBe(dialog.querySelector("[data-modal-dismiss]"));
+    expect(document.activeElement).toBe(dialog.querySelector("[data-inside]"));
   });
 });
 

@@ -1153,6 +1153,7 @@ def DropdownSubmenuItem(
             placement="right-start",
             submenu=True,
             wrapper_class="relative block",
+            sheet=SheetSpec(label),
         )
     ]
 
@@ -1288,16 +1289,18 @@ def _assemble(
     wrapper_class: str,
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
-    sheet: SheetSpec | None = None,
+    sheet: SheetSpec | None,
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url).
-    ``sheet``: a bottom sheet on narrow viewports."""
+    ``sheet`` is the narrow-viewport sheet; only the sheet behavior omits it."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
     if sheet is not None and behavior == "sheet":
         raise ValueError("The sheet behavior brings its own sheet.")
+    if sheet is None and behavior != "sheet":
+        raise ValueError(f"A {behavior!r} dropdown needs a sheet title.")
     config_attributes = [
         (key.replace("_", "-"), value) for key, value in (config or {}).items()
     ]
@@ -1325,7 +1328,7 @@ def Dropdown(
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
     full_width: bool = False,
-    sheet: SheetSpec | None = None,
+    sheet: SheetSpec,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
     stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
@@ -1437,6 +1440,7 @@ def BottomSheet(
         submenu=False,
         wrapper_class="relative flex w-full",
         behavior="sheet",
+        sheet=None,
     )
 
 
@@ -1550,6 +1554,7 @@ def RowActionMenu(
         ),
         id=id,
         placement=placement,
+        sheet=SheetSpec(label),
     )
 
 
@@ -1562,7 +1567,8 @@ def ButtonDropdown(
     placement: str = "bottom-start",
     aria_label: str = "",
 ) -> Node:
-    """A button-styled menu dropdown; the trigger is a ``ControlButton``."""
+    """A button-styled menu dropdown; the trigger is a ``ControlButton``.
+    Its sheet is titled ``aria_label``, else ``label``."""
     # The stamping machinery is typed on Element (it reads tag_name/attributes
     # off the node), so unwrap the component to its rendered <button>.
     trigger = _as_menu_trigger(
@@ -1573,6 +1579,7 @@ def ButtonDropdown(
         target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
         id=id,
         placement=placement,
+        sheet=SheetSpec(aria_label or label),
     )
 
 
@@ -1582,7 +1589,7 @@ def SplitButtonDropdown(
     items: list[Node],
     id: str,
     placement: str = "bottom-start",
-    aria_label: str = "",
+    aria_label: str,
     caret_color: ButtonColor | None = None,
     menu_width: str | None = None,
 ) -> Node:
@@ -1610,7 +1617,7 @@ def SplitButtonDropdown(
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
     #: A glyph alone needs a name.
-    caret_name: list[HTMLAttribute] = [("aria-label", aria_label)] if aria_label else []
+    caret_name: list[HTMLAttribute] = [("aria-label", aria_label)]
     if caret_color is None:
         #: A quiet primary keeps a quiet caret.
         caret_button = ControlButton(
@@ -1637,6 +1644,7 @@ def SplitButtonDropdown(
         ),
         id=id,
         placement=placement,
+        sheet=SheetSpec(aria_label),
     )
     #: No shadow: a ghost has no edge.
     lift = "" if primary.variant == "ghost" else " shadow-2xs"
@@ -1691,6 +1699,7 @@ def SelectDropdown(
     body_key: str,
     event: str,
     csrf: str,
+    sheet_title: str,
     empty_is_null: bool = False,
     placement: str = "bottom-start",
     class_: str = "",
@@ -1724,4 +1733,5 @@ def SelectDropdown(
         placement=placement,
         behavior="select",
         config=config,
+        sheet=SheetSpec(sheet_title),
     )

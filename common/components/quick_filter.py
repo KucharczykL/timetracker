@@ -316,10 +316,14 @@ _QUICK_PILL_CLASS = (
 )
 
 
-def _facet_apply() -> Node:
-    """A facet panel's Apply."""
+def _facet_apply(divided: bool) -> Node:
+    """A facet panel's Apply. ``divided`` keeps its line above it in a sheet;
+    a facet with no list drops that line there."""
     # Submits the bar's form.
-    return Div(class_="flex justify-end mt-2 pt-2 border-t border-default-medium")[
+    line = "border-t border-default-medium"
+    if not divided:
+        line = f"{line} group-data-[dropdown-host=sheet]/dropdown:border-t-0"
+    return Div(class_=f"flex justify-end mt-2 pt-2 {line}")[
         ControlButton(type="submit", color="blue", data_quick_facet_apply="")["Apply"]
     ]
 
@@ -468,7 +472,9 @@ class QuickFilterBar(BaseComponent):
         return ComboboxDropdown(
             label=label,
             # A calendar's footer holds its own Apply.
-            content=content if own_footer else Fragment(content, _facet_apply()),
+            content=content
+            if own_footer
+            else Fragment(content, _facet_apply(divided=searchable)),
             id=f"quick-{facet.key}-dropdown",
             ghost=True,
             panel_width=panel_width,
@@ -589,6 +595,7 @@ class QuickFilterBar(BaseComponent):
                     trigger_element=trigger,
                     target_element=panel,
                     id=f"quick-{self.mode}-overflow",
+                    sheet=SheetSpec(OVERFLOW_LABEL),
                 ),
                 AppliedDot([("data-quick-overflow-mark", ""), ("class", "invisible")]),
             ]
