@@ -1748,7 +1748,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   the opener key ride `ts/handoff.ts`. The page knows nothing; page glue
   is an element (`<field-mirror>`). `form-dialog:reload` `{url}` refetches
   the body and takes a new baseline, so nothing asks; a failed reload toasts
-  and only the latest applies.
+  and only the latest applies. A reload has a deadline and yields to a submit.
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
   [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md).
@@ -1778,8 +1778,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `fix_field` without a statement posts the hidden input alone. Read a fact
   with `form.stated(name, Type)`. A value the form cannot use (malformed,
   absent row) is refused, never 404: editable field, sentence, WARNING on
-  `games.opener_facts`. A fact locks; `?prefill_<field>=` is an editable
-  prefill (Log a game's `prefill_game`). No
+  `games.opener_facts`. A fact locks; Log a game's `?prefill_game=` is an editable
+  prefill. No
   chained `..._for_game` route: a path names only a route's subject.
   Contract is
   [A form states the facts its opener knows](docs/superpowers/specs/2026-10-06-issue-1516-opener-facts-design.md)
@@ -1788,7 +1788,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   over `held_facts` (`games/reads/log_game.py`). Each prefilled field posts a
   `<name>_seen`; an equal value states nothing. Playtime and mastered-and-note
   are nested `ModalDialog`s in the form (`FormFieldGroup.container`,
-  `<log-sections>`). A new platform records an Unknown copy through
+  `<log-sections>`). A changed platform with no copy records an Unknown copy through
   `release_on`, or on a shared game's standing Release. Contract is
   [Log a game in one modal](docs/superpowers/specs/2026-10-09-issue-1517-log-a-game-design.md)
 - **A bulk write analyzes what it filled** — a command or task that
