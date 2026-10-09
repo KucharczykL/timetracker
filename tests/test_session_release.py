@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 
 import pytest
+from django.contrib.messages import get_messages
 from django.core.management import call_command
 from django.http import QueryDict
 from django.test import Client
@@ -653,6 +654,17 @@ def test_the_session_form_states_a_release(client, graph, run):
 
     assert response.status_code == 302
     assert PlayerSession.objects.get().release_id == graph.release.pk
+
+
+def test_adding_a_session_says_so(client, graph, run):
+    response = client.post(
+        reverse("games:add_session"),
+        session_post(graph.game, run),
+    )
+
+    assert [str(message) for message in get_messages(response.wsgi_request)] == [
+        "Session added."
+    ]
 
 
 def test_the_session_form_refuses_another_games_release(

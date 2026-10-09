@@ -4,7 +4,7 @@ Not in `common/components/`: reading `games.bulk_actions` there
 closes a cycle through that table's foot imports.
 """
 
-from common.components import DropdownLinkItem, RowActionMenu
+from common.components import DropdownLinkItem, RowActionMenu, form_dialog_link
 from common.components.core import Node
 from common.components.primitives import ButtonSize
 from common.returns import OriginUrl, action_url
@@ -27,6 +27,7 @@ def game_row_menu(
                 action_url("games:edit_game", game.pk, origin=origin),
                 "Edit",
                 icon="edit",
+                attributes=form_dialog_link(),
             )
         )
     items.append(

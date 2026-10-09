@@ -8,6 +8,7 @@ from common.components import (
     DropdownPostItem,
     DropdownSubmenuItem,
     RowActionMenu,
+    form_dialog_link,
 )
 from common.components.core import Node
 from common.components.primitives import ButtonSize
@@ -60,11 +61,15 @@ def entry_row_menu(
                         page("games:resume_library_entry"),
                         "With details…",
                         description="Pick the day, add a note",
+                        attributes=form_dialog_link(),
                     ),
                 ],
             ),
             DropdownLinkItem(
-                page("games:edit_library_entry_end"), "Edit how it left…", icon="end"
+                page("games:edit_library_entry_end"),
+                "Edit how it left…",
+                icon="end",
+                attributes=form_dialog_link(),
             ),
         ]
         if ended
@@ -83,6 +88,7 @@ def entry_row_menu(
                         page("games:end_library_entry"),
                         "With details…",
                         description="Pick the day and what happened",
+                        attributes=form_dialog_link(),
                     ),
                 ],
             ),
@@ -92,9 +98,19 @@ def entry_row_menu(
         [
             *have,
             DropdownDivider(),
-            DropdownLinkItem(page("games:edit_library_entry"), "Edit…", icon="edit"),
+            DropdownLinkItem(
+                page("games:edit_library_entry"),
+                "Edit…",
+                icon="edit",
+                attributes=form_dialog_link(),
+            ),
             DropdownDivider(),
-            DropdownLinkItem(page("games:add_purchase"), "Add purchase…", icon="plus"),
+            DropdownLinkItem(
+                page("games:add_purchase"),
+                "Add purchase…",
+                icon="plus",
+                attributes=form_dialog_link(),
+            ),
             *(
                 DropdownSubmenuItem(
                     f"{purchase_label(purchase)} · {price_words(purchase)}",

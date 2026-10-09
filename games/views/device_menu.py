@@ -1,6 +1,6 @@
 """What one device row offers."""
 
-from common.components import DropdownLinkItem, RowActionMenu
+from common.components import DropdownLinkItem, RowActionMenu, form_dialog_link
 from common.components.core import Node
 from common.returns import OriginUrl, action_url
 from games.bulk_removal import REMOVE_DEVICE
@@ -15,6 +15,7 @@ def device_row_menu(device: Device, origin: OriginUrl | None) -> Node:
                 action_url("games:edit_device", device.pk, origin=origin),
                 "Edit",
                 icon="edit",
+                attributes=form_dialog_link(),
             ),
             DropdownLinkItem(
                 action_url("games:remove_device", device.pk, origin=origin),

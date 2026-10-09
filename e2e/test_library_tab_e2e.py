@@ -189,12 +189,12 @@ def test_the_row_menu_opens_the_details_page_and_returns_to_the_tab(
     page.get_by_role("menuitem", name="With details…").click()
 
     entry = copies[0]
-    page.wait_for_url(f"**{reverse('games:end_library_entry', args=[entry.pk])}*")
-    pick_choice(page, "way", "sold")
-    with page.expect_navigation():
-        page.get_by_role("button", name="Save", exact=True).click()
+    dialog = page.locator("dialog[data-modal][open]")
+    expect(dialog.locator("[data-form-dialog-title]")).to_be_visible()
+    pick_choice(dialog, "way", "sold")
+    dialog.get_by_role("button", name="Save", exact=True).click()
 
-    page.wait_for_url(listed)
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     entry.refresh_from_db()
     assert entry.access_end_way == "sold"
 

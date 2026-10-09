@@ -1,6 +1,6 @@
 """What one platform row offers."""
 
-from common.components import DropdownLinkItem, RowActionMenu
+from common.components import DropdownLinkItem, RowActionMenu, form_dialog_link
 from common.components.core import Node
 from common.returns import OriginUrl, action_url
 from games.bulk_removal import REMOVE_PLATFORM
@@ -14,6 +14,7 @@ def platform_row_menu(platform: Platform, origin: OriginUrl | None) -> Node:
                 action_url("games:edit_platform", platform.pk, origin=origin),
                 "Edit",
                 icon="edit",
+                attributes=form_dialog_link(),
             ),
             DropdownLinkItem(
                 action_url("games:remove_platform", platform.pk, origin=origin),

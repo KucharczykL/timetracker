@@ -17,6 +17,7 @@ from common.components import (
     TableData,
     TruncatedText,
     drop_columns,
+    form_dialog_link,
     make_row,
     row_summary,
 )
@@ -316,6 +317,7 @@ def _row_menu(
                 action_url("games:edit_playthrough", run.pk, origin=origin),
                 "Edit",
                 icon="edit",
+                attributes=form_dialog_link(),
             ),
             DropdownLinkItem(
                 action_url("games:remove_playthrough", run.pk, origin=origin),

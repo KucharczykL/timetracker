@@ -19,6 +19,13 @@ def _submit(page: Page, label: str = "Save") -> None:
         page.get_by_role("button", name=label, exact=True).click()
 
 
+def _save_in_dialog(page: Page, label: str = "Save") -> None:
+    """Dialog button saves, closes and reloads."""
+    dialog = page.locator("dialog[data-modal][open]")
+    dialog.get_by_role("button", name=label, exact=True).click()
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
+
+
 def _details(page: Page, scope, menu_label: str, item: str) -> None:
     page.wait_for_function("() => !!customElements.get('drop-down')")
     scope.get_by_role("button", name=menu_label).click()
@@ -85,8 +92,8 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     expect(rows).to_have_count(1)
 
     _row_act(page, "Tunic (Switch) actions", "I no longer have it", "With details…")
-    pick_choice(page, "way", "sold")
-    _submit(page)
+    pick_choice(page.locator("dialog[data-modal][open]"), "way", "sold")
+    _save_in_dialog(page)
 
     expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
     expect(rows).to_have_count(0)

@@ -12,6 +12,7 @@ from common.components import (
     PurchaseAmount,
     RowActionMenu,
     Span,
+    form_dialog_link,
 )
 from common.components.primitives import ButtonSize
 from common.date_time_presentation import DateTimePresentation
@@ -107,7 +108,12 @@ def purchase_items(
         ]
     )
     return [
-        DropdownLinkItem(page("games:edit_purchase"), "Edit purchase…", icon="edit"),
+        DropdownLinkItem(
+            page("games:edit_purchase"),
+            "Edit purchase…",
+            icon="edit",
+            attributes=form_dialog_link(),
+        ),
         *refund,
         DropdownDivider(),
         DropdownLinkItem(

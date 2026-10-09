@@ -9,6 +9,7 @@ from common.components import (
     DropdownLinkItem,
     DropdownPostItem,
     RowActionMenu,
+    form_dialog_link,
 )
 from common.components.core import Node
 from common.returns import OriginUrl, action_url
@@ -51,6 +52,7 @@ def session_row_menu(
             action_url("games:edit_session", session.pk, origin=origin),
             "Edit",
             icon="edit",
+            attributes=form_dialog_link(),
         ),
     ]
     if session.timing_mode == PlayerSessionTimingMode.DURATION_ONLY:
@@ -59,6 +61,7 @@ def session_row_menu(
                 action_url("games:reclassify_session", session.pk, origin=origin),
                 f"{RECLASSIFY.label}{_ASKS_FIRST}",
                 icon="history",
+                attributes=form_dialog_link(),
             )
         )
     items.append(

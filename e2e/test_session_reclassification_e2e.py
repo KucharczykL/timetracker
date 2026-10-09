@@ -36,9 +36,14 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     page.get_by_role(
         "menuitem", name="Record as historical playtime\u2026", exact=True
     ).click()
-    page.get_by_role("button", name="Submit", exact=True).click()
+    dialog = page.locator("dialog[data-modal][open]")
+    expect(dialog.locator("[data-form-dialog-title]")).to_be_visible()
+    dialog.get_by_role("button", name="Submit", exact=True).click()
 
+    #: Saved page shows the toast and Undo.
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.get_by_text("Session recorded as historical playtime.")).to_be_visible()
+    expect(page.get_by_role("button", name="Undo")).to_be_visible()
     session.refresh_from_db()
     assert session.removed_at is not None
     assert HistoricalPlaytime.objects.get().reclassified_from_id == session.pk
@@ -46,6 +51,8 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     page.get_by_role("button", name="Undo").click()
 
     expect(page.get_by_text("Session restored.")).to_be_visible()
+    session.refresh_from_db()
+    assert session.removed_at is None
     assert PlayerSession.objects.alive().count() == 1
     assert HistoricalPlaytime.objects.get().removed_at is not None
     #: Catches a dist module served as classic.

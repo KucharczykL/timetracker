@@ -271,10 +271,11 @@ def test_a_row_menu_opens_as_a_sheet_and_focuses_its_first_item(
     )
     expect(sheet.get_by_role("menuitem").first).to_be_focused()
 
-    # "Edit" navigates away; sheet closes too.
-    with page.expect_navigation():
-        sheet.get_by_role("menuitem", name="Edit", exact=True).click()
+    # "Edit" opens a dialog; the sheet closes.
+    sheet.get_by_role("menuitem", name="Edit", exact=True).click()
     expect(page.locator(SHEET)).to_have_count(0)
+    dialog = page.locator("dialog[data-modal][open]")
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Edit device")
     assert errors == []
 
 

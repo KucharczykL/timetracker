@@ -50,4 +50,8 @@ def test_the_row_menu_opens_edit(live_server, page: Page, e2e_library):
     page.get_by_role("button", name="Amiga (Home) actions").click()
     page.get_by_role("menuitem", name="Edit").click()
 
-    page.wait_for_url(f"**{reverse('games:edit_platform', args=[platform.pk])}**")
+    dialog = page.locator("dialog[data-modal][open]")
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Edit Platform")
+    expect(dialog.locator('input[name="name"]')).to_have_value("Amiga")
+    platform.refresh_from_db()
+    assert platform.name == "Amiga"

@@ -2,6 +2,7 @@
 
 import "./drop-down.js";
 import { DropdownElement } from "./drop-down.js";
+import { isRendered } from "../rendered.js";
 import {
   readSelectableTableProps,
   SelectableTableProps,
@@ -257,11 +258,11 @@ export class SelectableTableElement extends HTMLElement {
   /** Focus target when the line hides. */
   private focusTarget(): HTMLInputElement | null {
     const header = this.checkAlls.find(
-      (checkAll) => checkAll.closest("thead") && isShown(checkAll),
+      (checkAll) => checkAll.closest("thead") && isRendered(checkAll),
     );
     if (header) return header;
     const rowBox = this.querySelector<HTMLInputElement>(CHECKBOX_SELECTOR);
-    return rowBox && isShown(rowBox) ? rowBox : null;
+    return rowBox && isRendered(rowBox) ? rowBox : null;
   }
 
   private onRowsChanged(): void {
@@ -353,15 +354,6 @@ export class SelectableTableElement extends HTMLElement {
   publishLineHeight(): void {
     publishLineHeight();
   }
-}
-
-/** Rendered, so focus can land on it. */
-function isShown(element: HTMLElement): boolean {
-  if (!element.isConnected) return false;
-  if (typeof element.checkVisibility === "function") {
-    return element.checkVisibility();
-  }
-  return !element.closest("[hidden]");
 }
 
 // Text a reader skips, where no clip names.
