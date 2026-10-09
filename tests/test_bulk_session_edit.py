@@ -1,6 +1,5 @@
 """Device, emulated or note on many sessions, undone."""
 
-import re
 import uuid
 from datetime import date, timedelta
 
@@ -10,6 +9,7 @@ from devices import create_device, remove_device
 from django.http import QueryDict
 from django.urls import reverse
 from session_rows import duration_only_row, tracked_run
+from tri_state_markup import held_word
 
 from common.components.unset_field import unset_input_name
 from games.bulk_edit import STATEMENT_UNREADABLE
@@ -187,15 +187,6 @@ def _offered(library, rows) -> str:
     return str(offered.node)
 
 
-def _held(markup: str, name: str) -> str:
-    """The held word of the tri-state tag naming ``name``, in any order."""
-    tag = re.search(rf'<tri-state-checkbox\b[^>]*\bname="{name}"[^>]*>', markup)
-    assert tag is not None
-    held = re.search(r'\bheld="(\w+)"', tag.group(0))
-    assert held is not None
-    return held.group(1)
-
-
 def test_the_placeholders_keep_what_every_row_holds(
     owned_user, owned_library, game, deck
 ):
@@ -223,7 +214,7 @@ def test_the_placeholders_say_mixed_where_rows_differ(
     assert _offered(owned_library, rows).count('placeholder="Keep: mixed"') == 2
 
 
-def test_the_placeholders_name_nothing_held(owned_user, owned_library, game):
+def test_the_placeholders_name_nothingheld_word(owned_user, owned_library, game):
     markup = _offered(
         owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
     )
@@ -312,7 +303,7 @@ def test_device_and_note_offer_none_and_emulated_is_a_tri_state_box(
 
     for field in ("device", "note"):
         assert f'name="{unset_input_name(f"{CHOICE_FIELD}-{field}")}"' in markup
-    assert _held(markup, f"{CHOICE_FIELD}-emulated") == "unchecked"
+    assert held_word(markup, f"{CHOICE_FIELD}-emulated") == "unchecked"
     assert f">{TRI_STATE_HINTS.kept}</span>" in markup
 
 
@@ -324,10 +315,12 @@ def test_emulated_held_checked_or_mixed_from_the_rows(owned_user, owned_library,
         a_session(owned_user, run, day=date(2026, 3, 8)),
     ]
 
-    assert _held(_offered(owned_library, checked), f"{CHOICE_FIELD}-emulated") == (
+    assert held_word(_offered(owned_library, checked), f"{CHOICE_FIELD}-emulated") == (
         "checked"
     )
-    assert _held(_offered(owned_library, mixed), f"{CHOICE_FIELD}-emulated") == "mixed"
+    assert (
+        held_word(_offered(owned_library, mixed), f"{CHOICE_FIELD}-emulated") == "mixed"
+    )
 
 
 def test_a_removed_device_refuses(owned_library, deck):

@@ -3,7 +3,6 @@
 import html as html_module
 import json
 import logging
-import re
 import uuid
 from dataclasses import fields as dataclass_fields
 
@@ -12,6 +11,7 @@ from bulk_posts import said
 from django.http import Http404, QueryDict
 from django.urls import reverse
 from session_rows import tracked_run
+from tri_state_markup import held_word
 
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_edit import STATEMENT_UNREADABLE
@@ -70,15 +70,6 @@ STATUS = f"{CHOICE_FIELD}-status"
 MASTERED = f"{CHOICE_FIELD}-mastered"
 EXCLUDED = f"{CHOICE_FIELD}-excluded_from_unfinished"
 DROPPED = f"{CHOICE_FIELD}-excluded_from_dropped"
-
-
-def _held(markup: str, name: str) -> str:
-    """The held word of the tri-state tag naming ``name``, in any order."""
-    tag = re.search(rf'<tri-state-checkbox\b[^>]*\bname="{name}"[^>]*>', markup)
-    assert tag is not None
-    held = re.search(r'\bheld="(\w+)"', tag.group(0))
-    assert held is not None
-    return held.group(1)
 
 
 @pytest.fixture
@@ -254,9 +245,9 @@ def test_the_control_keeps_what_the_rows_hold(
         assert f'name="{name}"' in markup
     #: Status differs; the flags agree.
     assert "Keep: mixed" in markup
-    assert _held(markup, MASTERED) == "unchecked"
-    assert _held(markup, EXCLUDED) == "unchecked"
-    assert _held(markup, DROPPED) == "checked"
+    assert held_word(markup, MASTERED) == "unchecked"
+    assert held_word(markup, EXCLUDED) == "unchecked"
+    assert held_word(markup, DROPPED) == "checked"
     assert markup.count("<tri-state-checkbox name=") == 3
     assert markup.count(f">{TRI_STATE_HINTS.kept}</span>") == 3
 
@@ -269,7 +260,7 @@ def test_a_flag_the_rows_differ_on_is_held_mixed(
 
     markup = str(EDIT.choice.offer(owned_library, rows, CHOICE_FIELD).node)
 
-    assert _held(markup, MASTERED) == "mixed"
+    assert held_word(markup, MASTERED) == "mixed"
     assert f">{TRI_STATE_HINTS.mixed}</span>" in markup
 
 
