@@ -98,6 +98,9 @@ _CENTRED_PANEL_MOTION_CLASS = (
 _SHEET_PANEL_MOTION_CLASS = (
     "transition-[translate,opacity] duration-(--duration-slow) ease-sheet "
     "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0 "
+    # A level's push and back are its own animations.
+    "group-data-[sheet-level]/sheet:transition-none! "
+    "group-data-[sheet-level]/sheet:translate-none! "
     "group-data-[motion=leaving]/sheet:duration-(--duration-slow-exit) "
     "motion-reduce:translate-none! motion-reduce:opacity-0 "
     "motion-reduce:duration-(--duration-reduced)! "
@@ -148,12 +151,14 @@ def ModalPanelHeader(
     attributes: Attributes = (),
     title_attributes: Attributes = (),
     divided: bool = True,
+    leading: Child | None = None,
 ) -> Element:
     """A modal panel's title row; no label, no ×.
 
     `title_id` beats an id in `title_attributes`;
     `None` leaves the id to the client.
     `divided`: a line over a scrolling body.
+    `leading`: a control before the title, e.g. a back button.
     """
     close_button = (
         None
@@ -172,18 +177,21 @@ def ModalPanelHeader(
         [(MODAL_ATTRIBUTES["header"], ""), *attributes],
         class_=f"{_HEADER_CLASS} {_DIVIDED_HEADER_CLASS if divided else ''}".strip(),
     )[
-        Div(class_="flex min-w-0 flex-col")[
-            P(
-                [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
-                class_="text-type-micro text-body",
-            ),
-            PlainH2(
-                [
-                    *([] if title_id is None else [("id", title_id)]),
-                    *title_attributes,
-                    ("class", "text-type-section text-heading"),
-                ],
-            )[title],
+        Div(class_="flex min-w-0 items-center gap-1")[
+            leading,
+            Div(class_="flex min-w-0 flex-col")[
+                P(
+                    [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
+                    class_="text-type-micro text-body",
+                ),
+                PlainH2(
+                    [
+                        *([] if title_id is None else [("id", title_id)]),
+                        *title_attributes,
+                        ("class", "text-type-section text-heading"),
+                    ],
+                )[title],
+            ],
         ],
         close_button,
     ]

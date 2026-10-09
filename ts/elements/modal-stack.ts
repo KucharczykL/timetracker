@@ -9,6 +9,13 @@ export interface StackedModal {
   readonly state: ModalState;
 }
 
+/** A sheet level: part of the sheet below it, never a step of the stack. */
+export const SHEET_LEVEL_ATTRIBUTE = "data-sheet-level";
+
+export function isSheetLevel(dialog: HTMLDialogElement): boolean {
+  return dialog.hasAttribute(SHEET_LEVEL_ATTRIBUTE);
+}
+
 export const STACK_PROPERTIES = [
   "--modal-depth",
   "--modal-scale",
@@ -203,27 +210,30 @@ function layersOf(open: readonly StackedModal[]): Layer[] {
 }
 
 /** A leaving modal keeps what it shows. */
-function markTrails(open: readonly StackedModal[]): void {
-  const top = open.at(-1);
-  for (const entry of open) {
+function markTrails(stacked: readonly StackedModal[]): void {
+  const top = stacked.at(-1);
+  for (const entry of stacked) {
     const { trail } = partsOf(entry.dialog);
     if (entry !== top || !trail) {
       hideTrail(entry.dialog, trail);
       continue;
     }
-    const names = open.slice(0, -1).map((below) => nameOf(below.dialog)).filter(Boolean);
+    const names = stacked.slice(0, -1).map((below) => nameOf(below.dialog)).filter(Boolean);
     if (names.length > 0) showTrail(entry.dialog, trail, names);
     else hideTrail(entry.dialog, trail);
   }
 }
 
-/** Steps, measures and names every shown modal. */
+/** Steps, measures and names every shown modal; levels count as none. */
 export function markStack(shown: readonly StackedModal[]): void {
   if (shown.length === 0) return;
   watch();
   const open = shown.filter((entry) => entry.state === "open");
-  markTrails(open);
-  const layers = layersOf(open);
+  const levels = open.filter((entry) => isSheetLevel(entry.dialog));
+  for (const level of levels) hideTrail(level.dialog, partsOf(level.dialog).trail);
+  const stacked = open.filter((entry) => !isSheetLevel(entry.dialog));
+  markTrails(stacked);
+  const layers = layersOf(stacked);
   let reserve: Pixels = 0;
   for (const layer of layers) {
     if (layer.panel) {

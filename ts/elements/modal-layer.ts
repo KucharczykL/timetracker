@@ -1,7 +1,13 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
-import { clearStack, markStack, onStackResize, stopWatchingStack } from "./modal-stack.js";
+import {
+  clearStack,
+  isSheetLevel,
+  markStack,
+  onStackResize,
+  stopWatchingStack,
+} from "./modal-stack.js";
 import { holdLeave } from "../motion.js";
 import { ownChild } from "./own-child.js";
 import {
@@ -28,11 +34,13 @@ export interface ModalOptions {
   initialFocus?: () => HTMLElement | null;
   /** Must call finish, now or later. Default: a centred fade. */
   leave?: (finish: FinishLeave) => void;
-  /** Escape, backdrop, dismiss control; default close.
+  /** Native cancel (Escape, back gesture); default dismiss.
    *
    * Best effort: the browser may close anyway.
    * onClosed is the one hook that always runs.
    */
+  cancel?: () => void;
+  /** Backdrop and dismiss control; default close. */
   dismiss?: () => void;
   /** Runs last, after focus return. */
   onClosed?: () => void;
@@ -185,10 +193,19 @@ function notifyChange(): void {
   window.dispatchEvent(new Event(MODAL_CHANGE));
 }
 
+/** The topmost dialog that is not a level; the only one, when all are levels. */
+function dimOwnerIndex(): number {
+  for (let index = shown.length - 1; index >= 0; index -= 1) {
+    if (!isSheetLevel(shown[index].dialog)) return index;
+  }
+  return shown.length - 1;
+}
+
 function markBackdrops(): void {
+  // A level belongs to the dialog below it, so it does not cover that dialog.
+  const owner = dimOwnerIndex();
   shown.forEach((entry, index) => {
-    // Only the topmost shown dialog dims.
-    entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.covered, index !== shown.length - 1);
+    entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.covered, index < owner);
     entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.over, index > 0);
   });
 }
@@ -353,10 +370,11 @@ function returnFocus(entry: Entry): void {
   target?.focus({ preventScroll: true });
 }
 
+/** Finishes the modals above, without focus: the one below returns it. */
 function closeAbove(entry: Entry): void {
   const index = shown.indexOf(entry);
   if (index === -1) return;
-  for (const above of shown.slice(index + 1).reverse()) finish(above);
+  for (const above of shown.slice(index + 1).reverse()) finish(above, false);
 }
 
 function clearLeaveLimit(entry: Entry): void {
@@ -365,11 +383,11 @@ function clearLeaveLimit(entry: Entry): void {
 }
 
 /** Idempotent. */
-function finish(entry: Entry): void {
-  settling(() => finishEntry(entry));
+function finish(entry: Entry, returnsFocus = true): void {
+  settling(() => finishEntry(entry, returnsFocus));
 }
 
-function finishEntry(entry: Entry): void {
+function finishEntry(entry: Entry, returnsFocus: boolean): void {
   if (entry.state === "closed") return;
   closeAbove(entry);
   entry.state = "closed";
@@ -388,7 +406,8 @@ function finishEntry(entry: Entry): void {
     stopWatchingStack();
     unlockDocumentScroll();
   }
-  returnFocus(entry);
+  if (returnsFocus) returnFocus(entry);
+  else entry.opener = null;
   notifyChange();
   // Layer already settled; a throw is reported.
   try {
@@ -456,24 +475,35 @@ function closeEntry(entry: Entry): void {
     return;
   }
   closeAbove(entry);
-  entry.state = "leaving";
-  // Inner panels close before the leave.
-  removeSurface(entry.surface);
+  markLeaving([entry]);
+  runLeave(entry, () => finish(entry));
+}
+
+/** Marks modals leaving; inner panels close before their leave. */
+function markLeaving(group: readonly Entry[]): void {
+  for (const entry of group) {
+    entry.state = "leaving";
+    removeSurface(entry.surface);
+  }
   markShown();
   notifyChange();
+}
+
+/** Runs the top's leave; `done` runs once it finishes, or at once when none. */
+function runLeave(entry: Entry, done: () => void): void {
   const leave = entry.options.leave;
   if (!entry.surface.host.isConnected || !leave) {
-    finish(entry);
+    done();
     return;
   }
   const generation = entry.generation;
   const finishThisClose: FinishLeave = () => {
-    if (entry.generation === generation && entry.state === "leaving") finish(entry);
+    if (entry.generation === generation && entry.state === "leaving") done();
   };
   entry.leaveLimit = window.setTimeout(() => {
     if (entry.generation !== generation || entry.state !== "leaving") return;
     report("leave never called finish");
-    finish(entry);
+    done();
   }, LEAVE_LIMIT_MS);
   try {
     leave(finishThisClose);
@@ -481,6 +511,31 @@ function closeEntry(entry: Entry): void {
     report(`leave threw: ${String(error)}`);
     finishThisClose();
   }
+}
+
+/** Finishes a group topmost first in one task; only the lowest returns focus. */
+function finishGroup(group: readonly Entry[]): void {
+  settling(() => {
+    for (const entry of [...group].reverse()) finishEntry(entry, entry === group[0]);
+  });
+}
+
+/** Closes a modal and every modal above it as one act. */
+function closeGroup(first: Entry): void {
+  settling(() => {
+    if (first.state !== "open") return;
+    const group = shown.slice(shown.indexOf(first));
+    // A leave is already running above; the close waits for it.
+    if (group.some((entry) => entry.state !== "open")) return;
+    markLeaving(group);
+    runLeave(group[group.length - 1], () => finishGroup(group));
+  });
+}
+
+/** Closes the dialog and every modal stacked above it; one leave runs. */
+export function closeTogether(dialog: HTMLDialogElement): void {
+  const first = shown.find((entry) => entry.dialog === dialog);
+  if (first) closeGroup(first);
 }
 
 /** A centred modal's exit: held until its fade ends. */
@@ -543,13 +598,26 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
       close(entry);
     }
   };
+  const cancelNative = (): void => {
+    if (!options.cancel) {
+      dismiss();
+      return;
+    }
+    if (entry.state !== "open") return;
+    try {
+      options.cancel();
+    } catch (error) {
+      report(`cancel threw: ${String(error)}`);
+      close(entry);
+    }
+  };
   const ownsEvent = (event: Event): boolean => nearestDialog(event.target) === dialog;
 
   dialog.addEventListener("cancel", (event) => {
     if (event.target !== dialog) return;
     event.preventDefault();
     // Not cancelable: the browser closes it.
-    if (event.cancelable) dismiss();
+    if (event.cancelable) cancelNative();
   });
   dialog.addEventListener("close", (event) => {
     // A queued close may follow a reopen.

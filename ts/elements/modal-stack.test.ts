@@ -456,3 +456,35 @@ describe("trail", () => {
     expect(() => refreshModalStack()).not.toThrow();
   });
 });
+
+describe("sheet levels", () => {
+  it("counts a level as no depth step, reserve or trail", () => {
+    const sheet = mountStacked("Sheet", { top: 200, header: 40 });
+    const level = mountStacked("Level", { top: 100, header: 40 });
+    level.dialog.setAttribute("data-sheet-level", "");
+    const form = mountStacked("Form", { top: 50, header: 40 });
+    sheet.modal.open();
+    level.modal.open();
+    form.modal.open();
+    expect(sheet.panel.getAttribute("data-modal-depth")).toBe("1");
+    expect(property(sheet.panel, "--modal-depth")).toBe("1");
+    expect(level.panel.hasAttribute("data-modal-depth")).toBe(false);
+    expect(property(level.panel, "--modal-reserve")).toBe("");
+    expect(property(form.panel, "--modal-reserve")).toBe("38px");
+    expect(level.trail.hidden).toBe(true);
+    expect(form.trail.textContent).toBe("Sheet");
+  });
+
+  it("leaves the sheet under a level at depth zero", () => {
+    const sheet = mountStacked("Sheet", { top: 200, header: 40 });
+    const level = mountStacked("Level", { top: 100, header: 40 });
+    level.dialog.setAttribute("data-sheet-level", "");
+    sheet.modal.open();
+    level.modal.open();
+    expect(sheet.panel.hasAttribute("data-modal-depth")).toBe(false);
+    expect(property(sheet.panel, "--modal-depth")).toBe("0");
+    expect(property(sheet.panel, "--modal-scale")).toBe("1");
+    expect(property(sheet.panel, "--modal-scrim")).toBe("0");
+    expect(level.trail.hidden).toBe(true);
+  });
+});

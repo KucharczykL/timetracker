@@ -12,6 +12,7 @@ from common.components import (
     ModalPanel,
     ModalPanelHeader,
 )
+from common.components.elements import Span
 from common.components.form_dialog import FormDialogHost
 from common.components.modal import (
     _CENTRED_PANEL_MOTION_CLASS,
@@ -193,3 +194,16 @@ class EveryModalSteps(SimpleTestCase):
             body = dialog.split("</dialog>", 1)[0]
             self.assertIn(f'{MODAL_ATTRIBUTES["panel"]}=""', body)
             self.assertIn(f'{MODAL_ATTRIBUTES["header"]}=""', body)
+
+
+class ModalPanelLeadingTest(SimpleTestCase):
+    def test_a_leading_control_precedes_the_title(self):
+        html = str(
+            ModalPanelHeader(
+                "Title",
+                title_id="t",
+                leading=Span(class_="lead")["Back"],
+            )
+        )
+        self.assertIn('class="lead"', html)
+        self.assertLess(html.index("Back"), html.index("Title"))

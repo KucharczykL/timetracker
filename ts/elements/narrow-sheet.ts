@@ -6,8 +6,9 @@
 import { reportClientError } from "../client-errors.js";
 import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
 import type { MenuController } from "./menu-behavior.js";
-import { type CancelSettled, isModalLeaving, whenSettled } from "./modal-layer.js";
+import { closeTogether, type CancelSettled, isModalLeaving, whenSettled } from "./modal-layer.js";
 import { attachSheetCore, type FrameHandle } from "./sheet-controller.js";
+import { bottomSheet, enclosingSheet, type LevelPlacement } from "./sheet-levels.js";
 import { clearAnchoredPosition } from "./anchored-position.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
 
@@ -43,6 +44,13 @@ type MoveOrigin = { host: "sheet"; place: LentPlace | null } | { host: "anchored
 
 let sheetTitleCounter = 0;
 
+function titleOf(sheet: HTMLDialogElement): string {
+  return sheet.querySelector(`[${SHEET_ATTRIBUTES.title}]`)?.textContent?.trim() ?? "";
+}
+
+/** A menu item that acts, not one that opens a submenu. */
+const ACTING_ITEM_SELECTOR = `[role="menuitem"]:not([aria-haspopup])`;
+
 /** Clones carry no id; stamp per instance. */
 function nameSheet(dialog: HTMLDialogElement): void {
   const title = dialog.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.title}]`);
@@ -75,6 +83,8 @@ export function attachNarrowSheet(
   let frame: FrameHandle | null = null;
   let viewportFrame: FrameHandle | null = null;
   let cancelRetry: CancelSettled | null = null;
+  /** The sheet below, while this host opened as its level. */
+  let levelBelow: HTMLDialogElement | null = null;
 
   const isNarrow = (): boolean => sentinel.getClientRects().length > 0;
   const setExpanded = (expanded: boolean): void =>
@@ -135,8 +145,19 @@ export function attachNarrowSheet(
     dialog.style.removeProperty("--sheet-visible-height");
   };
 
+  const levelOf = (): LevelPlacement | null =>
+    levelBelow ? { below: levelBelow, belowTitle: titleOf(levelBelow) } : null;
+  // A level's × and backdrop close the whole chain; Escape only itself.
+  const dismissSheet = (): void => {
+    if (levelBelow) closeTogether(bottomSheet(dialog));
+    else sheet.close();
+  };
+
   const sheet = attachSheetCore(host, dialog, {
     initialFocus: () => options.sheetFocus?.(menu) ?? null,
+    cancel: () => sheet.close(),
+    dismiss: dismissSheet,
+    levelOf,
     beforeShow: () => {
       setExpanded(true);
       watchViewport();
@@ -144,6 +165,7 @@ export function attachNarrowSheet(
     beforeHide: () => {
       unwatchViewport();
       const place = lentPlace();
+      levelBelow = null;
       try {
         if (place) returnLent(place);
       } finally {
@@ -159,6 +181,21 @@ export function attachNarrowSheet(
     hideDetail: () => ({ moving: state.kind === "moving" }),
   });
 
+  dialog
+    .querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back}]`)
+    ?.addEventListener("click", () => sheet.close());
+  // Capture: the close runs before the item's own click handler.
+  dialog.addEventListener(
+    "click",
+    (event) => {
+      if (!levelBelow) return;
+      const item = (event.target as Element).closest(ACTING_ITEM_SELECTOR);
+      if (!item || item.closest("dialog") !== dialog) return;
+      closeTogether(bottomSheet(dialog));
+    },
+    { capture: true },
+  );
+
   /** False when it did not open. */
   const openSheet = (stated: HTMLElement | undefined): boolean => {
     const opener = stated ?? options.defaultOpener?.() ?? undefined;
@@ -171,6 +208,7 @@ export function attachNarrowSheet(
     }
     const place: LentPlace = { parent, next: lent.nextSibling };
     state = { kind: "sheet", opener, place };
+    levelBelow = enclosingSheet(host);
     let opened = false;
     try {
       // Stamped before the move; blurs read it.
@@ -184,6 +222,7 @@ export function attachNarrowSheet(
     } finally {
       // A refused open drops the tap.
       if (!opened) {
+        levelBelow = null;
         returnLent(place);
         state = { kind: "closed" };
       }
@@ -204,6 +243,8 @@ export function attachNarrowSheet(
 
   const checkHost = (): void => {
     frame = null;
+    // A level stays put; its first sheet's close closes it.
+    if (levelBelow) return;
     if (state.kind !== "anchored" && state.kind !== "sheet") return;
     const inSheet = state.kind === "sheet";
     if (isNarrow() === inSheet) return;

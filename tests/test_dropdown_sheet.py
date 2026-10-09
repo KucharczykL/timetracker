@@ -268,3 +268,16 @@ def test_every_sheet_variant_names_the_generated_host():
 def test_a_sheet_needs_a_title(title):
     with pytest.raises(ValueError):
         SheetSpec(title)
+
+
+def test_a_sheet_leads_its_header_with_a_hidden_back_control():
+    html = dropdown(sheet=SheetSpec("Day"))
+    [back] = re.findall(r"<button[^>]*data-sheet-back[^>]*>", html)
+    assert re.search(r"\shidden(\s|=|>)", back)
+    assert 'data-sheet-back-label=""' in html
+    assert html.index("data-sheet-back=") < html.index("data-dropdown-sheet-title")
+
+
+def test_a_sheet_level_backdrop_is_transparent():
+    html = dropdown(sheet=SheetSpec("Day"))
+    assert "data-sheet-level:backdrop:opacity-0!" in html

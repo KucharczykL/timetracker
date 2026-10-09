@@ -1230,7 +1230,16 @@ def DropdownDivider() -> Node:
 
 
 type SheetRole = Literal[
-    "sheet", "narrow", "host", "panel", "body", "title", "sheetless"
+    "sheet",
+    "narrow",
+    "host",
+    "panel",
+    "body",
+    "title",
+    "sheetless",
+    "back",
+    "back_label",
+    "level",
 ]
 type SheetAttribute = str  # e.g. "data-dropdown-sheet"
 
@@ -1244,6 +1253,11 @@ SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "title": "data-dropdown-sheet-title",
     #: Its sheet failed; it stays anchored.
     "sheetless": "data-dropdown-sheetless",
+    #: Hidden until the sheet is a level.
+    "back": "data-sheet-back",
+    "back_label": "data-sheet-back-label",
+    #: A level of the sheet below it.
+    "level": "data-sheet-level",
 }
 #: The ``host`` value of a panel lent to a sheet.
 SHEET_HOST_VALUE = "sheet"
@@ -1340,7 +1354,9 @@ def Dropdown(
 _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "
     "data-[sheet-state=opening]:backdrop:opacity-100 "
-    "data-[sheet-state=open]:backdrop:opacity-100"
+    "data-[sheet-state=open]:backdrop:opacity-100 "
+    # A level's dim belongs to the sheet below it.
+    "data-sheet-level:backdrop:opacity-0!"
 )
 
 
@@ -1446,6 +1462,21 @@ class SheetSpec:
         return cls(_NAMED_ON_CONNECT, searchable=searchable)
 
 
+def _sheet_back_control() -> Node:
+    """Backs out of a level; hidden until the sheet is one."""
+    return ControlButton(
+        [(SHEET_ATTRIBUTES["back"], ""), ("hidden", "")],
+        variant="ghost",
+        size="compact",
+    )[
+        Icon("arrowleft"),
+        Span(
+            [(SHEET_ATTRIBUTES["back_label"], "")],
+            class_="min-w-0 truncate text-type-micro",
+        ),
+    ]
+
+
 def dropdown_sheet(sheet: SheetSpec) -> Fragment:
     """A dropdown's narrow-viewport sheet and sentinel.
 
@@ -1455,6 +1486,7 @@ def dropdown_sheet(sheet: SheetSpec) -> Fragment:
         sheet.title,
         title_id=None,
         title_attributes=[(SHEET_ATTRIBUTES["title"], "")],
+        leading=_sheet_back_control(),
     )
     return Fragment(
         _sheet_dialog(

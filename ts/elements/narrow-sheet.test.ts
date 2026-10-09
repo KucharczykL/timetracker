@@ -619,3 +619,125 @@ describe("a move back to the anchored host", () => {
     expect(document.activeElement).toBe(panel.querySelector("[data-inside]"));
   });
 });
+
+function sheetMarkup(title: string, body: string): string {
+  return `<dialog data-modal data-dropdown-sheet>
+        <div data-sheet-panel>
+          <div>
+            <button data-sheet-back hidden type="button"><span data-sheet-back-label></span></button>
+            <h2 data-dropdown-sheet-title>${title}</h2>
+            <button data-modal-dismiss type="button">×</button>
+          </div>
+          <div data-sheet-body>${body}</div>
+        </div>
+      </dialog>
+      <span data-dropdown-narrow></span>`;
+}
+
+/** A sheet whose body holds a nested dropdown with its own sheet. */
+function nestedMount(): {
+  outerHost: DropdownElement;
+  outerToggle: HTMLButtonElement;
+  outerDialog: HTMLDialogElement;
+  innerHost: DropdownElement;
+  innerToggle: HTMLButtonElement;
+  innerDialog: HTMLDialogElement;
+} {
+  const inner = `<drop-down behavior="menu" placement="bottom-start" submenu="false">
+      <button data-toggle type="button" aria-expanded="false">Pick</button>
+      <div data-menu popover="manual" hidden><button role="menuitem" data-acting type="button">One</button></div>
+      ${sheetMarkup("Pick", '<button data-inside-level type="button">Inside</button>')}
+    </drop-down>`;
+  document.body.innerHTML = `
+    <drop-down behavior="menu" placement="bottom-start" submenu="false">
+      <button data-toggle type="button" aria-expanded="false">Day</button>
+      <div data-menu popover="manual" hidden>${inner}</div>
+      ${sheetMarkup("Day", "")}
+    </drop-down>`;
+  for (const sentinel of document.querySelectorAll<HTMLElement>("[data-dropdown-narrow]")) {
+    sentinel.getClientRects = () =>
+      (narrow ? [new DOMRect(0, 0, 0, 0)] : []) as unknown as DOMRectList;
+  }
+  const outerHost = document.querySelector<DropdownElement>("drop-down")!;
+  const innerHost = outerHost.querySelector<DropdownElement>("drop-down")!;
+  return {
+    outerHost,
+    outerToggle: outerHost.querySelector<HTMLButtonElement>(":scope > [data-toggle]")!,
+    outerDialog: outerHost.querySelector<HTMLDialogElement>(":scope > dialog")!,
+    innerHost,
+    innerToggle: innerHost.querySelector<HTMLButtonElement>(":scope > [data-toggle]")!,
+    innerDialog: innerHost.querySelector<HTMLDialogElement>(":scope > dialog")!,
+  };
+}
+
+function cancelNative(dialog: HTMLDialogElement): void {
+  dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
+}
+
+describe("a dropdown sheet inside an open sheet", () => {
+  it("opens its own sheet as a level, with a back control naming the sheet below", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    expect(innerDialog.open).toBe(true);
+    expect(innerDialog.hasAttribute("data-sheet-level")).toBe(true);
+    const back = innerDialog.querySelector<HTMLElement>("[data-sheet-back]")!;
+    expect(back.hidden).toBe(false);
+    expect(back.getAttribute("aria-label")).toBe("Back to Day");
+    expect(back.querySelector("[data-sheet-back-label]")!.textContent).toBe("Day");
+    expect(outerDialog.open).toBe(true);
+    expect(outerDialog.querySelector<HTMLElement>("[data-sheet-panel]")!.style.visibility).toBe(
+      "hidden",
+    );
+  });
+
+  it("backs out of a level alone on Escape", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    cancelNative(innerDialog);
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(true);
+    expect(outerDialog.querySelector<HTMLElement>("[data-sheet-panel]")!.style.visibility).toBe("");
+    expect(innerDialog.hasAttribute("data-sheet-level")).toBe(false);
+  });
+
+  it("backs out of a level alone through the back control", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    mouseClick(innerDialog.querySelector<HTMLElement>("[data-sheet-back]")!);
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(true);
+  });
+
+  it("closes the whole chain on the × of a level", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    mouseClick(innerDialog.querySelector<HTMLElement>("[data-modal-dismiss]")!);
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(false);
+  });
+
+  it("closes the whole chain when an acting menu item in a level is clicked", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    mouseClick(innerDialog.querySelector<HTMLElement>("[data-acting]")!);
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(false);
+  });
+
+  it("moves only the first host on a widen, and the level closes with it", () => {
+    const { outerHost, outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    narrow = false;
+    resize();
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(false);
+    expect(outerHost.isOpen()).toBe(true);
+    expect(outerHost.querySelector(":scope > [data-menu]")).not.toBeNull();
+  });
+});

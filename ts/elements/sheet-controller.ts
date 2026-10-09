@@ -4,6 +4,7 @@ import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
 import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
 import { holdLeave, type CancelLeave } from "../motion.js";
+import { clearLevel, popLevel, pushLevel, type LevelPlacement } from "./sheet-levels.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -56,6 +57,12 @@ export interface SheetCoreOptions {
   afterHide?: () => void;
   /** The `dropdown:hide` event's detail. */
   hideDetail?: () => DropdownHideDetail;
+  /** Native cancel: Escape, back gesture. Default: dismiss. */
+  cancel?: () => void;
+  /** × and the backdrop. Default: close. */
+  dismiss?: () => void;
+  /** Set while the sheet is a level of the sheet below. */
+  levelOf?: () => LevelPlacement | null;
 }
 
 export interface SheetCore {
@@ -115,10 +122,16 @@ export function attachSheetCore(
     leave: (finish) => {
       cancelOpenFrame();
       render();
-      cancelPendingLeave = holdLeave(dialog, "slow-exit", finish);
+      const level = options.levelOf?.() ?? null;
+      cancelPendingLeave = level
+        ? popLevel(dialog, level.below, finish)
+        : holdLeave(dialog, "slow-exit", finish);
     },
+    cancel: options.cancel,
+    dismiss: options.dismiss,
     onClosed: () => {
       clearMotion();
+      clearLevel(dialog);
       try {
         options.beforeHide?.();
       } finally {
@@ -141,13 +154,20 @@ export function attachSheetCore(
       modal.close();
       throw error;
     }
+    const level = options.levelOf?.() ?? null;
+    if (level) {
+      // A level's push is its entry; no slide-up follows.
+      entered = true;
+      pushLevel(dialog, level.below, level.belowTitle);
+    } else {
+      openFrame = window.requestAnimationFrame(() => {
+        openFrame = null;
+        entered = true;
+        render();
+      });
+    }
     render();
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
-    openFrame = window.requestAnimationFrame(() => {
-      openFrame = null;
-      entered = true;
-      render();
-    });
     return true;
   };
 
