@@ -160,6 +160,8 @@ class ModalPanelTest(SimpleTestCase):
 _MODAL_BUILDERS = {
     Path("common/components/custom_elements.py"),
     Path("common/components/form_dialog.py"),
+    # Its panels are checked in test_log_game_view.
+    Path("games/views/log_game.py"),
 }
 
 

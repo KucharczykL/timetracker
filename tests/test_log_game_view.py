@@ -10,6 +10,7 @@ from graphs import default_graph
 from stated_runs import state_run
 from tracked_games import create_tracked_game
 
+from common.components.modal import MODAL_ATTRIBUTES
 from games.models import Game, LibraryEntry, PlayerGameStatus
 from games.views import log_game as log_game_view
 from games.writes.answers import CommandFailed
@@ -138,6 +139,15 @@ def test_each_nested_section_renders_in_its_own_dialog(logged_in):
 
     for section in ("playtime", "more"):
         assert f'data-log-section="{section}"' in html
+    sections = [
+        dialog.split("</dialog>", 1)[0]
+        for dialog in html.split("<dialog")[1:]
+        if "data-log-section=" in dialog.split(">", 1)[0]
+    ]
+    assert len(sections) == 2
+    for body in sections:
+        assert f'{MODAL_ATTRIBUTES["panel"]}=""' in body
+        assert f'{MODAL_ATTRIBUTES["header"]}=""' in body
 
 
 def test_a_fresh_page_opens_no_section(logged_in):
