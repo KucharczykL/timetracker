@@ -9,7 +9,7 @@ export function openerKey(opener: Element): OpenerKey | null {
   return id === null && href === null ? null : { id, href };
 }
 
-/** The first link with the href whose return target is reachable. */
+/** First link with href and reachable return. */
 function focusTargetWithHref(href: LinkHref | null): HTMLElement | null {
   if (href === null) return null;
   for (const link of document.querySelectorAll<HTMLElement>("a[href]")) {

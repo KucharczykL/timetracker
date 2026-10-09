@@ -271,7 +271,7 @@ def test_a_row_menu_opens_as_a_sheet_and_focuses_its_first_item(
     )
     expect(sheet.get_by_role("menuitem").first).to_be_focused()
 
-    # "Edit" opens its form in a dialog; the sheet closes too.
+    # "Edit" opens a dialog; the sheet closes.
     sheet.get_by_role("menuitem", name="Edit", exact=True).click()
     expect(page.locator(SHEET)).to_have_count(0)
     dialog = page.locator("dialog[data-modal][open]")

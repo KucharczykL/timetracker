@@ -202,7 +202,7 @@ def test_a_summary_action_marked_as_a_form_dialog_is_marked_in_both_renders():
         )
     )
 
-    #: The overflow menu's item and the wide link.
+    #: Overflow item and the wide link.
     assert html.count("data-form-dialog") == 2
     assert html.count('href="/tracker/device/add"') == 2
 

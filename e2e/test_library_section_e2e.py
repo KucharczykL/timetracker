@@ -20,7 +20,7 @@ def _submit(page: Page, label: str = "Save") -> None:
 
 
 def _save_in_dialog(page: Page, label: str = "Save") -> None:
-    """Press a button in the open dialog; its save closes it and reloads."""
+    """Dialog button saves, closes and reloads."""
     dialog = page.locator("dialog[data-modal][open]")
     dialog.get_by_role("button", name=label, exact=True).click()
     expect(page.locator("dialog[data-modal][open]")).to_have_count(0)

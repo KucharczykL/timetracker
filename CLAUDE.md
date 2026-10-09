@@ -1750,6 +1750,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   Content it inserts must wire on connect, unwire on disconnect, and look
   up a field name in its own form first. Contract is
   [The form dialog](docs/superpowers/specs/2026-10-04-issue-1384-form-dialog-design.md).
+  Every list row menu's form link, the Library page's Adds
+  (`SummaryAction.attributes`) and the navbar's Log game are marked;
+  `focusOpener` takes the first link with the href that `isRendered`
+  (`ts/rendered.ts`). Contract is
+  [Form pages from lists](docs/superpowers/specs/2026-10-09-issue-1385-list-form-dialogs-design.md).
   A picker's + (`dialog_create=DialogCreate(url, label)`, any form widget
   but the text one; `NEW_GAME` on every form game picker) opens a create
   page; the view answers `CreatedRedirect(url, option=...)` with the

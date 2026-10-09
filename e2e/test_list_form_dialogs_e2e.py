@@ -1,8 +1,6 @@
-"""The list pages' row menus and entry points open their form in a dialog.
+"""Row menus and entry points open dialogs.
 
-Every opener is pressed as the page renders it; nothing is marked by hand.
-A save closes the dialog, reloads the host and returns focus to the row's
-menu toggle, or to #main-container where the act removes that toggle.
+Pressed as rendered; saves return focus.
 """
 
 import re
@@ -43,7 +41,7 @@ def errors(page: Page) -> list[str]:
 
 
 def _open(page: Page, url: str) -> None:
-    """Load a list and stamp the window: a reload drops the stamp."""
+    """Load list, stamp window; reloads drop stamp."""
     page.goto(url)
     page.wait_for_function("() => !!customElements.get('drop-down')")
     page.evaluate("window.notReloaded = true")
@@ -63,7 +61,7 @@ def _open_item(
     item: str,
     submenu: str | None = None,
 ) -> None:
-    """Open a row's menu, then an optional flyout, then press ``item``."""
+    """Open row menu, flyout, then press ``item``."""
     menu = toggle if isinstance(toggle, Locator) else _row_toggle(page, toggle)
     menu.click()
     if submenu is not None:
@@ -72,18 +70,18 @@ def _open_item(
 
 
 def _submit(dialog: Locator) -> Locator:
-    """The form's own submit, whatever the page names it."""
+    """Form's submit, whatever the page calls it."""
     return dialog.locator('form button[type="submit"]').first
 
 
 def _clear_required(field: Locator) -> None:
-    """Empty a field and lift its HTML `required`, so the server refuses it."""
+    """Empty field, drop HTML required; server refuses."""
     field.fill("")
     field.evaluate("field => field.required = false")
 
 
 def _saved(page: Page, toggle: Locator) -> None:
-    """The dialog closed, the host reloaded and focus is back on the toggle."""
+    """Dialog closed, host reloaded, focus on toggle."""
     expect(page.locator(DIALOG)).to_have_count(0)
     expect(toggle).to_be_focused()
     assert _reloaded(page)
@@ -103,7 +101,7 @@ def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
     return default_graph(game, library, platform=platform).game
 
 
-#: The session row's menu names its game and day; the day's format is not the test's.
+#: Matches game and day, not their format.
 SESSION_TOGGLE = re.compile(r"^Tunic, .* actions$")
 PLAYTHROUGH_TOGGLE = re.compile(r", Tunic actions$")
 HISTORICAL_TOGGLE = re.compile(r"^(?!More ).*actions$")
@@ -166,7 +164,7 @@ def test_recording_a_session_as_historical_playtime_returns_to_the_main(
     )
     _submit(dialog).click()
 
-    #: The act removes the session's row, so its toggle has no focus to return to.
+    #: Removing the row moves focus to main.
     expect(page.locator(DIALOG)).to_have_count(0)
     expect(page.get_by_role("button", name="Undo")).to_be_visible()
     expect(page.locator("#main-container")).to_be_focused()
@@ -207,7 +205,7 @@ def test_a_historical_playtime_edit_saves_and_returns_focus(
     dialog = _dialog(page)
     dialog.locator('input[name="duration_hours"]').fill("0")
     _submit(dialog).click()
-    #: A zero duration is a refused act, so its sentence shows in the dialog.
+    #: Zero duration is refused; its sentence shows.
     region = dialog.get_by_role("region", name="Notifications")
     expect(region).to_contain_text("at least a second")
     expect(dialog).to_be_visible()
@@ -235,7 +233,7 @@ def test_a_platform_edit_refuses_a_duplicate_name_on_the_field(
     dialog.locator('input[name="name"]').fill("Amiga")
     _submit(dialog).click()
 
-    #: Product gap: the clash shows as a form-wide constraint message, not a field error.
+    # TODO(#1608): assert the name field error.
     expect(dialog).to_be_visible()
     assert errors == []
 
@@ -289,7 +287,7 @@ def test_a_purchase_added_from_a_copy_types_into_the_currency_mask(
     currency = dialog.locator('input[name="currency"]')
     currency.fill("")
     currency.press_sequentially("eu3r")
-    #: The mask drops the digit; the field is styled uppercase.
+    #: Mask drops the digit; field is uppercase.
     expect(currency).to_have_value("eur")
     expect(currency).to_have_css("text-transform", "uppercase")
     _submit(dialog).click()

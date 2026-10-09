@@ -66,7 +66,7 @@ def test_editing_from_a_filtered_list_returns_to_it(
     #: Edit sits in the row's menu, behind its trigger.
     open_row_menu(authenticated_page, f"game-menu-{world.pk}")
     authenticated_page.click('a[href*="/edit?origin="]')
-    #: The edit opens in a dialog over the list, whose URL stays put.
+    #: Dialog opens over the list; URL stays.
     dialog = authenticated_page.locator("dialog[data-modal][open]")
     expect(dialog.locator('input[name="name"]')).to_have_value("Alpha")
     dialog.locator('input[name="name"]').fill("Alpha Renamed")

@@ -1,7 +1,6 @@
-"""The row menus and entry points that open a form page in a dialog.
+"""Row menus and entry points open dialogs.
 
-Each builder renders real rows. A link that edits or adds opens in the
-dialog; a remove, reset or one-click POST stays a page of its own.
+Edits and adds open; removes stay pages.
 """
 
 import re
@@ -36,14 +35,14 @@ from games.views.session_menu import session_row_menu
 
 pytestmark = pytest.mark.django_db
 
-#: Each element: its tag and attributes, and its text.
+#: Tag, attributes and text of each element.
 ELEMENT = re.compile(r"<(a|button)\b([^>]*)>((?:(?!</\1>).)*?)</\1>", re.DOTALL)
 TAG = re.compile(r"<[^>]+>")
 MARKER = "data-form-dialog"
 
 
 def _elements_naming(html: str, label: str) -> list[str]:
-    """The attributes of each element whose text names ``label``."""
+    """Attributes of elements naming ``label``."""
     return [
         attributes
         for _, attributes, text in ELEMENT.findall(html)
@@ -62,14 +61,14 @@ def _game(library: UserLibrary, name: str = "Tunic") -> Game:
 
 
 def _session_menu(library: UserLibrary) -> str:
-    """Duration-only, so the historical record act is offered."""
+    """Duration-only; offers the historical record."""
     run = tracked_run(library, _game(library))
     session = duration_only_row(run, date(2024, 6, 1), timedelta(hours=9))
     return str(session_row_menu(session, "token", origin=None))
 
 
 def _playthrough_menu(library: UserLibrary) -> str:
-    """The run as the screen reads it: numbered over its game's runs."""
+    """Run numbered as the screen shows it."""
     run = tracked_run(library, _game(library))
     numbered = numbered_for(library, [run.player_game_id], with_condition=True)
     (numbered_run,) = numbered.select_related("player_game__game")
@@ -117,13 +116,13 @@ def _purchase_menu(library: UserLibrary) -> str:
 
 
 def _navbar_log_button(_library: UserLibrary) -> str:
-    """The split button's primary link; no recent resumes to list."""
+    """Split button's link; no recent resumes."""
     return str(NavbarLogButton([], csrf_token="token", origin=None))
 
 
 type Case = tuple[Callable[[UserLibrary], str], tuple[str, ...], tuple[str, ...]]
 
-#: The builder, the links it marks, the acts it leaves alone.
+#: Builder, marked links, and unmarked acts.
 CASES: dict[str, Case] = {
     "session": (
         _session_menu,

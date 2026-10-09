@@ -78,7 +78,7 @@ def test_the_navbar_log_game_dialog_names_itself_under_a_picker_dialog(
     expect(page.locator("dialog[data-modal][open]")).to_have_count(2)
     upper = page.locator("dialog[data-modal][open]").last
     expect(upper.locator("[data-form-dialog-title]")).to_have_text("Add New Game")
-    #: The top dialog's trail names the one it covers.
+    #: Trail names the dialog it covers.
     expect(upper.locator("[data-modal-trail]").first).to_have_text("Add New Session")
     assert errors == []
 
