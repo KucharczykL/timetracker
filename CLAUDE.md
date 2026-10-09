@@ -80,8 +80,14 @@ flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check
 ```
 
 Waiting is the point; never lower `PYTEST_WORKERS` to run beside another
-worktree instead. One worktree alone needs no lock. `make dev` and `e2e/`
-still exclude each other, whichever worktree each runs in.
+worktree instead. One worktree alone needs no lock.
+
+**Stop `make dev` before running `e2e/` in the same worktree.** Its Tailwind
+and `tsc` watchers rewrite `games/static/base.css` and
+`games/static/js/dist/`, the files e2e serves, and the suite fails across
+unrelated tests. A dev server in another worktree does not interfere: each
+worktree has its own Postgres, its own built assets, and e2e takes a free
+port.
 
 ### Python 3.14 is a hard prerequisite
 
