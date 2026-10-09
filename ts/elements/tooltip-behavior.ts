@@ -17,6 +17,7 @@ import {
   showInTopLayer,
   type Surface,
 } from "./surface-stack.js";
+import { settleEntry } from "../motion.js";
 
 const ARROW_SIZE = 8;
 const TRIGGER_GAP = 8;
@@ -122,6 +123,7 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     isOpen = true;
     tintArrow(panel, arrow);
     positionPanel();
+    settleEntry(panel);
     pushSurface(surface);
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
@@ -131,11 +133,15 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     if (!isOpen) return;
     isOpen = false;
     removeSurface(surface);
-    hideFromTopLayer(panel);
-    clearAnchoredPosition(panel);
-    if (content !== panel) content.style.removeProperty("max-height");
-    window.removeEventListener("scroll", reposition, true);
-    window.removeEventListener("resize", reposition);
+    // Geometry and listeners stay until the exit animation ends.
+    hideFromTopLayer(panel, () => {
+      // A reopen during the leave owns the geometry now.
+      if (isOpen) return;
+      clearAnchoredPosition(panel);
+      if (content !== panel) content.style.removeProperty("max-height");
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    });
   };
 
   const onPointerEnter = (event: PointerEvent): void => {

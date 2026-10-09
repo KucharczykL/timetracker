@@ -22,7 +22,7 @@ DISPLAY_ZONE = "Pacific/Kiritimati"
 BROWSER_ZONE = "Pacific/Niue"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def browser_context_args(browser_context_args):
     return {**browser_context_args, "timezone_id": BROWSER_ZONE}
 

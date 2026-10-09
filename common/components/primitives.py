@@ -348,6 +348,27 @@ _TOOLTIP_PANEL_CLASS = (
     "inline-block font-sans text-type-body text-heading bg-brand-soft "
     "border border-brand/30 rounded-base shadow-xs max-w-7xl"
 )
+#: A floating panel's enter and leave, keyed on `data-motion` and `data-side`.
+#: A sheet-hosted panel sheds the motion, so its lent body is never faded.
+ANCHORED_MOTION_CLASS = (
+    "transition-[opacity,scale,translate] ease-enter duration-(--duration-fast) "
+    "data-[motion=leaving]:ease-exit data-[motion=leaving]:duration-(--duration-fast-exit) "
+    "data-[motion=entering]:transition-none data-[motion=entering]:opacity-0 "
+    "data-[motion=entering]:scale-95 data-[motion=leaving]:opacity-0 "
+    "data-[motion=leaving]:scale-95 "
+    "data-[side=bottom]:origin-top data-[side=top]:origin-bottom "
+    "data-[side=left]:origin-right data-[side=right]:origin-left "
+    "data-[side=bottom]:data-[motion=entering]:-translate-y-1 "
+    "data-[side=bottom]:data-[motion=leaving]:-translate-y-1 "
+    "data-[side=top]:data-[motion=entering]:translate-y-1 "
+    "data-[side=top]:data-[motion=leaving]:translate-y-1 "
+    "data-[side=right]:data-[motion=entering]:-translate-x-1 "
+    "data-[side=left]:data-[motion=entering]:translate-x-1 "
+    "motion-reduce:scale-100! motion-reduce:translate-none! "
+    "motion-reduce:duration-(--duration-reduced) "
+    "data-[dropdown-host=sheet]:opacity-100! data-[dropdown-host=sheet]:scale-100! "
+    "data-[dropdown-host=sheet]:translate-none! data-[dropdown-host=sheet]:transition-none"
+)
 
 
 def TooltipDefinitionList(
@@ -389,7 +410,9 @@ def _tooltip_panel(
         attributes.append(("aria-hidden", "true"))
     else:
         attributes.extend([("id", id), ("role", "tooltip")])
-    attributes.extend([*CLOSED_POPOVER, ("class", _TOOLTIP_PANEL_CLASS)])
+    attributes.extend(
+        [*CLOSED_POPOVER, ("class", f"{_TOOLTIP_PANEL_CLASS} {ANCHORED_MOTION_CLASS}")]
+    )
     return Div(attributes)[
         Div([("data-pop-over-content", "")], class_="px-3 py-2 overflow-y-auto")[
             content

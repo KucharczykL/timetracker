@@ -66,12 +66,19 @@ beforeEach(() => {
     })),
   );
   vi.stubGlobal("scrollTo", vi.fn());
+  // A slow exit whose fade never ends: each leave waits for its cap (200 + 100 ms).
+  document.documentElement.style.setProperty("--duration-slow-exit", "200ms");
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => [{ finished: new Promise(() => {}) }],
+  });
 });
 
 afterEach(() => {
   document.body.replaceChildren();
   document.documentElement.removeAttribute("style");
   document.body.removeAttribute("style");
+  Reflect.deleteProperty(Element.prototype, "getAnimations");
   resetSurfacesForTests();
   resetModalLayerForTests();
   vi.useRealTimers();

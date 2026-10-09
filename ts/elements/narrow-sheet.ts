@@ -8,6 +8,7 @@ import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attribute
 import type { MenuController } from "./menu-behavior.js";
 import { type CancelSettled, isModalLeaving, whenSettled } from "./modal-layer.js";
 import { attachSheetCore, type FrameHandle } from "./sheet-controller.js";
+import { clearAnchoredPosition } from "./anchored-position.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
 
 export interface NarrowSheetOptions {
@@ -176,6 +177,8 @@ export function attachNarrowSheet(
       lent.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       menu.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       body.appendChild(lent);
+      // A leave the release cancelled never clears the anchored geometry.
+      clearAnchoredPosition(menu);
       releaseFromTopLayer(menu);
       opened = sheet.open(opener);
     } finally {

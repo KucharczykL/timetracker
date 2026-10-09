@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hideFromTopLayer,
   openSurfaces,
   pushSurface,
+  releaseFromTopLayer,
   removeSurface,
   showInTopLayer,
   type Surface,
@@ -406,5 +407,76 @@ describe("top layer helpers", () => {
     const element = panel();
     element.removeAttribute("popover");
     expect(() => showInTopLayer(element)).toThrow();
+  });
+});
+
+describe("a held leave", () => {
+  function panel(): HTMLElement {
+    const element = document.createElement("div");
+    element.setAttribute("popover", "manual");
+    element.hidden = true;
+    document.body.append(element);
+    return element;
+  }
+
+  // Animations that never finish keep the leave pending until its cap.
+  function holdOpen(element: HTMLElement): void {
+    Object.defineProperty(element, "getAnimations", {
+      configurable: true,
+      value: () => [{ finished: new Promise(() => {}) }],
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty("--duration-fast-exit", "100ms");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.documentElement.style.removeProperty("--duration-fast-exit");
+  });
+
+  it("is cancelled by showing again", async () => {
+    const element = panel();
+    holdOpen(element);
+    expect(showInTopLayer(element)).toBe(true);
+    const onHidden = vi.fn();
+    hideFromTopLayer(element, onHidden);
+    expect(element.getAttribute("data-motion")).toBe("leaving");
+    expect(showInTopLayer(element)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onHidden).not.toHaveBeenCalled();
+    expect(element.matches(":popover-open")).toBe(true);
+    expect(element.hidden).toBe(false);
+    expect(element.getAttribute("data-motion")).toBe("entering");
+  });
+
+  it("is cancelled by release", async () => {
+    const element = panel();
+    holdOpen(element);
+    showInTopLayer(element);
+    const onHidden = vi.fn();
+    hideFromTopLayer(element, onHidden);
+    releaseFromTopLayer(element);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onHidden).not.toHaveBeenCalled();
+    expect(element.hasAttribute("data-motion")).toBe(false);
+    expect(element.hasAttribute("popover")).toBe(false);
+  });
+
+  it("runs onHidden exactly once after the cap", async () => {
+    const element = panel();
+    holdOpen(element);
+    showInTopLayer(element);
+    const onHidden = vi.fn();
+    hideFromTopLayer(element, onHidden);
+    expect(element.matches(":popover-open")).toBe(true);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onHidden).toHaveBeenCalledTimes(1);
+    expect(element.matches(":popover-open")).toBe(false);
+    expect(element.hidden).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onHidden).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,6 +2,7 @@
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { clearStack, markStack, onStackResize, stopWatchingStack } from "./modal-stack.js";
+import { holdLeave } from "../motion.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -25,7 +26,7 @@ export interface ModalOptions {
   /** The surface host; defaults to the dialog. */
   host?: HTMLElement;
   initialFocus?: () => HTMLElement | null;
-  /** Must call finish, now or later. */
+  /** Must call finish, now or later. Default: a centred fade. */
   leave?: (finish: FinishLeave) => void;
   /** Escape, backdrop, dismiss control; default close.
    *
@@ -482,6 +483,13 @@ function closeEntry(entry: Entry): void {
   }
 }
 
+/** A centred modal's exit: held until its fade ends. */
+function centredLeave(dialog: HTMLDialogElement): (finish: FinishLeave) => void {
+  return (finish) => {
+    holdLeave(dialog, "medium-exit", finish);
+  };
+}
+
 export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {}): Modal {
   if (!dialog.hasAttribute(MODAL_ATTRIBUTES.modal)) {
     throw new TypeError("attachModal requires a <dialog data-modal>.");
@@ -506,7 +514,7 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
 
   const entry: Entry = {
     dialog,
-    options,
+    options: { ...options, leave: options.leave ?? centredLeave(dialog) },
     surface: { host: options.host ?? dialog, kind: "modal", close: () => close(entry) },
     state: "closed",
     opener: null,

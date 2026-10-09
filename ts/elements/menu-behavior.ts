@@ -1,5 +1,5 @@
 // Shared positioning/keyboard core for light-DOM dropdowns: viewport-aware
-// positioning, instant open/close (no animation — by design), ARIA wiring and
+// positioning, open/close with a motion leave, ARIA wiring and
 // full keyboard navigation. The surface stack owns dismissal. Driven by the generic
 // <drop-down> element; type-specific wiring lives in the registered behaviors
 // (menu, select). The bottom-* panel geometry is the shared positionAnchored
@@ -11,8 +11,10 @@ import {
   clearAnchoredPosition,
   pinFixed,
   positionAnchored,
+  stampSide,
   VIEWPORT_MARGIN,
 } from "./anchored-position.js";
+import { settleEntry } from "../motion.js";
 import {
   hideFromTopLayer,
   pushSurface,
@@ -87,7 +89,7 @@ const TYPEAHEAD_RESET_MS = 500;
 
 // Wires open/close + positioning + keyboard nav for one toggle/menu pair living
 // inside `host`. Returns a small controller so callers (e.g. submenus) can drive
-// it. Opening is instant; there is intentionally no transition.
+// it.
 export function attachMenu(
   host: HTMLElement,
   toggle: HTMLElement,
@@ -167,6 +169,7 @@ export function attachMenu(
       : anchor.right + SUBMENU_GAP;
     menu.style.left = `${clampLeftToViewport(menu, viewportLeft)}px`;
     menu.style.top = `${rect.top - firstItemInset}px`;
+    stampSide(menu, openLeft ? "left" : "right", "start");
   };
 
   let opened = false;
@@ -216,6 +219,7 @@ export function attachMenu(
     opened = true;
     opener = openedBy ?? null;
     positionMenu();
+    settleEntry(menu);
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "true");
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
@@ -235,12 +239,16 @@ export function attachMenu(
     removeSurface(surface);
     opened = false;
     opener = null;
-    hideFromTopLayer(menu);
-    clearAnchoredPosition(menu);
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "false");
-    window.removeEventListener("scroll", reposition, true);
-    window.removeEventListener("resize", reposition);
-    resizeObserver?.disconnect();
+    // Geometry and listeners stay until the exit animation ends.
+    hideFromTopLayer(menu, () => {
+      // A reopen during the leave owns the geometry now.
+      if (isOpen()) return;
+      clearAnchoredPosition(menu);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+      resizeObserver?.disconnect();
+    });
     dispatchHide(host);
   };
 

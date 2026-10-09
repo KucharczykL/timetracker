@@ -19,7 +19,7 @@ from common.components import (
     Span,
 )
 from common.components.custom_elements import SelectOption
-from common.components.primitives import _selection_actions_slot
+from common.components.primitives import ANCHORED_MOTION_CLASS, _selection_actions_slot
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -167,3 +167,10 @@ def test_every_state_spells_the_one_active_look():
     ]:
         expected = [f"{variant}:{token}" for token in DROPDOWN_ITEM_ACTIVE.split()]
         assert spelled.split() == expected
+
+
+def test_a_panel_carries_the_one_motion_look():
+    html = str(DropdownPanel(width="w-48", id="menu-motion")[Span()["x"]])
+    panel = _panels(html)[0]
+    assert ANCHORED_MOTION_CLASS in panel["attributes"]["class"]
+    assert "motion-safe:" not in panel["attributes"]["class"]

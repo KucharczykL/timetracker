@@ -14,8 +14,10 @@ from common.components import (
 )
 from common.components.form_dialog import FormDialogHost
 from common.components.modal import (
+    _CENTRED_PANEL_MOTION_CLASS,
     _MODAL_DIALOG_CLASS,
     _MODAL_PANEL_CLASS,
+    _SHEET_PANEL_MOTION_CLASS,
     MODAL_ATTRIBUTES,
 )
 
@@ -112,22 +114,37 @@ class ModalPanelTest(SimpleTestCase):
     def test_the_step_names_the_stamp_and_the_properties(self):
         """Tailwind needs literals; they must match the layer."""
         self.assertIn(f"{MODAL_ATTRIBUTES['depth']}:", _MODAL_PANEL_CLASS)
+        # The depth reaches CSS as data-modal-depth, not as a property.
         for name in STACK_PROPERTIES:
-            self.assertIn(name, _MODAL_PANEL_CLASS)
+            if name != "--modal-depth":
+                self.assertIn(name, _MODAL_PANEL_CLASS)
 
     def test_the_step_never_takes_the_sheets_translate(self):
         self.assertIn("[transform:", _MODAL_PANEL_CLASS)
         self.assertNotIn("translate-y-", _MODAL_PANEL_CLASS)
         self.assertNotIn("scale-", _MODAL_PANEL_CLASS)
 
-    def test_the_sheet_slide_stays_in_the_transitions(self):
-        """The sheet controller waits on translate."""
-        transitions = re.search(r"transition-\[([^\]]+)\]", _MODAL_PANEL_CLASS)
+    def test_the_sheet_slide_is_its_own_transition(self):
+        """The sheet controller waits on the slide's own transition."""
+        transitions = re.search(r"transition-\[([^\]]+)\]", _SHEET_PANEL_MOTION_CLASS)
         assert transitions
-        self.assertIn("translate", transitions.group(1).split(","))
+        self.assertEqual(transitions.group(1).split(","), ["translate", "opacity"])
 
-    def test_a_covered_panel_stays_opaque(self):
-        self.assertNotIn("opacity", _MODAL_PANEL_CLASS)
+    def test_the_depth_cue_never_dims_the_panel(self):
+        """The scrim is the panel's ::after; the panel itself stays opaque."""
+        self.assertNotRegex(_MODAL_PANEL_CLASS, r"(?<!after:)opacity-")
+        self.assertNotIn("brightness", _MODAL_PANEL_CLASS)
+        self.assertNotIn("filter", _MODAL_PANEL_CLASS)
+        self.assertIn("after:opacity-[var(--modal-scrim", _MODAL_PANEL_CLASS)
+
+    def test_no_motion_class_is_safe_only(self):
+        """Reduced motion crossfades; it does not drop motion."""
+        for name in (
+            _MODAL_PANEL_CLASS,
+            _CENTRED_PANEL_MOTION_CLASS,
+            _SHEET_PANEL_MOTION_CLASS,
+        ):
+            self.assertNotIn("motion-safe:", name)
 
     def test_the_built_css_holds_the_step(self):
         """base.css is built; run `make css` first."""
@@ -145,7 +162,7 @@ class ModalPanelTest(SimpleTestCase):
         tag = html[html.rindex("<", 0, start) : html.index(">", start)]
         self.assertIn(f'{MODAL_ATTRIBUTES["panel"]}=""', tag)
         self.assertIn("translate-y-full", tag)
-        self.assertNotIn("motion-safe:transition-transform", tag)
+        self.assertNotIn("motion-safe:", tag)
 
 
 #: Every module that builds a ModalDialog.

@@ -8,6 +8,7 @@ import { type Answer, readAnswer } from "./form-dialog/answer.js";
 import { PAGE_STALE } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import { MODAL_CHANGE, topModal } from "./modal-layer.js";
+import { holdLeave, type CancelLeave } from "../motion.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
 export type ToastType = (typeof TOAST_TYPES)[number];
@@ -34,6 +35,20 @@ export interface ToastMessage extends ToastOptions {
 
 type Timer = ReturnType<typeof setTimeout>;
 
+/** Stamps data-entered after one frame: the entry runs once, never again. */
+function markEntered(node: HTMLElement): void {
+  const stamp = (): void => {
+    // Read the entry look first, so its transition starts.
+    void getComputedStyle(node).opacity;
+    node.setAttribute("data-entered", "");
+  };
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(stamp);
+  } else {
+    window.setTimeout(stamp, 0);
+  }
+}
+
 /** One countdown: never a timer without a deadline, never a deadline paused. */
 type Countdown =
   | { kind: "sticky" }
@@ -47,14 +62,13 @@ export interface Toast {
   /** Stamped with the origin already. */
   action: ToastAction | null;
   countdown: Countdown;
-  /** The removal handle while the toast leaves; null while it shows. */
-  leaving: Timer | null;
+  /** True once the toast leaves; its element holds the removal. */
+  leaving: boolean;
   hovered: boolean;
   focused: boolean;
 }
 
 const MAX_TOASTS = 3;
-const LEAVE_MS = 300;
 const ACTION_MS = 10_000;
 
 function isToastType(value: string): value is ToastType {
@@ -120,7 +134,7 @@ export class ToastStore {
       type: toastType,
       action,
       countdown: { kind: "sticky" },
-      leaving: null,
+      leaving: false,
       hovered: false,
       focused: false,
     };
@@ -131,12 +145,12 @@ export class ToastStore {
 
   dismissToast(id: ToastId, notify = true): void {
     const toast = this.find(id);
-    if (!toast || toast.leaving !== null) return;
+    if (!toast || toast.leaving) return;
     this.stop(toast);
     if (notify) {
       window.dispatchEvent(new CustomEvent("toast-dismissed", { detail: { id } }));
     }
-    toast.leaving = setTimeout(() => this.removeToast(id), LEAVE_MS);
+    toast.leaving = true;
     this.onChange();
   }
 
@@ -178,7 +192,7 @@ export class ToastStore {
   }
 
   private resume(toast: Toast): void {
-    if (toast.leaving !== null || toast.countdown.kind !== "paused") return;
+    if (toast.leaving || toast.countdown.kind !== "paused") return;
     toast.countdown = this.running(toast, toast.countdown.remaining);
   }
 
@@ -202,14 +216,20 @@ export class ToastStore {
   private stop(toast: Toast): void {
     if (toast.countdown.kind === "running") clearTimeout(toast.countdown.timer);
     toast.countdown = { kind: "sticky" };
-    if (toast.leaving !== null) clearTimeout(toast.leaving);
-    toast.leaving = null;
   }
 }
 
-// Whole literals: Tailwind scans ts/ for them.
+// Whole literals: Tailwind scans ts/ for them. The entry look holds until
+// data-entered; the leave look holds while data-motion is leaving.
 const WRAPPER_CLASS = "pointer-events-auto max-w-sm w-72 cursor-pointer mb-3 last:mb-0";
-const LEAVE_CLASS = "transition ease-in duration-200 opacity-0 translate-x-8";
+const ENTRY_CLASS = [
+  "opacity-0 translate-x-8 motion-reduce:translate-x-0!",
+  "transition-[opacity,translate] duration-(--duration-medium) ease-enter",
+  "motion-reduce:duration-(--duration-reduced)!",
+  "data-entered:opacity-100 data-entered:translate-x-0",
+  "data-[motion=leaving]:opacity-0! data-[motion=leaving]:translate-x-8",
+  "data-[motion=leaving]:duration-(--duration-medium-exit) data-[motion=leaving]:ease-exit",
+].join(" ");
 const PANEL_CLASS = "rounded-base shadow-lg p-4 flex items-start gap-3";
 const PANEL_TYPE_CLASS: Record<ToastType, string> = {
   success: "bg-success-soft border border-success-subtle",
@@ -291,6 +311,7 @@ interface ToastHosting {
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
+  private readonly leaves = new Map<ToastId, CancelLeave>();
   /** The region and the modal holding it. */
   private hosting: ToastHosting | null = null;
   /** Its own aria-live, muted while hosting. */
@@ -410,14 +431,31 @@ class ToastStackElement extends HTMLElement {
         node = this.buildToast(toast);
         this.nodes.set(toast.id, node);
         this.container.appendChild(node);
+        markEntered(node);
       }
       this.updateToast(node, toast);
+      if (toast.leaving) this.startLeave(toast.id, node);
     }
     for (const [id, node] of this.nodes) {
       if (live.has(id)) continue;
+      this.leaves.get(id)?.();
+      this.leaves.delete(id);
       node.remove();
       this.nodes.delete(id);
     }
+  }
+
+  /** Removes a leaving toast once its fade ends; one hold per toast. */
+  private startLeave(id: ToastId, node: HTMLElement): void {
+    if (this.leaves.has(id)) return;
+    let finished = false;
+    const cancel = holdLeave(node, "medium-exit", () => {
+      finished = true;
+      this.leaves.delete(id);
+      this.store.removeToast(id);
+    });
+    // A leave with no animation finishes before holdLeave returns.
+    if (!finished) this.leaves.set(id, cancel);
   }
 
   private buildToast(toast: Toast): HTMLElement {
@@ -527,7 +565,7 @@ class ToastStackElement extends HTMLElement {
   private updateToast(wrapper: HTMLElement, toast: Toast): void {
     const alert = toast.type === "error" || toast.type === "warning";
     wrapper.setAttribute("role", alert ? "alert" : "status");
-    wrapper.className = `${WRAPPER_CLASS} ${toast.type}${toast.leaving === null ? "" : ` ${LEAVE_CLASS}`}`;
+    wrapper.className = `${WRAPPER_CLASS} ${ENTRY_CLASS} ${toast.type}`;
 
     const panel = wrapper.querySelector<HTMLElement>("[data-toast-panel]")!;
     panel.className = `${PANEL_CLASS} ${PANEL_TYPE_CLASS[toast.type]}`;

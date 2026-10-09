@@ -14,6 +14,8 @@ from common.components.elements import Dialog, Div, P, PlainH2, Span
 from common.components.primitives import ControlButton
 
 type ModalAlign = Literal["center", "end"]
+#: Which entry and exit a panel plays; a sheet slides, a centred modal fades.
+type ModalMotion = Literal["centred", "sheet"]
 type ModalAttributeRole = Literal[
     "modal",
     "dismiss",
@@ -44,10 +46,17 @@ MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
 #: Transparent hit area; the child panel shows.
 #: No transform/filter/contain: toast region needs viewport.
 #: clip: hidden lets focus scroll the panel.
+#: The backdrop fades in at entry and out under the held leave.
 _MODAL_DIALOG_CLASS = (
-    "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-clip "
+    "group/modal fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-clip "
     "border-0 bg-transparent p-0 text-inherit open:flex open:justify-center "
     "backdrop:bg-dark-backdrop/70 "
+    "backdrop:transition-opacity backdrop:duration-(--duration-medium) backdrop:ease-enter "
+    "starting:open:backdrop:opacity-0 "
+    "data-[motion=leaving]:backdrop:opacity-0 "
+    "data-[motion=leaving]:backdrop:duration-(--duration-medium-exit) "
+    "data-[motion=leaving]:backdrop:ease-exit "
+    "motion-reduce:backdrop:duration-(--duration-reduced)! "
     # Only the topmost shown modal dims.
     "data-modal-covered:backdrop:opacity-0! "
     "data-modal-covered:backdrop:transition-none! "
@@ -64,20 +73,45 @@ _HEADER_CLASS = "flex shrink-0 items-center justify-between gap-4 py-1.5 pl-4 pr
 _DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay"
 
 #: The layer writes them; lengths in px.
-#: Arbitrary transform: the sheet's slide owns translate.
-#: Keep translate in the transitions: the sheet waits on it.
+#: Arbitrary transform: the depth cue owns transform.
+#: The scrim is the panel's ::after; its opacity is --modal-scrim.
+#: Its opacity never dims the panel: the page stays hidden.
 _MODAL_PANEL_CLASS = (
-    "mt-[var(--modal-reserve,0px)] origin-top "
+    "relative mt-[var(--modal-reserve,0px)] origin-top "
     "data-modal-depth:[transform:translateY(var(--modal-shift))_scale(var(--modal-scale))] "
-    # Darkens, never translucent: the page stays hidden.
-    "data-modal-depth:brightness-[max(.5,calc(1-var(--modal-depth)*.15))] "
-    "motion-safe:transition-[transform,translate,filter] "
-    "motion-safe:duration-200 motion-safe:ease-out"
+    "after:pointer-events-none after:absolute after:inset-0 after:content-[''] "
+    "after:rounded-[inherit] after:bg-dark-backdrop "
+    "after:opacity-[var(--modal-scrim,0)] after:transition-opacity "
+    "after:duration-(--duration-medium) after:ease-enter"
 )
+#: A centred modal fades and scales in; a held leave fades it out.
+_CENTRED_PANEL_MOTION_CLASS = (
+    "transition-[opacity,scale,transform] duration-(--duration-medium) ease-enter "
+    "starting:opacity-0 starting:scale-96 "
+    "group-data-[motion=leaving]/modal:opacity-0 "
+    "group-data-[motion=leaving]/modal:scale-96 "
+    "group-data-[motion=leaving]/modal:duration-(--duration-medium-exit) "
+    "group-data-[motion=leaving]/modal:ease-exit "
+    "motion-reduce:scale-100! motion-reduce:duration-(--duration-reduced)!"
+)
+#: A sheet slides; under reduced motion it only crossfades.
+_SHEET_PANEL_MOTION_CLASS = (
+    "transition-[translate,opacity] duration-(--duration-slow) ease-sheet "
+    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0 "
+    "group-data-[motion=leaving]/sheet:duration-(--duration-slow-exit) "
+    "motion-reduce:translate-none! motion-reduce:opacity-0 "
+    "motion-reduce:duration-(--duration-reduced)! "
+    "group-data-[sheet-state=open]/sheet:motion-reduce:opacity-100"
+)
+_PANEL_MOTION_CLASS: Mapping[ModalMotion, str] = {
+    "centred": _CENTRED_PANEL_MOTION_CLASS,
+    "sheet": _SHEET_PANEL_MOTION_CLASS,
+}
 
 
 require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)
 require_every_key(ModalAlign, _MODAL_ALIGN_CLASS)
+require_every_key(ModalMotion, _PANEL_MOTION_CLASS)
 
 
 def ModalDialog(
@@ -93,11 +127,16 @@ def ModalDialog(
     )
 
 
-def ModalPanel(attributes: Attributes = (), *, class_: str = "") -> Element:
+def ModalPanel(
+    attributes: Attributes = (),
+    *,
+    class_: str = "",
+    motion: ModalMotion = "centred",
+) -> Element:
     """A modal's visible panel; steps back when covered."""
     return Div(
         [(MODAL_ATTRIBUTES["panel"], ""), *attributes],
-        class_=f"{_MODAL_PANEL_CLASS} {class_}".strip(),
+        class_=f"{_MODAL_PANEL_CLASS} {_PANEL_MOTION_CLASS[motion]} {class_}".strip(),
     )
 
 

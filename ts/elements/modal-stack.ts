@@ -12,6 +12,7 @@ export interface StackedModal {
 export const STACK_PROPERTIES = [
   "--modal-depth",
   "--modal-scale",
+  "--modal-scrim",
   "--modal-shift",
   "--modal-reserve",
 ] as const;
@@ -27,6 +28,9 @@ type ElementId = string;
 type Refresh = () => void;
 
 const SCALE_STEP = 0.05;
+// Covered panels darken to this opacity at most.
+const SCRIM_STEP = 0.15;
+const SCRIM_MAX = 0.5;
 const SEPARATOR = " › ";
 const SPOKEN_SEPARATOR = ", ";
 
@@ -89,6 +93,11 @@ function pixels(value: Pixels): CssValue {
 
 function scale(depth: Depth): ScaleFactor {
   return 1 - SCALE_STEP * depth;
+}
+
+/** The scrim's opacity: the page stays hidden, never translucent. */
+function scrim(depth: Depth): CssValue {
+  return String(Math.round(Math.min(SCRIM_MAX, SCRIM_STEP * depth) * 100) / 100);
 }
 
 /** Labelledby text, else aria-label. */
@@ -221,6 +230,7 @@ export function markStack(shown: readonly StackedModal[]): void {
       setProperty(layer.panel, "--modal-reserve", pixels(reserve));
       setProperty(layer.panel, "--modal-depth", String(layer.depth));
       setProperty(layer.panel, "--modal-scale", String(scale(layer.depth)));
+      setProperty(layer.panel, "--modal-scrim", scrim(layer.depth));
       setAttribute(layer.panel, MODAL_ATTRIBUTES.depth, layer.depth ? String(layer.depth) : null);
     }
     reserve += layer.strip;

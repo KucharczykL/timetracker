@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { attachMenu, type MenuController } from "./menu-behavior.js";
 import { openSurfaces, resetSurfacesForTests } from "./surface-stack.js";
 
@@ -447,5 +447,68 @@ describe("attachMenu open state and opener", () => {
     );
     expect(presenterOpen).toBe(true);
     expect(presenter.focusFirst).toHaveBeenCalledOnce();
+  });
+});
+
+describe("attachMenu close motion", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty("--duration-fast-exit", "100ms");
+    document.documentElement.style.setProperty("--duration-reduced", "100ms");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.documentElement.removeAttribute("style");
+  });
+
+  // An exit animation that never ends holds the leave until the cap.
+  function holdExitAnimation(menu: HTMLElement): void {
+    Object.defineProperty(menu, "getAnimations", {
+      configurable: true,
+      value: () => [{ finished: new Promise(() => {}) }],
+    });
+  }
+
+  it("announces the hide at the start of the close", () => {
+    const { host, menu, controller } = mount();
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    controller.open();
+    holdExitAnimation(menu);
+    const hide = vi.fn();
+    host.addEventListener("dropdown:hide", hide);
+    controller.close();
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(menu.getAttribute("data-motion")).toBe("leaving");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(controller.isOpen()).toBe(false);
+  });
+
+  it("keeps the geometry until the leave finishes", () => {
+    const { menu, controller } = mount();
+    controller.open();
+    holdExitAnimation(menu);
+    controller.close();
+    expect(menu.matches(":popover-open")).toBe(true);
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.getAttribute("data-side")).toBe("bottom");
+
+    vi.advanceTimersByTime(200);
+    expect(menu.hidden).toBe(true);
+    expect(menu.style.position).toBe("");
+    expect(menu.hasAttribute("data-side")).toBe(false);
+  });
+
+  it("reopens during a held leave and keeps the new geometry", () => {
+    const { menu, controller } = mount();
+    controller.open();
+    holdExitAnimation(menu);
+    controller.close();
+    controller.open();
+    vi.advanceTimersByTime(200);
+    expect(controller.isOpen()).toBe(true);
+    expect(menu.hidden).toBe(false);
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.getAttribute("data-side")).toBe("bottom");
   });
 });

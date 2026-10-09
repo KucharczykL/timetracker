@@ -38,6 +38,18 @@
         "Noto Color Emoji";
     --font-alien: "Alien Block", ui-sans-serif, system-ui, sans-serif;
 
+    /* Motion: durations and easings; no site writes its own number. */
+    --duration-fast: 150ms;
+    --duration-fast-exit: 100ms;
+    --duration-medium: 240ms;
+    --duration-medium-exit: 160ms;
+    --duration-slow: 360ms;
+    --duration-slow-exit: 240ms;
+    --duration-reduced: 100ms;
+    --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+    --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
     --color-accent: #7c3aed;
     --color-background: #1f2937;
 

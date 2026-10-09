@@ -1058,3 +1058,31 @@ describe("whenSettled", () => {
     expect(callback).not.toHaveBeenCalled();
   });
 });
+
+describe("default leave", () => {
+  it("holds a centred modal's close until its fade ends", async () => {
+    document.documentElement.style.setProperty("--duration-medium-exit", "160ms");
+    const dialog = mountDialog();
+    let finishFade: () => void = () => undefined;
+    const fade = new Promise<void>((resolve) => {
+      finishFade = resolve;
+    });
+    Object.defineProperty(dialog, "getAnimations", {
+      configurable: true,
+      value: () => [{ finished: fade }],
+    });
+    const modal = attachModal(dialog);
+    modal.open();
+
+    modal.close();
+
+    expect(dialog.open).toBe(true);
+    expect(modal.state()).toBe("leaving");
+    expect(dialog.getAttribute("data-motion")).toBe("leaving");
+
+    finishFade();
+    await vi.waitFor(() => expect(dialog.open).toBe(false));
+    expect(modal.state()).toBe("closed");
+    expect(dialog.hasAttribute("data-motion")).toBe(false);
+  });
+});

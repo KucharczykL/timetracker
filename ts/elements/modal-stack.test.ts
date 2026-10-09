@@ -141,8 +141,10 @@ describe("depth", () => {
     expect(top.panel.hasAttribute("data-modal-depth")).toBe(false);
     expect(property(lower.panel, "--modal-depth")).toBe("2");
     expect(property(lower.panel, "--modal-scale")).toBe("0.9");
+    expect(property(lower.panel, "--modal-scrim")).toBe("0.3");
     expect(property(top.panel, "--modal-depth")).toBe("0");
     expect(property(top.panel, "--modal-scale")).toBe("1");
+    expect(property(top.panel, "--modal-scrim")).toBe("0");
   });
 
   it("clears the stamp when the modal above closes", () => {
@@ -178,6 +180,7 @@ describe("depth", () => {
       expect(property(stacked.panel, "--modal-reserve")).toBe("");
       expect(property(stacked.panel, "--modal-depth")).toBe("");
       expect(property(stacked.panel, "--modal-scale")).toBe("");
+      expect(property(stacked.panel, "--modal-scrim")).toBe("");
     }
   });
 

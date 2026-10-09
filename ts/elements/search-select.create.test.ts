@@ -518,6 +518,29 @@ describe("<search-select> refetch", () => {
     expect(queries).not.toContain("stale");
     expect(box.value).toBe("");
   });
+
+  it("keeps the panel shut when Escape lands before the debounced answer", async () => {
+    const { searchMock } = stubEndpoints([{ value: "p4", label: "PlayStation 4", data: {} }]);
+    const host = mount();
+    const dropdown = host.closest("drop-down") as HTMLElement & { open(): void };
+    const box = searchBox(host);
+    const options = host.querySelector<HTMLElement>("[data-search-select-options]")!;
+    dropdown.open();
+    expect(options.hidden).toBe(false);
+    box.focus();
+    box.value = "New Game Plus";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(options.hidden).toBe(true);
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    const queries = searchMock.mock.calls.map(call =>
+      new URL(String((call as unknown[])[0]), window.location.origin).searchParams.get("q")
+    );
+    expect(queries).not.toContain("New Game Plus");
+    expect(options.hidden).toBe(true);
+    expect(createRow(host).hidden).toBe(true);
+  });
 });
 
 describe("<search-select> create modes", () => {

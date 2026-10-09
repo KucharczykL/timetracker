@@ -3,6 +3,7 @@ import { dispatchHide, type DropdownHideDetail, type MenuController } from "./me
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
 import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
+import { holdLeave, type CancelLeave } from "../motion.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -12,23 +13,7 @@ interface PendingNavigation {
   focusTarget: HTMLElement;
 }
 
-type TimerHandle = number;
 export type FrameHandle = number;
-
-interface PendingLeave {
-  finish: FinishLeave;
-  timer: TimerHandle;
-}
-
-// A missed transitionend; under the layer's cap.
-const CLOSE_FALLBACK_MS = 250;
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
 
 function sameDocumentDestination(link: HTMLAnchorElement): PendingNavigation | null {
   const url = new URL(link.href, window.location.href);
@@ -94,7 +79,7 @@ export function attachSheetCore(
 
   let entered = false;
   let openFrame: FrameHandle | null = null;
-  let pendingLeave: PendingLeave | null = null;
+  let cancelPendingLeave: CancelLeave | null = null;
 
   const sheetState = (): SheetState => {
     switch (modal.state()) {
@@ -117,8 +102,8 @@ export function attachSheetCore(
 
   const clearMotion = (): void => {
     cancelOpenFrame();
-    if (pendingLeave) window.clearTimeout(pendingLeave.timer);
-    pendingLeave = null;
+    cancelPendingLeave?.();
+    cancelPendingLeave = null;
     entered = false;
   };
 
@@ -128,13 +113,9 @@ export function attachSheetCore(
       options.initialFocus?.() ??
       dialog.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.dismiss}]`),
     leave: (finish) => {
-      if (prefersReducedMotion()) {
-        finish();
-        return;
-      }
       cancelOpenFrame();
-      pendingLeave = { finish, timer: window.setTimeout(finish, CLOSE_FALLBACK_MS) };
       render();
+      cancelPendingLeave = holdLeave(dialog, "slow-exit", finish);
     },
     onClosed: () => {
       clearMotion();
@@ -169,13 +150,6 @@ export function attachSheetCore(
     });
     return true;
   };
-
-  panel.addEventListener("transitionend", (event) => {
-    // Tailwind's translate-y animates translate.
-    if (event.target === panel && event.propertyName === "translate") {
-      pendingLeave?.finish();
-    }
-  });
 
   return {
     open,

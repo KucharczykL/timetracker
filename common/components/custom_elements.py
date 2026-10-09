@@ -46,6 +46,7 @@ from common.components.modal import (
     titled_header,
 )
 from common.components.primitives import (
+    ANCHORED_MOTION_CLASS,
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
     ICON_BUTTON_SIZE_CLASS,
@@ -869,7 +870,7 @@ SHEET_HOSTED_PANEL_CLASS = (
 _DROPDOWN_PANEL_CLASS = (
     "flex flex-col rounded-base p-2 "
     f"border border-default-medium shadow-sm {OVERLAY_SURFACE_CLASS} "
-    f"{SHEET_HOSTED_PANEL_CLASS}"
+    f"{SHEET_HOSTED_PANEL_CLASS} {ANCHORED_MOTION_CLASS}"
 )
 #: The one child that scrolls the content.
 #: The inset gives an edge child's focus ring room; the margin cancels
@@ -1335,17 +1336,11 @@ def Dropdown(
 
 
 #: Only a close fades; uncovering stays instant.
+#: The backdrop fades with the slide, on the modal layer's fade.
 _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "
     "data-[sheet-state=opening]:backdrop:opacity-100 "
-    "data-[sheet-state=open]:backdrop:opacity-100 "
-    "motion-safe:data-[sheet-state=closing]:backdrop:transition-opacity "
-    "motion-safe:data-[sheet-state=closing]:backdrop:duration-200 "
-    "motion-safe:data-[sheet-state=closing]:backdrop:ease-out"
-)
-#: The slide's positions; ModalPanel times translate.
-_SHEET_PANEL_MOTION_CLASS = (
-    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0"
+    "data-[sheet-state=open]:backdrop:opacity-100"
 )
 
 
@@ -1380,8 +1375,9 @@ def _sheet_dialog(
             class_=(
                 f"flex w-full {size_class} flex-col "
                 "overflow-hidden rounded-t-base border border-b-0 border-default-medium "
-                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
+                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
             ),
+            motion="sheet",
         )[
             header,
             Div(

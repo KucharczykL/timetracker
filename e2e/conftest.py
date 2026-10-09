@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,24 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     """The page, signed in as ``e2e_user``."""
     log_in(page, live_server)
     return page
+
+
+@pytest.fixture
+def browser_context_args(browser_context_args):
+    """Every context reduces motion; a test opts in through ``motion_page``."""
+    return {**browser_context_args, "reduced_motion": "reduce"}
+
+
+@pytest.fixture
+def motion_page(live_server, browser, browser_context_args, e2e_user) -> Iterator[Page]:
+    """Signed in, with the person's motion preference left at no-preference."""
+    context = browser.new_context(
+        **{**browser_context_args, "reduced_motion": "no-preference"}
+    )
+    page = context.new_page()
+    log_in(page, live_server)
+    yield page
+    context.close()
 
 
 @pytest.fixture
