@@ -116,7 +116,7 @@ def test_a_copy_alone_records_an_unknown_copy_on_a_created_release(user, game, p
     )
 
     entry = LibraryEntry.objects.get(library=user.library)
-    assert logged.written == frozenset({"copy"})
+    assert logged.written == frozenset({"track", "release", "copy"})
     assert logged.tracked_the_game is True
     assert (entry.access, entry.format) == ("unknown", "unknown")
     assert entry.release.platform == pc
@@ -204,7 +204,7 @@ def test_an_untracked_game_with_every_field_writes_under_one_correlation_id(
 
     player_game = _player_game(user, game)
     assert logged.written == frozenset(
-        {"copy", "dates", "playtime", "mastered", "status"}
+        {"track", "release", "copy", "dates", "playtime", "mastered", "status"}
     )
     assert player_game.status == PlayerGameStatus.SHELVED
     assert player_game.mastered is True
@@ -649,3 +649,77 @@ def test_a_retry_after_a_copy_on_another_platform_records_the_picked_copy(
         )
     )
     assert platforms == {pc.pk, console.pk}
+
+
+@pytest.mark.parametrize("gone", [Http404("No such game."), RowNotHeld("Gone.")])
+def test_a_row_gone_mid_press_refuses_its_step_and_keeps_the_copy(
+    user, game, pc, monkeypatch, gone
+):
+    def vanish(*args, **kwargs):
+        raise gone
+
+    monkeypatch.setattr(log_game_writes, "record_facts", vanish)
+
+    with pytest.raises(LogRefused) as refused:
+        _press(user, _statement(game, platform=pc.pk, status=PlayerGameStatus.SHELVED))
+
+    assert refused.value.step == "status"
+    assert refused.value.failure.status_code == 409
+    assert refused.value.written == frozenset({"track", "release", "copy"})
+
+
+def _remove_every_run(user, game) -> None:
+    """A tracked game with no live ordinary run."""
+    Playthrough.objects.filter(library=user.library, player_game__game=game).update(
+        removed_at=timezone.now()
+    )
+
+
+def test_a_playtime_run_made_for_the_press_is_named_as_written(user, game):
+    _tracked(user, game)
+    _remove_every_run(user, game)
+
+    logged = _press(user, _statement(game, playtime=_session_timing()))
+
+    assert "run" in logged.written
+
+
+def test_a_tracked_game_playtime_on_its_run_names_no_new_run(user, game):
+    _tracked(user, game)
+
+    logged = _press(user, _statement(game, playtime=_session_timing()))
+
+    assert "run" not in logged.written
+
+
+def test_a_retry_after_a_run_made_for_playtime_reuses_that_run(user, game, monkeypatch):
+    token = new_correlation_id()
+    real_record_session = log_game_writes.record_session
+    refused: list[bool] = []
+
+    def refuse_once(*args, **kwargs):
+        if not refused:
+            refused.append(True)
+            raise CommandFailed("That run is removed.", 409)
+        return real_record_session(*args, **kwargs)
+
+    _tracked(user, game)
+    _remove_every_run(user, game)
+    monkeypatch.setattr(log_game_writes, "record_session", refuse_once)
+
+    with pytest.raises(LogRefused) as first:
+        _press(user, _statement(game, playtime=_session_timing()), token=token)
+    assert "run" in first.value.written
+
+    run = Playthrough.objects.get(
+        library=user.library, player_game__game=game, removed_at__isnull=True
+    )
+    _press(
+        user,
+        _statement(game, run_id=run.pk, playtime=_session_timing(), attempt=1),
+        token=token,
+    )
+
+    live = Playthrough.objects.filter(library=user.library, removed_at__isnull=True)
+    assert live.count() == 1
+    assert PlayerSession.objects.filter(library=user.library).count() == 1

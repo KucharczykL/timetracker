@@ -11,20 +11,28 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Final, Literal, NamedTuple
+from typing import Literal, NamedTuple, cast
 
 from django.contrib.auth.models import User
 from django.http import Http404
 
 from games.api_creation import RowRefused
-from games.catalog_release import SHARED_GAME_RELEASE, release_on, standing_release_on
+from games.catalog_release import (
+    SHARED_GAME_RELEASE,
+    PlatformRelease,
+    release_on,
+    standing_release_on,
+)
 from games.commands.endpoint import ActStatement
 from games.commands.historical_playtime import HistoricalPlaytimeStatement
 from games.commands.libraryentry import EntryStatement
 from games.commands.playersession import DurationOnlyTiming
 from games.events.dispatch import RowNotHeld
+from games.events.libraryentry import EntryAccessValue, EntryFormatValue
 from games.ids import DeviceId, PlatformId, PlaythroughId
 from games.models import (
+    EntryAccess,
+    EntryFormat,
     Game,
     HistoricalPlaytimeProvenance,
     Platform,
@@ -64,6 +72,8 @@ type LogStep = Literal[
     "mastered",
     "status",
     "platform",
+    "release",
+    "run",
 ]
 
 #: Keys a retried playtime write apart.
@@ -72,8 +82,8 @@ type PlaytimeAttempt = int
 PICKED_RUN_GONE = "That playthrough is no longer held. Reload the page and try again."
 UNHELD_PLATFORM = "That platform is not held. Reload the page and try again."
 GAME_GONE = "That game is gone. Reload the page."
-#: Copy's default record when unstated.
-UNKNOWN_WORD: Final = "unknown"
+#: A row the press read is gone before its write.
+ROW_GONE_MID_PRESS = "Something in this log is gone. Reload and try again."
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,18 +137,12 @@ class LogRefused(Exception):
     """Refused press; `written` holds earlier steps."""
 
     def __init__(
-        self,
-        step: LogStep,
-        failure: CommandFailed,
-        written: frozenset[LogStep],
-        *,
-        tracked_the_game: bool = False,
+        self, step: LogStep, failure: CommandFailed, written: frozenset[LogStep]
     ) -> None:
         super().__init__(failure.message)
         self.step = step
         self.failure = failure
         self.written = written
-        self.tracked_the_game = tracked_the_game
 
 
 @contextmanager
@@ -148,6 +152,9 @@ def _answering(step: LogStep, written: set[LogStep]) -> Iterator[None]:
         yield
     except CommandFailed as failure:
         raise LogRefused(step, failure, frozenset(written)) from failure
+    except (Http404, RowNotHeld) as gone:
+        vanished = CommandFailed(ROW_GONE_MID_PRESS, CONFLICT_STATUS)
+        raise LogRefused(step, vanished, frozenset(written)) from gone
 
 
 def _draft_act(restated: Restated[ActStatement]) -> ActStatement | None:
@@ -201,12 +208,12 @@ def _check_named(library: UserLibrary, statement: LogStatement) -> None:
 
 def _release_for_copy(
     actor: User, statement: LogStatement, platform: Platform
-) -> Release:
+) -> PlatformRelease:
     """Standing Release a new copy names."""
     game = statement.game
     try:
         if game.library_id is not None:
-            return release_on(actor.library, game, platform).release
+            return release_on(actor.library, game, platform)
         standing = standing_release_on(game, platform)
     except RowRefused as refusal:
         raise CommandFailed(refusal.sentence, CONFLICT_STATUS) from refusal
@@ -214,7 +221,7 @@ def _release_for_copy(
         raise CommandFailed(GAME_GONE, CONFLICT_STATUS) from gone
     if standing is None:
         raise CommandFailed(SHARED_GAME_RELEASE, CONFLICT_STATUS)
-    return standing
+    return PlatformRelease(standing, created=False)
 
 
 def _copy_step(
@@ -225,13 +232,13 @@ def _copy_step(
     correlation_id: uuid.UUID,
     written: set[LogStep],
 ) -> Release | None:
-    """Release a press's playtime names."""
+    """Record a needed copy; answer playtime's Release."""
     library = actor.library
     game = statement.game
     if statement.platform is KEEP:
         platform = held_facts(library, game).platform
         return None if platform is None else copy_release_for(library, game, platform)
-    # Held copy, no platform, or unchanged: none.
+    # No platform: no copy, no Release.
     if statement.platform is None:
         return None
     with _answering("platform", written):
@@ -239,20 +246,22 @@ def _copy_step(
         held = copy_release_for(library, game, named)
         if held is not None:
             return held
-        release = _release_for_copy(actor, statement, named)
+        placed = _release_for_copy(actor, statement, named)
+    if placed.created:
+        written.add("release")
     with _answering("copy", written):
         record_entry(
             actor,
             EntryStatement(
-                release_id=release.pk,
-                access=UNKNOWN_WORD,
-                format=UNKNOWN_WORD,
+                release_id=placed.release.pk,
+                access=cast(EntryAccessValue, EntryAccess.UNKNOWN.value),
+                format=cast(EntryFormatValue, EntryFormat.UNKNOWN.value),
             ),
             correlation_id=correlation_id,
             idempotency_key=f"log-copy-{token}-{statement.attempt}",
         )
     written.add("copy")
-    return release
+    return placed.release
 
 
 def _write_run(
@@ -406,6 +415,7 @@ def _playtime_run(
             correlation_id=correlation_id,
             idempotency_key=f"log-run-{token}-{statement.attempt}",
         )
+        written.add("run")
         return recorded.playthrough_id
 
 
@@ -435,81 +445,77 @@ def log_game(
     library = actor.library
     game = statement.game
     written: set[LogStep] = set()
-    tracked = False
     _check_named(library, statement)
-    try:
-        if tracked_game(library, game) is None:
-            with _answering("track", written):
-                track_game(actor, game, correlation_id=correlation_id)
-            tracked = True
+    if tracked_game(library, game) is None:
+        with _answering("track", written):
+            track_game(actor, game, correlation_id=correlation_id)
+        written.add("track")
 
-        release = _copy_step(
+    release = _copy_step(
+        actor,
+        statement,
+        token=token,
+        correlation_id=correlation_id,
+        written=written,
+    )
+
+    playthrough_id: PlaythroughId | None = None
+    if _dates_changed(statement) or statement.note is not KEEP:
+        playthrough_id, created_tracked = _write_run(
             actor,
             statement,
             token=token,
             correlation_id=correlation_id,
             written=written,
         )
+        if created_tracked:
+            written.add("track")
 
-        playthrough_id: PlaythroughId | None = None
-        if _dates_changed(statement) or statement.note is not KEEP:
-            playthrough_id, created_tracked = _write_run(
+    if statement.playtime is not None:
+        if playthrough_id is None:
+            playthrough_id = _playtime_run(
                 actor,
                 statement,
                 token=token,
                 correlation_id=correlation_id,
                 written=written,
             )
-            tracked = tracked or created_tracked
-
-        if statement.playtime is not None:
-            if playthrough_id is None:
-                playthrough_id = _playtime_run(
-                    actor,
-                    statement,
-                    token=token,
-                    correlation_id=correlation_id,
-                    written=written,
-                )
-            _write_playtime(
-                actor,
-                statement,
-                statement.playtime,
-                playthrough_id,
-                release,
-                token=token,
-                correlation_id=correlation_id,
-                written=written,
-            )
-
-        if statement.mastered is not KEEP:
-            with _answering("mastered", written):
-                record_facts(
-                    actor,
-                    game,
-                    mastered=statement.mastered,
-                    correlation_id=correlation_id,
-                    idempotency_key=f"log-mastered-{token}-{statement.attempt}",
-                )
-            written.add("mastered")
-
-        # After run writes: completion may imply Completed.
-        live = tracked_game(library, game)
-        status = _status_to_write(
-            statement, None if live is None else PlayerGameStatus(live.status)
+        _write_playtime(
+            actor,
+            statement,
+            statement.playtime,
+            playthrough_id,
+            release,
+            token=token,
+            correlation_id=correlation_id,
+            written=written,
         )
-        if status is not None:
-            with _answering("status", written):
-                record_facts(
-                    actor,
-                    game,
-                    status=status,
-                    correlation_id=correlation_id,
-                    idempotency_key=f"log-status-{token}-{statement.attempt}",
-                )
-            written.add("status")
-    except LogRefused as refused:
-        refused.tracked_the_game = tracked
-        raise
 
-    return LoggedGame(written=frozenset(written), tracked_the_game=tracked)
+    if statement.mastered is not KEEP:
+        with _answering("mastered", written):
+            record_facts(
+                actor,
+                game,
+                mastered=statement.mastered,
+                correlation_id=correlation_id,
+                idempotency_key=f"log-mastered-{token}-{statement.attempt}",
+            )
+        written.add("mastered")
+
+    # After run writes: completion may imply Completed.
+    live = tracked_game(library, game)
+    status = _status_to_write(
+        statement, None if live is None else PlayerGameStatus(live.status)
+    )
+    if status is not None:
+        with _answering("status", written):
+            record_facts(
+                actor,
+                game,
+                status=status,
+                correlation_id=correlation_id,
+                idempotency_key=f"log-status-{token}-{statement.attempt}",
+            )
+        written.add("status")
+
+    return LoggedGame(written=frozenset(written), tracked_the_game="track" in written)

@@ -1,7 +1,7 @@
 """Views for the Log a game modal."""
 
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, cast
 
@@ -60,16 +60,18 @@ REFUSED_FIELD: Final[Mapping[LogStep, FieldName]] = {
     "mastered": "mastered",
 }
 
-#: Each written step's words, in order.
+#: Each written step's words, in the order they were written.
 SAVED_WORDS: Final[Mapping[LogStep, str]] = {
+    "track": "the game in your library",
+    "release": "a release on that platform",
     "copy": "the copy",
     "dates": "the dates",
     "note": "the note",
+    "run": "a playthrough",
     "playtime": "the playtime",
     "mastered": "mastered",
     "status": "the status",
 }
-TRACKED_WORDS: Final = "the game in your library"
 
 #: Seen fields each written step refreshes.
 SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
@@ -87,6 +89,8 @@ SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
     "dates": ("started_seen", "completed_seen", "run"),
     "note": ("note_seen", "run"),
     "playtime": ("run",),
+    "run": ("run",),
+    "release": (),
     "mastered": ("mastered_seen",),
     "status": ("status_seen",),
 }
@@ -254,13 +258,10 @@ def _seen_values(held: HeldFacts) -> dict[FieldName, str]:
     }
 
 
-def _reseen(
-    data: QueryDict, held: HeldFacts, written: frozenset[LogStep], tracked: bool
-) -> None:
+def _reseen(data: QueryDict, held: HeldFacts, written: frozenset[LogStep]) -> None:
     """Refresh seen values the written steps changed."""
     fresh = _seen_values(held)
-    steps: Iterable[LogStep] = ("track",) if tracked else written
-    names = {name for step in steps for name in SEEN_FIELDS[step]}
+    names = {name for step in written for name in SEEN_FIELDS[step]}
     for name in names:
         data[name] = fresh[name]
 
@@ -271,10 +272,9 @@ def _join(words: Sequence[str]) -> str:
     return f"{', '.join(words[:-1])} and {words[-1]}"
 
 
-def _saved_line(written: frozenset[LogStep], tracked: bool) -> str | None:
+def _saved_line(written: frozenset[LogStep]) -> str | None:
     """What a refused press kept, if anything."""
-    words = [TRACKED_WORDS] if tracked else []
-    words += [word for step, word in SAVED_WORDS.items() if step in written]
+    words = [word for step, word in SAVED_WORDS.items() if step in written]
     if not words:
         return None
     return f"Saved: {_join(words)}. Fix the field below and save again."
@@ -293,9 +293,9 @@ def _refused(
         data[ATTEMPT_FIELD] = str(statement.attempt + 1)
     library = cast(User, request.user).library
     held = held_facts(library, statement.game)
-    kept = _saved_line(refused.written, refused.tracked_the_game)
+    kept = _saved_line(refused.written)
     if kept is not None:
-        _reseen(data, held, refused.written, refused.tracked_the_game)
+        _reseen(data, held, refused.written)
     rebuilt = _build(request, data=data, held=held)
     rebuilt.is_valid()
     if kept is not None:

@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 
 import pytest
 from django.contrib.messages import get_messages
+from django.http import Http404
 from django.urls import reverse
 from django.utils import timezone
 from graphs import default_graph
@@ -514,3 +515,64 @@ def test_a_malformed_attempt_names_the_page(logged_in, game):
 
     assert response.status_code == 200
     assert STALE_FORM in response.content.decode()
+
+
+def test_a_row_gone_after_the_copy_says_what_was_kept(
+    logged_in, owned_library, game, monkeypatch
+):
+    pc = Platform.objects.create(library=owned_library, name="PC")
+    default_graph(game, owned_library, platform=pc)
+
+    def vanish(*args, **kwargs):
+        raise Http404("No such game.")
+
+    monkeypatch.setattr(writes_log_game, "record_facts", vanish)
+
+    response = _post(
+        logged_in,
+        game,
+        _press(game, platform=str(pc.pk), status="completed"),
+    )
+
+    assert response.status_code == 409
+    html = response.content.decode()
+    assert "Saved: the copy. Fix the field below and save again." in html
+    assert "Something in this log is gone." in html
+
+
+def test_a_created_release_and_run_are_named_as_saved(
+    logged_in, owned_library, game, monkeypatch
+):
+    pc = Platform.objects.create(library=owned_library, name="PC")
+    Playthrough.objects.filter(library=owned_library, player_game__game=game).update(
+        removed_at=timezone.now()
+    )
+    real_record_facts = writes_log_game.record_facts
+    refused: list[bool] = []
+
+    def refuse_the_first_status(actor, game_, **kwargs):
+        if "status" in kwargs and not refused:
+            refused.append(True)
+            raise CommandFailed("That game is removed.", 409)
+        return real_record_facts(actor, game_, **kwargs)
+
+    monkeypatch.setattr(writes_log_game, "record_facts", refuse_the_first_status)
+
+    response = _post(
+        logged_in,
+        game,
+        _press(
+            game,
+            platform=str(pc.pk),
+            status="completed",
+            duration_hours="2",
+            duration_minutes="0",
+        ),
+    )
+
+    html = response.content.decode()
+    assert response.status_code == 409
+    assert (
+        "Saved: a release on that platform, the copy, a playthrough and the playtime."
+        in html
+    )
