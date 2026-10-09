@@ -21,6 +21,7 @@ from common.components import (
     YearPicker,
     render,
 )
+from common.components.custom_elements import SheetSpec
 from common.components.date_range_picker import DateRangeCalendar
 from common.components.search_select import ComboboxDropdown
 from common.date_time_presentation import (
@@ -41,7 +42,11 @@ class FloatingPanel(NamedTuple):
 
 FLOATING_PANELS = {
     "dropdown": FloatingPanel(
-        lambda: str(ComboboxDropdown(label="Pick", content=Span()["x"], id="pick")),
+        lambda: str(
+            ComboboxDropdown(
+                label="Pick", content=Span()["x"], id="pick", sheet=SheetSpec("Pick")
+            )
+        ),
         'data-menu=""',
     ),
     "submenu": FloatingPanel(

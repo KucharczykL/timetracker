@@ -5,6 +5,7 @@ from typing import TypedDict
 from common.components import custom_element_builder, render
 from common.components.custom_elements import (
     ElementSpec,
+    SheetSpec,
     _ts_for_spec,
     register_element,
 )
@@ -129,7 +130,14 @@ class ContractStampingTest(unittest.TestCase):
 
         trigger = Button([("class", "look")])["Open"]
         target = DropdownMenuPanel(items=[DropdownLinkItem("/a/", "A")])
-        html = render(Dropdown(trigger_element=trigger, target_element=target, id="d"))
+        html = render(
+            Dropdown(
+                trigger_element=trigger,
+                target_element=target,
+                id="d",
+                sheet=SheetSpec("Open"),
+            )
+        )
         # Behavioral hooks + ARIA wiring stamped by the core.
         self.assertIn('data-toggle=""', html)
         self.assertIn('id="dLink"', html)
@@ -551,7 +559,7 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
 class SelectDropdownRenderTest(unittest.TestCase):
     def test_renders_listbox_with_select_behavior(self):
         from common.components import SelectDropdown, render
-        from common.components.custom_elements import SelectOption
+        from common.components.custom_elements import SelectOption, SheetSpec
 
         html = render(
             SelectDropdown(
@@ -565,6 +573,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
                 body_key="status",
                 event="status-changed",
                 csrf="tok",
+                sheet=SheetSpec("Status"),
             )
         )
         self.assertIn('behavior="select"', html)
@@ -580,7 +589,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
 
     def test_empty_is_null_flag_sets_data_attribute(self):
         from common.components import SelectDropdown, render
-        from common.components.custom_elements import SelectOption
+        from common.components.custom_elements import SelectOption, SheetSpec
 
         html = render(
             SelectDropdown(
@@ -592,6 +601,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
                 event="device-changed",
                 csrf="t",
                 empty_is_null=True,
+                sheet=SheetSpec("Device"),
             )
         )
         self.assertIn('data-empty-is-null="true"', html)

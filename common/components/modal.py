@@ -14,9 +14,12 @@ from common.components.elements import Dialog, Div, P, PlainH2, Span
 from common.components.primitives import ControlButton
 
 type ModalAlign = Literal["center", "end"]
+#: Sheet slides in; a modal fades.
+type ModalMotion = Literal["center", "sheet"]
 type ModalAttributeRole = Literal[
     "modal",
     "dismiss",
+    "cancel",
     "initial_focus",
     "covered",
     "over",
@@ -32,6 +35,7 @@ type ElementId = str  # e.g. "form-dialog-title"
 MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
     "modal": "data-modal",
     "dismiss": "data-modal-dismiss",
+    "cancel": "data-modal-cancel",
     "initial_focus": "data-modal-initial-focus",
     "covered": "data-modal-covered",
     "over": "data-modal-over",
@@ -44,10 +48,17 @@ MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
 #: Transparent hit area; the child panel shows.
 #: No transform/filter/contain: toast region needs viewport.
 #: clip: hidden lets focus scroll the panel.
+#: Backdrop fades in, and out on leave.
 _MODAL_DIALOG_CLASS = (
-    "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-clip "
+    "group/modal fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-clip "
     "border-0 bg-transparent p-0 text-inherit open:flex open:justify-center "
     "backdrop:bg-dark-backdrop/70 "
+    "backdrop:transition-opacity backdrop:duration-(--duration-medium) backdrop:ease-enter "
+    "starting:open:backdrop:opacity-0 "
+    "data-[motion=leaving]:backdrop:opacity-0 "
+    "data-[motion=leaving]:backdrop:duration-(--duration-medium-exit) "
+    "data-[motion=leaving]:backdrop:ease-exit "
+    "motion-reduce:backdrop:duration-(--duration-reduced)! "
     # Only the topmost shown modal dims.
     "data-modal-covered:backdrop:opacity-0! "
     "data-modal-covered:backdrop:transition-none! "
@@ -62,22 +73,61 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 
 _HEADER_CLASS = "flex shrink-0 items-center justify-between gap-4 py-1.5 pl-4 pr-1.5"
 _DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay"
+#: Level header: back, title, close.
+_LEVEL_HEADER_CLASS = (
+    "group-data-[sheet-level]/modal:grid "
+    "group-data-[sheet-level]/modal:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] "
+    "group-data-[sheet-level]/modal:gap-2 group-data-[sheet-level]/modal:pl-1.5"
+)
+_LEVEL_BACK_CLASS = "hidden min-w-0 group-data-[sheet-level]/modal:flex"
+_TITLE_BLOCK_CLASS = (
+    "flex min-w-0 flex-col group-data-[sheet-level]/modal:max-w-[50vw] "
+    "group-data-[sheet-level]/modal:text-center"
+)
 
 #: The layer writes them; lengths in px.
-#: Arbitrary transform: the sheet's slide owns translate.
-#: Keep translate in the transitions: the sheet waits on it.
+#: Depth cue writes transform; levels skip it.
+#: Scrim is ::after; opacity is --modal-scrim.
+#: Scrim never makes the panel translucent.
 _MODAL_PANEL_CLASS = (
-    "mt-[var(--modal-reserve,0px)] origin-top "
+    "relative mt-[var(--modal-reserve,0px)] origin-top "
     "data-modal-depth:[transform:translateY(var(--modal-shift))_scale(var(--modal-scale))] "
-    # Darkens, never translucent: the page stays hidden.
-    "data-modal-depth:brightness-[max(.5,calc(1-var(--modal-depth)*.15))] "
-    "motion-safe:transition-[transform,translate,filter] "
-    "motion-safe:duration-200 motion-safe:ease-out"
+    "after:pointer-events-none after:absolute after:inset-0 after:content-[''] "
+    "after:rounded-[inherit] after:bg-dark-backdrop "
+    "after:opacity-[var(--modal-scrim,0)] after:transition-opacity "
+    "after:duration-(--duration-medium) after:ease-enter"
 )
+#: Centred modal fades and scales in.
+_CENTER_PANEL_MOTION_CLASS = (
+    "transition-[opacity,scale,transform] duration-(--duration-medium) ease-enter "
+    "starting:opacity-0 starting:scale-96 "
+    "group-data-[motion=leaving]/modal:opacity-0 "
+    "group-data-[motion=leaving]/modal:scale-96 "
+    "group-data-[motion=leaving]/modal:duration-(--duration-medium-exit) "
+    "group-data-[motion=leaving]/modal:ease-exit "
+    "motion-reduce:scale-100! motion-reduce:duration-(--duration-reduced)!"
+)
+#: Sheet slides; reduced motion crossfades.
+_SHEET_PANEL_MOTION_CLASS = (
+    "transition-[translate,opacity] duration-(--duration-slow) ease-sheet "
+    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0 "
+    # Level push and back have their own.
+    "group-data-[sheet-level]/sheet:transition-none! "
+    "group-data-[sheet-level]/sheet:translate-none! "
+    "group-data-[motion=leaving]/sheet:duration-(--duration-slow-exit) "
+    "motion-reduce:translate-none! motion-reduce:opacity-0 "
+    "motion-reduce:duration-(--duration-reduced)! "
+    "group-data-[sheet-state=open]/sheet:motion-reduce:opacity-100"
+)
+_PANEL_MOTION_CLASS: Mapping[ModalMotion, str] = {
+    "center": _CENTER_PANEL_MOTION_CLASS,
+    "sheet": _SHEET_PANEL_MOTION_CLASS,
+}
 
 
 require_every_key(ModalAttributeRole, MODAL_ATTRIBUTES)
 require_every_key(ModalAlign, _MODAL_ALIGN_CLASS)
+require_every_key(ModalMotion, _PANEL_MOTION_CLASS)
 
 
 def ModalDialog(
@@ -93,11 +143,16 @@ def ModalDialog(
     )
 
 
-def ModalPanel(attributes: Attributes = (), *, class_: str = "") -> Element:
+def ModalPanel(
+    attributes: Attributes = (),
+    *,
+    class_: str = "",
+    motion: ModalMotion = "center",
+) -> Element:
     """A modal's visible panel; steps back when covered."""
     return Div(
         [(MODAL_ATTRIBUTES["panel"], ""), *attributes],
-        class_=f"{_MODAL_PANEL_CLASS} {class_}".strip(),
+        class_=f"{_MODAL_PANEL_CLASS} {_PANEL_MOTION_CLASS[motion]} {class_}".strip(),
     )
 
 
@@ -109,12 +164,14 @@ def ModalPanelHeader(
     attributes: Attributes = (),
     title_attributes: Attributes = (),
     divided: bool = True,
+    level_back: Child | None = None,
 ) -> Element:
     """A modal panel's title row; no label, no ×.
 
     `title_id` beats an id in `title_attributes`;
     `None` leaves the id to the client.
     `divided`: a line over a scrolling body.
+    `level_back`: back control before the title; shows only on a sheet level.
     """
     close_button = (
         None
@@ -123,29 +180,39 @@ def ModalPanelHeader(
             [
                 (MODAL_ATTRIBUTES["dismiss"], ""),
                 ("aria-label", close_label),
-                ("class", "shrink-0 focus:ring-inset"),
+                ("class", "shrink-0 justify-self-end focus:ring-inset"),
             ],
             variant="ghost",
             size="compact",
         )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
     )
+    title_block = Div(class_=_TITLE_BLOCK_CLASS)[
+        P(
+            [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
+            class_="text-type-micro text-body",
+        ),
+        PlainH2(
+            [
+                *([] if title_id is None else [("id", title_id)]),
+                *title_attributes,
+                ("class", "truncate text-type-section text-heading"),
+            ],
+        )[title],
+    ]
     return Div(
         [(MODAL_ATTRIBUTES["header"], ""), *attributes],
-        class_=f"{_HEADER_CLASS} {_DIVIDED_HEADER_CLASS if divided else ''}".strip(),
+        class_=" ".join(
+            part
+            for part in (
+                _HEADER_CLASS,
+                _LEVEL_HEADER_CLASS if level_back is not None else "",
+                _DIVIDED_HEADER_CLASS if divided else "",
+            )
+            if part
+        ),
     )[
-        Div(class_="flex min-w-0 flex-col")[
-            P(
-                [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
-                class_="text-type-micro text-body",
-            ),
-            PlainH2(
-                [
-                    *([] if title_id is None else [("id", title_id)]),
-                    *title_attributes,
-                    ("class", "text-type-section text-heading"),
-                ],
-            )[title],
-        ],
+        None if level_back is None else Div(class_=_LEVEL_BACK_CLASS)[level_back],
+        title_block,
         close_button,
     ]
 

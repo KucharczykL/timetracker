@@ -1699,29 +1699,44 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   show through), and fills the top modal's trail and `aria-describedby`.
   Content that renames a dialog calls `refreshModalStack()`. Contract is
   [Stacked depth](docs/superpowers/specs/2026-10-06-issue-1514-stacked-modal-depth-design.md)
-- **A dropdown panel becomes a bottom sheet below `sm`** (#516): pass
-  a `SheetSpec(title)` (`Dropdown(sheet=)`, `ComboboxDropdown(sheet=)`,
-  or `dropdown_sheet(SheetSpec(label))` inside a raw `_Dropdown`). `attachNarrowSheet`
-  (`ts/elements/narrow-sheet.ts`) lends the one panel node to the sheet;
-  `attachMenu` routes its toggle opens through `presenter`. A panel styles
-  its sheet look on itself with `data-[dropdown-host=sheet]:` and
-  `group-data-[dropdown-host=sheet]/dropdown:`; `sheetFocus` names the first
-  focus. Every calendar and quick-bar facet opts in. Contract is
+- **Every dropdown becomes a bottom sheet below `sm`** (#516, #1559): no
+  opt-out. A build site states its title: `Dropdown(sheet=SheetSpec(title))`,
+  `ComboboxDropdown(sheet=)`, `SelectDropdown(sheet=)`, or
+  `dropdown_sheet(SheetSpec(label))` inside a raw `_Dropdown`;
+  `tests/html_answers.py` refuses a `<drop-down>` without its own sheet.
+  `attachNarrowSheet` (`ts/elements/narrow-sheet.ts`) lends the one panel
+  node to the sheet; `attachMenu` routes its toggle and submenu opens
+  through `presenter`. A panel styles its sheet look on itself with
+  `data-[dropdown-host=sheet]:` and `group-data-[dropdown-host=sheet]/dropdown:`;
+  each behavior's `sheetFocus` names the first focus. Contract is
   [Bottom sheet](docs/superpowers/specs/2026-10-07-issue-516-calendar-bottom-sheet-design.md).
+  A dropdown opened inside a dropdown sheet is a **level**
+  (`ts/elements/sheet-levels.ts`): its own dialog, stamped
+  `data-sheet-level`, never covering; back and `cancel` pop it, × and the
+  backdrop `closeTogether` the chain. A sheet that holds a `<drop-down>` or
+  a search box, and every level, is `data-sheet-steady`: full height, the
+  keyboard slides over it. Contract is
+  [Every dropdown a sheet](docs/superpowers/specs/2026-10-09-issue-1559-sheet-by-default-design.md).
   A field picker (#1537) shows a face below `sm`: the field box's look,
   its text area a button, its own × and + acting on the widget. A tap
   lends the whole `<search-select>` (`sheetLent`), so its focus checks
   hold. While stamped, a code commit keeps the sheet open; a person's
   single-select pick or none closes it, as do Escape and the backdrop.
-  The leave work runs on `dropdown:hide`, not on a host change. A sheet
-  that searches states `SheetSpec(..., searchable=True)` and keeps its
-  height, so filtering never moves the box. A host whose sheet fails is
-  stamped `data-dropdown-sheetless` and shows the box. Every person's
-  single-select pick emits `search-select:pick`; the `combobox` behavior
-  closes a "Label ▾" panel on it. E2E: `with
+  The leave work runs on `dropdown:hide`, not on a host change. A host
+  whose sheet fails is stamped `data-dropdown-sheetless` and shows the
+  box. Every person's single-select pick emits `search-select:pick`; the
+  `combobox` behavior closes a "Label ▾" panel on it. E2E: `with
   picker_opened(picker):` (`e2e/helpers.py`) waits out the sheet, which
   holds the page inert while it leaves. Contract is
   [Picker sheet](docs/superpowers/specs/2026-10-07-issue-1537-picker-sheet-design.md)
+- **Motion is tokens** (#1559): every duration and easing is a
+  `--duration-*`/`--ease-*` in `common/input.css`; a class writes
+  `duration-(--duration-fast)`, TypeScript `motionDuration(token)`. Only
+  transform, translate, scale and opacity animate. An exit is held by `holdLeave`
+  (`ts/motion.ts`) under `data-motion="leaving"`; reduced motion
+  crossfades. E2E runs `reduced_motion="reduce"` and waits on a settled
+  state. Contract is
+  [Motion](docs/superpowers/specs/2026-10-09-issue-1559-motion-design.md)
 - **A form page opens in a modal by marking its link**, opt-in per link (#1384):
   `form_dialog_link()` (`common/components/form_dialog.py`), `"bare"` for no
   header. `<form-dialog>` fetches in dialog mode (`X-Form-Dialog`):

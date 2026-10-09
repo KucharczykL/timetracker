@@ -15,6 +15,11 @@ export const VIEWPORT_MARGIN = 8;
 
 export type Align = "start" | "center" | "end";
 export type Side = "top" | "bottom";
+/** Side the panel was placed on. */
+export type PlacedSide = Side | "left" | "right";
+
+const SIDE_ATTRIBUTE = "data-side";
+const ALIGN_ATTRIBUTE = "data-align";
 
 // Every inline property the anchored positioners may write (positionAnchored plus
 // the submenu path through pinFixed), in one place so the teardown
@@ -53,6 +58,12 @@ export function clampLeftToViewport(panel: HTMLElement, left: number): number {
   );
 }
 
+/** Stamps side and alignment for motion CSS. */
+export function stampSide(panel: HTMLElement, side: PlacedSide, align: Align): void {
+  panel.setAttribute(SIDE_ATTRIBUTE, side);
+  panel.setAttribute(ALIGN_ATTRIBUTE, align);
+}
+
 // Remove every inline property the anchored positioners write — the exact inverse,
 // so a closed panel leaks no stale fixed coordinates. Removing an unset property is
 // a no-op, so callers that never opt into scrollable/matchWidth delegate here too.
@@ -60,6 +71,8 @@ export function clearAnchoredPosition(panel: HTMLElement): void {
   for (const property of ANCHORED_PROPERTIES) {
     panel.style.removeProperty(property);
   }
+  panel.removeAttribute(SIDE_ATTRIBUTE);
+  panel.removeAttribute(ALIGN_ATTRIBUTE);
 }
 
 export interface AnchorOptions {
@@ -142,6 +155,7 @@ export function positionAnchored(
 
   panel.style.left = `${left}px`;
   panel.style.top = `${top}px`;
+  stampSide(panel, resolved, options.align);
 
   return { side: resolved, left, width, anchorCenterX: rect.left + rect.width / 2 };
 }

@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   attachModal,
+  closeTogether,
   focusReturnTarget,
+  isModalLeaving,
   isModalOpen,
   isReachable,
   MODAL_CHANGE,
@@ -11,6 +13,7 @@ import {
   resetModalLayerForTests,
   topModal,
   whenSettled,
+  type FinishLeave,
 } from "./modal-layer.js";
 import { openSurfaces, pushSurface, removeSurface, type Surface } from "./surface-stack.js";
 
@@ -1056,5 +1059,253 @@ describe("whenSettled", () => {
     resetModalLayerForTests();
     whenSettled(vi.fn());
     expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe("default leave", () => {
+  it("holds a centred modal's close until its fade ends", async () => {
+    document.documentElement.style.setProperty("--duration-medium-exit", "160ms");
+    const dialog = mountDialog();
+    let finishFade: () => void = () => undefined;
+    const fade = new Promise<void>((resolve) => {
+      finishFade = resolve;
+    });
+    Object.defineProperty(dialog, "getAnimations", {
+      configurable: true,
+      value: () => [{ finished: fade }],
+    });
+    const modal = attachModal(dialog);
+    modal.open();
+
+    modal.close();
+
+    expect(dialog.open).toBe(true);
+    expect(modal.state()).toBe("leaving");
+    expect(dialog.getAttribute("data-motion")).toBe("leaving");
+
+    finishFade();
+    await vi.waitFor(() => expect(dialog.open).toBe(false));
+    expect(modal.state()).toBe("closed");
+    expect(dialog.hasAttribute("data-motion")).toBe(false);
+  });
+});
+
+describe("cancel", () => {
+  it("routes native cancel apart from the backdrop and the dismiss control", () => {
+    const dialog = mountDialog();
+    const cancelAction = vi.fn();
+    const dismiss = vi.fn();
+    const modal = attachModal(dialog, { cancel: cancelAction, dismiss });
+    modal.open();
+    cancel(dialog);
+    expect(cancelAction).toHaveBeenCalledOnce();
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(modal.isOpen()).toBe(true);
+    pointer("pointerdown", dialog);
+    pointer("pointerup", dialog);
+    dismissControl(dialog).click();
+    expect(dismiss).toHaveBeenCalledTimes(2);
+    expect(cancelAction).toHaveBeenCalledOnce();
+  });
+});
+
+describe("closeTogether", () => {
+  it("runs only the top's leave, finishes top first, and focuses the lowest opener once", () => {
+    const leaves: string[] = [];
+    const closed: string[] = [];
+    let finishTop: FinishLeave = () => {};
+    const bottomOpener = mountOpener();
+    const middleOpener = mountOpener();
+    const topOpener = mountOpener();
+    const bottomDialog = mountDialog();
+    const middleDialog = mountDialog();
+    const bottom = attachModal(bottomDialog, {
+      leave: () => leaves.push("bottom"),
+      onClosed: () => closed.push("bottom"),
+    });
+    const middle = attachModal(middleDialog, {
+      leave: () => leaves.push("middle"),
+      onClosed: () => closed.push("middle"),
+    });
+    const top = attachModal(mountDialog(), {
+      leave: (done) => {
+        leaves.push("top");
+        finishTop = done;
+      },
+      onClosed: () => closed.push("top"),
+    });
+    bottom.open(bottomOpener);
+    middle.open(middleOpener);
+    top.open(topOpener);
+    const bottomFocus = vi.spyOn(bottomOpener, "focus");
+    const middleFocus = vi.spyOn(middleOpener, "focus");
+    const topFocus = vi.spyOn(topOpener, "focus");
+    closeTogether(bottomDialog);
+    let settledWith: string[] | null = null;
+    whenSettled(() => {
+      settledWith = [...closed];
+    });
+    expect(leaves).toEqual(["top"]);
+    expect(isModalLeaving()).toBe(true);
+    expect(bottomDialog.open && middleDialog.open).toBe(true);
+    expect(settledWith).toBeNull();
+
+    finishTop();
+    expect(closed).toEqual(["top", "middle", "bottom"]);
+    expect(openModals()).toEqual([]);
+    expect(isModalLeaving()).toBe(false);
+    expect(bottomFocus).toHaveBeenCalledOnce();
+    expect(middleFocus).not.toHaveBeenCalled();
+    expect(topFocus).not.toHaveBeenCalled();
+    expect(settledWith).toEqual(["top", "middle", "bottom"]);
+  });
+});
+
+describe("closeAbove focus", () => {
+  it("returns no focus to an upper modal closed by a lower one", () => {
+    const lower = mountDialog();
+    const upper = mountDialog();
+    const upperOpener = mountOpener();
+    const lowerModal = attachModal(lower);
+    const upperModal = attachModal(upper);
+    lowerModal.open();
+    upperModal.open(upperOpener);
+    const focus = vi.spyOn(upperOpener, "focus");
+    lowerModal.close();
+    expect(upperModal.isOpen()).toBe(false);
+    expect(upper.open).toBe(false);
+    expect(focus).not.toHaveBeenCalled();
+  });
+});
+
+describe("sheet levels", () => {
+  it("keeps the dim on the dialog below a level", () => {
+    const sheet = mountDialog();
+    const level = mountDialog();
+    level.setAttribute("data-sheet-level", "");
+    attachModal(sheet).open();
+    attachModal(level).open();
+    expect(sheet.hasAttribute("data-modal-covered")).toBe(false);
+    expect(level.hasAttribute("data-modal-covered")).toBe(false);
+  });
+
+  it("covers a level and the sheet under it when a form sits above", () => {
+    const sheet = mountDialog();
+    const level = mountDialog();
+    level.setAttribute("data-sheet-level", "");
+    const form = mountDialog();
+    attachModal(sheet).open();
+    attachModal(level).open();
+    attachModal(form).open();
+    expect(sheet.hasAttribute("data-modal-covered")).toBe(true);
+    expect(level.hasAttribute("data-modal-covered")).toBe(true);
+    expect(form.hasAttribute("data-modal-covered")).toBe(false);
+  });
+
+  it("never marks a level as over its sheet", () => {
+    const sheet = mountDialog();
+    const level = mountDialog();
+    level.setAttribute("data-sheet-level", "");
+    attachModal(sheet).open();
+    attachModal(level).open();
+    expect(level.hasAttribute("data-modal-over")).toBe(false);
+  });
+});
+
+/** Two modals; the top's leave waits for its finish. */
+function heldChain(): {
+  bottomDialog: HTMLDialogElement;
+  topDialog: HTMLDialogElement;
+  bottom: ReturnType<typeof attachModal>;
+  top: ReturnType<typeof attachModal>;
+  finishTop: () => void;
+  together: boolean[];
+} {
+  const together: boolean[] = [];
+  let finishTop: FinishLeave = () => {};
+  const bottomDialog = mountDialog();
+  const topDialog = mountDialog();
+  const bottom = attachModal(bottomDialog, { leave: (done) => done() });
+  const top = attachModal(topDialog, {
+    leave: (done, context) => {
+      together.push(context.together);
+      finishTop = done;
+    },
+  });
+  bottom.open(mountOpener());
+  top.open(mountOpener());
+  return { bottomDialog, topDialog, bottom, top, finishTop: () => finishTop(), together };
+}
+
+describe("a step during a leave", () => {
+  it("queues a second cancel, which closes the modal below", () => {
+    const chain = heldChain();
+    chain.top.close();
+    cancel(chain.topDialog);
+    expect(chain.bottom.isOpen()).toBe(true);
+    chain.finishTop();
+    expect(chain.bottom.state()).toBe("closed");
+    expect(isModalOpen()).toBe(false);
+  });
+
+  it("queues a dismiss pressed on the leaving modal", () => {
+    const chain = heldChain();
+    chain.top.close();
+    dismissControl(chain.topDialog).click();
+    chain.finishTop();
+    expect(chain.bottom.state()).toBe("closed");
+  });
+
+  it("acts on nothing else inside the leaving modal", () => {
+    const chain = heldChain();
+    const pressed = vi.fn();
+    first(chain.topDialog).addEventListener("click", pressed);
+    chain.top.close();
+    first(chain.topDialog).click();
+    expect(pressed).not.toHaveBeenCalled();
+    chain.finishTop();
+    expect(chain.bottom.isOpen()).toBe(true);
+  });
+
+  it("runs a chain close asked for during a leave once it ends", () => {
+    const chain = heldChain();
+    chain.top.close();
+    closeTogether(chain.bottomDialog);
+    expect(chain.bottom.isOpen()).toBe(true);
+    chain.finishTop();
+    expect(chain.bottom.state()).toBe("closed");
+  });
+});
+
+describe("a chain whose top ends elsewhere", () => {
+  it("still finishes every member", () => {
+    const chain = heldChain();
+    closeTogether(chain.bottomDialog);
+    expect(chain.together).toEqual([true]);
+    // The browser closes the top on its own.
+    chain.topDialog.close();
+    chain.topDialog.dispatchEvent(new Event("close"));
+    expect(chain.bottom.state()).toBe("closed");
+    expect(isModalLeaving()).toBe(false);
+  });
+
+  it("marks a lone close as not together", () => {
+    const chain = heldChain();
+    chain.top.close();
+    expect(chain.together).toEqual([false]);
+  });
+});
+
+describe("focus return", () => {
+  it("falls back to the modal below when the target takes no focus", () => {
+    const lowerDialog = mountDialog();
+    const lower = attachModal(lowerDialog);
+    lower.open(mountOpener());
+    const hidden = mountOpener(lowerDialog);
+    vi.spyOn(hidden, "focus").mockImplementation(() => {});
+    const upper = attachModal(mountDialog());
+    upper.open(hidden);
+    upper.close();
+    expect(lowerDialog.contains(document.activeElement)).toBe(true);
   });
 });

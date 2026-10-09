@@ -43,6 +43,7 @@ import {
   MODAL_CHANGE,
   refreshModalStack,
   topModal,
+  whenSettled,
 } from "./modal-layer.js";
 
 interface OpenDialog {
@@ -131,6 +132,23 @@ function showToasts(messages: Messages): void {
 
 function report(detail: string): string {
   return reportClientError("form-dialog", detail, { toast: false });
+}
+
+// Past the layer's own leave cap.
+const LEAVE_SETTLE_TIMEOUT_MS = 2_000;
+
+/** Resolves once no modal leaves; else rejects. */
+function whenLeaveSettles(): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cancel();
+      reject(new Error("a modal leave never settled"));
+    }, LEAVE_SETTLE_TIMEOUT_MS);
+    const cancel = whenSettled(() => {
+      window.clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 
 function errorToast(message: string): void {
@@ -517,6 +535,8 @@ export class FormDialogElement extends HTMLElement {
         this.followLink(url, route.page.messages, `the page at ${url.href} could not be fitted`);
         return;
       }
+      // Wait for a sheet leaving on click.
+      if (isModalLeaving()) await whenLeaveSettles();
       if (topModal() !== topAtClick) {
         // The server consumed them; show them anyway.
         report(`a modal overtook the link to ${url.href}`);

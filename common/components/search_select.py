@@ -1004,7 +1004,7 @@ def _inline_combobox_host(widget: Node, face: Node) -> Node:
         placement="bottom-start",
         submenu="false",
         behavior="inline-combobox",
-    )[face, widget, dropdown_sheet(SheetSpec.named_on_connect(searchable=True))]
+    )[face, widget, dropdown_sheet(SheetSpec.named_on_connect())]
 
 
 def _filter_value_pill(
@@ -1345,7 +1345,7 @@ def ComboboxDropdown(
     config: dict[str, str] | None = None,
     panel_width: str = "w-72",
     applied: bool = False,
-    sheet: SheetSpec | None = None,
+    sheet: SheetSpec,
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
@@ -1364,7 +1364,7 @@ def ComboboxDropdown(
     ``w-auto``.
 
     ``applied`` puts a dot in the trigger's corner and "(applied)" in
-    its accessible name. ``sheet``: the narrow-viewport sheet, if any.
+    its accessible name. ``sheet``: narrow viewport only.
     """
     mark: list[Node] = []
     if applied:
@@ -1421,7 +1421,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
             id=id,
             placement="bottom-end",
             behavior="combobox",
-            sheet=SheetSpec(PRESETS_LABEL, searchable=True),
+            sheet=SheetSpec(PRESETS_LABEL),
         )
 
     return {

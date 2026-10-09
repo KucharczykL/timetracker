@@ -5,7 +5,7 @@ import "../toast.js";
 import { handOffMessages } from "../handoff.js";
 import { attachModal, type Modal } from "./modal-layer.js";
 import { pushSurface } from "./surface-stack.js";
-import "./toast-stack.js";
+import { ToastStore } from "./toast-stack.js";
 
 type Payload = { message: string; type?: string; id?: number | string; duration?: number | null };
 
@@ -23,11 +23,19 @@ function messageOf(toast: HTMLElement): string {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Never-ending fade waits for the cap.
+  document.documentElement.style.setProperty("--duration-medium-exit", "160ms");
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => [{ finished: new Promise(() => {}) }],
+  });
   document.body.innerHTML = "<toast-stack></toast-stack>";
 });
 
 afterEach(() => {
   document.body.innerHTML = "";
+  document.documentElement.removeAttribute("style");
+  Reflect.deleteProperty(Element.prototype, "getAnimations");
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -72,7 +80,7 @@ describe("rendering", () => {
 
     vi.advanceTimersByTime(60_000);
 
-    expect(toasts()[0].classList.contains("opacity-0")).toBe(false);
+    expect(toasts()[0].hasAttribute("data-motion")).toBe(false);
   });
 
   it("reports a payload with no message and keeps the rest", () => {
@@ -115,6 +123,8 @@ describe("rendering", () => {
 describe("lifecycle", () => {
   it("replaces a stable string id in place and clears its previous timer", () => {
     window.toast("first", "info", { id: "conversion", duration: 5_000 });
+    // Entry frame is a fake timer.
+    vi.advanceTimersByTime(20);
     expect(vi.getTimerCount()).toBe(1);
 
     window.toast("second", "warning", { id: "conversion", duration: null });
@@ -133,7 +143,7 @@ describe("lifecycle", () => {
 
     window.toast("again", "info", { id: "job", duration: null });
     toasts()[0].click();
-    expect(toasts()[0].classList.contains("opacity-0")).toBe(true);
+    expect(toasts()[0].hasAttribute("data-motion")).toBe(true);
     window.removeToast("job");
     expect(toasts()).toEqual([]);
   });
@@ -145,13 +155,13 @@ describe("lifecycle", () => {
     vi.advanceTimersByTime(2_000);
     toast.dispatchEvent(new Event("mouseenter"));
     vi.advanceTimersByTime(10_000);
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
 
     toast.dispatchEvent(new Event("mouseleave"));
     vi.advanceTimersByTime(2_999);
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
     vi.advanceTimersByTime(1);
-    expect(toast.classList.contains("opacity-0")).toBe(true);
+    expect(toast.hasAttribute("data-motion")).toBe(true);
     vi.advanceTimersByTime(300);
     expect(toasts()).toEqual([]);
   });
@@ -168,7 +178,7 @@ describe("lifecycle", () => {
     second.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     third.querySelector<HTMLButtonElement>("[data-toast-dismiss]")!.click();
 
-    expect(toasts().every((toast) => toast.classList.contains("opacity-0"))).toBe(true);
+    expect(toasts().every((toast) => toast.hasAttribute("data-motion"))).toBe(true);
     expect(wrapperClick).not.toHaveBeenCalled();
     expect(dismissed).toHaveBeenCalledTimes(3);
     vi.advanceTimersByTime(300);
@@ -183,7 +193,7 @@ describe("lifecycle", () => {
     toast.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
     );
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
   });
 
   it("a second dismiss while leaving neither fires nor reschedules", () => {
@@ -194,12 +204,13 @@ describe("lifecycle", () => {
 
     toast.click();
     vi.advanceTimersByTime(100);
+    const timers = vi.getTimerCount();
     toast.click();
     toast.dispatchEvent(new Event("mouseenter"));
     toast.dispatchEvent(new Event("mouseleave"));
 
     expect(dismissed).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(timers);
     vi.advanceTimersByTime(200);
     expect(toasts()).toEqual([]);
     window.removeEventListener("toast-dismissed", dismissed);
@@ -212,9 +223,33 @@ describe("lifecycle", () => {
 
     vi.advanceTimersByTime(3_000);
 
-    expect(toasts()[0].classList.contains("opacity-0")).toBe(true);
+    expect(toasts()[0].hasAttribute("data-motion")).toBe(true);
     expect(dismissed).not.toHaveBeenCalled();
     window.removeEventListener("toast-dismissed", dismissed);
+  });
+});
+
+describe("a store with no element", () => {
+  it("removes a leaving toast once its fallback has passed", () => {
+    const store = new ToastStore(() => {});
+    store.addToast("alone", "info", { id: "alone", duration: null });
+
+    store.dismissToast("alone");
+    // Fade of 160 ms plus the cap.
+    vi.advanceTimersByTime(100);
+    expect(store.toasts).toHaveLength(1);
+
+    vi.advanceTimersByTime(10_000);
+    expect(store.toasts).toEqual([]);
+  });
+
+  it("finishLeave keeps a toast that is not leaving", () => {
+    const store = new ToastStore(() => {});
+    store.addToast("kept", "info", { id: "kept", duration: null });
+
+    store.finishLeave("kept");
+
+    expect(store.toasts).toHaveLength(1);
   });
 });
 
@@ -263,16 +298,16 @@ describe("an action", () => {
     const toast = showUndo();
 
     vi.advanceTimersByTime(9_999);
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
     vi.advanceTimersByTime(1);
-    expect(toast.classList.contains("opacity-0")).toBe(true);
+    expect(toast.hasAttribute("data-motion")).toBe(true);
   });
 
   it("a toast without an action keeps its default", () => {
     show({ message: "plain", type: "success" });
 
     vi.advanceTimersByTime(5_000);
-    expect(toasts()[0].classList.contains("opacity-0")).toBe(true);
+    expect(toasts()[0].hasAttribute("data-motion")).toBe(true);
   });
 
   it("resumes only when neither hovered nor focused", () => {
@@ -283,13 +318,13 @@ describe("an action", () => {
     toast.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
     toast.dispatchEvent(new Event("mouseleave"));
     vi.advanceTimersByTime(20_000);
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
 
     toast.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     vi.advanceTimersByTime(5_999);
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
     vi.advanceTimersByTime(1);
-    expect(toast.classList.contains("opacity-0")).toBe(true);
+    expect(toast.hasAttribute("data-motion")).toBe(true);
   });
 
   it("a stable id gains, changes and loses its action", () => {
@@ -304,7 +339,7 @@ describe("an action", () => {
     let form = toasts()[0].querySelector<HTMLFormElement>("[data-toast-action]")!;
     expect(form.getAttribute("action")).toBe("/x/restore?origin=%2Fsession%2Flist%3Fpage%3D2");
     vi.advanceTimersByTime(9_999);
-    expect(toasts()[0].classList.contains("opacity-0")).toBe(false);
+    expect(toasts()[0].hasAttribute("data-motion")).toBe(false);
 
     window.toast("c", "success", {
       id: "k",
@@ -324,11 +359,11 @@ describe("an action", () => {
 
     window.toast("second", "info", { id: "k" });
     vi.advanceTimersByTime(20_000);
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
 
     toast.dispatchEvent(new Event("mouseleave"));
     vi.advanceTimersByTime(5_000);
-    expect(toast.classList.contains("opacity-0")).toBe(true);
+    expect(toast.hasAttribute("data-motion")).toBe(true);
   });
 
   it("an action whose URL is no route path is dropped and reported", () => {
@@ -343,7 +378,7 @@ describe("an action", () => {
     expect(toasts()[0].querySelector("[data-toast-action]")).toBeNull();
     expect(report).toHaveBeenCalled();
     vi.advanceTimersByTime(5_000);
-    expect(toasts()[0].classList.contains("opacity-0")).toBe(true);
+    expect(toasts()[0].hasAttribute("data-motion")).toBe(true);
     vi.unstubAllGlobals();
   });
 
@@ -366,7 +401,7 @@ describe("an action", () => {
 
     form.querySelector<HTMLButtonElement>("button[type=submit]")!.click();
 
-    expect(toast.classList.contains("opacity-0")).toBe(false);
+    expect(toast.hasAttribute("data-motion")).toBe(false);
   });
 });
 
@@ -591,5 +626,24 @@ describe("an action pressed behind a modal", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(native).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("entry", () => {
+  it("stamps data-entered after one frame and keeps it when the toast moves", () => {
+    show({ message: "Saved" });
+    const [toast] = toasts();
+    expect(toast.hasAttribute("data-entered")).toBe(false);
+
+    vi.advanceTimersByTime(20);
+    expect(toast.hasAttribute("data-entered")).toBe(true);
+
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("data-modal", "");
+    dialog.innerHTML = "<div><button>Inside</button></div>";
+    document.body.append(dialog);
+    attachModal(dialog).open();
+    expect(toasts()[0]).toBe(toast);
+    expect(toast.hasAttribute("data-entered")).toBe(true);
   });
 });

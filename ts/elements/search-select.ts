@@ -34,6 +34,7 @@
 
 import { isPresenceModifier } from "./filter-tokens.js";
 import { reportClientError } from "../client-errors.js";
+import { isLeaving } from "../motion.js";
 import { readSearchSelectProps } from "../generated/props.js";
 import {
   FACE_EXCLUDED_PREFIX,
@@ -552,7 +553,8 @@ const initWidget = (containerElement: Element): boolean => {
 
   // Visibility is the panel's `hidden` attribute.
   const panel = options.closest<HTMLElement>("[data-search-select-panel]") ?? options;
-  const isPanelOpen = () => !panel.hidden;
+  // Leaving panel reads closed during exit.
+  const isPanelOpen = () => !panel.hidden && !isLeaving(panel);
 
   const syncExpanded = () => {
     search.setAttribute("aria-expanded", isPanelOpen() ? "true" : "false");
@@ -649,12 +651,12 @@ const initWidget = (containerElement: Element): boolean => {
     if (event.target !== dropdownHost) return;
     clearHighlight();
     syncExpanded();
-    if (!wasLent) return;
-    wasLent = false;
     //: A host change is no leave.
     if (event.detail.moving) return;
-    //: The leave focusout skipped.
     cancelPendingSearch();
+    if (!wasLent) return;
+    wasLent = false;
+    //: The leave focusout skipped.
     revertDrop();
   });
 

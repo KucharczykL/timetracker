@@ -52,13 +52,15 @@ open because a modal is closing, the switch tries again one time when the
 layer is stable (`whenSettled`). While a sheet is open, it writes
 `--sheet-keyboard-inset` and `--sheet-visible-height` from `visualViewport`.
 The sheet panel uses them as its bottom margin and its height limit. A
-`searchable` sheet sets its height to that limit.
+sheet whose content holds a search box is steady (`data-sheet-steady`,
+stamped by `attachNarrowSheet`) and fills the screen. See
+[Every dropdown opens as a bottom sheet](2026-10-09-issue-1559-sheet-by-default-design.md).
 
 ## Label panels
 
 The `combobox` behavior closes its dropdown on a person's pick, changed or
 not (`search-select:pick`). The Presets panel, `TimeZoneRow` and set facets
-have `searchable` sheets. In a sheet, a panel's list stops above its
+have steady sheets. In a sheet, a panel's list stops above its
 footer, so a facet's Apply stays in view.
 
 ## Tests

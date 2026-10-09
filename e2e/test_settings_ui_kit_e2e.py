@@ -556,12 +556,13 @@ def test_mobile_sheet_scrolls_in_a_short_viewport(live_server, page: Page):
 
 
 @override_settings(ROOT_URLCONF="e2e.test_settings_ui_kit_e2e")
-def test_mobile_sheet_slides_up_from_below_the_viewport(live_server, page: Page):
+def test_mobile_sheet_slides_up_from_below_the_viewport(live_server, motion_page: Page):
     """The panel must still be translated fully below the dialog when the sheet
     opens. A scrollable dialog would let showModal()'s initial focus scroll that
     off-screen panel into place, cancelling the slide-up and leaving the panel to
     jitter — drawn briefly taller, clipped at the dialog's edge — as the scroll
     offset unwinds against the animating transform."""
+    page = motion_page
     page.set_viewport_size({"width": 390, "height": 800})
     page.goto(f"{live_server.url}/settings-kit-test/")
 

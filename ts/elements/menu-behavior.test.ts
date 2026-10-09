@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { attachMenu, type MenuController } from "./menu-behavior.js";
 import { openSurfaces, resetSurfacesForTests } from "./surface-stack.js";
 
@@ -447,5 +447,111 @@ describe("attachMenu open state and opener", () => {
     );
     expect(presenterOpen).toBe(true);
     expect(presenter.focusFirst).toHaveBeenCalledOnce();
+  });
+});
+
+describe("attachMenu close motion", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.documentElement.style.setProperty("--duration-fast-exit", "100ms");
+    document.documentElement.style.setProperty("--duration-reduced", "100ms");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.documentElement.removeAttribute("style");
+  });
+
+  // Never-ending exit holds until the cap.
+  function holdExitAnimation(menu: HTMLElement): void {
+    Object.defineProperty(menu, "getAnimations", {
+      configurable: true,
+      value: () => [{ finished: new Promise(() => {}) }],
+    });
+  }
+
+  it("announces the hide at the start of the close", () => {
+    const { host, menu, controller } = mount();
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    controller.open();
+    holdExitAnimation(menu);
+    const hide = vi.fn();
+    host.addEventListener("dropdown:hide", hide);
+    controller.close();
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(menu.getAttribute("data-motion")).toBe("leaving");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(controller.isOpen()).toBe(false);
+  });
+
+  it("keeps the geometry until the leave finishes", () => {
+    const { menu, controller } = mount();
+    controller.open();
+    holdExitAnimation(menu);
+    controller.close();
+    expect(menu.matches(":popover-open")).toBe(true);
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.getAttribute("data-side")).toBe("bottom");
+
+    vi.advanceTimersByTime(200);
+    expect(menu.hidden).toBe(true);
+    expect(menu.style.position).toBe("");
+    expect(menu.hasAttribute("data-side")).toBe(false);
+  });
+
+  it("reopens during a held leave and keeps the new geometry", () => {
+    const { menu, controller } = mount();
+    controller.open();
+    holdExitAnimation(menu);
+    controller.close();
+    controller.open();
+    vi.advanceTimersByTime(200);
+    expect(controller.isOpen()).toBe(true);
+    expect(menu.hidden).toBe(false);
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.getAttribute("data-side")).toBe("bottom");
+  });
+});
+
+describe("a submenu toggle", () => {
+  const mountSubmenu = (
+    presenter?: () => MenuController,
+  ): { childHost: HTMLElement; child: MenuController } => {
+    document.body.innerHTML = `
+      <div id="child">
+        <button data-child-toggle type="button">More</button>
+        <div data-child-menu popover="manual" hidden><button>Deep</button></div>
+      </div>`;
+    const childHost = document.querySelector<HTMLElement>("#child")!;
+    const child = attachMenu(
+      childHost,
+      childHost.querySelector<HTMLElement>("[data-child-toggle]")!,
+      childHost.querySelector<HTMLElement>("[data-child-menu]")!,
+      { placement: "right-start", submenu: true, presenter },
+    );
+    return { childHost, child };
+  };
+
+  it("opens through its presenter on click", () => {
+    const presented = {
+      open: vi.fn(),
+      close: vi.fn(),
+      isOpen: () => false,
+      focusFirst: vi.fn(),
+    };
+    const { childHost } = mountSubmenu(() => presented);
+    click(childHost.querySelector<HTMLElement>("[data-child-toggle]")!);
+    expect(presented.open).toHaveBeenCalledOnce();
+    expect(presented.close).not.toHaveBeenCalled();
+  });
+
+  it("stays open when clicked while already open", () => {
+    let self: MenuController | null = null;
+    const { childHost, child } = mountSubmenu(() => self!);
+    self = child;
+    child.open();
+    click(childHost.querySelector<HTMLElement>("[data-child-toggle]")!);
+    expect(child.isOpen()).toBe(true);
+    expect(openSurfaces()).toHaveLength(1);
   });
 });

@@ -7,10 +7,20 @@ import { openSurfaces } from "./surface-stack.js";
 import { attachSheetCore } from "./sheet-controller.js";
 
 let reducedMotion = true;
-const CLOSE_FALLBACK_MS = 250;
+const SLOW_EXIT_MS = 240;
+// The slow exit plus holdLeave's slack.
+const EXIT_CAP_MS = SLOW_EXIT_MS + 100;
 
 function expectNoLeaveLimit(logged: ReturnType<typeof vi.spyOn>): void {
   expect(logged).not.toHaveBeenCalledWith(expect.stringContaining("never called finish"));
+}
+
+// Never-ending exit waits for the cap.
+function holdExit(dialog: HTMLDialogElement): void {
+  Object.defineProperty(dialog, "getAnimations", {
+    configurable: true,
+    value: () => [{ finished: new Promise(() => {}) }],
+  });
 }
 
 function mountSheet(): {
@@ -81,6 +91,8 @@ function pointerEvent(type: "pointerdown" | "pointerup", pointerId: number): Eve
 
 beforeEach(() => {
   reducedMotion = true;
+  document.documentElement.style.setProperty("--duration-slow-exit", `${SLOW_EXIT_MS}ms`);
+  document.documentElement.style.setProperty("--duration-reduced", "100ms");
   vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({
@@ -248,21 +260,24 @@ describe('drop-down behavior="sheet"', () => {
     expect(document.activeElement).toBe(heading);
   });
 
-  it("uses the timeout safety net when motion is enabled", () => {
+  it("holds the slide out until its exit animation ends", () => {
     reducedMotion = false;
     vi.useFakeTimers();
     const logged = vi.spyOn(console, "error");
     const { host, toggle, dialog } = mountSheet();
     toggle.click();
+    holdExit(dialog);
 
     host.close();
     expect(dialog.open).toBe(true);
     expect(dialog.dataset.sheetState).toBe("closing");
+    expect(dialog.getAttribute("data-motion")).toBe("leaving");
 
-    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
+    vi.advanceTimersByTime(EXIT_CAP_MS);
     expectNoLeaveLimit(logged);
     expect(dialog.open).toBe(false);
     expect(dialog.dataset.sheetState).toBe("closed");
+    expect(dialog.hasAttribute("data-motion")).toBe(false);
   });
 
   it("restores every owned inline scroll style exactly", () => {
@@ -347,6 +362,7 @@ describe('drop-down behavior="sheet"', () => {
     vi.useFakeTimers();
     const { host, toggle, dialog, closeButton } = mountSheet();
     toggle.click();
+    holdExit(dialog);
     closeButton.click();
     expect(dialog.dataset.sheetState).toBe("closing");
     host.remove();
@@ -373,6 +389,7 @@ describe('drop-down behavior="sheet"', () => {
     reducedMotion = false;
     vi.useFakeTimers();
     const { hosts, toggles, dialogs } = mountTwoSheets();
+    dialogs.forEach(holdExit);
     document.documentElement.style.overflow = "clip";
     document.body.style.position = "relative";
     const originalHtmlStyle = document.documentElement.getAttribute("style");
@@ -385,13 +402,13 @@ describe('drop-down behavior="sheet"', () => {
     expect(toggles[1].getAttribute("aria-expanded")).toBe("true");
 
     hosts[1].close();
-    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
+    vi.advanceTimersByTime(EXIT_CAP_MS);
     expect(dialogs[1].open).toBe(false);
     expect(dialogs[0].open).toBe(true);
     expect(document.body.style.position).toBe("fixed");
 
     hosts[0].close();
-    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
+    vi.advanceTimersByTime(EXIT_CAP_MS);
     expect(document.documentElement.getAttribute("style")).toBe(originalHtmlStyle);
     expect(document.body.getAttribute("style")).toBe(originalBodyStyle);
   });
@@ -405,19 +422,6 @@ describe('drop-down behavior="sheet"', () => {
     toggle.click();
     window.removeEventListener(MODAL_CHANGE, onChange);
     expect(order).toEqual(["change", "show"]);
-  });
-
-  it("finishes the slide on the panel's translate transitionend", () => {
-    reducedMotion = false;
-    vi.useFakeTimers();
-    const { host, toggle, dialog, panel } = mountSheet();
-    toggle.click();
-    host.close();
-    const end = new Event("transitionend");
-    Object.defineProperty(end, "propertyName", { value: "translate" });
-    panel.dispatchEvent(end);
-    expect(dialog.open).toBe(false);
-    expect(dialog.dataset.sheetState).toBe("closed");
   });
 
   it("cleans up a sheet closed from below", () => {
@@ -440,30 +444,20 @@ describe('drop-down behavior="sheet"', () => {
     vi.useFakeTimers();
     const { host, toggle, dialog } = mountSheet();
     toggle.click();
+    holdExit(dialog);
     host.close();
     toggle.click();
     expect(dialog.dataset.sheetState).toBe("closing");
-    vi.advanceTimersByTime(CLOSE_FALLBACK_MS);
+    vi.advanceTimersByTime(EXIT_CAP_MS);
     expect(dialog.open).toBe(false);
     expect(dialog.dataset.sheetState).toBe("closed");
-  });
-
-  it("keeps sliding on another property's transitionend", () => {
-    reducedMotion = false;
-    vi.useFakeTimers();
-    const { host, toggle, dialog, panel } = mountSheet();
-    toggle.click();
-    host.close();
-    const end = new Event("transitionend");
-    Object.defineProperty(end, "propertyName", { value: "opacity" });
-    panel.dispatchEvent(end);
-    expect(dialog.dataset.sheetState).toBe("closing");
   });
 
   it("closes a sliding upper sheet once when the lower one closes", () => {
     reducedMotion = false;
     vi.useFakeTimers();
     const { hosts, dialogs } = mountTwoSheets();
+    dialogs.forEach(holdExit);
     const hidden = [vi.fn(), vi.fn()];
     hosts.forEach((host, index) => host.addEventListener("dropdown:hide", hidden[index]));
     hosts[0].open();

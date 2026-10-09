@@ -316,10 +316,13 @@ _QUICK_PILL_CLASS = (
 )
 
 
-def _facet_apply() -> Node:
-    """A facet panel's Apply."""
+def _facet_apply(divided: bool) -> Node:
+    """Apply button; ``divided`` draws a sheet divider."""
     # Submits the bar's form.
-    return Div(class_="flex justify-end mt-2 pt-2 border-t border-default-medium")[
+    line = "border-t border-default-medium"
+    if not divided:
+        line = f"{line} group-data-[dropdown-host=sheet]/dropdown:border-t-0"
+    return Div(class_=f"flex justify-end mt-2 pt-2 {line}")[
         ControlButton(type="submit", color="blue", data_quick_facet_apply="")["Apply"]
     ]
 
@@ -451,12 +454,12 @@ class QuickFilterBar(BaseComponent):
             content: Node = self._group_content(filter_cls, facet)
             panel_width = "w-72"
             own_footer = False
-            searchable = False
+            divided = False
         else:
             label = _facet_label(filter_cls, facet)
             content = self._widget(filter_cls, facet)
             kind = _field_meta(filter_cls, facet.field)["kind"]
-            searchable = kind == "set"
+            divided = kind == "set"
             # Calendars size themselves; lists keep w-72.
             panel_width = "w-auto" if kind == "date" else "w-72"
             own_footer = kind == "date"
@@ -468,7 +471,9 @@ class QuickFilterBar(BaseComponent):
         return ComboboxDropdown(
             label=label,
             # A calendar's footer holds its own Apply.
-            content=content if own_footer else Fragment(content, _facet_apply()),
+            content=content
+            if own_footer
+            else Fragment(content, _facet_apply(divided=divided)),
             id=f"quick-{facet.key}-dropdown",
             ghost=True,
             panel_width=panel_width,
@@ -477,8 +482,7 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
-            # A FilterSelect searches.
-            sheet=SheetSpec(label, searchable=searchable),
+            sheet=SheetSpec(label),
         )
 
     def _group_content(self, filter_cls: type, group: QuickFacetGroup) -> Node:
@@ -589,6 +593,7 @@ class QuickFilterBar(BaseComponent):
                     trigger_element=trigger,
                     target_element=panel,
                     id=f"quick-{self.mode}-overflow",
+                    sheet=SheetSpec(OVERFLOW_LABEL),
                 ),
                 AppliedDot([("data-quick-overflow-mark", ""), ("class", "invisible")]),
             ]

@@ -2,7 +2,9 @@
 import { dispatchHide, type DropdownHideDetail, type MenuController } from "./menu-behavior.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
-import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
+import { attachModal, isReachable, type FinishLeave, type ModalOptions } from "./modal-layer.js";
+import { holdLeave, type CancelLeave } from "../motion.js";
+import { clearLevel, dropLevel, popLevel, pushLevel, type LevelPlacement } from "./sheet-levels.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -12,23 +14,7 @@ interface PendingNavigation {
   focusTarget: HTMLElement;
 }
 
-type TimerHandle = number;
 export type FrameHandle = number;
-
-interface PendingLeave {
-  finish: FinishLeave;
-  timer: TimerHandle;
-}
-
-// A missed transitionend; under the layer's cap.
-const CLOSE_FALLBACK_MS = 250;
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
 
 function sameDocumentDestination(link: HTMLAnchorElement): PendingNavigation | null {
   const url = new URL(link.href, window.location.href);
@@ -71,6 +57,10 @@ export interface SheetCoreOptions {
   afterHide?: () => void;
   /** The `dropdown:hide` event's detail. */
   hideDetail?: () => DropdownHideDetail;
+  cancel?: ModalOptions["cancel"];
+  dismiss?: ModalOptions["dismiss"];
+  /** Set while the sheet is a level. */
+  levelOf?: () => LevelPlacement | null;
 }
 
 export interface SheetCore {
@@ -94,7 +84,7 @@ export function attachSheetCore(
 
   let entered = false;
   let openFrame: FrameHandle | null = null;
-  let pendingLeave: PendingLeave | null = null;
+  let cancelPendingLeave: CancelLeave | null = null;
 
   const sheetState = (): SheetState => {
     switch (modal.state()) {
@@ -117,8 +107,8 @@ export function attachSheetCore(
 
   const clearMotion = (): void => {
     cancelOpenFrame();
-    if (pendingLeave) window.clearTimeout(pendingLeave.timer);
-    pendingLeave = null;
+    cancelPendingLeave?.();
+    cancelPendingLeave = null;
     entered = false;
   };
 
@@ -127,17 +117,21 @@ export function attachSheetCore(
     initialFocus: () =>
       options.initialFocus?.() ??
       dialog.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.dismiss}]`),
-    leave: (finish) => {
-      if (prefersReducedMotion()) {
-        finish();
-        return;
-      }
+    leave: (finish, { together }) => {
       cancelOpenFrame();
-      pendingLeave = { finish, timer: window.setTimeout(finish, CLOSE_FALLBACK_MS) };
       render();
+      const level = options.levelOf?.() ?? null;
+      if (level && together) cancelPendingLeave = dropLevel(dialog, finish);
+      else if (level) cancelPendingLeave = popLevel(dialog, level.below, finish);
+      else cancelPendingLeave = holdLeave(dialog, "slow-exit", finish);
     },
+    cancel: options.cancel,
+    dismiss: options.dismiss,
+    // Focus returns into a shown panel.
+    beforeFocusReturn: () => clearLevel(dialog),
     onClosed: () => {
       clearMotion();
+      clearLevel(dialog);
       try {
         options.beforeHide?.();
       } finally {
@@ -152,30 +146,36 @@ export function attachSheetCore(
 
   const open = (opener?: HTMLElement): boolean => {
     if (modal.state() !== "closed") return false;
-    if (!modal.open(opener)) return false;
+    const level = options.levelOf?.() ?? null;
+    // The stack reads the stamp on open.
+    dialog.toggleAttribute(SHEET_ATTRIBUTES.level, level !== null);
+    if (!modal.open(opener)) {
+      dialog.removeAttribute(SHEET_ATTRIBUTES.level);
+      return false;
+    }
     try {
       options.beforeShow?.();
+      if (level) {
+        // Level push is its entry; no slide-up.
+        entered = true;
+        pushLevel(dialog, level);
+      }
     } catch (error) {
       // No open sheet without its show.
       modal.close();
       throw error;
     }
+    if (!level) {
+      openFrame = window.requestAnimationFrame(() => {
+        openFrame = null;
+        entered = true;
+        render();
+      });
+    }
     render();
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
-    openFrame = window.requestAnimationFrame(() => {
-      openFrame = null;
-      entered = true;
-      render();
-    });
     return true;
   };
-
-  panel.addEventListener("transitionend", (event) => {
-    // Tailwind's translate-y animates translate.
-    if (event.target === panel && event.propertyName === "translate") {
-      pendingLeave?.finish();
-    }
-  });
 
   return {
     open,

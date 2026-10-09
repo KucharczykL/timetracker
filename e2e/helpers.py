@@ -98,6 +98,31 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
+#: Every open bottom sheet, a level included.
+OPEN_SHEET = "dialog[data-dropdown-sheet][open]"
+#: Top sheet: open, containing no open sheet.
+TOP_SHEET = f"{OPEN_SHEET}:not(:has({OPEN_SHEET}))"
+
+
+def top_sheet(page: Page) -> Locator:
+    """Topmost open sheet, levels included."""
+    return page.locator(TOP_SHEET)
+
+
+def sheet_title(sheet: Locator) -> Locator:
+    """Title of this sheet, not a level's."""
+    title_id = sheet.get_attribute("aria-labelledby")
+    return sheet.page.locator(f'[id="{title_id}"]')
+
+
+def close_sheets(page: Page) -> None:
+    """Escape each open sheet, topmost first."""
+    remaining = page.locator(OPEN_SHEET).count()
+    for left in range(remaining - 1, -1, -1):
+        page.keyboard.press("Escape")
+        expect(page.locator(OPEN_SHEET)).to_have_count(left)
+
+
 @contextmanager
 def picker_opened(picker: Locator) -> Iterator[None]:
     """Open a picker; on a clean exit, its sheet has closed.
@@ -154,3 +179,31 @@ def offered_choices(scope: Page | Locator, name: str) -> list[str]:
     return scope.locator(
         f'search-select[name="{name}"] [data-search-select-option]'
     ).evaluate_all("rows => rows.map(row => row.getAttribute('data-value'))")
+
+
+def record_copy(user, library, game_name: str):
+    """Record a held copy; return its entry."""
+    from graphs import default_graph
+    from tracked_games import create_tracked_game
+
+    from games.commands.endpoint import ActStatement
+    from games.commands.libraryentry import EntryStatement
+    from games.models import LibraryEntry, Platform
+    from games.writes.libraryentry import record_entry
+    from games.writes.playergame import new_correlation_id
+
+    platform = Platform.objects.create(name="PS5", group="Sony")
+    game = create_tracked_game(library, game_name)
+    release = default_graph(game, library, platform=platform).release
+    answer = record_entry(
+        user,
+        EntryStatement(
+            release_id=release.pk,
+            access="owned",
+            format="digital",
+            note="",
+            acquired=ActStatement(None, ""),
+        ),
+        correlation_id=new_correlation_id(),
+    )
+    return LibraryEntry.objects.get(pk=answer.entry_id)

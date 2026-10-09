@@ -19,6 +19,7 @@ from common.components import (
     SearchSelect,
     collect_media,
 )
+from common.components.custom_elements import SheetSpec
 from e2e.helpers import log_in
 
 OPTIONS = [
@@ -44,6 +45,7 @@ def harness_view(request):
         label="Game",
         content=SearchSelect(name="game", options=OPTIONS),
         id="facet",
+        sheet=SheetSpec("Game"),
     )
     hint = Popover("Why it is so", wrapped_content="hint")
     sheet = BottomSheet(

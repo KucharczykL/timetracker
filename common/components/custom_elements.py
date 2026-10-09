@@ -39,6 +39,7 @@ from common.components.core import (
     as_children,
 )
 from common.components.modal import (
+    MODAL_ATTRIBUTES,
     ElementId,
     ModalDialog,
     ModalPanel,
@@ -46,6 +47,7 @@ from common.components.modal import (
     titled_header,
 )
 from common.components.primitives import (
+    ANCHORED_MOTION_CLASS,
     CLOSED_POPOVER,
     FLOATED_LEGEND_CLASS,
     ICON_BUTTON_SIZE_CLASS,
@@ -869,7 +871,7 @@ SHEET_HOSTED_PANEL_CLASS = (
 _DROPDOWN_PANEL_CLASS = (
     "flex flex-col rounded-base p-2 "
     f"border border-default-medium shadow-sm {OVERLAY_SURFACE_CLASS} "
-    f"{SHEET_HOSTED_PANEL_CLASS}"
+    f"{SHEET_HOSTED_PANEL_CLASS} {ANCHORED_MOTION_CLASS}"
 )
 #: The one child that scrolls the content.
 #: The inset gives an edge child's focus ring room; the margin cancels
@@ -1152,6 +1154,7 @@ def DropdownSubmenuItem(
             placement="right-start",
             submenu=True,
             wrapper_class="relative block",
+            sheet=SheetSpec(label),
         )
     ]
 
@@ -1229,7 +1232,17 @@ def DropdownDivider() -> Node:
 
 
 type SheetRole = Literal[
-    "sheet", "narrow", "host", "panel", "body", "title", "sheetless"
+    "sheet",
+    "narrow",
+    "host",
+    "panel",
+    "body",
+    "title",
+    "sheetless",
+    "back",
+    "back_label",
+    "level",
+    "steady",
 ]
 type SheetAttribute = str  # e.g. "data-dropdown-sheet"
 
@@ -1243,6 +1256,13 @@ SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "title": "data-dropdown-sheet-title",
     #: Its sheet failed; it stays anchored.
     "sheetless": "data-dropdown-sheetless",
+    #: Hidden until the sheet is a level.
+    "back": "data-sheet-back",
+    "back_label": "data-sheet-back-label",
+    #: A level of the sheet below it.
+    "level": "data-sheet-level",
+    #: A level, or content that nests or searches.
+    "steady": "data-sheet-steady",
 }
 #: The ``host`` value of a panel lent to a sheet.
 SHEET_HOST_VALUE = "sheet"
@@ -1251,19 +1271,19 @@ SHEET_HOST_VALUE = "sheet"
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
-type DropdownBehaviorName = Literal[
+type SheetlessBehaviorName = Literal[
     "menu",
     "select",
     "combobox",
     "inline-combobox",
     "date-calendar",
-    "sheet",
     "column-picker",
     "choice-grid",
 ]
+type DropdownBehaviorName = SheetlessBehaviorName | Literal["sheet"]
 
 
-def _assemble(
+def _wire(
     trigger: Element,
     target: Element,
     *,
@@ -1271,18 +1291,15 @@ def _assemble(
     placement: str,
     submenu: bool,
     wrapper_class: str,
-    behavior: DropdownBehaviorName = "menu",
-    config: dict[str, str] | None = None,
-    sheet: SheetSpec | None = None,
+    behavior: DropdownBehaviorName,
+    config: dict[str, str] | None,
+    sheet_part: Node | None,
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. `config` becomes
-    extra data-* attributes the chosen behavior reads (e.g. select's PATCH url).
-    ``sheet``: a bottom sheet on narrow viewports."""
+    extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
-    if sheet is not None and behavior == "sheet":
-        raise ValueError("The sheet behavior brings its own sheet.")
     config_attributes = [
         (key.replace("_", "-"), value) for key, value in (config or {}).items()
     ]
@@ -1296,9 +1313,35 @@ def _assemble(
         Fragment(
             _stamp_trigger_contract(trigger, id),
             _stamp_target_contract(target, id, initially_hidden=behavior != "sheet"),
-            None if sheet is None else dropdown_sheet(sheet),
+            sheet_part,
         )
     ]
+
+
+def _assemble(
+    trigger: Element,
+    target: Element,
+    *,
+    id: str,
+    placement: str,
+    submenu: bool,
+    wrapper_class: str,
+    behavior: SheetlessBehaviorName = "menu",
+    config: dict[str, str] | None = None,
+    sheet: SheetSpec,
+) -> Node:
+    """Wire a dropdown that carries its own narrow-viewport sheet."""
+    return _wire(
+        trigger,
+        target,
+        id=id,
+        placement=placement,
+        submenu=submenu,
+        wrapper_class=wrapper_class,
+        behavior=behavior,
+        config=config,
+        sheet_part=dropdown_sheet(sheet),
+    )
 
 
 def Dropdown(
@@ -1307,10 +1350,10 @@ def Dropdown(
     target_element: Element,
     id: str,
     placement: str = "bottom-start",
-    behavior: DropdownBehaviorName = "menu",
+    behavior: SheetlessBehaviorName = "menu",
     config: dict[str, str] | None = None,
     full_width: bool = False,
-    sheet: SheetSpec | None = None,
+    sheet: SheetSpec,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
     stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
@@ -1334,31 +1377,29 @@ def Dropdown(
     )
 
 
-#: Only a close fades; uncovering stays instant.
+#: Backdrop fades with the slide.
 _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "
     "data-[sheet-state=opening]:backdrop:opacity-100 "
     "data-[sheet-state=open]:backdrop:opacity-100 "
-    "motion-safe:data-[sheet-state=closing]:backdrop:transition-opacity "
-    "motion-safe:data-[sheet-state=closing]:backdrop:duration-200 "
-    "motion-safe:data-[sheet-state=closing]:backdrop:ease-out"
-)
-#: The slide's positions; ModalPanel times translate.
-_SHEET_PANEL_MOTION_CLASS = (
-    "translate-y-full group-data-[sheet-state=open]/sheet:translate-y-0"
+    # A chain's lower sheets fade with its top.
+    "data-[motion=leaving]:backdrop:opacity-0! "
+    # A level never dims itself.
+    "data-sheet-level:backdrop:opacity-0!"
 )
 
 
 #: Section sheet cap; calendars need more.
 _SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
-#: Lifted over, and capped beside, the keyboard.
+#: Content height; steady fills the screen.
+#: Steady never moves; keyboard slides over.
 _DROPDOWN_SHEET_SIZE_CLASS = (
     "mb-[var(--sheet-keyboard-inset,0px)] "
-    "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
-)
-#: Filtering shrinks the list, not the sheet.
-_SEARCHABLE_SHEET_HEIGHT_CLASS = (
-    "h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+    "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))] "
+    "group-data-[sheet-steady]/sheet:mb-0 "
+    "group-data-[sheet-steady]/sheet:h-dvh "
+    "group-data-[sheet-steady]/sheet:max-h-none "
+    "group-data-[sheet-steady]/sheet:rounded-t-none"
 )
 
 
@@ -1380,15 +1421,20 @@ def _sheet_dialog(
             class_=(
                 f"flex w-full {size_class} flex-col "
                 "overflow-hidden rounded-t-base border border-b-0 border-default-medium "
-                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} {_SHEET_PANEL_MOTION_CLASS}"
+                f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} "
+                # Shadow on a level's leading edge.
+                "group-data-[sheet-level]/sheet:shadow-[-12px_0_24px_-8px_rgb(0_0_0/0.3)]"
             ),
+            motion="sheet",
         )[
             header,
             Div(
                 [(SHEET_ATTRIBUTES["body"], "")],
                 class_=(
                     "min-h-0 overflow-y-auto overscroll-contain px-2 pt-2 "
-                    "pb-[max(1rem,env(safe-area-inset-bottom))]"
+                    "pb-[max(1rem,env(safe-area-inset-bottom))] "
+                    # Content ends above the keyboard.
+                    "group-data-[sheet-steady]/sheet:pb-[calc(max(1rem,env(safe-area-inset-bottom))+var(--sheet-keyboard-inset,0px))]"
                 ),
             )[*as_children(children)],
         ]
@@ -1417,7 +1463,8 @@ def BottomSheet(
         size_class=_SECTION_SHEET_SIZE_CLASS,
         children=children,
     )
-    return _assemble(
+    # The sheet behavior brings its own sheet.
+    return _wire(
         _as_dialog_trigger(trigger_element),
         target,
         id=id,
@@ -1425,6 +1472,8 @@ def BottomSheet(
         submenu=False,
         wrapper_class="relative flex w-full",
         behavior="sheet",
+        config=None,
+        sheet_part=None,
     )
 
 
@@ -1437,17 +1486,31 @@ class SheetSpec:
     """A dropdown's narrow-viewport sheet."""
 
     title: Child
-    #: It holds a search; its height stays.
-    searchable: bool = False
 
     def __post_init__(self) -> None:
         if self.title is None or self.title == "":
             raise ValueError("a sheet needs a title; pass no sheet for none")
 
     @classmethod
-    def named_on_connect(cls, *, searchable: bool = False) -> SheetSpec:
+    def named_on_connect(cls) -> SheetSpec:
         """Its widget writes the title."""
-        return cls(_NAMED_ON_CONNECT, searchable=searchable)
+        return cls(_NAMED_ON_CONNECT)
+
+
+def _sheet_back_control() -> Node:
+    """Back control; shown only on a level."""
+    return ControlButton(
+        [
+            (SHEET_ATTRIBUTES["back"], ""),
+            (MODAL_ATTRIBUTES["cancel"], ""),
+            ("hidden", ""),
+        ],
+        variant="ghost",
+        class_="max-w-full gap-1 px-2",
+    )[
+        Icon("arrowleft"),
+        Span([(SHEET_ATTRIBUTES["back_label"], "")], class_="min-w-0 truncate"),
+    ]
 
 
 def dropdown_sheet(sheet: SheetSpec) -> Fragment:
@@ -1459,14 +1522,13 @@ def dropdown_sheet(sheet: SheetSpec) -> Fragment:
         sheet.title,
         title_id=None,
         title_attributes=[(SHEET_ATTRIBUTES["title"], "")],
+        level_back=_sheet_back_control(),
     )
     return Fragment(
         _sheet_dialog(
             [(SHEET_ATTRIBUTES["sheet"], "")],
             header=header,
-            size_class=f"{_DROPDOWN_SHEET_SIZE_CLASS} {_SEARCHABLE_SHEET_HEIGHT_CLASS}"
-            if sheet.searchable
-            else _DROPDOWN_SHEET_SIZE_CLASS,
+            size_class=_DROPDOWN_SHEET_SIZE_CLASS,
         ),
         # Missing CSS keeps the anchored panel.
         Span(
@@ -1525,6 +1587,7 @@ def RowActionMenu(
         ),
         id=id,
         placement=placement,
+        sheet=SheetSpec(label),
     )
 
 
@@ -1537,7 +1600,8 @@ def ButtonDropdown(
     placement: str = "bottom-start",
     aria_label: str = "",
 ) -> Node:
-    """A button-styled menu dropdown; the trigger is a ``ControlButton``."""
+    """Menu dropdown with a ``ControlButton`` trigger.
+    Its sheet is titled ``aria_label``, else ``label``."""
     # The stamping machinery is typed on Element (it reads tag_name/attributes
     # off the node), so unwrap the component to its rendered <button>.
     trigger = _as_menu_trigger(
@@ -1548,6 +1612,7 @@ def ButtonDropdown(
         target_element=DropdownMenuPanel(items=items, aria_label=aria_label),
         id=id,
         placement=placement,
+        sheet=SheetSpec(aria_label or label),
     )
 
 
@@ -1557,7 +1622,7 @@ def SplitButtonDropdown(
     items: list[Node],
     id: str,
     placement: str = "bottom-start",
-    aria_label: str = "",
+    aria_label: str,
     caret_color: ButtonColor | None = None,
     menu_width: str | None = None,
 ) -> Node:
@@ -1585,7 +1650,7 @@ def SplitButtonDropdown(
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
     #: A glyph alone needs a name.
-    caret_name: list[HTMLAttribute] = [("aria-label", aria_label)] if aria_label else []
+    caret_name: list[HTMLAttribute] = [("aria-label", aria_label)]
     if caret_color is None:
         #: A quiet primary keeps a quiet caret.
         caret_button = ControlButton(
@@ -1612,6 +1677,7 @@ def SplitButtonDropdown(
         ),
         id=id,
         placement=placement,
+        sheet=SheetSpec(aria_label),
     )
     #: No shadow: a ghost has no edge.
     lift = "" if primary.variant == "ghost" else " shadow-2xs"
@@ -1666,6 +1732,7 @@ def SelectDropdown(
     body_key: str,
     event: str,
     csrf: str,
+    sheet: SheetSpec,
     empty_is_null: bool = False,
     placement: str = "bottom-start",
     class_: str = "",
@@ -1699,4 +1766,5 @@ def SelectDropdown(
         placement=placement,
         behavior="select",
         config=config,
+        sheet=sheet,
     )

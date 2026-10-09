@@ -5,7 +5,7 @@ from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 from tracked_games import create_tracked_game
 
-from e2e.helpers import held_choice, log_in, open_facet, pick_choice
+from e2e.helpers import held_choice, log_in, open_facet, pick_choice, top_sheet
 from games.models import Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -13,7 +13,9 @@ pytestmark = pytest.mark.django_db(transaction=True)
 PHONE = ViewportSize(width=375, height=812)
 DESKTOP = ViewportSize(width=1280, height=800)
 SHEET = "dialog[data-dropdown-sheet][open]"
+LEVEL = "dialog[data-dropdown-sheet][data-sheet-level][open]"
 GAME_HOST = 'drop-down[behavior="inline-combobox"]:has(search-select[name="game"])'
+LEAVING = '[data-motion="leaving"]'
 
 
 @pytest.fixture
@@ -192,7 +194,7 @@ def test_a_long_set_facet_keeps_apply_in_view(
     page.set_viewport_size(PHONE)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_facet(page, "platform")
-    sheet = page.locator(SHEET)
+    sheet = top_sheet(page)
     expect(sheet).to_be_visible()
     apply = sheet.locator("[data-quick-facet-apply]")
     expect(apply).to_be_in_viewport()
@@ -206,11 +208,27 @@ def test_a_facet_picker_opens_a_second_sheet(signed_in: Page, live_server, error
     page.set_viewport_size(PHONE)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_facet(page, "name")
-    expect(page.locator(SHEET)).to_have_count(1)
+    expect(top_sheet(page)).to_be_visible()
+    expect(page.locator(LEAVING)).to_have_count(0)
+    # The facet may sit in the overflow's sheet.
+    before = page.locator(SHEET).count()
 
-    pick_choice(page, "quick-name-modifier", "INCLUDES")
+    modifier = page.locator('search-select[name="quick-name-modifier"]')
+    host = modifier.locator("xpath=ancestor::drop-down[1]")
+    face = host.locator(
+        ":scope > [data-search-select-face] [data-search-select-face-open]"
+    )
+    expect(face).to_be_visible()
+    face.click()
 
-    expect(page.locator(SHEET)).to_have_count(1)
+    # The modifier's sheet opens inside the facet's sheet, as a level.
+    level = page.locator(LEVEL).last
+    expect(level).to_be_visible()
+    expect(page.locator(SHEET)).to_have_count(before + 1)
+
+    level.locator('[data-search-select-option][data-value="INCLUDES"]').click()
+
+    expect(page.locator(SHEET)).to_have_count(before)
     expect(held_choice(page, "quick-name-modifier")).to_have_value("INCLUDES")
     assert errors == []
 

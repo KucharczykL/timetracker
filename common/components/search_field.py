@@ -13,6 +13,7 @@ from common.components.custom_elements import (
     Dropdown,
     DropdownMenuPanel,
     FilterMode,
+    SheetSpec,
     _SearchFieldElement,
 )
 from common.components.icons_generated import ICON_NODES
@@ -182,6 +183,7 @@ def SearchField(
             trigger_element=trigger,
             target_element=menu,
             id=f"{id}-mode",
+            sheet=SheetSpec("Match"),
         )
 
     def box(shape: ButtonShape) -> Node:

@@ -7,6 +7,7 @@ from common.components.custom_elements import (
     DROPDOWN_ITEM_WITH_ICON_CLASS,
     Dropdown,
     DropdownPanel,
+    SheetSpec,
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
@@ -105,4 +106,5 @@ def ColumnPicker(
         id=f"column-picker-{mode}",
         placement="bottom-end",
         behavior="column-picker",
+        sheet=SheetSpec("Columns"),
     )

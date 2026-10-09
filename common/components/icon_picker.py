@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from typing import NamedTuple
 
 from common.components.core import Node
-from common.components.custom_elements import Dropdown, DropdownPanel
+from common.components.custom_elements import Dropdown, DropdownPanel, SheetSpec
 from common.components.elements import Fieldset, Legend
 from common.components.primitives import (
     Button,
@@ -107,4 +107,5 @@ def IconPicker(
         id=id,
         behavior="choice-grid",
         full_width=True,
+        sheet=SheetSpec(label),
     )

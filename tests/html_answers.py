@@ -2,6 +2,7 @@
 
 import json
 import re
+from html.parser import HTMLParser
 from typing import Final
 
 import pytest
@@ -14,6 +15,9 @@ FLOATING_PANEL = re.compile(
     re.IGNORECASE,
 )
 NATIVE_SELECT = re.compile(r"<select(?=[\s/>])[^>]*>", re.IGNORECASE)
+#: Dropdown sheet attribute; not the behavior's.
+DROPDOWN_SHEET_ATTRIBUTE: Final = "data-dropdown-sheet"
+SHEET_BEHAVIOR: Final = "sheet"
 
 type PagePath = str
 type Markup = str
@@ -49,6 +53,55 @@ def _markup(response: HttpResponse, *, dialog: bool) -> Markup | None:
     return _dialog_page(response) if dialog else None
 
 
+class _OpenDropdown:
+    """A ``<drop-down>`` open while parsing."""
+
+    def __init__(self, behavior: str, label: str) -> None:
+        self.behavior = behavior
+        self.label = label
+        self.owns_sheet = False
+
+
+class _SheetOwners(HTMLParser):
+    """Each ``<drop-down>``; whether it owns a sheet."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.open: list[_OpenDropdown] = []
+        self.sheetless: list[_OpenDropdown] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        named = {name: value or "" for name, value in attrs}
+        if tag == "drop-down":
+            self.open.append(
+                _OpenDropdown(named.get("behavior", ""), named.get("aria-label", ""))
+            )
+        elif tag == "dialog" and DROPDOWN_SHEET_ATTRIBUTE in named and self.open:
+            #: Innermost open drop-down owns the sheet.
+            self.open[-1].owns_sheet = True
+        elif tag != "drop-down" and self.open and not self.open[-1].label:
+            #: Trigger names the dropdown.
+            self.open[-1].label = named.get("aria-label", "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "drop-down" and self.open:
+            dropdown = self.open.pop()
+            if dropdown.behavior != SHEET_BEHAVIOR and not dropdown.owns_sheet:
+                self.sheetless.append(dropdown)
+
+
+def sheetless_dropdown_faults(content: Markup) -> list[Fault]:
+    """Each ``<drop-down>`` lacking its own sheet."""
+    owners = _SheetOwners()
+    owners.feed(content)
+    owners.close()
+    return [
+        f"drop-down without its own sheet: behavior={dropdown.behavior!r}, "
+        f"aria-label={dropdown.label!r}"
+        for dropdown in owners.sheetless
+    ]
+
+
 def html_answer_faults(
     path: PagePath, response: HttpResponse, *, dialog: bool = False
 ) -> list[Fault]:
@@ -63,6 +116,7 @@ def html_answer_faults(
     ]
     if not path.startswith(NATIVE_SELECT_SHOWN_AT):
         faults.extend(f"native select: {tag}" for tag in NATIVE_SELECT.findall(content))
+    faults.extend(sheetless_dropdown_faults(content))
     return faults
 
 

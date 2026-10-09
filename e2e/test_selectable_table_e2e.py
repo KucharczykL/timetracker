@@ -12,7 +12,7 @@ from django.urls import path
 from playwright.sync_api import Page, expect
 
 from common import components
-from common.components.custom_elements import Dropdown, DropdownMenuPanel
+from common.components.custom_elements import Dropdown, DropdownMenuPanel, SheetSpec
 
 _PAGE_TEMPLATE = """<!DOCTYPE html>
 <html>
@@ -84,6 +84,7 @@ def _menu(index: int):
             items=[components.Li(role="presentation")["Nothing"]]
         ),
         id=f"row-menu-{index}",
+        sheet=SheetSpec(f"Act {index}"),
     )
 
 
