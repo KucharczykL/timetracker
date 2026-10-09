@@ -18,7 +18,9 @@ from common.utils import truncate
 from games.bulk_actions import BulkAction
 from games.bulk_edit import (
     Keeping,
+    flag_field,
     form_refusal,
+    held_flag,
     keeping,
     settled,
     stated_object,
@@ -72,10 +74,10 @@ from games.forms import (
     KEEP,
     PLAYTHROUGH_CREATE_URL,
     PLAYTHROUGH_SEARCH_URL,
-    ChoiceSearchSelectWidget,
     Keep,
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
+    TriStateCheckboxWidget,
     UnsetFieldsForm,
     UnsetWidget,
     device_options,
@@ -252,14 +254,6 @@ def _note_shown(note: str) -> str:
     return truncate(note, _KEPT_NOTE_LENGTH) if note else "no note"
 
 
-#: Emulated's two answers; empty keeps.
-_EMULATED_CHOICES = (("True", "Emulated"), ("False", "Not emulated"))
-
-
-def _emulated_shown(emulated: bool) -> str:
-    return "emulated" if emulated else "not emulated"
-
-
 class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     """An empty field keeps; ⊘ states none."""
 
@@ -286,13 +280,7 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
             none_label="No device",
         ),
     )
-    emulated = forms.TypedChoiceField(
-        choices=_EMULATED_CHOICES,
-        coerce=lambda value: value == "True",
-        empty_value=None,
-        required=False,
-        widget=ChoiceSearchSelectWidget(),
-    )
+    emulated = flag_field("Emulated")
     release = forms.ModelChoiceField(
         queryset=Release.objects.none(),
         required=False,
@@ -345,8 +333,8 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
             picker.placeholder = keeping(rows, _device_name, str)
             releases.placeholder = keeping(rows, _release_name, str)
             cast(
-                ChoiceSearchSelectWidget, self.fields["emulated"].widget
-            ).placeholder = keeping(rows, lambda row: row.emulated, _emulated_shown)
+                TriStateCheckboxWidget, self.fields["emulated"].widget
+            ).held = held_flag(rows, lambda row: row.emulated)
             note = cast(UnsetWidget, self.fields["note"].widget).widget
             note.attrs["placeholder"] = keeping(rows, lambda row: row.note, _note_shown)
 

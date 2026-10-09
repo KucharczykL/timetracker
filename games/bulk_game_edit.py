@@ -13,7 +13,9 @@ from django.http import QueryDict
 from common.components.primitives import FormFieldGroup, FormFields
 from games.bulk_actions import BulkAction
 from games.bulk_edit import (
+    flag_field,
     form_refusal,
+    held_flag,
     keeping,
     log_overwrite,
     restated,
@@ -39,7 +41,11 @@ from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld
 from games.events.idempotency import IdempotencyKey
-from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidgetsMixin
+from games.forms import (
+    ChoiceSearchSelectWidget,
+    PrimitiveWidgetsMixin,
+    TriStateCheckboxWidget,
+)
 from games.models import (
     VISIBILITY_FIELDS,
     Game,
@@ -155,37 +161,8 @@ def _status_shown(status: str) -> str:
     return PlayerGameStatus(status).label
 
 
-def _mastered_shown(mastered: bool) -> str:
-    return "Mastered" if mastered else "Not mastered"
-
-
 def _excluded_shown(excluded: bool) -> str:
     return "Excluded" if excluded else "Included"
-
-
-#: A flag's two answers; empty keeps.
-type FlagChoices = tuple[LabeledChoice, ...]
-
-_MASTERED_CHOICES: FlagChoices = (("True", "Mastered"), ("False", "Not mastered"))
-_UNFINISHED_CHOICES: FlagChoices = (
-    ("True", "Excluded from unfinished lists"),
-    ("False", "Included in unfinished lists"),
-)
-_DROPPED_CHOICES: FlagChoices = (
-    ("True", "Excluded from dropped figures"),
-    ("False", "Included in dropped figures"),
-)
-
-
-def _flag(choices: FlagChoices, label: str) -> forms.TypedChoiceField:
-    return forms.TypedChoiceField(
-        label=label,
-        choices=choices,
-        coerce=lambda value: value == "True",
-        empty_value=None,
-        required=False,
-        widget=ChoiceSearchSelectWidget(),
-    )
 
 
 _FACT_FIELDS = ("status", "mastered")
@@ -213,9 +190,9 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
         required=False,
         widget=ChoiceSearchSelectWidget(),
     )
-    mastered = _flag(_MASTERED_CHOICES, "Mastered")
-    excluded_from_unfinished = _flag(_UNFINISHED_CHOICES, "Unfinished lists")
-    excluded_from_dropped = _flag(_DROPPED_CHOICES, "Dropped figures")
+    mastered = flag_field("Mastered")
+    excluded_from_unfinished = flag_field("Unfinished lists")
+    excluded_from_dropped = flag_field("Dropped figures")
 
     def __init__(
         self,
@@ -226,23 +203,23 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
     ) -> None:
         super().__init__(data, prefix=prefix)
         if rows:
-            for name, value, shown in (
-                ("status", lambda row: row.tracked_status, _status_shown),
-                ("mastered", lambda row: row.tracked_mastered, _mastered_shown),
+            cast(
+                ChoiceSearchSelectWidget, self.fields["status"].widget
+            ).placeholder = keeping(rows, lambda row: row.tracked_status, _status_shown)
+            for name, value in (
+                ("mastered", lambda row: row.tracked_mastered),
                 (
                     "excluded_from_unfinished",
                     lambda row: row.tracked_excluded_from_unfinished,
-                    _excluded_shown,
                 ),
                 (
                     "excluded_from_dropped",
                     lambda row: row.tracked_excluded_from_dropped,
-                    _excluded_shown,
                 ),
             ):
-                cast(
-                    ChoiceSearchSelectWidget, self.fields[name].widget
-                ).placeholder = keeping(rows, value, shown)
+                cast(TriStateCheckboxWidget, self.fields[name].widget).held = held_flag(
+                    rows, value
+                )
 
     def clean(self) -> dict[str, Any]:
         super().clean()

@@ -1,6 +1,5 @@
 """Device, emulated or note on many sessions, undone."""
 
-import re
 import uuid
 from datetime import date, timedelta
 
@@ -33,6 +32,7 @@ from games.commands.playersession import (
     StatedDevice,
 )
 from games.events.dispatch import CommandRejected, RowUnreadable, dispatch
+from games.forms import TRI_STATE_HINTS
 from games.models import Game, LibraryEvent, PlayerSession
 from games.removal import remove
 from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
@@ -292,7 +292,7 @@ def test_emulated_that_is_no_answer_refuses(owned_library):
         settle_edit(owned_library, control(emulated="maybe"))
 
 
-def test_device_and_note_offer_none_and_emulated_is_a_picker(
+def test_device_and_note_offer_none_and_emulated_is_a_tri_state_box(
     owned_user, owned_library, game
 ):
     markup = _offered(
@@ -301,8 +301,26 @@ def test_device_and_note_offer_none_and_emulated_is_a_picker(
 
     for field in ("device", "note"):
         assert f'name="{unset_input_name(f"{CHOICE_FIELD}-{field}")}"' in markup
-    assert re.search(rf'<search-select [^>]*name="{CHOICE_FIELD}-emulated"', markup)
-    assert 'placeholder="Keep: not emulated"' in markup
+    assert (
+        f'<tri-state-checkbox name="{CHOICE_FIELD}-emulated" held="unchecked"' in markup
+    )
+    assert f">{TRI_STATE_HINTS.kept}</span>" in markup
+
+
+def test_emulated_held_checked_or_mixed_from_the_rows(owned_user, owned_library, game):
+    run = tracked_run(owned_library, game)
+    checked = [a_session(owned_user, run, day=date(2026, 3, 5), emulated=True)]
+    mixed = [
+        a_session(owned_user, run, day=date(2026, 3, 7), emulated=True),
+        a_session(owned_user, run, day=date(2026, 3, 8)),
+    ]
+
+    assert f'name="{CHOICE_FIELD}-emulated" held="checked"' in _offered(
+        owned_library, checked
+    )
+    assert f'name="{CHOICE_FIELD}-emulated" held="mixed"' in _offered(
+        owned_library, mixed
+    )
 
 
 def test_a_removed_device_refuses(owned_library, deck):

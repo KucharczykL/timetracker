@@ -3,6 +3,7 @@
 import html as html_module
 import json
 import logging
+import re
 import uuid
 from dataclasses import fields as dataclass_fields
 
@@ -29,6 +30,7 @@ from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
 )
+from games.forms import TRI_STATE_HINTS
 from games.models import (
     VISIBILITY_FIELDS,
     Game,
@@ -63,6 +65,14 @@ pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=Tru
 
 URL = reverse("games:run_bulk_action", args=[EDIT.name])
 STATUS = f"{CHOICE_FIELD}-status"
+
+
+def _held(markup: str, name: str) -> str:
+    found = re.search(rf'<tri-state-checkbox name="{name}" held="(\w+)"', markup)
+    assert found is not None
+    return found.group(1)
+
+
 MASTERED = f"{CHOICE_FIELD}-mastered"
 EXCLUDED = f"{CHOICE_FIELD}-excluded_from_unfinished"
 DROPPED = f"{CHOICE_FIELD}-excluded_from_dropped"
@@ -241,10 +251,23 @@ def test_the_control_keeps_what_the_rows_hold(
         assert f'name="{name}"' in markup
     #: Status differs; the flags agree.
     assert "Keep: mixed" in markup
-    assert "Keep: Not mastered" in markup
-    #: One per flag, box and face: each reads its own column.
-    assert markup.count("Keep: Included") == 2
-    assert markup.count("Keep: Excluded") == 2
+    assert _held(markup, MASTERED) == "unchecked"
+    assert _held(markup, EXCLUDED) == "unchecked"
+    assert _held(markup, DROPPED) == "checked"
+    assert markup.count("<tri-state-checkbox name=") == 3
+    assert markup.count(f">{TRI_STATE_HINTS.kept}</span>") == 3
+
+
+def test_a_flag_the_rows_differ_on_is_held_mixed(
+    owned_user, owned_library, game, second_game
+):
+    record_facts(owned_user, game, mastered=True, correlation_id=new_correlation_id())
+    rows = EDIT.resolve(owned_library, [game.pk, second_game.pk]).rows
+
+    markup = str(EDIT.choice.offer(owned_library, rows, CHOICE_FIELD).node)
+
+    assert _held(markup, MASTERED) == "mixed"
+    assert f">{TRI_STATE_HINTS.mixed}</span>" in markup
 
 
 def test_settling_refuses_a_form_that_states_nothing(owned_library):
