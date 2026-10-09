@@ -7,10 +7,17 @@ import pytest
 from django.http import Http404
 from graphs import default_graph
 
+from games.api_creation import RowRefused
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN
-from games.catalog_release import SHARED_GAME_RELEASE, PlatformRelease, release_on
+from games.catalog_release import (
+    PRERELEASE_DEFAULT,
+    SHARED_GAME_RELEASE,
+    PlatformRelease,
+    platform_refusal,
+    release_on,
+)
 from games.catalog_writes import EditionState, state_catalog_graph
-from games.models import Edition, Game, Platform, Release
+from games.models import Edition, EditionKind, Game, Platform, Release
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -264,3 +271,20 @@ def test_a_release_gone_at_the_read_back_answers_404(owned_library, graph, ps5):
         pytest.raises(Http404, match="No such game."),
     ):
         release_on(owned_library, graph.game, ps5)
+
+
+@pytest.mark.untracked_games
+def test_release_on_refuses_a_prerelease_default_with_the_sentence_the_form_shows(
+    owned_library, ps5
+):
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+    game = Game(name="Demo Game", library=owned_library)
+    default_graph(
+        game, owned_library, platform=ps5, edition_kind=EditionKind.PRERELEASE
+    )
+
+    with pytest.raises(RowRefused) as refused:
+        release_on(owned_library, game, switch)
+
+    assert refused.value.sentence == PRERELEASE_DEFAULT
+    assert platform_refusal(game, switch) == PRERELEASE_DEFAULT
