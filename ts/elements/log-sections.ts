@@ -14,17 +14,23 @@ export const SECTION_IDLE = "data-log-section-idle";
 export const SECTION_HELD = "data-log-section-held";
 const GAME_FIELD = "game";
 
-type Section = string; // e.g. "playtime"
-/** A section the server names on connect. */
-type NamedSection = Exclude<LogSectionsProps["openSection"], "">;
+/** A section the generated props name. */
+type Section = Exclude<LogSectionsProps["openSection"], "">;
+/** Every member; a new section fails to compile here. */
+const SECTION_MEMBERS: Record<Section, true> = { playtime: true, more: true };
+
+function isSection(value: string): value is Section {
+  return Object.hasOwn(SECTION_MEMBERS, value);
+}
 
 function report(detail: string): void {
   reportClientError("log-sections", detail, { toast: false });
 }
 
-/** The section a dialog holds. */
-function sectionOf(dialog: Element): Section {
-  return dialog.getAttribute(SECTION_DIALOG) ?? "";
+/** The section a dialog holds; null for a name none states. */
+function sectionOf(dialog: Element): Section | null {
+  const name = dialog.getAttribute(SECTION_DIALOG) ?? "";
+  return isSection(name) ? name : null;
 }
 
 function fieldHolds(field: HTMLInputElement | HTMLTextAreaElement): boolean {
@@ -44,16 +50,24 @@ function sectionHolds(dialog: HTMLDialogElement): boolean {
 
 /** Opens each section's dialog from its opener. */
 class LogSectionsElement extends HTMLElement {
-  private readonly modals = new Map<Section, Modal>();
+  /** Keyed by dialog, so a move keeps each handle. */
+  private readonly modals = new Map<HTMLDialogElement, Modal>();
   /** Opens once the layer allows it. */
-  private pending: NamedSection | null = null;
+  private pending: Section | null = null;
 
   connectedCallback(): void {
+    // A reload replaced these dialogs.
+    for (const dialog of this.modals.keys()) {
+      if (!this.contains(dialog)) this.modals.delete(dialog);
+    }
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
-      const section = sectionOf(dialog);
-      if (this.modals.has(section)) continue;
+      if (this.modals.has(dialog)) continue;
+      if (sectionOf(dialog) === null) {
+        report(`dialog names no known section: ${dialog.getAttribute(SECTION_DIALOG)}`);
+        continue;
+      }
       // Every close keeps the fields.
-      this.modals.set(section, attachModal(dialog));
+      this.modals.set(dialog, attachModal(dialog));
     }
     this.addEventListener("input", this.syncHeld);
     this.addEventListener("change", this.syncHeld);
@@ -75,14 +89,13 @@ class LogSectionsElement extends HTMLElement {
     this.removeEventListener("search-select:change", this.onGamePick);
     window.removeEventListener(MODAL_CHANGE, this.openPending);
     this.pending = null;
-    // Reload replaces dialogs too.
-    this.modals.clear();
   }
 
   /** Opener reads "held" while section holds. */
   private readonly syncHeld = (): void => {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
       const section = sectionOf(dialog);
+      if (section === null) continue;
       const held = sectionHolds(dialog);
       for (const opener of this.querySelectorAll<HTMLElement>(`[${SECTION_EDIT}="${section}"]`)) {
         opener.querySelector(`[${SECTION_IDLE}]`)?.toggleAttribute("hidden", held);
@@ -92,7 +105,8 @@ class LogSectionsElement extends HTMLElement {
   };
 
   private open(section: Section, opener?: HTMLElement): boolean {
-    const modal = this.modals.get(section);
+    const dialog = this.querySelector<HTMLDialogElement>(`dialog[${SECTION_DIALOG}="${section}"]`);
+    const modal = dialog ? this.modals.get(dialog) : undefined;
     if (!modal) {
       report(`no dialog for section ${section}`);
       return true;
@@ -135,12 +149,17 @@ class LogSectionsElement extends HTMLElement {
     const target = event.target as Element | null;
     const edit = target?.closest<HTMLElement>(`[${SECTION_EDIT}]`);
     if (edit && this.contains(edit)) {
-      this.open(edit.getAttribute(SECTION_EDIT) ?? "", edit);
+      const name = edit.getAttribute(SECTION_EDIT) ?? "";
+      if (!isSection(name)) {
+        report(`opener names no known section: ${name}`);
+        return;
+      }
+      this.open(name, edit);
       return;
     }
     const done = target?.closest(`[${SECTION_DONE}]`);
-    const dialog = done?.closest(`dialog[${SECTION_DIALOG}]`);
-    if (dialog) this.modals.get(sectionOf(dialog))?.close();
+    const dialog = done?.closest<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`);
+    if (dialog) this.modals.get(dialog)?.close();
   };
 }
 

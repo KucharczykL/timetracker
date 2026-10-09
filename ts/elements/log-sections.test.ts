@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as clientErrors from "../client-errors.js";
 import { FORM_DIALOG_RELOAD, type FormDialogReloadDetail } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import { attachModal, resetModalLayerForTests } from "./modal-layer.js";
@@ -81,6 +82,20 @@ describe("log-sections", () => {
     press(host, "[data-modal-dismiss]");
     expect(dialog(host).open).toBe(false);
     expect(host.querySelector<HTMLInputElement>('input[name="duration_hours"]')!.value).toBe("2");
+  });
+
+  it("keeps every dialog's handle when the element moves", () => {
+    const reported = vi.spyOn(clientErrors, "reportClientError").mockImplementation(() => "id-1");
+    const host = mount();
+    const parent = host.parentElement!;
+    host.remove();
+    parent.append(host);
+
+    press(host, "[data-log-section-edit]");
+    expect(dialog(host).open).toBe(true);
+    press(host, "[data-log-section-done]");
+    expect(dialog(host).open).toBe(false);
+    expect(reported).not.toHaveBeenCalled();
   });
 
   it("opens the section the server names", async () => {
