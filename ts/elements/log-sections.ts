@@ -1,5 +1,5 @@
 import { reportClientError } from "../client-errors.js";
-import { readLogSectionsProps } from "../generated/props.js";
+import { type LogSectionsProps, readLogSectionsProps } from "../generated/props.js";
 import { FORM_DIALOG_RELOAD, type FormDialogReloadDetail } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import { MODAL_CHANGE, attachModal, type Modal } from "./modal-layer.js";
@@ -15,6 +15,8 @@ export const SECTION_HELD = "data-log-section-held";
 const GAME_FIELD = "game";
 
 type Section = string; // e.g. "playtime"
+/** A section the server names on connect. */
+type NamedSection = Exclude<LogSectionsProps["openSection"], "">;
 
 function report(detail: string): void {
   reportClientError("log-sections", detail, { toast: false });
@@ -39,7 +41,7 @@ function sectionHolds(dialog: HTMLDialogElement): boolean {
 class LogSectionsElement extends HTMLElement {
   private readonly modals = new Map<Section, Modal>();
   /** Opens once the layer allows it. */
-  private pending: Section | null = null;
+  private pending: NamedSection | null = null;
 
   connectedCallback(): void {
     for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FORM_DIALOG_RELOAD, type FormDialogReloadDetail } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
-import { resetModalLayerForTests } from "./modal-layer.js";
+import { attachModal, resetModalLayerForTests } from "./modal-layer.js";
 import "./log-sections.js";
 
 const ROUTE = "/tracker/log/";
@@ -87,6 +87,42 @@ describe("log-sections", () => {
     const host = mount({ openSection: "playtime" });
     await Promise.resolve();
     expect(dialog(host).open).toBe(true);
+  });
+
+  it("defers the named section while its own dialog is closed", async () => {
+    const host = mount({ openSection: "playtime", inDialog: true });
+    await Promise.resolve();
+    expect(dialog(host).open).toBe(false);
+
+    attachModal(document.getElementById("outer") as HTMLDialogElement).open();
+    await Promise.resolve();
+
+    expect(dialog(host).open).toBe(true);
+  });
+
+  it("reads held once a checked box holds", () => {
+    document.body.innerHTML = `
+      <form>
+        <log-sections open-section="" route="${ROUTE}" origin="">
+          <button type="button" data-log-section-edit="more">
+            <span data-log-section-idle>Mastered and note…</span>
+            <span data-log-section-held hidden>Mastered and note set</span>
+          </button>
+          <dialog data-modal data-log-section="more" data-log-section-holds="mastered">
+            <input type="checkbox" name="mastered">
+          </dialog>
+        </log-sections>
+      </form>`;
+    const host = document.querySelector<HTMLElement>("log-sections")!;
+    const idle = host.querySelector<HTMLElement>("[data-log-section-idle]")!;
+    const held = host.querySelector<HTMLElement>("[data-log-section-held]")!;
+    const box = host.querySelector<HTMLInputElement>('input[name="mastered"]')!;
+
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(idle.hidden).toBe(true);
+    expect(held.hidden).toBe(false);
   });
 
   it("reads held once a named field holds a value", () => {

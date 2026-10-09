@@ -754,7 +754,7 @@ register_element("field-mirror", "FieldMirror", FieldMirrorProps)
 
 class LogSectionsProps(TypedDict):
     #: Opened on connect; "" opens none.
-    open_section: str
+    open_section: Literal["", "playtime", "more"]
     #: Route reloaded when a game is picked.
     route: str
     #: Origin kept across reload; "" for none.
