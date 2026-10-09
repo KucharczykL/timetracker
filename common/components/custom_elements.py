@@ -1241,6 +1241,7 @@ type SheetRole = Literal[
     "back",
     "back_label",
     "level",
+    "steady",
 ]
 type SheetAttribute = str  # e.g. "data-dropdown-sheet"
 
@@ -1259,6 +1260,8 @@ SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "back_label": "data-sheet-back-label",
     #: A level of the sheet below it.
     "level": "data-sheet-level",
+    #: It may open a level, or it searches.
+    "steady": "data-sheet-steady",
 }
 #: The ``host`` value of a panel lent to a sheet.
 SHEET_HOST_VALUE = "sheet"
@@ -1365,14 +1368,13 @@ _SHEET_DIALOG_CLASS = (
 
 #: Section sheet cap; calendars need more.
 _SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
-#: Lifted over, and capped beside, the keyboard.
+#: Content height; steady fills the screen.
 _DROPDOWN_SHEET_SIZE_CLASS = (
     "mb-[var(--sheet-keyboard-inset,0px)] "
-    "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
-)
-#: Filtering shrinks the list, not the sheet.
-_SEARCHABLE_SHEET_HEIGHT_CLASS = (
-    "h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+    "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))] "
+    "group-data-[sheet-steady]/sheet:h-[var(--sheet-visible-height,100dvh)] "
+    "group-data-[sheet-steady]/sheet:max-h-none "
+    "group-data-[sheet-steady]/sheet:rounded-t-none"
 )
 
 
@@ -1453,17 +1455,15 @@ class SheetSpec:
     """A dropdown's narrow-viewport sheet."""
 
     title: Child
-    #: It holds a search; its height stays.
-    searchable: bool = False
 
     def __post_init__(self) -> None:
         if self.title is None or self.title == "":
             raise ValueError("a sheet needs a title; pass no sheet for none")
 
     @classmethod
-    def named_on_connect(cls, *, searchable: bool = False) -> SheetSpec:
+    def named_on_connect(cls) -> SheetSpec:
         """Its widget writes the title."""
-        return cls(_NAMED_ON_CONNECT, searchable=searchable)
+        return cls(_NAMED_ON_CONNECT)
 
 
 def _sheet_back_control() -> Node:
@@ -1493,9 +1493,7 @@ def dropdown_sheet(sheet: SheetSpec) -> Fragment:
         _sheet_dialog(
             [(SHEET_ATTRIBUTES["sheet"], "")],
             header=header,
-            size_class=f"{_DROPDOWN_SHEET_SIZE_CLASS} {_SEARCHABLE_SHEET_HEIGHT_CLASS}"
-            if sheet.searchable
-            else _DROPDOWN_SHEET_SIZE_CLASS,
+            size_class=_DROPDOWN_SHEET_SIZE_CLASS,
         ),
         # Missing CSS keeps the anchored panel.
         Span(

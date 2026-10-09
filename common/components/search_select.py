@@ -1004,7 +1004,7 @@ def _inline_combobox_host(widget: Node, face: Node) -> Node:
         placement="bottom-start",
         submenu="false",
         behavior="inline-combobox",
-    )[face, widget, dropdown_sheet(SheetSpec.named_on_connect(searchable=True))]
+    )[face, widget, dropdown_sheet(SheetSpec.named_on_connect())]
 
 
 def _filter_value_pill(
@@ -1421,7 +1421,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
             id=id,
             placement="bottom-end",
             behavior="combobox",
-            sheet=SheetSpec(PRESETS_LABEL, searchable=True),
+            sheet=SheetSpec(PRESETS_LABEL),
         )
 
     return {

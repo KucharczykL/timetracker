@@ -87,6 +87,18 @@ afterEach(() => {
 });
 
 describe("a dropdown with a narrow sheet", () => {
+  it("sizes a simple menu's sheet to its content", () => {
+    const { toggle, dialog } = mount();
+    mouseClick(toggle);
+    expect(dialog.hasAttribute("data-sheet-steady")).toBe(false);
+  });
+
+  it("holds one height for a sheet that searches", () => {
+    const { toggle, dialog } = mount("menu", "<input data-search-select-search>");
+    mouseClick(toggle);
+    expect(dialog.hasAttribute("data-sheet-steady")).toBe(true);
+  });
+
   it("opens anchored when wide", () => {
     narrow = false;
     const { host, toggle, panel, dialog } = mount();
@@ -708,6 +720,14 @@ describe("a dropdown sheet inside an open sheet", () => {
     expect(outerDialog.querySelector<HTMLElement>("[data-sheet-panel]")!.style.visibility).toBe(
       "hidden",
     );
+  });
+
+  it("holds one height where a level may open, and in the level", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    expect(outerDialog.hasAttribute("data-sheet-steady")).toBe(true);
+    mouseClick(innerToggle);
+    expect(innerDialog.hasAttribute("data-sheet-steady")).toBe(true);
   });
 
   it("stamps the level before the stack sees it open", () => {

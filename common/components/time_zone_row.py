@@ -49,7 +49,7 @@ def TimeZoneRow(
             id=f"{field_name}-dropdown",
             ghost=True,
             # The value changes; the name does not.
-            sheet=SheetSpec(label, searchable=True),
+            sheet=SheetSpec(label),
         )
     ]
     element = _TimeZoneRow(

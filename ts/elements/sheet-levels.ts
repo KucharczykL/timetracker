@@ -79,18 +79,10 @@ function easingOf(): string {
 
 type Direction = "push" | "pop";
 
-function pxOf(value: number): string {
-  return `${Math.max(0, Math.round(value))}px`;
-}
-
 /** The level's frames and the sheet below's, for one direction. */
-function framesFor(
-  direction: Direction,
-  belowHeight: number,
-  levelHeight: number,
-): { level: Keyframe[]; below: Keyframe[] } {
-  const levelFrom = { transform: "translateX(100%)", height: pxOf(belowHeight) };
-  const levelTo = { transform: "translateX(0)", height: pxOf(levelHeight) };
+function framesFor(direction: Direction): { level: Keyframe[]; below: Keyframe[] } {
+  const levelFrom = { transform: "translateX(100%)" };
+  const levelTo = { transform: "translateX(0)" };
   const belowFrom = { transform: "translateX(0)", opacity: 1 };
   const belowTo = { transform: "translateX(-30%)", opacity: 0.7 };
   if (direction === "push") {
@@ -120,13 +112,7 @@ function playLevel(
   const token: MotionToken = direction === "push" ? "slow" : "slow-exit";
   const duration = motionDuration(token);
   if (duration === 0) return [];
-  const frames = prefersReducedMotion()
-    ? crossfadeFor(direction)
-    : framesFor(
-        direction,
-        belowPanel.getBoundingClientRect().height,
-        levelPanel.getBoundingClientRect().height,
-      );
+  const frames = prefersReducedMotion() ? crossfadeFor(direction) : framesFor(direction);
   const timing: KeyframeAnimationOptions = {
     duration,
     easing: easingOf(),

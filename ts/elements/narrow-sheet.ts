@@ -12,6 +12,9 @@ import { bottomSheet, enclosingSheet, type LevelPlacement } from "./sheet-levels
 import { clearAnchoredPosition } from "./anchored-position.js";
 import { releaseFromTopLayer, returnToTopLayer } from "./surface-stack.js";
 
+//: Content that opens a level or filters.
+const STEADY_CONTENT_SELECTOR = "drop-down, [data-search-select-search]";
+
 export interface NarrowSheetOptions {
   dialog: HTMLDialogElement;
   sentinel: HTMLElement;
@@ -215,6 +218,11 @@ export function attachNarrowSheet(
       lent.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       menu.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       body.appendChild(lent);
+      // Room for a level or a search: one height.
+      dialog.toggleAttribute(
+        SHEET_ATTRIBUTES.steady,
+        levelBelow !== null || lent.querySelector(STEADY_CONTENT_SELECTOR) !== null,
+      );
       // A leave the release cancelled never clears the anchored geometry.
       clearAnchoredPosition(menu);
       releaseFromTopLayer(menu);

@@ -83,10 +83,30 @@ def test_a_sheet_level_pushes_in_and_backs_out_settled(
     page.goto(f"{live_server.url}{reverse('games:list_library')}")
 
     page.get_by_role("button", name="Tunic (PS5) actions").click()
-    page.locator(SHEET).get_by_role("menuitem", name="I no longer have it").click()
+    item = page.locator(SHEET).get_by_role("menuitem", name="I no longer have it")
+    item.evaluate("item => item.click()")
+    pushed = _panel_lefts(page)
     expect(page.locator(LEVEL)).to_be_visible()
     _settled(page)
+    assert any(0 < left < PHONE["width"] for left in pushed), pushed
+    assert pushed[-1] == 0, pushed
 
     page.keyboard.press("Escape")
     expect(page.locator(LEVEL)).to_have_count(0)
     _settled(page)
+
+
+def _panel_lefts(page: Page) -> list[int]:
+    """The level panel's left edge, once a frame."""
+    return page.evaluate(
+        """async () => {
+            const lefts = [];
+            for (let frame = 0; frame < 40; frame++) {
+                await new Promise((resolve) => requestAnimationFrame(resolve));
+                const level = document.querySelector("dialog[data-sheet-level][open]");
+                const panel = level?.querySelector("[data-sheet-panel]");
+                if (panel) lefts.push(Math.round(panel.getBoundingClientRect().left));
+            }
+            return lefts;
+        }"""
+    )
