@@ -3,7 +3,7 @@
 import datetime
 from collections.abc import Mapping
 from functools import partial
-from typing import Any, ClassVar, Final, cast
+from typing import Any, ClassVar, Final, Literal, cast
 
 from django import forms
 from django.db.models import Q
@@ -44,8 +44,8 @@ from games.models import (
     Playthrough,
     UserLibrary,
 )
+from games.reads.endpoints import StatedEndpoint
 from games.reads.log_game import HeldFacts, copy_release_for, held_facts
-from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.reads.playthrough_runs import library_runs
 from games.reads.releases import UNSPECIFIED_PLATFORM
 from games.writes.endpoint import KEEP, Keep, Restated
@@ -74,7 +74,13 @@ STALE_FORM = "The form was out of date. Reload and try again."
 #: Sentence for a hidden field the page knows one for.
 HIDDEN_FIELD_SENTENCES: Final[Mapping[str, str]] = {"run": PICKED_RUN_GONE}
 
-PLAYTIME_KINDS: Final = (("session", "Session"), ("historical", "Historical playtime"))
+type PlaytimeKind = Literal["session", "historical"]
+type ActName = Literal["started", "completed"]
+PLAYTIME_LABELS: Final[Mapping[PlaytimeKind, str]] = {
+    "session": "Session",
+    "historical": "Historical playtime",
+}
+PLAYTIME_KINDS: Final = tuple(PLAYTIME_LABELS.items())
 #: Status an untracked game shows.
 UNTRACKED_STATUS: Final = PlayerGameStatus.UNPLAYED
 STATUS_CHOICES: Final = tuple(
@@ -82,9 +88,38 @@ STATUS_CHOICES: Final = tuple(
 )
 
 
+def _stated_when(endpoint: StatedEndpoint | None) -> TemporalValue | None:
+    return None if endpoint is None else endpoint.when
+
+
 def canonical_text(value: TemporalValue | None) -> str:
     """The day's canonical text, else ""."""
     return "" if value is None or value.canonical is None else value.canonical
+
+
+def mastered_text(mastered: bool) -> str:
+    """The posted spelling of a mastery seen value."""
+    return str(mastered)
+
+
+def seen_values(held: HeldFacts) -> dict[str, str]:
+    """What the page showed for each `*_seen` field."""
+    status = UNTRACKED_STATUS if held.status is None else held.status
+    run = held.run
+    return {
+        "seen_game": str(held.game_id),
+        "status_seen": status.value,
+        "platform_seen": "" if held.platform is None else str(held.platform.pk),
+        "started_seen": "" if run is None else _seen_endpoint(run.started),
+        "completed_seen": "" if run is None else _seen_endpoint(run.completed),
+        "note_seen": "" if run is None else run.note,
+        "mastered_seen": mastered_text(held.mastered),
+        "run": "" if run is None else str(run.run.pk),
+    }
+
+
+def _seen_endpoint(endpoint: StatedEndpoint | None) -> str:
+    return "" if endpoint is None else canonical_text(endpoint.when)
 
 
 class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
@@ -228,29 +263,18 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         )
 
     def _seed(self, held: HeldFacts) -> None:
-        """Held state and the seen values."""
-        self.initial["seen_game"] = str(held.game_id)
+        """Held state, and the seen values it shows."""
+        self.initial.update(seen_values(held))
         shown = UNTRACKED_STATUS if held.status is None else held.status
         self.initial["status"] = shown.value
-        self.initial["status_seen"] = shown.value
         platform = held.platform
         self.initial["platform"] = None if platform is None else platform.pk
-        self.initial["platform_seen"] = "" if platform is None else str(platform.pk)
-        run = held.run
-        if run is not None:
-            started = stated_start(run)
-            completed = stated_completion(run)
-            started_when = None if started is None else started.when
-            completed_when = None if completed is None else completed.when
-            self.initial["run"] = run.pk
-            self.initial["started"] = started_when
-            self.initial["completed"] = completed_when
-            self.initial["started_seen"] = canonical_text(started_when)
-            self.initial["completed_seen"] = canonical_text(completed_when)
-            self.initial["note"] = run.note
-            self.initial["note_seen"] = run.note
+        if held.run is not None:
+            self.initial["run"] = held.run.run.pk
+            self.initial["started"] = _stated_when(held.run.started)
+            self.initial["completed"] = _stated_when(held.run.completed)
+            self.initial["note"] = held.run.note
         self.initial["mastered"] = held.mastered
-        self.initial["mastered_seen"] = held.mastered
 
     def clean_note(self) -> str:
         return normalised_note(self.cleaned_data["note"])
@@ -356,7 +380,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             return KEEP
         return None if platform is None else platform.pk
 
-    def _act(self, name: str, cleaned: dict[str, Any]) -> Restated[ActStatement]:
+    def _act(self, name: ActName, cleaned: dict[str, Any]) -> Restated[ActStatement]:
         """Changed day; None if cleared."""
         # Empty field clears the endpoint.
         when: TemporalValue | None = cleaned.get(name)

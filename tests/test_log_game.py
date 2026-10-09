@@ -723,3 +723,20 @@ def test_a_retry_after_a_run_made_for_playtime_reuses_that_run(user, game, monke
     live = Playthrough.objects.filter(library=user.library, removed_at__isnull=True)
     assert live.count() == 1
     assert PlayerSession.objects.filter(library=user.library).count() == 1
+
+
+def test_a_playtime_duration_must_be_above_zero():
+    with pytest.raises(ValueError):
+        SessionTiming(day=DAY, duration=datetime.timedelta(0), device_id=None)
+    with pytest.raises(ValueError):
+        HistoricalHours(duration=datetime.timedelta(hours=-1), device_id=None)
+
+
+def test_a_run_finishing_before_it_starts_is_refused_by_the_statement(game):
+    with pytest.raises(ValueError):
+        _statement(game, started=_day(LATER), completed=_day(DAY))
+
+
+def test_a_reversed_pair_with_one_side_unstated_is_not_refused_by_the_statement(game):
+    _statement(game, started=None, completed=_day(DAY))
+    _statement(game, started=_day(LATER), completed=None)

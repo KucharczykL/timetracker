@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.http import QueryDict
+from entries import record_entry
 from graphs import default_graph
 from stated_runs import another_run
 from tracked_games import create_tracked_game
@@ -18,6 +19,7 @@ from common.opener_facts import Fixed
 from games.catalog_release import (
     NO_DEFAULT_EDITION,
     SHARED_GAME_RELEASE,
+    release_on,
 )
 from games.commands.endpoint import ActStatement
 from games.log_forms import (
@@ -38,7 +40,7 @@ from games.models import (
     PlayerGameStatus,
     Playthrough,
 )
-from games.reads.log_game import HeldFacts
+from games.reads.log_game import HeldFacts, held_facts
 from games.writes.endpoint import KEEP
 from games.writes.log_game import PICKED_RUN_GONE, HistoricalHours, SessionTiming
 from timetracker.temporal import TemporalValue, temporal_input_name
@@ -346,26 +348,19 @@ def test_the_note_is_stated_only_where_it_changes(owned_library, game):
     assert changed.statement().note == "hello"
 
 
-def test_the_form_seeds_what_a_held_game_shows(owned_library, game, pc):
+def test_the_form_seeds_what_a_held_game_shows(owned_library, pc):
+    tracked = create_tracked_game(
+        owned_library, "Hades", status=PlayerGameStatus.COMPLETED, mastered=True
+    )
     run = another_run(
         owned_library.user,
-        game,
+        tracked,
         started=ActStatement(TemporalValue.from_day(datetime.date(2026, 2, 2)), ""),
         note="A note",
     )
-    held = HeldFacts(
-        game_id=game.pk,
-        removed=False,
-        status=PlayerGameStatus.COMPLETED,
-        run=run,
-        started=None,
-        completed=None,
-        platform=pc,
-        mastered=True,
-        note="A note",
-    )
+    record_entry(owned_library, release_on(owned_library, tracked, pc).release)
 
-    form = _form(owned_library, held=held)
+    form = _form(owned_library, held=held_facts(owned_library, tracked))
 
     assert form.initial["status"] == "completed"
     assert form.initial["status_seen"] == "completed"
@@ -373,6 +368,7 @@ def test_the_form_seeds_what_a_held_game_shows(owned_library, game, pc):
     assert form.initial["run"] == run.pk
     assert form.initial["started_seen"] == "2026-02-02"
     assert form.initial["mastered"] is True
+    assert form.initial["mastered_seen"] == "True"
     assert form.initial["note_seen"] == "A note"
 
 
@@ -382,11 +378,8 @@ def test_an_untracked_game_shows_unplayed(owned_library, game):
         removed=False,
         status=None,
         run=None,
-        started=None,
-        completed=None,
         platform=None,
         mastered=False,
-        note="",
     )
 
     form = _form(owned_library, held=held)

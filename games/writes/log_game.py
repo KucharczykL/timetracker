@@ -23,7 +23,7 @@ from games.catalog_release import (
     release_on,
     standing_release_on,
 )
-from games.commands.endpoint import ActStatement
+from games.commands.endpoint import ActStatement, certainly_reversed
 from games.commands.historical_playtime import HistoricalPlaytimeStatement
 from games.commands.libraryentry import EntryStatement
 from games.commands.playersession import DurationOnlyTiming
@@ -55,6 +55,7 @@ from games.writes.libraryentry import record_entry
 from games.writes.playergame import record_facts, track_game
 from games.writes.playersession import SessionDraft, record_session
 from games.writes.playthrough import (
+    RecordedRun,
     RunDraft,
     RunEndpoint,
     record_run,
@@ -62,19 +63,20 @@ from games.writes.playthrough import (
     void_run_endpoint,
 )
 
-#: Steps a refusal can name.
-type LogStep = Literal[
+#: Steps a press writes, in order it writes them.
+type WrittenStep = Literal[
     "track",
+    "release",
     "copy",
     "dates",
     "note",
+    "run",
     "playtime",
     "mastered",
     "status",
-    "platform",
-    "release",
-    "run",
 ]
+#: Steps a refusal can name; the platform is checked before any write.
+type RefusedStep = WrittenStep | Literal["track", "platform"]
 
 #: Keys a retried playtime write apart.
 type PlaytimeAttempt = int
@@ -94,6 +96,9 @@ class SessionTiming:
     duration: datetime.timedelta
     device_id: DeviceId | None
 
+    def __post_init__(self) -> None:
+        _refuse_empty_duration(self.duration)
+
 
 @dataclass(frozen=True, slots=True)
 class HistoricalHours:
@@ -101,6 +106,14 @@ class HistoricalHours:
 
     duration: datetime.timedelta
     device_id: DeviceId | None
+
+    def __post_init__(self) -> None:
+        _refuse_empty_duration(self.duration)
+
+
+def _refuse_empty_duration(duration: datetime.timedelta) -> None:
+    if duration <= datetime.timedelta(0):
+        raise ValueError(f"A playtime duration must be above zero, not {duration}.")
 
 
 type LogPlaytime = SessionTiming | HistoricalHours
@@ -124,11 +137,21 @@ class LogStatement:
     mastered: bool | Keep
     status: PlayerGameStatus | Keep
 
+    def __post_init__(self) -> None:
+        """Refuse endpoints the form would refuse first."""
+        started, completed = self.started, self.completed
+        if (
+            isinstance(started, ActStatement)
+            and isinstance(completed, ActStatement)
+            and certainly_reversed(earlier=started.when, later=completed.when)
+        ):
+            raise ValueError("The run finished before it started.")
+
 
 class LoggedGame(NamedTuple):
     """What a press wrote."""
 
-    written: frozenset[LogStep]
+    written: frozenset[WrittenStep]
     #: The press tracked an untracked game.
     tracked_the_game: bool
 
@@ -137,7 +160,10 @@ class LogRefused(Exception):
     """Refused press; `written` holds earlier steps."""
 
     def __init__(
-        self, step: LogStep, failure: CommandFailed, written: frozenset[LogStep]
+        self,
+        step: RefusedStep,
+        failure: CommandFailed,
+        written: frozenset[WrittenStep],
     ) -> None:
         super().__init__(failure.message)
         self.step = step
@@ -146,7 +172,7 @@ class LogRefused(Exception):
 
 
 @contextmanager
-def _answering(step: LogStep, written: set[LogStep]) -> Iterator[None]:
+def _answering(step: RefusedStep, written: set[WrittenStep]) -> Iterator[None]:
     """Name the step in its refusal."""
     try:
         yield
@@ -166,7 +192,7 @@ def _dates_changed(statement: LogStatement) -> bool:
     return statement.started is not KEEP or statement.completed is not KEEP
 
 
-def _run_step(statement: LogStatement) -> LogStep:
+def _run_step(statement: LogStatement) -> WrittenStep:
     """The step a run refusal names."""
     if _dates_changed(statement):
         return "dates"
@@ -230,7 +256,7 @@ def _copy_step(
     *,
     token: uuid.UUID,
     correlation_id: uuid.UUID,
-    written: set[LogStep],
+    written: set[WrittenStep],
 ) -> Release | None:
     """Record a needed copy; answer playtime's Release."""
     library = actor.library
@@ -270,11 +296,11 @@ def _write_run(
     *,
     token: uuid.UUID,
     correlation_id: uuid.UUID,
-    written: set[LogStep],
-) -> tuple[PlaythroughId, bool]:
+    written: set[WrittenStep],
+) -> RecordedRun:
     """State a run's dates and note."""
     library = actor.library
-    step: LogStep = "dates" if _dates_changed(statement) else "note"
+    step: WrittenStep = "dates" if _dates_changed(statement) else "note"
     implies = statement.status is KEEP
     with _answering(step, written):
         run = _held_run(library, statement)
@@ -299,7 +325,7 @@ def _write_run(
                 idempotency_key=f"log-run-{token}-{statement.attempt}",
             )
             written.add(step)
-            return recorded.playthrough_id, recorded.tracked_the_game
+            return recorded
     _void_endpoints(
         actor,
         run,
@@ -311,7 +337,7 @@ def _write_run(
     with _answering(step, written):
         restate_run(actor, run, draft, correlation_id=correlation_id)
     written.add(step)
-    return run.pk, False
+    return RecordedRun(playthrough_id=run.pk, tracked_the_game=False)
 
 
 def _void_endpoints(
@@ -319,8 +345,8 @@ def _void_endpoints(
     run: Playthrough,
     statement: LogStatement,
     *,
-    step: LogStep,
-    written: set[LogStep],
+    step: WrittenStep,
+    written: set[WrittenStep],
     correlation_id: uuid.UUID,
 ) -> None:
     """Void each cleared endpoint before restating."""
@@ -349,7 +375,7 @@ def _write_playtime(
     *,
     token: uuid.UUID,
     correlation_id: uuid.UUID,
-    written: set[LogStep],
+    written: set[WrittenStep],
 ) -> None:
     release_id = None if release is None else release.pk
     key_suffix = f"{token}-{statement.attempt}"
@@ -395,7 +421,7 @@ def _playtime_run(
     *,
     token: uuid.UUID,
     correlation_id: uuid.UUID,
-    written: set[LogStep],
+    written: set[WrittenStep],
 ) -> PlaythroughId:
     """Newest run, else a new bare run."""
     with _answering("playtime", written):
@@ -444,7 +470,7 @@ def log_game(
     """Write the press's steps; status last."""
     library = actor.library
     game = statement.game
-    written: set[LogStep] = set()
+    written: set[WrittenStep] = set()
     _check_named(library, statement)
     if tracked_game(library, game) is None:
         with _answering("track", written):
@@ -461,14 +487,15 @@ def log_game(
 
     playthrough_id: PlaythroughId | None = None
     if _dates_changed(statement) or statement.note is not KEEP:
-        playthrough_id, created_tracked = _write_run(
+        recorded = _write_run(
             actor,
             statement,
             token=token,
             correlation_id=correlation_id,
             written=written,
         )
-        if created_tracked:
+        playthrough_id = recorded.playthrough_id
+        if recorded.tracked_the_game:
             written.add("track")
 
     if statement.playtime is not None:

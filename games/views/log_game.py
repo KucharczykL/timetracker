@@ -32,14 +32,19 @@ from common.components.primitives import custom_element_builder
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from common.opener_facts import LOGGED_VALUE_LENGTH
-from games.log_forms import STALE_GAME, UNTRACKED_STATUS, LogGameForm, canonical_text
+from games.log_forms import STALE_GAME, LogGameForm, seen_values
 from games.models import Game, UserLibrary
-from games.reads.endpoints import StatedEndpoint
 from games.reads.log_game import HeldFacts, held_facts
 from games.views.copy_pages import cancel_url, game_page
 from games.views.general import request_calendar_today
 from games.views.returns import origin_from
-from games.writes.log_game import LogRefused, LogStatement, LogStep, log_game
+from games.writes.log_game import (
+    LogRefused,
+    LogStatement,
+    RefusedStep,
+    WrittenStep,
+    log_game,
+)
 from games.writes.playergame import new_correlation_id
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
@@ -49,19 +54,21 @@ type FieldName = str
 logger = logging.getLogger("games.opener_facts")
 
 #: Field where a refusal's sentence sits.
-REFUSED_FIELD: Final[Mapping[LogStep, FieldName]] = {
+REFUSED_FIELD: Final[Mapping[RefusedStep, FieldName]] = {
     "track": "game",
     "status": "status",
     "platform": "platform",
+    "release": "platform",
     "copy": "platform",
     "dates": "started",
     "note": "note",
+    "run": "playtime_kind",
     "playtime": "playtime_kind",
     "mastered": "mastered",
 }
 
 #: Each written step's words, in the order they were written.
-SAVED_WORDS: Final[Mapping[LogStep, str]] = {
+SAVED_WORDS: Final[Mapping[WrittenStep, str]] = {
     "track": "the game in your library",
     "release": "a release on that platform",
     "copy": "the copy",
@@ -74,7 +81,7 @@ SAVED_WORDS: Final[Mapping[LogStep, str]] = {
 }
 
 #: Seen fields each written step refreshes.
-SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
+SEEN_FIELDS: Final[Mapping[WrittenStep, tuple[FieldName, ...]]] = {
     "track": (
         "status_seen",
         "platform_seen",
@@ -85,7 +92,6 @@ SEEN_FIELDS: Final[Mapping[LogStep, tuple[FieldName, ...]]] = {
         "run",
     ),
     "copy": ("platform_seen",),
-    "platform": ("platform_seen",),
     "dates": ("started_seen", "completed_seen", "run"),
     "note": ("note_seen", "run"),
     "playtime": ("run",),
@@ -240,27 +246,9 @@ def log_game_page(request: HttpRequest) -> HttpResponse:
     return _render(request, form, game=game or prefill, held=held, status=200)
 
 
-def _endpoint_seen(endpoint: StatedEndpoint | None) -> str:
-    return canonical_text(None if endpoint is None else endpoint.when)
-
-
-def _seen_values(held: HeldFacts) -> dict[FieldName, str]:
-    """Seen fields for a held game."""
-    status = UNTRACKED_STATUS if held.status is None else held.status
-    return {
-        "status_seen": status.value,
-        "platform_seen": "" if held.platform is None else str(held.platform.pk),
-        "started_seen": _endpoint_seen(held.started),
-        "completed_seen": _endpoint_seen(held.completed),
-        "note_seen": held.note,
-        "mastered_seen": "True" if held.mastered else "False",
-        "run": "" if held.run is None else str(held.run.pk),
-    }
-
-
-def _reseen(data: QueryDict, held: HeldFacts, written: frozenset[LogStep]) -> None:
+def _reseen(data: QueryDict, held: HeldFacts, written: frozenset[WrittenStep]) -> None:
     """Refresh seen values the written steps changed."""
-    fresh = _seen_values(held)
+    fresh = seen_values(held)
     names = {name for step in written for name in SEEN_FIELDS[step]}
     for name in names:
         data[name] = fresh[name]
@@ -272,7 +260,7 @@ def _join(words: Sequence[str]) -> str:
     return f"{', '.join(words[:-1])} and {words[-1]}"
 
 
-def _saved_line(written: frozenset[LogStep]) -> str | None:
+def _saved_line(written: frozenset[WrittenStep]) -> str | None:
     """What a refused press kept, if anything."""
     words = [word for step, word in SAVED_WORDS.items() if step in written]
     if not words:

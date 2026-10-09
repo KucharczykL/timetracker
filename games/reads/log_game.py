@@ -22,6 +22,16 @@ from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 
 
+class HeldRun(NamedTuple):
+    """The newest live ordinary run and what it states."""
+
+    run: Playthrough
+    #: Endpoints; None where unstated.
+    started: StatedEndpoint | None
+    completed: StatedEndpoint | None
+    note: str
+
+
 class HeldFacts(NamedTuple):
     """What a game holds, read once."""
 
@@ -31,16 +41,12 @@ class HeldFacts(NamedTuple):
     removed: bool
     #: The tracked status, else none.
     status: PlayerGameStatus | None
-    #: Newest live ordinary run.
     # TODO(#1519): a run picker.
-    run: Playthrough | None
-    #: Run's endpoints; None where unstated.
-    started: StatedEndpoint | None
-    completed: StatedEndpoint | None
+    #: Newest live ordinary run; None if the game has none.
+    run: HeldRun | None
     #: Platform of the newest play or copy.
     platform: Platform | None
     mastered: bool
-    note: str
 
 
 def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
@@ -55,23 +61,26 @@ def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
             removed=removed,
             status=None,
             run=None,
-            started=None,
-            completed=None,
             platform=None,
             mastered=False,
-            note="",
         )
     run = live_ordinary_runs(library, tracked).last()
     return HeldFacts(
         game_id=game.pk,
         removed=False,
         status=PlayerGameStatus(tracked.status),
-        run=run,
-        started=None if run is None else stated_start(run),
-        completed=None if run is None else stated_completion(run),
+        run=None if run is None else _held_run(run),
         platform=_held_platform(library, game),
         mastered=tracked.mastered,
-        note="" if run is None else run.note,
+    )
+
+
+def _held_run(run: Playthrough) -> HeldRun:
+    return HeldRun(
+        run=run,
+        started=stated_start(run),
+        completed=stated_completion(run),
+        note=run.note,
     )
 
 

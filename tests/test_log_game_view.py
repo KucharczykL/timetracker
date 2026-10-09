@@ -4,6 +4,7 @@ import logging
 import re
 import uuid
 from html.parser import HTMLParser
+from typing import get_args
 
 import pytest
 from django.contrib.messages import get_messages
@@ -28,7 +29,7 @@ from games.models import (
 from games.views import log_game as log_game_view
 from games.writes import log_game as writes_log_game
 from games.writes.answers import CommandFailed
-from games.writes.log_game import PICKED_RUN_GONE, LogRefused
+from games.writes.log_game import PICKED_RUN_GONE, LogRefused, RefusedStep
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -576,3 +577,10 @@ def test_a_created_release_and_run_are_named_as_saved(
         "Saved: a release on that platform, the copy, a playthrough and the playtime."
         in html
     )
+
+
+def test_refused_field_names_a_field_for_every_refused_step():
+    written, refused_only = get_args(RefusedStep.__value__)
+    steps = set(get_args(written.__value__)) | set(get_args(refused_only))
+
+    assert steps <= set(log_game_view.REFUSED_FIELD)

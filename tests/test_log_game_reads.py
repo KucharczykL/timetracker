@@ -54,7 +54,7 @@ def test_an_untracked_game_reads_nothing(library, game):
     assert facts.status is None
     assert facts.run is None
     assert facts.platform is None
-    assert facts.note == ""
+    assert facts.run is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -84,8 +84,8 @@ def test_status_mastery_and_the_run_note_come_from_the_tracked_row(user, library
 
     assert facts.status == PlayerGameStatus.ABANDONED
     assert facts.mastered is True
-    assert facts.note == "Left at the bridge"
     assert facts.run is not None
+    assert facts.run.note == "Left at the bridge"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -102,9 +102,10 @@ def test_an_act_stated_with_no_day_reads_as_stated_but_dayless(user, library, ga
 
     facts = held_facts(library, game)
 
-    assert facts.started is not None
-    assert facts.started.when is None
-    assert facts.completed is None
+    assert facts.run is not None
+    assert facts.run.started is not None
+    assert facts.run.started.when is None
+    assert facts.run.completed is None
 
 
 def test_a_newer_session_names_the_platform_over_a_newer_copy(
