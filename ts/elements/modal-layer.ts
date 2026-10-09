@@ -1,6 +1,7 @@
 // One layer owns every modal dialog.
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
+import { isRendered } from "../rendered.js";
 import {
   clearStack,
   isSheetLevel,
@@ -347,7 +348,7 @@ function tabbableElements(dialog: HTMLDialogElement): HTMLElement[] {
 
 /** Connected, shown, and not in a closed dialog. */
 export function isReachable(element: HTMLElement): boolean {
-  if (!element.isConnected || element.closest("[hidden], [inert]")) return false;
+  if (!isRendered(element) || element.closest("[hidden], [inert]")) return false;
   const dialog = nearestDialog(element);
   return dialog === null || dialog.open;
 }

@@ -9,17 +9,22 @@ export function openerKey(opener: Element): OpenerKey | null {
   return id === null && href === null ? null : { id, href };
 }
 
-function linkWithHref(href: LinkHref | null): HTMLElement | null {
+/** The first link with the href whose return target is reachable. */
+function focusTargetWithHref(href: LinkHref | null): HTMLElement | null {
   if (href === null) return null;
   for (const link of document.querySelectorAll<HTMLElement>("a[href]")) {
-    if (link.getAttribute("href") === href) return link;
+    if (link.getAttribute("href") !== href) continue;
+    const target = focusReturnTarget(link);
+    if (target) return target;
   }
   return null;
 }
 
 /** By id, href, toggle, else the page. */
 export function focusOpener(opener: OpenerKey): void {
-  const found = (opener.id && document.getElementById(opener.id)) || linkWithHref(opener.href);
-  const target = focusReturnTarget(found) ?? document.getElementById("main-container");
+  const byId = opener.id ? document.getElementById(opener.id) : null;
+  const target =
+    (byId ? focusReturnTarget(byId) : focusTargetWithHref(opener.href)) ??
+    document.getElementById("main-container");
   target?.focus({ preventScroll: true });
 }

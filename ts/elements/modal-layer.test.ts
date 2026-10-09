@@ -306,6 +306,19 @@ describe("focus return", () => {
     expect(document.activeElement?.id).toBe("outer-toggle");
   });
 
+  it("falls to the toggle of an opener that is not rendered", () => {
+    document.body.innerHTML = `
+      <drop-down>
+        <button data-toggle>Menu</button>
+        <div data-menu><button data-item>Item</button></div>
+      </drop-down>
+    `;
+    const item = document.querySelector<HTMLElement>("[data-item]")!;
+    item.checkVisibility = () => false;
+    expect(isReachable(item)).toBe(false);
+    expect(focusReturnTarget(item)).toBe(document.querySelector("[data-toggle]"));
+  });
+
   it("focuses the remaining modal when the opener sits outside it", () => {
     const opener = mountOpener();
     const lower = mountDialog();
