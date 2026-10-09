@@ -391,6 +391,7 @@ def add_session(request: HttpRequest) -> HttpResponse:
             messages.error(request, failure.message)
             refused_status = failure.status_code
         else:
+            messages.success(request, "Session added.")
             return redirect(return_url(request, fallback="games:list_sessions"))
 
     # TODO: re-add custom buttons #91

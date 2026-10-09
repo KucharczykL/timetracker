@@ -502,6 +502,9 @@ def test_the_navbar_log_game_from_a_form_page_saves_without_reloading_the_host(
 
     #: A form page is no read-only origin, so the host stays put.
     expect(page.locator(DIALOG)).to_have_count(0)
+    expect(page.get_by_role("region", name="Notifications")).to_contain_text(
+        "Session added."
+    )
     assert not _reloaded(page)
     assert PlayerSession.objects.alive().count() == 1
     assert errors == []
