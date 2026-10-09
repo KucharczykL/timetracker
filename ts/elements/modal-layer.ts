@@ -206,7 +206,11 @@ function markBackdrops(): void {
   const owner = dimOwnerIndex();
   shown.forEach((entry, index) => {
     entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.covered, index < owner);
-    entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.over, index > 0);
+    // A level never dims; its own backdrop stays clear.
+    entry.dialog.toggleAttribute(
+      MODAL_ATTRIBUTES.over,
+      index > 0 && !isSheetLevel(entry.dialog),
+    );
   });
 }
 

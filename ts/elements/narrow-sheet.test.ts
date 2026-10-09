@@ -696,6 +696,7 @@ describe("a dropdown sheet inside an open sheet", () => {
     mouseClick(outerToggle);
     mouseClick(innerToggle);
     expect(outerDialog.hasAttribute("data-modal-covered")).toBe(false);
+    expect(innerDialog.hasAttribute("data-modal-over")).toBe(false);
     expect(innerDialog.hasAttribute("aria-describedby")).toBe(false);
   });
 
