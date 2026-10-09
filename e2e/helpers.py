@@ -154,3 +154,31 @@ def offered_choices(scope: Page | Locator, name: str) -> list[str]:
     return scope.locator(
         f'search-select[name="{name}"] [data-search-select-option]'
     ).evaluate_all("rows => rows.map(row => row.getAttribute('data-value'))")
+
+
+def record_copy(user, library, game_name: str):
+    """A held PS5 copy of a tracked game, recorded by command; returns the entry."""
+    from graphs import default_graph
+    from tracked_games import create_tracked_game
+
+    from games.commands.endpoint import ActStatement
+    from games.commands.libraryentry import EntryStatement
+    from games.models import LibraryEntry, Platform
+    from games.writes.libraryentry import record_entry
+    from games.writes.playergame import new_correlation_id
+
+    platform = Platform.objects.create(name="PS5", group="Sony")
+    game = create_tracked_game(library, game_name)
+    release = default_graph(game, library, platform=platform).release
+    answer = record_entry(
+        user,
+        EntryStatement(
+            release_id=release.pk,
+            access="owned",
+            format="digital",
+            note="",
+            acquired=ActStatement(None, ""),
+        ),
+        correlation_id=new_correlation_id(),
+    )
+    return LibraryEntry.objects.get(pk=answer.entry_id)

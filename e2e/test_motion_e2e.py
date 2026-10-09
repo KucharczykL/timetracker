@@ -4,12 +4,13 @@ from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, ViewportSize, expect
 
-from e2e.helpers import open_facet
+from e2e.helpers import open_facet, record_copy
 
 PHONE = ViewportSize(width=390, height=844)
 LEAVING = '[data-motion="leaving"]'
 SHEET = "dialog[data-dropdown-sheet][open]"
 CENTRED_DIALOG = "dialog[data-modal][open]"
+LEVEL = "dialog[data-dropdown-sheet][data-sheet-level][open]"
 
 
 def _settled(page: Page) -> None:
@@ -69,4 +70,22 @@ def test_a_toast_enters_entered(motion_page: Page, live_server):
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     page.evaluate("window.toast('Saved')")
     expect(page.locator("toast-stack [data-entered]").first).to_be_attached()
+    _settled(page)
+
+
+def test_a_sheet_level_pushes_in_and_backs_out_settled(
+    motion_page: Page, live_server, e2e_user, e2e_library
+):
+    page = motion_page
+    page.set_viewport_size(PHONE)
+    record_copy(e2e_user, e2e_library, "Tunic")
+    page.goto(f"{live_server.url}{reverse('games:list_library')}")
+
+    page.get_by_role("button", name="Tunic (PS5) actions").click()
+    page.locator(SHEET).get_by_role("menuitem", name="I no longer have it").click()
+    expect(page.locator(LEVEL)).to_be_visible()
+    _settled(page)
+
+    page.keyboard.press("Escape")
+    expect(page.locator(LEVEL)).to_have_count(0)
     _settled(page)
