@@ -5,18 +5,19 @@ import { browser } from "./form-dialog/navigation.js";
 import { MODAL_CHANGE, attachModal, type Modal } from "./modal-layer.js";
 import type { SearchSelectChangeDetail } from "./search-select.js";
 
-export const SECTION_DIALOG = "data-log-section";
-export const SECTION_DONE = "data-log-section-done";
-export const SECTION_EDIT = "data-log-section-edit";
-/** Space-separated fields that mark a section held. */
-export const SECTION_HOLDS = "data-log-section-holds";
-export const SECTION_IDLE = "data-log-section-idle";
-export const SECTION_HELD = "data-log-section-held";
+const SECTION_DIALOG = "data-log-section";
+const SECTION_DIALOG_SELECTOR = `dialog[${SECTION_DIALOG}]`;
+const SECTION_DONE = "data-log-section-done";
+const SECTION_EDIT = "data-log-section-edit";
+/** Space-separated fields that hold a section. */
+const SECTION_HOLDS = "data-log-section-holds";
+const SECTION_IDLE = "data-log-section-idle";
+const SECTION_HELD = "data-log-section-held";
 const GAME_FIELD = "game";
 
 /** A section the generated props name. */
 type Section = Exclude<LogSectionsProps["openSection"], "">;
-/** Every member; a new section fails to compile here. */
+/** Adding a section fails compilation here. */
 const SECTION_MEMBERS: Record<Section, true> = { playtime: true, more: true };
 
 function isSection(value: string): value is Section {
@@ -27,7 +28,7 @@ function report(detail: string): void {
   reportClientError("log-sections", detail, { toast: false });
 }
 
-/** The section a dialog holds; null for a name none states. */
+/** Section named by a dialog; null if unknown. */
 function sectionOf(dialog: Element): Section | null {
   const name = dialog.getAttribute(SECTION_DIALOG) ?? "";
   return isSection(name) ? name : null;
@@ -50,7 +51,7 @@ function sectionHolds(dialog: HTMLDialogElement): boolean {
 
 /** Opens each section's dialog from its opener. */
 class LogSectionsElement extends HTMLElement {
-  /** Keyed by dialog, so a move keeps each handle. */
+  /** Keyed by dialog; a move keeps handles. */
   private readonly modals = new Map<HTMLDialogElement, Modal>();
   /** Opens once the layer allows it. */
   private pending: Section | null = null;
@@ -60,7 +61,7 @@ class LogSectionsElement extends HTMLElement {
     for (const dialog of this.modals.keys()) {
       if (!this.contains(dialog)) this.modals.delete(dialog);
     }
-    for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
+    for (const dialog of this.querySelectorAll<HTMLDialogElement>(SECTION_DIALOG_SELECTOR)) {
       if (this.modals.has(dialog)) continue;
       if (sectionOf(dialog) === null) {
         report(`dialog names no known section: ${dialog.getAttribute(SECTION_DIALOG)}`);
@@ -93,7 +94,7 @@ class LogSectionsElement extends HTMLElement {
 
   /** Opener reads "held" while section holds. */
   private readonly syncHeld = (): void => {
-    for (const dialog of this.querySelectorAll<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`)) {
+    for (const dialog of this.querySelectorAll<HTMLDialogElement>(SECTION_DIALOG_SELECTOR)) {
       const section = sectionOf(dialog);
       if (section === null) continue;
       const held = sectionHolds(dialog);
@@ -126,9 +127,8 @@ class LogSectionsElement extends HTMLElement {
   /** Picking a game reloads the page. */
   private readonly onGamePick = (event: Event): void => {
     const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
-    if (detail.name !== GAME_FIELD || detail.none) return;
     const picked = detail.values[0];
-    if (!picked) return;
+    if (detail.name !== GAME_FIELD || detail.none || !picked) return;
     const { route, origin } = readLogSectionsProps(this);
     const url = new URL(route, location.href);
     url.searchParams.set("prefill_game", picked);
@@ -150,15 +150,12 @@ class LogSectionsElement extends HTMLElement {
     const edit = target?.closest<HTMLElement>(`[${SECTION_EDIT}]`);
     if (edit && this.contains(edit)) {
       const name = edit.getAttribute(SECTION_EDIT) ?? "";
-      if (!isSection(name)) {
-        report(`opener names no known section: ${name}`);
-        return;
-      }
-      this.open(name, edit);
+      if (isSection(name)) this.open(name, edit);
+      else report(`opener names no known section: ${name}`);
       return;
     }
     const done = target?.closest(`[${SECTION_DONE}]`);
-    const dialog = done?.closest<HTMLDialogElement>(`dialog[${SECTION_DIALOG}]`);
+    const dialog = done?.closest<HTMLDialogElement>(SECTION_DIALOG_SELECTOR);
     if (dialog) this.modals.get(dialog)?.close();
   };
 }

@@ -294,7 +294,7 @@ export class FormDialogElement extends HTMLElement {
   private stale = false;
   private reload: Reload = noReload();
   private reloadWaiting = false;
-  /** Reloads fetching now; the host is busy while any runs. */
+  /** Reloads in flight; the host reads busy. */
   private reloadsInFlight = 0;
   /** The link whose page is loading. */
   private opening: HTMLAnchorElement | null = null;
@@ -506,7 +506,7 @@ export class FormDialogElement extends HTMLElement {
     void this.reloadInto(holding, new URL(detail.url, location.href));
   };
 
-  /** Only an entry's latest reload applies, and never over a submit. */
+  /** Only an entry's latest reload applies. */
   private async reloadInto(entry: OpenDialog, url: URL): Promise<void> {
     if (entry.submitting) return;
     entry.reloadSerial += 1;
@@ -783,7 +783,7 @@ export class FormDialogElement extends HTMLElement {
     this.rewriteCsrf();
     const request = this.buildRequest(form, submitter);
     if (!request) return;
-    // A reload still in flight must not land over this answer.
+    // Reload in flight must not overwrite answer.
     entry.reloadSerial += 1;
     entry.submitting = true;
     form.setAttribute("aria-busy", "true");
