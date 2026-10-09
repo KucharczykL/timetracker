@@ -1271,19 +1271,19 @@ SHEET_HOST_VALUE = "sheet"
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
-type DropdownBehaviorName = Literal[
+type SheetlessBehaviorName = Literal[
     "menu",
     "select",
     "combobox",
     "inline-combobox",
     "date-calendar",
-    "sheet",
     "column-picker",
     "choice-grid",
 ]
+type DropdownBehaviorName = SheetlessBehaviorName | Literal["sheet"]
 
 
-def _assemble(
+def _wire(
     trigger: Element,
     target: Element,
     *,
@@ -1291,20 +1291,15 @@ def _assemble(
     placement: str,
     submenu: bool,
     wrapper_class: str,
-    behavior: DropdownBehaviorName = "menu",
-    config: dict[str, str] | None = None,
-    sheet: SheetSpec | None,
+    behavior: DropdownBehaviorName,
+    config: dict[str, str] | None,
+    sheet_part: Node | None,
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. `config` becomes
-    extra data-* attributes the chosen behavior reads (e.g. select's PATCH url).
-    ``sheet``: narrow viewport; sheet behavior omits it."""
+    extra data-* attributes the chosen behavior reads (e.g. select's PATCH url)."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
-    if sheet is not None and behavior == "sheet":
-        raise ValueError("The sheet behavior brings its own sheet.")
-    if sheet is None and behavior != "sheet":
-        raise ValueError(f"A {behavior!r} dropdown needs a sheet title.")
     config_attributes = [
         (key.replace("_", "-"), value) for key, value in (config or {}).items()
     ]
@@ -1318,9 +1313,58 @@ def _assemble(
         Fragment(
             _stamp_trigger_contract(trigger, id),
             _stamp_target_contract(target, id, initially_hidden=behavior != "sheet"),
-            None if sheet is None else dropdown_sheet(sheet),
+            sheet_part,
         )
     ]
+
+
+def _assemble(
+    trigger: Element,
+    target: Element,
+    *,
+    id: str,
+    placement: str,
+    submenu: bool,
+    wrapper_class: str,
+    behavior: SheetlessBehaviorName = "menu",
+    config: dict[str, str] | None = None,
+    sheet: SheetSpec,
+) -> Node:
+    """Wire a dropdown that carries its own narrow-viewport sheet."""
+    return _wire(
+        trigger,
+        target,
+        id=id,
+        placement=placement,
+        submenu=submenu,
+        wrapper_class=wrapper_class,
+        behavior=behavior,
+        config=config,
+        sheet_part=dropdown_sheet(sheet),
+    )
+
+
+def _assemble_sheet(
+    trigger: Element,
+    target: Element,
+    *,
+    id: str,
+    placement: str,
+    submenu: bool,
+    wrapper_class: str,
+) -> Node:
+    """Wire the sheet behavior, which brings its own sheet. Only BottomSheet."""
+    return _wire(
+        trigger,
+        target,
+        id=id,
+        placement=placement,
+        submenu=submenu,
+        wrapper_class=wrapper_class,
+        behavior="sheet",
+        config=None,
+        sheet_part=None,
+    )
 
 
 def Dropdown(
@@ -1329,7 +1373,7 @@ def Dropdown(
     target_element: Element,
     id: str,
     placement: str = "bottom-start",
-    behavior: DropdownBehaviorName = "menu",
+    behavior: SheetlessBehaviorName = "menu",
     config: dict[str, str] | None = None,
     full_width: bool = False,
     sheet: SheetSpec,
@@ -1441,15 +1485,13 @@ def BottomSheet(
         size_class=_SECTION_SHEET_SIZE_CLASS,
         children=children,
     )
-    return _assemble(
+    return _assemble_sheet(
         _as_dialog_trigger(trigger_element),
         target,
         id=id,
         placement="bottom-start",
         submenu=False,
         wrapper_class="relative flex w-full",
-        behavior="sheet",
-        sheet=None,
     )
 
 
@@ -1476,7 +1518,11 @@ class SheetSpec:
 def _sheet_back_control() -> Node:
     """Back control; shown only on a level."""
     return ControlButton(
-        [(SHEET_ATTRIBUTES["back"], ""), (MODAL_ATTRIBUTES["cancel"], ""), ("hidden", "")],
+        [
+            (SHEET_ATTRIBUTES["back"], ""),
+            (MODAL_ATTRIBUTES["cancel"], ""),
+            ("hidden", ""),
+        ],
         variant="ghost",
         class_="max-w-full gap-1 px-2",
     )[
@@ -1494,7 +1540,7 @@ def dropdown_sheet(sheet: SheetSpec) -> Fragment:
         sheet.title,
         title_id=None,
         title_attributes=[(SHEET_ATTRIBUTES["title"], "")],
-        leading=_sheet_back_control(),
+        level_back=_sheet_back_control(),
     )
     return Fragment(
         _sheet_dialog(
@@ -1704,7 +1750,7 @@ def SelectDropdown(
     body_key: str,
     event: str,
     csrf: str,
-    sheet_title: str,
+    sheet: SheetSpec,
     empty_is_null: bool = False,
     placement: str = "bottom-start",
     class_: str = "",
@@ -1738,5 +1784,5 @@ def SelectDropdown(
         placement=placement,
         behavior="select",
         config=config,
-        sheet=SheetSpec(sheet_title),
+        sheet=sheet,
     )

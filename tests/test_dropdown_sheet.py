@@ -6,7 +6,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from html_answers import sheetless_dropdown_faults
+from django.http import HttpResponse
+from html_answers import html_answer_faults, sheetless_dropdown_faults
 
 from common.components import (
     ControlButton,
@@ -26,7 +27,6 @@ from common.components.custom_elements import (
     ButtonDropdown,
     SelectOption,
     SheetSpec,
-    _assemble,
 )
 from common.components.primitives import Button, Div, YearPicker
 from common.components.quick_filter import QUICK_FACETS, QuickFilterBar
@@ -65,19 +65,6 @@ def dropdown(**kwargs: object) -> str:
     )
 
 
-def test_a_dropdown_without_a_sheet_is_refused_outside_the_sheet_behavior():
-    with pytest.raises(ValueError):
-        _assemble(
-            Button(type="button")["Open"],
-            Div()["panel"],
-            id="example",
-            placement="bottom-start",
-            submenu=False,
-            wrapper_class="relative inline-flex",
-            sheet=None,
-        )
-
-
 #: Sheet title per builder, from its site.
 SHEET_TITLE_SITES = {
     "row action menu": lambda: RowActionMenu([], label="Game actions", id="row"),
@@ -99,7 +86,7 @@ SHEET_TITLE_SITES = {
         body_key="status",
         event="status-changed",
         csrf="t",
-        sheet_title="Status",
+        sheet=SheetSpec("Status"),
     ),
     "submenu item": lambda: DropdownSubmenuItem("More", items=[], id="more"),
     "combobox": lambda: ComboboxDropdown(
@@ -135,25 +122,47 @@ def test_a_titled_dropdown_carries_one_sheet_and_its_sentinel():
     assert "hidden max-sm:block" in SENTINEL.search(html).group(0)  # type: ignore[union-attr]
 
 
+def element_tag(html: str, attribute: str) -> str:
+    """The start tag of the one element carrying ``attribute``."""
+    tags = re.findall(rf"<[a-z][^>]*\s{re.escape(attribute)}(?=[\s=>])[^>]*>", html)
+    assert len(tags) == 1, (attribute, tags)
+    return tags[0]
+
+
+def classes_of(html: str, attribute: str) -> set[str]:
+    """The class names on the one element carrying ``attribute``."""
+    match = re.search(r'\sclass="([^"]*)"', element_tag(html, attribute))
+    assert match, attribute
+    return set(match.group(1).split())
+
+
 HEIGHT = "h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))]"
+STEADY = "group-data-[sheet-steady]/sheet:"
+KEYBOARD_PADDING = (
+    "group-data-[sheet-steady]/sheet:"
+    "pb-[calc(max(1rem,env(safe-area-inset-bottom))+var(--sheet-keyboard-inset,0px))]"
+)
 
 
 def test_a_dropdown_sheet_rises_above_the_keyboard():
-    html = dropdown(sheet=SheetSpec("Day"))
-    assert "mb-[var(--sheet-keyboard-inset,0px)]" in html
-    assert f"max-{HEIGHT}" in html
+    """The panel's bottom margin is the keyboard's inset."""
+    panel = classes_of(dropdown(sheet=SheetSpec("Day")), SHEET_ATTRIBUTES["panel"])
+    assert "mb-[var(--sheet-keyboard-inset,0px)]" in panel
+    assert f"max-{HEIGHT}" in panel
 
 
-def test_a_steady_dropdown_sheet_fills_the_screen():
-    html = dropdown(sheet=SheetSpec("Day"))
-    assert "group-data-[sheet-steady]/sheet:h-dvh" in html
-    assert "group-data-[sheet-steady]/sheet:max-h-none" in html
+def test_a_steady_dropdown_sheet_fills_the_screen_on_its_panel():
+    panel = classes_of(dropdown(sheet=SheetSpec("Day")), SHEET_ATTRIBUTES["panel"])
+    assert {STEADY + "h-dvh", STEADY + "max-h-none", STEADY + "rounded-t-none"} <= panel
 
 
 def test_a_steady_dropdown_sheet_stays_put_under_the_keyboard():
+    """The panel keeps no bottom margin; the body pads above the keyboard."""
     html = dropdown(sheet=SheetSpec("Day"))
-    assert "group-data-[sheet-steady]/sheet:mb-0" in html
-    assert "+var(--sheet-keyboard-inset,0px))]" in html
+    assert STEADY + "mb-0" in classes_of(html, SHEET_ATTRIBUTES["panel"])
+    body = classes_of(html, SHEET_ATTRIBUTES["body"])
+    assert KEYBOARD_PADDING in body
+    assert STEADY + "mb-0" not in body
 
 
 def test_the_section_sheet_keeps_its_own_shape():
@@ -271,11 +280,6 @@ def test_every_quick_facet_applies_the_bar(mode):
     assert html.count("data-date-range-apply") == len(dates)
 
 
-def test_the_sheet_behavior_refuses_a_second_sheet():
-    with pytest.raises(ValueError):
-        dropdown(behavior="sheet", sheet=SheetSpec("Sections"))
-
-
 def test_every_sheet_variant_names_the_generated_host():
     """Tailwind needs literals; they follow the mapping."""
     attribute = SHEET_ATTRIBUTES["host"].removeprefix("data-")
@@ -305,16 +309,21 @@ def test_a_sheet_leads_its_header_with_a_hidden_back_control():
     assert html.index("data-sheet-back=") < html.index("data-dropdown-sheet-title")
 
 
-def test_a_sheet_level_backdrop_is_transparent():
+def test_a_sheet_level_backdrop_is_transparent_on_the_dialog():
+    """The dialog's own backdrop, not a panel's, goes transparent."""
     html = dropdown(sheet=SheetSpec("Day"))
-    assert "data-sheet-level:backdrop:opacity-0!" in html
+    dialog = classes_of(html, SHEET_ATTRIBUTES["sheet"])
+    assert "data-sheet-level:backdrop:opacity-0!" in dialog
+    assert "data-sheet-level:backdrop:opacity-0!" not in classes_of(
+        html, SHEET_ATTRIBUTES["panel"]
+    )
 
 
-def test_a_sheet_level_casts_a_leading_edge_shadow():
-    html = dropdown(sheet=SheetSpec("Day"))
+def test_a_sheet_level_casts_a_leading_edge_shadow_on_the_panel():
+    panel = classes_of(dropdown(sheet=SheetSpec("Day")), SHEET_ATTRIBUTES["panel"])
     assert (
         "group-data-[sheet-level]/sheet:shadow-[-12px_0_24px_-8px_rgb(0_0_0/0.3)]"
-        in html
+        in panel
     )
 
 
@@ -326,6 +335,17 @@ def test_the_answer_check_refuses_a_sheetless_drop_down():
     [fault] = sheetless_dropdown_faults(html)
     assert "behavior='menu'" in fault
     assert "aria-label='Row actions'" in fault
+
+
+def test_the_answer_check_is_wired_into_the_html_answer_faults():
+    """Unwiring the sheetless check from the answer faults fails here."""
+    page = HttpResponse(
+        '<drop-down behavior="menu"><button aria-label="Row actions">x</button>'
+        "<div>panel</div></drop-down>",
+        content_type="text/html",
+    )
+    faults = html_answer_faults("/tracker/", page)
+    assert any("behavior='menu'" in fault for fault in faults)
 
 
 def test_the_answer_check_passes_a_drop_down_with_its_own_sheet():

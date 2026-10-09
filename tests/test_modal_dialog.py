@@ -15,7 +15,6 @@ from common.components import (
 from common.components.elements import Span
 from common.components.form_dialog import FormDialogHost
 from common.components.modal import (
-    _CENTRED_PANEL_MOTION_CLASS,
     _MODAL_DIALOG_CLASS,
     _MODAL_PANEL_CLASS,
     _SHEET_PANEL_MOTION_CLASS,
@@ -138,15 +137,6 @@ class ModalPanelTest(SimpleTestCase):
         self.assertNotIn("filter", _MODAL_PANEL_CLASS)
         self.assertIn("after:opacity-[var(--modal-scrim", _MODAL_PANEL_CLASS)
 
-    def test_no_motion_class_is_safe_only(self):
-        """Reduced motion crossfades; never drops motion."""
-        for name in (
-            _MODAL_PANEL_CLASS,
-            _CENTRED_PANEL_MOTION_CLASS,
-            _SHEET_PANEL_MOTION_CLASS,
-        ):
-            self.assertNotIn("motion-safe:", name)
-
     def test_the_built_css_holds_the_step(self):
         """base.css is built; run `make css` first."""
         css = BASE_CSS.read_text(encoding="utf-8")
@@ -196,13 +186,13 @@ class EveryModalSteps(SimpleTestCase):
             self.assertIn(f'{MODAL_ATTRIBUTES["header"]}=""', body)
 
 
-class ModalPanelLeadingTest(SimpleTestCase):
-    def test_a_leading_control_precedes_the_title(self):
+class ModalPanelLevelBackTest(SimpleTestCase):
+    def test_a_level_back_control_precedes_the_title(self):
         html = str(
             ModalPanelHeader(
                 "Title",
                 title_id="t",
-                leading=Span(class_="lead")["Back"],
+                level_back=Span(class_="lead")["Back"],
             )
         )
         self.assertIn('class="lead"', html)

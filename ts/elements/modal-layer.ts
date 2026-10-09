@@ -696,7 +696,7 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     event.preventDefault();
     event.stopImmediatePropagation();
   };
-  for (const type of ["pointerdown", "pointerup", "click", "submit"] as const) {
+  for (const type of ["pointerdown", "pointerup", "click"] as const) {
     dialog.addEventListener(type, holdWhileLeaving, { capture: true });
   }
   dialog.addEventListener("close", (event) => {

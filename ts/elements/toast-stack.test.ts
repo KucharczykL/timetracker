@@ -5,7 +5,7 @@ import "../toast.js";
 import { handOffMessages } from "../handoff.js";
 import { attachModal, type Modal } from "./modal-layer.js";
 import { pushSurface } from "./surface-stack.js";
-import "./toast-stack.js";
+import { ToastStore } from "./toast-stack.js";
 
 type Payload = { message: string; type?: string; id?: number | string; duration?: number | null };
 
@@ -204,12 +204,13 @@ describe("lifecycle", () => {
 
     toast.click();
     vi.advanceTimersByTime(100);
+    const timers = vi.getTimerCount();
     toast.click();
     toast.dispatchEvent(new Event("mouseenter"));
     toast.dispatchEvent(new Event("mouseleave"));
 
     expect(dismissed).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(timers);
     vi.advanceTimersByTime(200);
     expect(toasts()).toEqual([]);
     window.removeEventListener("toast-dismissed", dismissed);
@@ -225,6 +226,30 @@ describe("lifecycle", () => {
     expect(toasts()[0].hasAttribute("data-motion")).toBe(true);
     expect(dismissed).not.toHaveBeenCalled();
     window.removeEventListener("toast-dismissed", dismissed);
+  });
+});
+
+describe("a store with no element", () => {
+  it("removes a leaving toast once its fallback has passed", () => {
+    const store = new ToastStore(() => {});
+    store.addToast("alone", "info", { id: "alone", duration: null });
+
+    store.dismissToast("alone");
+    // Fade of 160 ms plus the cap.
+    vi.advanceTimersByTime(100);
+    expect(store.toasts).toHaveLength(1);
+
+    vi.advanceTimersByTime(10_000);
+    expect(store.toasts).toEqual([]);
+  });
+
+  it("finishLeave keeps a toast that is not leaving", () => {
+    const store = new ToastStore(() => {});
+    store.addToast("kept", "info", { id: "kept", duration: null });
+
+    store.finishLeave("kept");
+
+    expect(store.toasts).toHaveLength(1);
   });
 });
 

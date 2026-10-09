@@ -51,3 +51,20 @@ def test_no_literal_duration_or_bare_easing_or_motion_safe_in_source():
         "Use --duration-* and ease-enter/ease-exit tokens, and no motion-safe: "
         "variant, at: " + ", ".join(hits)
     )
+
+
+def test_the_duration_tokens_match_the_typescript_union():
+    """ts/motion.ts reads each --duration-* token by its name."""
+    css = (ROOT / "common" / "input.css").read_text(encoding="utf-8")
+    declared = set(re.findall(r"^\s*--duration-([a-z-]+):", css, re.MULTILINE))
+    typescript = (ROOT / "ts" / "motion.ts").read_text(encoding="utf-8")
+    union = re.search(r"export type MotionToken = ([^;]+);", typescript)
+    assert union, "ts/motion.ts states no MotionToken union"
+    stated = set(re.findall(r'"([a-z-]+)"', union.group(1)))
+    assert declared == stated
+
+
+def test_the_sheet_easing_is_defined():
+    """TypeScript reads --ease-sheet from the stylesheet."""
+    css = (ROOT / "common" / "input.css").read_text(encoding="utf-8")
+    assert re.search(r"^\s*--ease-sheet:", css, re.MULTILINE)

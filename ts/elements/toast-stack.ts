@@ -8,7 +8,7 @@ import { type Answer, readAnswer } from "./form-dialog/answer.js";
 import { PAGE_STALE } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import { MODAL_CHANGE, topModal } from "./modal-layer.js";
-import { holdLeave, type CancelLeave } from "../motion.js";
+import { holdLeave, motionDuration, type CancelLeave } from "../motion.js";
 
 const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
 export type ToastType = (typeof TOAST_TYPES)[number];
@@ -53,7 +53,9 @@ function markEntered(node: HTMLElement): void {
 type Countdown =
   | { kind: "sticky" }
   | { kind: "paused"; remaining: number }
-  | { kind: "running"; deadline: number; timer: Timer };
+  | { kind: "running"; deadline: number; timer: Timer }
+  /** Leaving: the fallback timer that removes the toast. */
+  | { kind: "leaving"; timer: Timer };
 
 export interface Toast {
   id: ToastId;
@@ -62,14 +64,14 @@ export interface Toast {
   /** Stamped with the origin already. */
   action: ToastAction | null;
   countdown: Countdown;
-  /** True once the toast leaves. */
-  leaving: boolean;
   hovered: boolean;
   focused: boolean;
 }
 
 const MAX_TOASTS = 3;
 const ACTION_MS = 10_000;
+/** Past the fade, the store removes a leaving toast no element finishes. */
+const LEAVE_CAP_MS = 500;
 
 function isToastType(value: string): value is ToastType {
   return (TOAST_TYPES as readonly string[]).includes(value);
@@ -113,12 +115,15 @@ export class ToastStore {
     const existing = this.items.find((toast) => toast.id === id);
 
     if (existing) {
-      this.stop(existing);
       existing.message = message;
       existing.type = toastType;
       existing.action = action;
-      existing.countdown = this.countdownFor(existing, duration);
-      this.settle(existing);
+      // A leaving toast keeps its exit; the element finishes it.
+      if (existing.countdown.kind !== "leaving") {
+        this.stop(existing);
+        existing.countdown = this.countdownFor(existing, duration);
+        this.settle(existing);
+      }
       this.onChange();
       return;
     }
@@ -134,7 +139,6 @@ export class ToastStore {
       type: toastType,
       action,
       countdown: { kind: "sticky" },
-      leaving: false,
       hovered: false,
       focused: false,
     };
@@ -145,13 +149,25 @@ export class ToastStore {
 
   dismissToast(id: ToastId, notify = true): void {
     const toast = this.find(id);
-    if (!toast || toast.leaving) return;
+    if (!toast || toast.countdown.kind === "leaving") return;
     this.stop(toast);
     if (notify) {
       window.dispatchEvent(new CustomEvent("toast-dismissed", { detail: { id } }));
     }
-    toast.leaving = true;
+    toast.countdown = {
+      kind: "leaving",
+      timer: setTimeout(
+        () => this.finishLeave(id),
+        motionDuration("medium-exit") + LEAVE_CAP_MS,
+      ),
+    };
     this.onChange();
+  }
+
+  /** The element calls this when a leave ends; a toast not leaving stays. */
+  finishLeave(id: ToastId): void {
+    if (this.find(id)?.countdown.kind !== "leaving") return;
+    this.removeToast(id);
   }
 
   removeToast(id: ToastId): void {
@@ -192,7 +208,7 @@ export class ToastStore {
   }
 
   private resume(toast: Toast): void {
-    if (toast.leaving || toast.countdown.kind !== "paused") return;
+    if (toast.countdown.kind !== "paused") return;
     toast.countdown = this.running(toast, toast.countdown.remaining);
   }
 
@@ -214,7 +230,9 @@ export class ToastStore {
 
   /** Every timer off; the toast neither counts nor leaves. */
   private stop(toast: Toast): void {
-    if (toast.countdown.kind === "running") clearTimeout(toast.countdown.timer);
+    if (toast.countdown.kind === "running" || toast.countdown.kind === "leaving") {
+      clearTimeout(toast.countdown.timer);
+    }
     toast.countdown = { kind: "sticky" };
   }
 }
@@ -433,7 +451,7 @@ class ToastStackElement extends HTMLElement {
         markEntered(node);
       }
       this.updateToast(node, toast);
-      if (toast.leaving) this.startLeave(toast.id, node);
+      if (toast.countdown.kind === "leaving") this.startLeave(toast.id, node);
     }
     for (const [id, node] of this.nodes) {
       if (live.has(id)) continue;
@@ -449,7 +467,7 @@ class ToastStackElement extends HTMLElement {
     if (this.leaves.has(id)) return;
     const cancel = holdLeave(node, "medium-exit", () => {
       this.leaves.delete(id);
-      this.store.removeToast(id);
+      this.store.finishLeave(id);
     });
     if (cancel) this.leaves.set(id, cancel);
   }

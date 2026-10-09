@@ -294,15 +294,20 @@ def test_a_submenu_opens_as_a_level_and_an_act_inside_it_closes_every_sheet(
     level = page.locator(LEVEL)
     expect(level).to_have_count(1)
     expect(level).to_be_visible()
+    # Focus lands inside the level when it opens.
+    expect(level.locator(":focus")).to_have_count(1)
     back = level.locator("[data-sheet-back]")
     expect(back).to_be_visible()
     expect(back).to_have_accessible_name("Back to Tunic (PS5) actions")
 
-    # Escape backs one level; parent stays open.
+    # Escape backs one level; parent stays open, focus back on its toggle.
     page.keyboard.press("Escape")
     expect(page.locator(LEVEL)).to_have_count(0)
     expect(page.locator(PARENT)).to_have_count(1)
     expect(page.locator(LEAVING)).to_have_count(0)
+    expect(
+        page.locator(PARENT).get_by_role("menuitem", name="I no longer have it")
+    ).to_be_focused()
 
     # Submenu act closes every sheet.
     top_sheet(page).get_by_role("menuitem", name="I no longer have it").click()
@@ -320,15 +325,14 @@ def test_a_facet_picker_level_closes_the_whole_chain_and_returns_focus(
     page = narrow
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
+    # NARROW puts the name facet in ⋯: its trigger shows only once ⋯ opens.
     trigger = page.locator("#quick-name-dropdownLink")
     overflow = page.locator("[data-quick-overflow-trigger]")
-    in_overflow = not trigger.is_visible()
-    #: Overflow when the facet sits in it.
-    opener = overflow if in_overflow else trigger
-    opener.click()
+    expect(trigger).to_be_hidden()
+    expect(overflow).to_be_visible()
+    overflow.click()
     expect(page.locator(PARENT)).to_have_count(1)
-    if in_overflow:
-        trigger.click()
+    trigger.click()
     panel = page.locator("#quick-name-dropdown")
     expect(panel.locator('input[name="quick-name"]')).to_be_visible()
 
@@ -337,10 +341,8 @@ def test_a_facet_picker_level_closes_the_whole_chain_and_returns_focus(
     face = host.locator(
         ":scope > [data-search-select-face] [data-search-select-face-open]"
     )
-    if face.is_visible():
-        face.click()
-    else:
-        modifier.locator("[data-search-select-search]").click()
+    expect(face).to_be_visible()
+    face.click()
     level = page.locator(LEVEL).last
     expect(level).to_be_visible()
     expect(modifier.locator("[data-search-select-panel]")).to_be_visible()
@@ -349,7 +351,7 @@ def test_a_facet_picker_level_closes_the_whole_chain_and_returns_focus(
     level.locator("[data-modal-dismiss]").first.click()
     expect(page.locator(SHEET)).to_have_count(0)
     expect(page.locator(LEAVING)).to_have_count(0)
-    expect(opener).to_be_focused()
+    expect(overflow).to_be_focused()
     # No picker below reopens on focus.
     expect(page.locator(SHEET)).to_have_count(0)
     expect(modifier.locator("[data-search-select-panel]")).to_be_hidden()

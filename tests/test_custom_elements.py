@@ -559,7 +559,7 @@ class SessionDeviceSelectorRenderTest(unittest.TestCase):
 class SelectDropdownRenderTest(unittest.TestCase):
     def test_renders_listbox_with_select_behavior(self):
         from common.components import SelectDropdown, render
-        from common.components.custom_elements import SelectOption
+        from common.components.custom_elements import SelectOption, SheetSpec
 
         html = render(
             SelectDropdown(
@@ -573,7 +573,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
                 body_key="status",
                 event="status-changed",
                 csrf="tok",
-                sheet_title="Status",
+                sheet=SheetSpec("Status"),
             )
         )
         self.assertIn('behavior="select"', html)
@@ -589,7 +589,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
 
     def test_empty_is_null_flag_sets_data_attribute(self):
         from common.components import SelectDropdown, render
-        from common.components.custom_elements import SelectOption
+        from common.components.custom_elements import SelectOption, SheetSpec
 
         html = render(
             SelectDropdown(
@@ -601,7 +601,7 @@ class SelectDropdownRenderTest(unittest.TestCase):
                 event="device-changed",
                 csrf="t",
                 empty_is_null=True,
-                sheet_title="Device",
+                sheet=SheetSpec("Device"),
             )
         )
         self.assertIn('data-empty-is-null="true"', html)

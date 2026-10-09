@@ -15,7 +15,7 @@ from common.components.primitives import ControlButton
 
 type ModalAlign = Literal["center", "end"]
 #: Sheet slides in; a modal fades.
-type ModalMotion = Literal["centred", "sheet"]
+type ModalMotion = Literal["center", "sheet"]
 type ModalAttributeRole = Literal[
     "modal",
     "dismiss",
@@ -79,7 +79,7 @@ _LEVEL_HEADER_CLASS = (
     "group-data-[sheet-level]/modal:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] "
     "group-data-[sheet-level]/modal:gap-2 group-data-[sheet-level]/modal:pl-1.5"
 )
-_LEADING_CLASS = "hidden min-w-0 group-data-[sheet-level]/modal:flex"
+_LEVEL_BACK_CLASS = "hidden min-w-0 group-data-[sheet-level]/modal:flex"
 _TITLE_BLOCK_CLASS = (
     "flex min-w-0 flex-col group-data-[sheet-level]/modal:max-w-[50vw] "
     "group-data-[sheet-level]/modal:text-center"
@@ -98,7 +98,7 @@ _MODAL_PANEL_CLASS = (
     "after:duration-(--duration-medium) after:ease-enter"
 )
 #: Centred modal fades and scales in.
-_CENTRED_PANEL_MOTION_CLASS = (
+_CENTER_PANEL_MOTION_CLASS = (
     "transition-[opacity,scale,transform] duration-(--duration-medium) ease-enter "
     "starting:opacity-0 starting:scale-96 "
     "group-data-[motion=leaving]/modal:opacity-0 "
@@ -120,7 +120,7 @@ _SHEET_PANEL_MOTION_CLASS = (
     "group-data-[sheet-state=open]/sheet:motion-reduce:opacity-100"
 )
 _PANEL_MOTION_CLASS: Mapping[ModalMotion, str] = {
-    "centred": _CENTRED_PANEL_MOTION_CLASS,
+    "center": _CENTER_PANEL_MOTION_CLASS,
     "sheet": _SHEET_PANEL_MOTION_CLASS,
 }
 
@@ -147,7 +147,7 @@ def ModalPanel(
     attributes: Attributes = (),
     *,
     class_: str = "",
-    motion: ModalMotion = "centred",
+    motion: ModalMotion = "center",
 ) -> Element:
     """A modal's visible panel; steps back when covered."""
     return Div(
@@ -164,14 +164,14 @@ def ModalPanelHeader(
     attributes: Attributes = (),
     title_attributes: Attributes = (),
     divided: bool = True,
-    leading: Child | None = None,
+    level_back: Child | None = None,
 ) -> Element:
     """A modal panel's title row; no label, no ×.
 
     `title_id` beats an id in `title_attributes`;
     `None` leaves the id to the client.
     `divided`: a line over a scrolling body.
-    `leading`: control before the title.
+    `level_back`: back control before the title; shows only on a sheet level.
     """
     close_button = (
         None
@@ -205,13 +205,13 @@ def ModalPanelHeader(
             part
             for part in (
                 _HEADER_CLASS,
-                _LEVEL_HEADER_CLASS if leading is not None else "",
+                _LEVEL_HEADER_CLASS if level_back is not None else "",
                 _DIVIDED_HEADER_CLASS if divided else "",
             )
             if part
         ),
     )[
-        None if leading is None else Div(class_=_LEADING_CLASS)[leading],
+        None if level_back is None else Div(class_=_LEVEL_BACK_CLASS)[level_back],
         title_block,
         close_button,
     ]

@@ -491,7 +491,11 @@ def GameStatusSelector(
     because it arrives as a queryset annotation, which is not an
     attribute of the model instance.
     """
-    from common.components.custom_elements import SelectDropdown, SelectOption
+    from common.components.custom_elements import (
+        SelectDropdown,
+        SelectOption,
+        SheetSpec,
+    )
 
     labels = dict(game_statuses)
     options: list[SelectOption] = [
@@ -512,14 +516,18 @@ def GameStatusSelector(
         body_key="status",
         event="status-changed",
         csrf=csrf_token,
-        sheet_title="Status",
+        sheet=SheetSpec("Status"),
         class_=class_,
     )
 
 
 def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
     """Device value-selector: a listbox that PATCHes /api/session/<id>/device."""
-    from common.components.custom_elements import SelectDropdown, SelectOption
+    from common.components.custom_elements import (
+        SelectDropdown,
+        SelectOption,
+        SheetSpec,
+    )
 
     current = session.device.id if session.device else None
     options: list[SelectOption] = [
@@ -540,7 +548,7 @@ def SessionDeviceSelector(session, session_devices, csrf_token: str) -> Node:
         body_key="device_id",
         event="device-changed",
         csrf=csrf_token,
-        sheet_title="Device",
+        sheet=SheetSpec("Device"),
         empty_is_null=True,
     )
 
