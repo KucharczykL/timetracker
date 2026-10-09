@@ -529,8 +529,9 @@ function markChainLeaving(group: readonly Entry[]): void {
   for (const entry of group) {
     entry.state = "leaving";
     entry.group = group.length > 1 ? group : null;
-    removeSurface(entry.surface);
   }
+  // Marked first: a removal closes surfaces above.
+  for (const entry of [...group].reverse()) removeSurface(entry.surface);
   markShown();
   notifyChange();
 }

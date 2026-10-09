@@ -366,3 +366,9 @@ def test_the_answer_check_names_a_nested_sheetless_drop_down_alone():
     html = outer[: -len("</drop-down>")] + inner + "</drop-down>"
     [fault] = sheetless_dropdown_faults(html)
     assert "aria-label='Inner'" in fault
+
+
+def test_a_leaving_sheet_fades_its_backdrop_whatever_its_state():
+    html = dropdown(sheet=SheetSpec("Day"))
+    [dialog] = sheets(html)
+    assert "data-[motion=leaving]:backdrop:opacity-0!" in dialog

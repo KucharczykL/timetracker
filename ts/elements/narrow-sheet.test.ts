@@ -820,6 +820,30 @@ describe("a dropdown sheet inside an open sheet", () => {
     expect(outerDialog.open).toBe(false);
   });
 
+  it("keeps the sheet below hidden while × drops the chain", async () => {
+    reducedMotion = false;
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: () => ({
+        cancel: () => {},
+        finished: new Promise((resolve) => window.setTimeout(resolve, 240)),
+      }),
+    });
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    await vi.runAllTimersAsync();
+    const outerPanel = outerDialog.querySelector<HTMLElement>("[data-sheet-panel]")!;
+    expect(outerPanel.style.visibility).toBe("hidden");
+    mouseClick(innerDialog.querySelector<HTMLElement>("[data-modal-dismiss]")!);
+    expect(innerDialog.open).toBe(true);
+    expect(outerPanel.style.visibility).toBe("hidden");
+    await vi.runAllTimersAsync();
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(false);
+    delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+  });
+
   it("moves only the first host on a widen, and the level closes with it", () => {
     const { outerHost, outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
     mouseClick(outerToggle);

@@ -1382,6 +1382,8 @@ _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "
     "data-[sheet-state=opening]:backdrop:opacity-100 "
     "data-[sheet-state=open]:backdrop:opacity-100 "
+    # A chain's lower sheets fade with its top.
+    "data-[motion=leaving]:backdrop:opacity-0! "
     # A level never dims itself.
     "data-sheet-level:backdrop:opacity-0!"
 )
