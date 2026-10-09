@@ -1823,4 +1823,64 @@ describe("reload", () => {
     await settle();
     expect(topModal()).toBeNull();
   });
+
+  it("keeps the body and tells the person when the fetch fails", async () => {
+    const dialog = await openPage();
+    const before = body(dialog).innerHTML;
+    vi.mocked(clientErrors.reportClientError).mockClear();
+
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail: { url: EDIT } }),
+    );
+    await settle();
+
+    expect(body(dialog).innerHTML).toBe(before);
+    expect(clientErrors.reportClientError).toHaveBeenCalled();
+    expect(toasts.flat()).toContainEqual({
+      message: "Could not load that game. Close and open Log again.",
+      type: "error",
+    });
+  });
+
+  it("applies only the latest of two quick reloads", async () => {
+    const dialog = await openPage();
+    let releaseFirst: (response: Response) => void = () => undefined;
+    vi.mocked(fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    const detail = { url: EDIT };
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail }),
+    );
+    replies.push(reply(page(`<form method="post"><input name="name" value="Second"></form>`)));
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail }),
+    );
+    await settle();
+    releaseFirst(respond(reply(page(`<form method="post"><input name="name" value="First"></form>`))));
+    await settle();
+
+    expect(body(dialog).querySelector<HTMLInputElement>('input[name="name"]')!.value).toBe(
+      "Second",
+    );
+  });
+
+  it("ignores a reload from outside every dialog", async () => {
+    await openPage();
+    const callsBefore = calls.length;
+    vi.mocked(clientErrors.reportClientError).mockClear();
+    const outside = document.getElementById("main-container")!;
+
+    outside.dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail: { url: EDIT } }),
+    );
+    await settle();
+
+    expect(calls.length).toBe(callsBefore);
+    expect(clientErrors.reportClientError).toHaveBeenCalledTimes(1);
+    expect(openDialog()).toBeTruthy();
+  });
 });

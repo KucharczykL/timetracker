@@ -67,6 +67,8 @@ interface OpenDialog {
   baseline: FormSnapshot;
   /** A late baseline checks it. */
   baselineGeneration: number;
+  /** The latest reload's serial; an older answer is dropped. */
+  reloadSerial: number;
 }
 
 type SavingButton = HTMLButtonElement | HTMLInputElement;
@@ -152,6 +154,9 @@ function whenLeaveSettles(): Promise<void> {
     });
   });
 }
+
+/** Shown when a reload could not replace the body. */
+const RELOAD_FAILED = "Could not load that game. Close and open Log again.";
 
 function errorToast(message: string): void {
   showToasts([{ message, type: "error" }]);
@@ -487,22 +492,37 @@ export class FormDialogElement extends HTMLElement {
   private readonly onReload = (event: Event): void => {
     const detail = (event as CustomEvent<FormDialogReloadDetail>).detail;
     const holding = event.target instanceof Node ? this.entryHolding(event.target) : undefined;
-    const entry = holding ?? this.stack[this.stack.length - 1];
-    if (!entry || !detail?.url) return;
-    void this.reloadInto(entry, new URL(detail.url, location.href));
+    if (!holding) {
+      report("reload event from no open dialog");
+      return;
+    }
+    if (!detail?.url) {
+      report("reload event without a url");
+      return;
+    }
+    void this.reloadInto(holding, new URL(detail.url, location.href));
   };
 
+  /** Only the latest reload of an entry is applied. */
   private async reloadInto(entry: OpenDialog, url: URL): Promise<void> {
+    entry.reloadSerial += 1;
+    const serial = entry.reloadSerial;
+    const isLatest = (): boolean => this.stack.includes(entry) && entry.reloadSerial === serial;
+    const failed = (detail: string): void => {
+      report(detail);
+      if (isLatest()) errorToast(RELOAD_FAILED);
+    };
     try {
       const route = routeOpen(await this.fetchAnswer(url));
+      if (!isLatest()) return;
       if (route.kind !== "present") {
-        report(`reload of ${url.href} answered ${route.kind}`);
+        failed(`reload of ${url.href} answered ${route.kind}`);
         return;
       }
       await this.present(entry, route.page, route.url, entry.controller.signal, false);
-      if (this.stack.includes(entry)) this.rebaseline(entry);
+      if (isLatest()) this.rebaseline(entry);
     } catch (error) {
-      report(`reload of ${url.href} failed: ${String(error)}`);
+      failed(`reload of ${url.href} failed: ${String(error)}`);
     }
   }
 
@@ -651,6 +671,7 @@ export class FormDialogElement extends HTMLElement {
       submitting: false,
       baseline: [],
       baselineGeneration: 0,
+      reloadSerial: 0,
     };
     // Registered first: content may submit on connect.
     this.stack.push(entry);

@@ -9,9 +9,7 @@ export type FormDialogCreatedDetail = Readonly<CreatedOption>;
 
 /** Load a URL as the dialog's baseline. */
 export const FORM_DIALOG_RELOAD = "form-dialog:reload";
-export interface FormDialogReloadDetail {
-  url: string;
-}
+export type FormDialogReloadDetail = Readonly<{ url: string }>;
 
 declare global {
   interface HTMLElementEventMap {
