@@ -22,6 +22,8 @@ import { type Answer, type Messages, type Page, readAnswer, sameUrl } from "./fo
 import {
   FORM_DIALOG_CREATED,
   type FormDialogCreatedDetail,
+  FORM_DIALOG_RELOAD,
+  type FormDialogReloadDetail,
   PAGE_STALE,
 } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
@@ -65,6 +67,8 @@ interface OpenDialog {
   baseline: FormSnapshot;
   /** A late baseline checks it. */
   baselineGeneration: number;
+  /** Latest reload's serial; older answers drop. */
+  reloadSerial: number;
 }
 
 type SavingButton = HTMLButtonElement | HTMLInputElement;
@@ -150,6 +154,9 @@ function whenLeaveSettles(): Promise<void> {
     });
   });
 }
+
+/** Shown when a reload fails. */
+const RELOAD_FAILED = "Could not load that game. Close and open Log again.";
 
 function errorToast(message: string): void {
   showToasts([{ message, type: "error" }]);
@@ -287,6 +294,8 @@ export class FormDialogElement extends HTMLElement {
   private stale = false;
   private reload: Reload = noReload();
   private reloadWaiting = false;
+  /** Reloads in flight; the host reads busy. */
+  private reloadsInFlight = 0;
   /** The link whose page is loading. */
   private opening: HTMLAnchorElement | null = null;
   private presentations = 0;
@@ -300,6 +309,7 @@ export class FormDialogElement extends HTMLElement {
     document.addEventListener("click", this.onClick);
     document.addEventListener("submit", this.onSubmit);
     document.addEventListener(PAGE_STALE, this.onPageStale);
+    document.addEventListener(FORM_DIALOG_RELOAD, this.onReload);
     window.addEventListener("beforeunload", this.onBeforeUnload);
     const opener = takeHandedOffOpener();
     if (opener) focusOpener(opener);
@@ -309,6 +319,7 @@ export class FormDialogElement extends HTMLElement {
     document.removeEventListener("click", this.onClick);
     document.removeEventListener("submit", this.onSubmit);
     document.removeEventListener(PAGE_STALE, this.onPageStale);
+    document.removeEventListener(FORM_DIALOG_RELOAD, this.onReload);
     window.removeEventListener("beforeunload", this.onBeforeUnload);
     window.removeEventListener(MODAL_CHANGE, this.onModalChange);
   }
@@ -479,6 +490,59 @@ export class FormDialogElement extends HTMLElement {
     this.requestReload();
   };
 
+  /** Refetches the dialog page in place. */
+  private readonly onReload = (event: Event): void => {
+    const detail = (event as CustomEvent<FormDialogReloadDetail>).detail;
+    const holding = event.target instanceof Node ? this.entryHolding(event.target) : undefined;
+    if (!holding) {
+      report("reload event from no open dialog");
+      errorToast(RELOAD_FAILED);
+      return;
+    }
+    if (!detail?.url) {
+      report("reload event without a url");
+      return;
+    }
+    void this.reloadInto(holding, new URL(detail.url, location.href));
+  };
+
+  /** Only an entry's latest reload applies. */
+  private async reloadInto(entry: OpenDialog, url: URL): Promise<void> {
+    if (entry.submitting) return;
+    entry.reloadSerial += 1;
+    const serial = entry.reloadSerial;
+    const isLatest = (): boolean =>
+      this.stack.includes(entry) && entry.reloadSerial === serial && !entry.submitting;
+    const failed = (detail: string): void => {
+      report(detail);
+      if (isLatest()) errorToast(RELOAD_FAILED);
+    };
+    const signal = eitherAbort(entry.controller.signal, deadlineAfter(LOAD_TIMEOUT_MS));
+    this.markReloading(1);
+    try {
+      const route = routeOpen(await this.fetchAnswer(url, { signal }));
+      if (!isLatest()) return;
+      if (route.kind !== "present") {
+        failed(`reload of ${url.href} answered ${route.kind}`);
+        return;
+      }
+      await this.present(entry, route.page, route.url, entry.controller.signal, false);
+      if (isLatest()) this.rebaseline(entry);
+    } catch (error) {
+      // Closing the dialog aborts its reload silently.
+      if (entry.controller.signal.aborted) return;
+      failed(`reload of ${url.href} failed: ${String(error)}`);
+    } finally {
+      this.markReloading(-1);
+    }
+  }
+
+  private markReloading(change: 1 | -1): void {
+    this.reloadsInFlight += change;
+    if (this.reloadsInFlight > 0) this.setAttribute("aria-busy", "true");
+    else this.removeAttribute("aria-busy");
+  }
+
   private entryHolding(node: Node): OpenDialog | undefined {
     return this.stack.find((entry) => entry.body.contains(node));
   }
@@ -624,6 +688,7 @@ export class FormDialogElement extends HTMLElement {
       submitting: false,
       baseline: [],
       baselineGeneration: 0,
+      reloadSerial: 0,
     };
     // Registered first: content may submit on connect.
     this.stack.push(entry);
@@ -718,6 +783,8 @@ export class FormDialogElement extends HTMLElement {
     this.rewriteCsrf();
     const request = this.buildRequest(form, submitter);
     if (!request) return;
+    // Reload in flight must not overwrite answer.
+    entry.reloadSerial += 1;
     entry.submitting = true;
     form.setAttribute("aria-busy", "true");
     entry.body.setAttribute("aria-busy", "true");

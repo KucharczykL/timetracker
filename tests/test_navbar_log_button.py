@@ -159,6 +159,14 @@ class NavbarLogButtonRenderTest(TestCase):
                         control, body, f"caption holds {control} on {url_name}"
                     )
 
+    def test_primary_opens_the_log_form_in_a_dialog(self) -> None:
+        self.client.force_login(self.user)
+        html = self.client.get(reverse("games:list_games")).content.decode()
+        primary = re.search(r'<a\b[^>]*aria-label="Log game"[^>]*>', html)
+        assert primary is not None
+        self.assertIn(f'href="{reverse("games:log_game")}?', primary.group(0))
+        self.assertIn("data-form-dialog", primary.group(0))
+
     def test_login_page_omits_log_button_and_recent_game_name(self) -> None:
         self.client.logout()
         html = self.client.get(reverse("login")).content.decode()

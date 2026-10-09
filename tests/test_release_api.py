@@ -8,7 +8,11 @@ from django.http import Http404
 from graphs import default_graph
 
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN
-from games.catalog_release import SHARED_GAME_RELEASE, PlatformRelease, release_on
+from games.catalog_release import (
+    SHARED_GAME_RELEASE,
+    PlatformRelease,
+    release_on,
+)
 from games.catalog_writes import EditionState, state_catalog_graph
 from games.models import Edition, Game, Platform, Release
 from timetracker.temporal import TemporalValue

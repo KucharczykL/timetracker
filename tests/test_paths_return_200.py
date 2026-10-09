@@ -10,7 +10,7 @@ from graphs import default_graph
 from historical_playtime_rows import record_row
 from purchases import record_purchase
 
-from games.models import Game, Platform, Playthrough
+from games.models import Game, ListColumnChoice, Platform, Playthrough
 from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo("Europe/Prague")
@@ -71,6 +71,9 @@ class PathWorksTest(TestCase):
         # A mirror key the pattern rejects renders.
         Game.objects.create(
             library=self.user.library, name="Unlinkable", wikidata="n/a"
+        )
+        ListColumnChoice.objects.create(
+            user=self.user, mode="games", shown={"wikidata": True}
         )
 
         response = self.client.get(reverse("games:list_games"), follow=True)

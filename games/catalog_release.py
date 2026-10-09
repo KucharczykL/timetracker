@@ -96,6 +96,27 @@ def release_on_platform(
     return release_on(library, game, _platform_named(library, platform_name.strip()))
 
 
+def _landing_refusal(game: Game) -> str | None:
+    """Why no new Release can land."""
+    return SHARED_GAME_RELEASE if game.library_id is None else None
+
+
+def platform_refusal(game: Game, platform: Platform) -> str | None:
+    """Why a new copy's Release can't land."""
+    try:
+        edition = _default_edition(game)
+    except RowRefused as refusal:
+        return refusal.sentence
+    if _standing(edition, platform) is not None:
+        return None
+    return _landing_refusal(game)
+
+
+def standing_release_on(game: Game, platform: Platform) -> Release | None:
+    """Default Edition's live Release on that platform."""
+    return _standing(_default_edition(game), platform)
+
+
 def release_on(library: UserLibrary, game: Game, platform: Platform) -> PlatformRelease:
     """That platform's live Release, stated if absent."""
     if game.library_id is None:

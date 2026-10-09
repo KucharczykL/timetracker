@@ -187,7 +187,7 @@ def _navbar_log_button(_library: UserLibrary) -> Built:
     """Log game with nothing to resume."""
     return Built(
         str(NavbarLogButton([], csrf_token="token", origin=None)),
-        {"Log game": reverse("games:add_session")},
+        {"Log game": reverse("games:log_game")},
     )
 
 

@@ -141,7 +141,8 @@ _TITLE_ID: ElementId = "form-dialog-title"
 _UNSAVED_TITLE_ID: ElementId = "form-dialog-unsaved-title"
 _UNSAVED_MESSAGE_ID: ElementId = "form-dialog-unsaved-message"
 
-_SURFACE_CLASS = (
+#: A modal panel's frame and overlay surface.
+MODAL_SURFACE_CLASS = (
     "max-h-[calc(100dvh-2rem-var(--modal-reserve,0px))] flex-col overflow-hidden rounded-base border "
     f"border-default-medium shadow-lg/50 {OVERLAY_SURFACE_CLASS}"
 )
@@ -173,9 +174,9 @@ _require_panel_widths_match()
 
 _PANEL_CLASS = (
     f"flex w-[calc(100%-2rem)] {' '.join(_PANEL_WIDTH_CLASSES.values())} "
-    f"{_SURFACE_CLASS}"
+    f"{MODAL_SURFACE_CLASS}"
 )
-_WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm {_SURFACE_CLASS}"
+_WARNING_PANEL_CLASS = f"flex w-[calc(100%-2rem)] max-w-sm {MODAL_SURFACE_CLASS}"
 
 #: The link loading, or the body submitting.
 _BUSY_CLASS = "aria-busy:cursor-progress aria-busy:opacity-60"

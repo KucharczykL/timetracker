@@ -82,6 +82,21 @@ class GroupedFormFieldsTest(SimpleTestCase):
         assert "items-center justify-between gap-6" in html
         assert isinstance(form.fields["enabled"].widget, PrimitiveCheckboxWidget)
 
+    def test_adjacent_groups_sharing_a_container_render_inside_it_once(self):
+        def boxed(fieldsets):
+            return Div(class_="box")[*fieldsets]
+
+        groups = [
+            FormFieldGroup("One", ("enabled",), container=boxed),
+            FormFieldGroup("Two", ("destination",), container=boxed),
+            FormFieldGroup("Three", ("limit",)),
+        ]
+        html = str(FormFields(KitForm(), groups=groups))
+
+        assert html.count('class="box"') == 1
+        box = html[html.index('class="box"') : html.index("Three")]
+        assert "One" in box and "Two" in box
+
     def test_unknown_or_duplicate_group_names_fail_loudly(self):
         with pytest.raises(ValueError, match="unknown field"):
             str(FormFields(KitForm(), groups=[FormFieldGroup("Bad", ("nope",))]))

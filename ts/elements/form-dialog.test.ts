@@ -5,7 +5,7 @@ import * as clientErrors from "../client-errors.js";
 import "./form-dialog.js";
 
 import type { FormDialogElement } from "./form-dialog.js";
-import { FORM_DIALOG_CREATED, PAGE_STALE } from "./form-dialog/events.js";
+import { FORM_DIALOG_CREATED, FORM_DIALOG_RELOAD, PAGE_STALE } from "./form-dialog/events.js";
 import { browser } from "./form-dialog/navigation.js";
 import {
   attachModal,
@@ -1132,6 +1132,29 @@ describe("created", () => {
 });
 
 describe("reload", () => {
+  const RELOAD_FAILED = "Could not load that game. Close and open Log again.";
+
+  function reloadEvent(url: string): CustomEvent {
+    return new CustomEvent(FORM_DIALOG_RELOAD, { bubbles: true, detail: { url } });
+  }
+
+  /** Holds a reload's fetch until released; an abort rejects it. */
+  function heldReload(): { release(answer: Reply): void; signals: AbortSignal[] } {
+    const signals: AbortSignal[] = [];
+    let settleFetch: (response: Response) => void = () => {};
+    vi.mocked(fetch).mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          if (init?.signal) signals.push(init.signal);
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+          settleFetch = resolve;
+        }),
+    );
+    return { release: (answer) => settleFetch(respond(answer)), signals };
+  }
+
   async function staleDialog(): Promise<void> {
     await openPage();
     replies.push(reply(next(`${ORIGIN}/entry/add`)));
@@ -1267,6 +1290,69 @@ describe("reload", () => {
     expect(reloads).toBe(0);
     expect(assigned).toEqual([]);
     expect(toasts.at(-1)).toEqual(SAVED);
+  });
+
+  it("times a reload out, toasts, and keeps the body", async () => {
+    await openPage();
+    vi.useFakeTimers();
+    pending();
+    body().querySelector("form")!.dispatchEvent(reloadEvent(EDIT));
+    await vi.advanceTimersByTimeAsync(15_000);
+    vi.useRealTimers();
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain(RELOAD_FAILED);
+    expect(body().querySelector('input[name="name"]')).not.toBeNull();
+  });
+
+  it("aborts a reload when its dialog closes, with no toast", async () => {
+    await openPage();
+    const reloading = heldReload();
+    body().querySelector("form")!.dispatchEvent(reloadEvent(EDIT));
+    cancelTop();
+    await settle();
+    expect(reloading.signals[0].aborted).toBe(true);
+    expect(toasts.flat()).toEqual([]);
+  });
+
+  it("marks the host busy while a reload is in flight", async () => {
+    await openPage();
+    const host = document.querySelector("form-dialog")!;
+    const reloading = heldReload();
+    body().querySelector("form")!.dispatchEvent(reloadEvent(EDIT));
+    expect(host.getAttribute("aria-busy")).toBe("true");
+    reloading.release(reply(page("<p>Reloaded</p>")));
+    await settle();
+    expect(host.hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("drops a reload's answer that lands after a submit starts", async () => {
+    await openPage();
+    const reloading = heldReload();
+    body().querySelector("form")!.dispatchEvent(reloadEvent(EDIT));
+    replies.push(reply(page(`<form method="post"><p>SUBMITTED</p></form>`)));
+    submit();
+    await settle();
+    reloading.release(reply(page(`<form method="post"><p>RELOADED</p></form>`)));
+    await settle();
+    expect(body().textContent).toContain("SUBMITTED");
+    expect(body().textContent).not.toContain("RELOADED");
+  });
+
+  it("starts no reload while a submit is pending", async () => {
+    await openPage();
+    pending();
+    submit();
+    const fetches = vi.mocked(fetch).mock.calls.length;
+    body().querySelector("form")!.dispatchEvent(reloadEvent(EDIT));
+    await settle();
+    expect(vi.mocked(fetch).mock.calls.length).toBe(fetches);
+  });
+
+  it("toasts a reload that comes from no open dialog", async () => {
+    document.dispatchEvent(reloadEvent(EDIT));
+    await settle();
+    expect(JSON.stringify(toasts.at(-1))).toContain(RELOAD_FAILED);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
   it("focuses the handed-off opener after the load", () => {
@@ -1800,5 +1886,87 @@ describe("unsaved changes", () => {
     expect(unload()).toBe(false);
     edit();
     expect(unload()).toBe(true);
+  });
+});
+
+describe("reload", () => {
+  it("replaces the dialog's body and takes it as the baseline", async () => {
+    const dialog = await openPage();
+    body(dialog).querySelector<HTMLInputElement>('input[name="name"]')!.value = "typed";
+    replies.push(
+      reply(page(`<form method="post"><input name="name" value="Fresh"></form>`)),
+    );
+
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail: { url: EDIT } }),
+    );
+    await settle();
+
+    expect(body(dialog).querySelector<HTMLInputElement>('input[name="name"]')!.value).toBe(
+      "Fresh",
+    );
+    cancelTop();
+    await settle();
+    expect(topModal()).toBeNull();
+  });
+
+  it("keeps the body and tells the person when the fetch fails", async () => {
+    const dialog = await openPage();
+    const before = body(dialog).innerHTML;
+    vi.mocked(clientErrors.reportClientError).mockClear();
+
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail: { url: EDIT } }),
+    );
+    await settle();
+
+    expect(body(dialog).innerHTML).toBe(before);
+    expect(clientErrors.reportClientError).toHaveBeenCalled();
+    expect(toasts.flat()).toContainEqual({
+      message: "Could not load that game. Close and open Log again.",
+      type: "error",
+    });
+  });
+
+  it("applies only the latest of two quick reloads", async () => {
+    const dialog = await openPage();
+    let releaseFirst: (response: Response) => void = () => undefined;
+    vi.mocked(fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    const detail = { url: EDIT };
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail }),
+    );
+    replies.push(reply(page(`<form method="post"><input name="name" value="Second"></form>`)));
+    body(dialog).dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail }),
+    );
+    await settle();
+    releaseFirst(respond(reply(page(`<form method="post"><input name="name" value="First"></form>`))));
+    await settle();
+
+    expect(body(dialog).querySelector<HTMLInputElement>('input[name="name"]')!.value).toBe(
+      "Second",
+    );
+  });
+
+  it("ignores a reload from outside every dialog", async () => {
+    await openPage();
+    const callsBefore = calls.length;
+    vi.mocked(clientErrors.reportClientError).mockClear();
+    const outside = document.getElementById("main-container")!;
+
+    outside.dispatchEvent(
+      new CustomEvent("form-dialog:reload", { bubbles: true, detail: { url: EDIT } }),
+    );
+    await settle();
+
+    expect(calls.length).toBe(callsBefore);
+    expect(clientErrors.reportClientError).toHaveBeenCalledTimes(1);
+    expect(openDialog()).toBeTruthy();
   });
 });

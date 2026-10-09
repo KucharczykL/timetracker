@@ -49,6 +49,7 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:add_purchase",
         "games:add_session",
         "games:add_to_library",
+        "games:log_game",
         "games:edit_device",
         "games:edit_game",
         "games:edit_historical_playtime",
