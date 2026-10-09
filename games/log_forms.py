@@ -46,6 +46,7 @@ from games.reads.playthrough_runs import (
     tracked_game,
 )
 from games.writes.log_game import (
+    RUN_SECTIONS,
     SECTIONS,
     HistoricalHours,
     LogSection,
@@ -81,8 +82,6 @@ SECTION_LABELS: Final[Mapping[LogSection, str]] = {
 #: The copy tick, where the game already holds a copy.
 ANOTHER_COPY_LABEL: Final = "Another copy"
 
-#: Sections whose writes name a run.
-RUN_SECTIONS: Final[frozenset[LogSection]] = frozenset({"dates", "playtime", "more"})
 COPY_FIELDS: Final = (
     "release",
     "access",
