@@ -98,6 +98,31 @@ def open_facet(page: Page, field: str) -> None:
     trigger.click()
 
 
+#: Every open bottom sheet, a level included.
+OPEN_SHEET = "dialog[data-dropdown-sheet][open]"
+#: The sheet no open sheet sits inside: the one a person sees.
+TOP_SHEET = f"{OPEN_SHEET}:not(:has({OPEN_SHEET}))"
+
+
+def top_sheet(page: Page) -> Locator:
+    """The topmost open bottom sheet, a level if one is open."""
+    return page.locator(TOP_SHEET)
+
+
+def sheet_title(sheet: Locator) -> Locator:
+    """A sheet's own title, not a nested level's."""
+    title_id = sheet.get_attribute("aria-labelledby")
+    return sheet.page.locator(f'[id="{title_id}"]')
+
+
+def close_sheets(page: Page) -> None:
+    """Escape each open sheet, topmost first, until none is open."""
+    remaining = page.locator(OPEN_SHEET).count()
+    for left in range(remaining - 1, -1, -1):
+        page.keyboard.press("Escape")
+        expect(page.locator(OPEN_SHEET)).to_have_count(left)
+
+
 @contextmanager
 def picker_opened(picker: Locator) -> Iterator[None]:
     """Open a picker; on a clean exit, its sheet has closed.

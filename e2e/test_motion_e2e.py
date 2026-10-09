@@ -4,7 +4,7 @@ from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, ViewportSize, expect
 
-from e2e.helpers import open_facet, record_copy
+from e2e.helpers import close_sheets, open_facet, record_copy, top_sheet
 
 PHONE = ViewportSize(width=390, height=844)
 LEAVING = '[data-motion="leaving"]'
@@ -58,9 +58,10 @@ def test_a_bottom_sheet_at_phone_width_closes_settled(motion_page: Page, live_se
     page.set_viewport_size(PHONE)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_facet(page, "status")
-    expect(page.locator(SHEET)).to_be_visible()
+    expect(top_sheet(page)).to_be_visible()
 
-    page.keyboard.press("Escape")
+    # A facet opened from ⋯ is a level: Escape backs out of it alone.
+    close_sheets(page)
     expect(page.locator(SHEET)).to_have_count(0)
     _settled(page)
 

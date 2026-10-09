@@ -9,7 +9,7 @@ from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 
-from e2e.helpers import log_in, record_copy
+from e2e.helpers import log_in, record_copy, sheet_title, top_sheet
 from games.models import Game, Platform
 from games.views.filtering import builder_url_for
 
@@ -52,8 +52,9 @@ def _open_started(page: Page, live_server) -> None:
 
 def _open_overflow_facet(page: Page, label: str) -> Locator:
     page.locator("[data-quick-overflow-trigger]").click()
+    # CSS, not role: a covered level hides it.
     facet = page.locator("drop-down[data-quick-facet]").filter(
-        has=page.get_by_role("button", name=label, exact=True)
+        has=page.locator("button", has_text=label)
     )
     facet.get_by_role("button", name=label, exact=True).click()
     return facet
@@ -159,7 +160,7 @@ def test_a_quick_facet_applies_from_its_sheet(phone: Page, live_server, errors):
     page = phone
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     _open_overflow_facet(page, "Timing")
-    sheet = page.locator(SHEET)
+    sheet = top_sheet(page)
     expect(sheet).to_be_visible()
     sheet.locator('[data-search-select-option][data-label="Duration only"]').click()
     with page.expect_navigation():
@@ -224,7 +225,7 @@ def test_a_date_facet_applies_from_its_calendar_footer(
     page = phone
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     _open_overflow_facet(page, "Day")
-    sheet = page.locator(SHEET)
+    sheet = top_sheet(page)
     expect(sheet).to_be_visible()
     sheet.get_by_role("button", name="Today", exact=True).click()
     expect(sheet.get_by_role("button", name="Apply", exact=True)).to_have_count(1)
@@ -238,16 +239,11 @@ def test_a_facet_sheet_survives_the_bar_reflowing(phone: Page, live_server, erro
     page = phone
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     facet = _open_overflow_facet(page, "Timing")
-    expect(page.locator(SHEET)).to_be_visible()
+    expect(top_sheet(page)).to_be_visible()
     page.set_viewport_size(ViewportSize(width=560, height=812))
     page.wait_for_timeout(200)
-    panel = page.locator("#quick-timing_mode-dropdown")
-    if page.locator(SHEET).count():
-        expect(
-            page.locator(SHEET).locator("#quick-timing_mode-dropdown")
-        ).to_have_count(1)
-    else:
-        assert panel.evaluate("panel => !panel.closest('dialog')")
+    expect(top_sheet(page)).to_be_visible()
+    expect(top_sheet(page).locator("#quick-timing_mode-dropdown")).to_have_count(1)
     expect(facet.locator("#quick-timing_mode-dropdown")).to_have_count(1)
     assert errors == []
 
@@ -292,11 +288,9 @@ def test_a_submenu_opens_as_a_level_and_an_act_inside_it_closes_every_sheet(
     page.get_by_role("button", name="Tunic (PS5) actions").click()
     parent = page.locator(PARENT)
     expect(parent).to_have_count(1)
-    expect(parent.locator("[data-dropdown-sheet-title]")).to_have_text(
-        "Tunic (PS5) actions"
-    )
+    expect(sheet_title(parent)).to_have_text("Tunic (PS5) actions")
 
-    page.locator(SHEET).get_by_role("menuitem", name="I no longer have it").click()
+    top_sheet(page).get_by_role("menuitem", name="I no longer have it").click()
     level = page.locator(LEVEL)
     expect(level).to_have_count(1)
     expect(level).to_be_visible()
@@ -311,7 +305,7 @@ def test_a_submenu_opens_as_a_level_and_an_act_inside_it_closes_every_sheet(
     expect(page.locator(LEAVING)).to_have_count(0)
 
     # Reopen the submenu and press an act inside it: every sheet closes.
-    page.locator(SHEET).get_by_role("menuitem", name="I no longer have it").click()
+    top_sheet(page).get_by_role("menuitem", name="I no longer have it").click()
     expect(page.locator(LEVEL)).to_have_count(1)
     with page.expect_navigation():
         page.locator(LEVEL).get_by_role("menuitem", name="Just mark it gone").click()
@@ -339,8 +333,8 @@ def test_a_facet_picker_level_closes_the_whole_chain_and_returns_focus(
     expect(panel.locator('input[name="quick-name"]')).to_be_visible()
 
     modifier = panel.locator('search-select[name="quick-name-modifier"]')
-    face = modifier.locator(
-        "xpath=ancestor::drop-down[1]/"
+    host = modifier.locator("xpath=ancestor::drop-down[1]")
+    face = host.locator(
         ":scope > [data-search-select-face] [data-search-select-face-open]"
     )
     if face.is_visible():

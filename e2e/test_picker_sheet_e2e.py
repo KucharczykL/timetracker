@@ -5,7 +5,7 @@ from django.urls import reverse
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 from tracked_games import create_tracked_game
 
-from e2e.helpers import held_choice, log_in, open_facet, pick_choice
+from e2e.helpers import held_choice, log_in, open_facet, pick_choice, top_sheet
 from games.models import Platform
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -192,7 +192,7 @@ def test_a_long_set_facet_keeps_apply_in_view(
     page.set_viewport_size(PHONE)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_facet(page, "platform")
-    sheet = page.locator(SHEET)
+    sheet = top_sheet(page)
     expect(sheet).to_be_visible()
     apply = sheet.locator("[data-quick-facet-apply]")
     expect(apply).to_be_in_viewport()
@@ -205,12 +205,14 @@ def test_a_facet_picker_opens_a_second_sheet(signed_in: Page, live_server, error
     page = signed_in
     page.set_viewport_size(PHONE)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    # ⋯ holds the name facet, so its sheet is a level above the overflow's.
     open_facet(page, "name")
-    expect(page.locator(SHEET)).to_have_count(1)
+    expect(top_sheet(page)).to_be_visible()
+    open_sheets = page.locator(SHEET).count()
 
     pick_choice(page, "quick-name-modifier", "INCLUDES")
 
-    expect(page.locator(SHEET)).to_have_count(1)
+    expect(page.locator(SHEET)).to_have_count(open_sheets)
     expect(held_choice(page, "quick-name-modifier")).to_have_value("INCLUDES")
     assert errors == []
 
