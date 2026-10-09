@@ -50,9 +50,11 @@ def test_a_record_goes_through_every_act_from_game_detail(
 
     _open_row_menu(page, rows.first)
     page.get_by_role("menuitem", name="Edit", exact=True).click()
-    page.get_by_label("Playthrough 2").uncheck()
-    page.get_by_role("button", name="Submit", exact=True).click()
+    dialog = page.locator("dialog[data-modal][open]")
+    dialog.get_by_label("Playthrough 2").uncheck()
+    dialog.get_by_role("button", name="Submit", exact=True).click()
 
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.get_by_text("Historical playtime saved.")).to_be_visible()
     expect(rows.first).not_to_contain_text("Playthrough 2")
     expect(rows.first).to_contain_text("Playthrough 1")

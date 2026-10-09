@@ -63,6 +63,26 @@ def test_add_session_selects_the_new_game(
     assert errors == []
 
 
+def test_the_navbar_log_game_dialog_names_itself_under_a_picker_dialog(
+    authenticated_page: Page, live_server, e2e_library, errors
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.get_by_role("link", name="Log game", exact=True).click()
+    lower = page.locator("dialog[data-modal][open]").first
+    expect(lower.locator("[data-form-dialog-title]")).to_have_text("Add New Session")
+
+    lower.locator('search-select[name="game"]').get_by_role(
+        "link", name="New game"
+    ).click()
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(2)
+    upper = page.locator("dialog[data-modal][open]").last
+    expect(upper.locator("[data-form-dialog-title]")).to_have_text("Add New Game")
+    #: The top dialog's trail names the one it covers.
+    expect(upper.locator("[data-modal-trail]").first).to_have_text("Add New Session")
+    assert errors == []
+
+
 def test_an_addon_adds_its_main_game_in_a_stacked_dialog(
     authenticated_page: Page, live_server, e2e_library, errors
 ):

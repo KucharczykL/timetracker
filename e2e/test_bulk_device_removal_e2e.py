@@ -51,10 +51,12 @@ def test_the_row_menu_opens_edit(live_server, page: Page, e2e_library):
     page.get_by_role("button", name="Steam Deck (Handheld) actions").click()
     page.get_by_role("menuitem", name="Edit").click()
 
-    page.wait_for_url(f"**{reverse('games:edit_device', args=[device.pk])}**")
-    page.fill('input[name="name"]', "Steam Deck OLED")
-    page.get_by_role("button", name="Submit").click()
+    dialog = page.locator("dialog[data-modal][open]")
+    expect(dialog.locator("[data-form-dialog-title]")).to_have_text("Edit device")
+    dialog.locator('input[name="name"]').fill("Steam Deck OLED")
+    dialog.get_by_role("button", name="Submit", exact=True).click()
 
+    expect(page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(page.get_by_role("cell", name="Steam Deck OLED").first).to_be_visible()
     device.refresh_from_db()
     assert device.name == "Steam Deck OLED"

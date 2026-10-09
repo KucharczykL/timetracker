@@ -79,9 +79,6 @@ def test_a_centred_form_dialog_closes_settled(
     deck = create_device(e2e_library, "Deck")
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
     edit = f'a[href^="{reverse("games:edit_device", args=[deck.pk])}"]'
-    page.locator(edit).first.evaluate(
-        "link => link.setAttribute('data-form-dialog', '')"
-    )
     page.get_by_role("button", name="Deck (Unknown) actions").click()
     page.locator(edit).click()
     expect(page.locator(CENTRED_DIALOG)).to_be_visible()

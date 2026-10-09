@@ -1,7 +1,6 @@
 """A real browser edits from a filtered list and lands back on it."""
 
 import json
-import re
 from urllib.parse import quote
 
 import pytest
@@ -67,10 +66,13 @@ def test_editing_from_a_filtered_list_returns_to_it(
     #: Edit sits in the row's menu, behind its trigger.
     open_row_menu(authenticated_page, f"game-menu-{world.pk}")
     authenticated_page.click('a[href*="/edit?origin="]')
-    expect(authenticated_page).to_have_url(re.compile(re.escape("/edit?origin=")))
-    authenticated_page.fill('input[name="name"]', "Alpha Renamed")
-    authenticated_page.click('#add-form button[type="submit"]')
+    #: The edit opens in a dialog over the list, whose URL stays put.
+    dialog = authenticated_page.locator("dialog[data-modal][open]")
+    expect(dialog.locator('input[name="name"]')).to_have_value("Alpha")
+    dialog.locator('input[name="name"]').fill("Alpha Renamed")
+    dialog.get_by_role("button", name="Submit", exact=True).click()
 
+    expect(authenticated_page.locator("dialog[data-modal][open]")).to_have_count(0)
     expect(authenticated_page).to_have_url(f"{live_server.url}{list_path}")
     expect(authenticated_page.locator("table")).to_contain_text("Alpha Renamed")
     expect(authenticated_page.locator("table")).not_to_contain_text("Zeta Unplayed")

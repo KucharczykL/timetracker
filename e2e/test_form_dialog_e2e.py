@@ -58,7 +58,6 @@ def _open_device_edit(page: Page, live_server, device: Device) -> None:
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
     _stamp_window(page)
     edit = f'a[href^="{reverse("games:edit_device", args=[device.pk])}"]'
-    _mark(page, edit)
     _menu(page, device.name).click()
     page.locator(edit).click()
     expect(page.locator("dialog[data-modal][open]")).to_be_visible()
