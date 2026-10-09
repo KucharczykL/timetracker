@@ -37,7 +37,7 @@ export class TriStateCheckboxElement extends HTMLElement {
     this.reflect(parts);
   }
 
-  /** Finds and reads every part; null reports why and leaves the box disabled. */
+  /** Every part, or null after reporting why. */
   private bind(): BoundParts | null {
     const name = this.getAttribute("name") ?? "";
     const box = this.querySelector<HTMLInputElement>("[data-tri-state-box]");

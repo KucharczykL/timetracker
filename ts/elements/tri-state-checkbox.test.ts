@@ -33,7 +33,7 @@ function mount({
   document.body.innerHTML = markup({ held, box, posted, checkedWord, uncheckedWord });
 }
 
-/** The component's server markup; the box starts disabled. */
+/** Server markup; the box starts disabled. */
 function markup({
   held,
   box = held === "checked",

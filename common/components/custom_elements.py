@@ -679,7 +679,7 @@ register_element("unset-field", "UnsetField", UnsetFieldProps)
 _UnsetField = custom_element_builder("unset-field")
 
 
-#: What the selected rows hold; mixed where they differ.
+#: What the rows hold, or mixed.
 type TriState = Literal["checked", "unchecked", "mixed"]
 
 

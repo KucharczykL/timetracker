@@ -61,7 +61,7 @@ def TriStateCheckbox(
     words: TriStateWords,
     hints: TriStateHints,
 ) -> Node:
-    """Shows ``stated``, or ``held`` when unstated; posts it against ``held``."""
+    """Shows ``stated`` or ``held``; posts the difference."""
     hint_id = f"{box_id}-hint"
     shown = held if stated is None else stated
     return _TriStateCheckbox(
