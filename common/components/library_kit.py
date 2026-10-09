@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from common.components.core import Child, Fragment, Node, randomid
+from common.components.core import Attributes, Child, Fragment, Node, randomid
 from common.components.custom_elements import (
     DropdownLinkItem,
     RowActionMenu,
@@ -162,6 +162,7 @@ def CopyControl(
 class SummaryAction:
     label: str
     href: str
+    attributes: Attributes = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,7 +191,10 @@ def _summary_action_menu(
         length=24,
     )
     return RowActionMenu(
-        [DropdownLinkItem(action.href, action.label) for action in actions],
+        [
+            DropdownLinkItem(action.href, action.label, attributes=action.attributes)
+            for action in actions
+        ],
         label=f"{label} actions",
         id=menu_id,
     )
@@ -238,7 +242,12 @@ def SummaryRow(
                 Div(
                     data_summary_wide_actions="",
                     class_="hidden items-center justify-end gap-4 @2xl:flex",
-                )[*[Link(href=action.href)[action.label] for action in actions]],
+                )[
+                    *[
+                        Link(action.attributes, href=action.href)[action.label]
+                        for action in actions
+                    ]
+                ],
             ]
         )
     #: One auto column per trailing part.

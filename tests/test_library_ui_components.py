@@ -17,6 +17,7 @@ from common.components import (
     TooltipDefinition,
     TooltipDefinitionList,
     collect_media,
+    form_dialog_link,
 )
 
 
@@ -183,6 +184,27 @@ def test_summary_row_renders_both_presentations_from_one_action_source():
     assert 'data-summary-overflow=""' in html
     assert 'aria-label="Games actions"' in html
     assert 'aria-label="851 Games"' in html
+
+
+def test_a_summary_action_marked_as_a_form_dialog_is_marked_in_both_renders():
+    html = str(
+        SummaryRow(
+            label="Devices",
+            subtitle="Hardware you use to play.",
+            value=SummaryValue(2, "/tracker/device/list"),
+            actions=(
+                SummaryAction(
+                    "Add",
+                    "/tracker/device/add",
+                    attributes=form_dialog_link(),
+                ),
+            ),
+        )
+    )
+
+    #: The overflow menu's item and the wide link.
+    assert html.count("data-form-dialog") == 2
+    assert html.count('href="/tracker/device/add"') == 2
 
 
 def test_summary_list_is_divider_separated_without_a_nested_card_border():

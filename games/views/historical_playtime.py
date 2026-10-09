@@ -29,6 +29,7 @@ from common.components import (
     TableData,
     TruncatedText,
     drop_columns,
+    form_dialog_link,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -110,6 +111,7 @@ def record_row_menu(
                 action_url("games:edit_historical_playtime", record.pk, origin=origin),
                 "Edit",
                 icon="edit",
+                attributes=form_dialog_link(),
             ),
             DropdownLinkItem(
                 action_url(

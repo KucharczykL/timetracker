@@ -123,10 +123,12 @@ def NavbarLogButton(
         NameWithIcon,
         Span,
         SplitButtonDropdown,
+        form_dialog_link,
     )
     from common.returns import action_url
 
     primary = ControlButton(
+        form_dialog_link(),
         color="green",
         href=action_url("games:add_session", origin=origin),
         aria_label="Log game",

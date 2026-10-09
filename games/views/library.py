@@ -24,6 +24,7 @@ from common.components import (
     SummaryList,
     SummaryRow,
     SummaryValue,
+    form_dialog_link,
 )
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
@@ -58,7 +59,11 @@ def _actions(
 ) -> tuple[SummaryAction, ...]:
     return (
         SummaryAction("Browse", list_url),
-        SummaryAction("Add", action_url(add_name, origin=origin)),
+        SummaryAction(
+            "Add",
+            action_url(add_name, origin=origin),
+            attributes=form_dialog_link(),
+        ),
     )
 
 
@@ -168,7 +173,9 @@ def library(request: HttpRequest) -> HttpResponse:
         subtitle="Purchase management will move into the future Catalogue. This section provides a library summary in the meantime.",
         actions=(
             SummaryAction(
-                "Add to library", action_url("games:add_to_library", origin=origin)
+                "Add to library",
+                action_url("games:add_to_library", origin=origin),
+                attributes=form_dialog_link(),
             ),
         ),
         detail=StatisticGrid(

@@ -19,6 +19,7 @@ from common.components import (
     QuickFilterBar,
     TableData,
     drop_columns,
+    form_dialog_link,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -179,7 +180,9 @@ def list_library(request: HttpRequest) -> HttpResponse:
         per_page_override=find.per_page_override,
     )
     add = ControlButton(
-        href=action_url("games:add_to_library", origin=origin), color="gray"
+        form_dialog_link(),
+        href=action_url("games:add_to_library", origin=origin),
+        color="gray",
     )[Icon("plus", size=ICON_BUTTON_SIZE_CLASS), "Add to library"]
     content = Div()[GamesTabs("library", trailing=add), quick_bar, table]
     return render_page(request, content, title="Manage library", width="full")
