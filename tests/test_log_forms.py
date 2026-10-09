@@ -25,6 +25,7 @@ from games.log_forms import (
     DATES_REVERSED,
     DAY_REQUIRED,
     REMOVED_GAME,
+    STALE_FORM,
     STALE_GAME,
     ZERO_DURATION,
     LogGameForm,
@@ -35,10 +36,11 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
+    Playthrough,
 )
 from games.reads.log_game import HeldFacts
 from games.writes.endpoint import KEEP
-from games.writes.log_game import HistoricalHours, SessionTiming
+from games.writes.log_game import PICKED_RUN_GONE, HistoricalHours, SessionTiming
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -410,11 +412,12 @@ def test_a_prefilled_game_is_editable(owned_library, game):
     assert form.initial["game"] == game.pk
 
 
-def test_an_unknown_run_pick_is_refused_by_the_field(owned_library, game):
+def test_an_unknown_run_pick_is_refused_on_the_form(owned_library, game):
     form = _form(owned_library, _posted(game, run=str(uuid.uuid7())))
 
     assert not form.is_valid()
-    assert "run" in form.errors
+    assert "run" not in form.errors
+    assert form.non_field_errors() == [PICKED_RUN_GONE]
 
 
 def test_a_game_the_page_never_showed_is_refused_on_the_game(owned_library, game):
@@ -435,3 +438,30 @@ def test_a_cleared_platform_is_stated_as_none(owned_library, game, pc):
 
     assert form.is_valid(), form.errors
     assert form.statement().platform is None
+
+
+def test_a_run_the_library_no_longer_holds_is_refused_on_the_form(owned_library, game):
+    run = another_run(owned_library.user, game)
+    Playthrough.objects.filter(pk=run.pk).update(
+        removed_at=datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC)
+    )
+
+    form = _form(owned_library, _posted(game, run=str(run.pk)))
+
+    assert not form.is_valid()
+    assert "run" not in form.errors
+    assert form.non_field_errors() == [PICKED_RUN_GONE]
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("attempt", "x"), ("status_seen", "nonsense")],
+)
+def test_a_hidden_field_error_states_the_form_out_of_date(
+    owned_library, game, name, value
+):
+    form = _form(owned_library, _posted(game, **{name: value}))
+
+    assert not form.is_valid()
+    assert name not in form.errors
+    assert form.non_field_errors() == [STALE_FORM]

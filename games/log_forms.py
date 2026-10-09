@@ -1,6 +1,7 @@
 """Form for one Log a game press."""
 
 import datetime
+from collections.abc import Mapping
 from functools import partial
 from typing import Any, ClassVar, Final, cast
 
@@ -49,6 +50,7 @@ from games.reads.playthrough_runs import library_runs
 from games.reads.releases import UNSPECIFIED_PLATFORM
 from games.writes.endpoint import KEEP, Keep, Restated
 from games.writes.log_game import (
+    PICKED_RUN_GONE,
     HistoricalHours,
     LogStatement,
     SessionTiming,
@@ -63,7 +65,14 @@ DAY_REQUIRED = "Give the day you played."
 ZERO_DURATION = "Give a duration above zero."
 REMOVED_GAME = "This game is removed from your library. Restore it instead."
 ANOTHER_GAMES_RUN = "That playthrough is another game's."
-STALE_GAME = "The form was still loading that game. Check the fields and save again."
+STALE_GAME = (
+    "That game's data was still loading. The fields now show what it holds; "
+    "enter your changes again."
+)
+#: A hidden field cannot show its error, so the form states it.
+STALE_FORM = "The form was out of date. Reload and try again."
+#: Sentence for a hidden field the page knows one for.
+HIDDEN_FIELD_SENTENCES: Final[Mapping[str, str]] = {"run": PICKED_RUN_GONE}
 
 PLAYTIME_KINDS: Final = (("session", "Session"), ("historical", "Historical playtime"))
 #: Status an untracked game shows.
@@ -251,6 +260,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
+        self._state_hidden_errors()
         if cleaned is None:
             return cleaned
         game: Game | None = cleaned.get("game")
@@ -268,6 +278,17 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             self.add_error("completed", DATES_REVERSED)
         self._refuse_a_playtime(cleaned)
         return cleaned
+
+    def _state_hidden_errors(self) -> None:
+        """Move a hidden field's error to the form, which can show it."""
+        hidden = [
+            name
+            for name in self.errors
+            if name in self.fields and self.fields[name].widget.is_hidden
+        ]
+        for name in hidden:
+            del self.errors[name]
+            self.add_error(None, HIDDEN_FIELD_SENTENCES.get(name, STALE_FORM))
 
     def _refuse_a_removed_game(self, game: Game) -> None:
         if held_facts(self.library, game).removed:

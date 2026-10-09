@@ -8,12 +8,13 @@ from html.parser import HTMLParser
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from django.utils import timezone
 from graphs import default_graph
 from stated_runs import state_run
 from tracked_games import create_tracked_game
 
 from common.components.modal import MODAL_ATTRIBUTES
-from games.log_forms import STALE_GAME
+from games.log_forms import STALE_FORM, STALE_GAME
 from games.models import (
     Game,
     LibraryEntry,
@@ -26,7 +27,7 @@ from games.models import (
 from games.views import log_game as log_game_view
 from games.writes import log_game as writes_log_game
 from games.writes.answers import CommandFailed
-from games.writes.log_game import LogRefused
+from games.writes.log_game import PICKED_RUN_GONE, LogRefused
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -494,3 +495,22 @@ def test_a_refused_status_keeps_mastery_and_the_unticked_resubmit_clears_it(
 
     assert second.status_code == 302
     assert PlayerGame.objects.get(library=owned_library, game=game).mastered is False
+
+
+def test_a_removed_run_names_the_page_not_a_hidden_field(
+    logged_in, owned_library, game
+):
+    run = state_run(owned_library.user, game, note="Gone")
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    response = _post(logged_in, game, _press(game, run=str(run.pk)))
+
+    assert response.status_code == 200
+    assert PICKED_RUN_GONE in response.content.decode()
+
+
+def test_a_malformed_attempt_names_the_page(logged_in, game):
+    response = _post(logged_in, game, _press(game, attempt="x"))
+
+    assert response.status_code == 200
+    assert STALE_FORM in response.content.decode()
