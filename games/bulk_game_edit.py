@@ -15,7 +15,7 @@ from games.bulk_actions import BulkAction
 from games.bulk_edit import (
     flag_field,
     form_refusal,
-    held_flag,
+    hold_flag,
     keeping,
     log_overwrite,
     restated,
@@ -44,7 +44,6 @@ from games.events.idempotency import IdempotencyKey
 from games.forms import (
     ChoiceSearchSelectWidget,
     PrimitiveWidgetsMixin,
-    TriStateCheckboxWidget,
 )
 from games.models import (
     VISIBILITY_FIELDS,
@@ -217,9 +216,7 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
                     lambda row: row.tracked_excluded_from_dropped,
                 ),
             ):
-                cast(TriStateCheckboxWidget, self.fields[name].widget).held = held_flag(
-                    rows, value
-                )
+                hold_flag(self, name, rows, value)
 
     def clean(self) -> dict[str, Any]:
         super().clean()

@@ -53,6 +53,7 @@ from common.components import (
     unset_input_name,
 )
 from common.components.core import Node
+from common.components.custom_elements import TriState
 from common.components.elements import Fieldset
 from common.components.icon_picker import IconChoice, IconPicker
 from common.components.primitives import (
@@ -68,7 +69,7 @@ from common.components.primitives import (
 )
 from common.components.search_select import DialogCreate, ParamSources
 from common.components.tri_state_checkbox import (
-    TriState,
+    DefiniteState,
     TriStateCheckbox,
     TriStateHints,
     TriStateWords,
@@ -217,12 +218,9 @@ TRI_STATE_HINTS: Final = TriStateHints(
 
 
 class TriStateCheckboxWidget(forms.Widget):
-    """A flag's tri-state box.
+    """A flag's tri-state box; raw posted word."""
 
-    Its value is the posted string as it came, so a choice the field does
-    not hold is refused by the field, not dropped here.
-    """
-
+    # FormFields lays it out as checkbox.
     input_type = "checkbox"
     component_media: ClassVar[Media] = Media(
         js=("dist/elements/tri-state-checkbox.js",)
@@ -237,12 +235,12 @@ class TriStateCheckboxWidget(forms.Widget):
     def value_from_datadict(self, data, files, name):
         return data.get(name)
 
-    def _stated(self, value: object) -> TriState:
+    def _stated(self, value: object) -> DefiniteState | None:
         if value in (self.words.checked, True):
             return "checked"
         if value in (self.words.unchecked, False):
             return "unchecked"
-        return self.held
+        return None
 
     def render(self, name, value, attrs=None, renderer=None):
         final_attrs = self.build_attrs(self.attrs, attrs)

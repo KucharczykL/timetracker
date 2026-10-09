@@ -8,12 +8,13 @@ half built.
 import json
 import logging
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, cast
 
 from django import forms
 from django.core.exceptions import NON_FIELD_ERRORS
 
-from common.components.tri_state_checkbox import TriState, TriStateWords
+from common.components.custom_elements import TriState
+from common.components.tri_state_checkbox import PostedWord, TriStateWords
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.forms import TriStateCheckboxWidget
 from games.reads.fact_change import FactChange
@@ -45,8 +46,8 @@ def keeping[RowT, ValueT](
 
 
 #: A flag's two posted words.
-FLAG_CHECKED = "True"
-FLAG_UNCHECKED = "False"
+FLAG_CHECKED: PostedWord = "True"
+FLAG_UNCHECKED: PostedWord = "False"
 _FLAG_WORDS = TriStateWords(checked=FLAG_CHECKED, unchecked=FLAG_UNCHECKED)
 
 
@@ -64,12 +65,24 @@ def flag_field(label: str) -> forms.TypedChoiceField:
 
 def held_flag[RowT](rows: Sequence[RowT], value: Callable[[RowT], bool]) -> TriState:
     """What the rows hold; mixed where they differ."""
+    if not rows:
+        raise ValueError("a flag holds nothing across no rows")
     held = {value(row) for row in rows}
     if held == {True}:
         return "checked"
     if held == {False}:
         return "unchecked"
     return "mixed"
+
+
+def hold_flag[RowT](
+    form: forms.BaseForm,
+    name: str,
+    rows: Sequence[RowT],
+    value: Callable[[RowT], bool],
+) -> None:
+    """Holds the rows' flag on the box ``name`` names."""
+    cast(TriStateCheckboxWidget, form.fields[name].widget).held = held_flag(rows, value)
 
 
 def statement_unreadable(message: str) -> CommandRejected:

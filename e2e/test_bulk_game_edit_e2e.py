@@ -16,6 +16,11 @@ def _status(game: Game) -> PlayerGameStatus:
     return PlayerGameStatus(PlayerGame.objects.get(game=game).status)
 
 
+def _visibility(game: Game) -> tuple[bool, bool]:
+    row = PlayerGame.objects.get(game=game)
+    return row.excluded_from_unfinished, row.excluded_from_dropped
+
+
 def test_two_games_are_edited_and_the_undo_puts_theirs_back(
     live_server, page: Page, e2e_user, e2e_library
 ):
@@ -50,11 +55,13 @@ def test_two_games_are_edited_and_the_undo_puts_theirs_back(
     status.locator("[data-search-select-search]").click()
     status.get_by_role("option", name="Completed").click()
     page.get_by_role("checkbox", name="Mastered", exact=True).check()
+    visibility_before = [_visibility(game) for game in games]
     page.get_by_role("button", name="Save", exact=True).click()
 
     page.wait_for_url(listed)
     assert [_status(game) for game in games] == [PlayerGameStatus.COMPLETED] * 2
     assert all(PlayerGame.objects.get(game=game).mastered for game in games)
+    assert [_visibility(game) for game in games] == visibility_before
 
     with page.expect_navigation():
         page.get_by_role("button", name="Undo").click()

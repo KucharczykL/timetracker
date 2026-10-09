@@ -107,3 +107,8 @@ def test_held_flag_states_what_the_rows_agree_on(values, held):
     rows = [SimpleNamespace(flag=value) for value in values]
 
     assert held_flag(rows, lambda row: row.flag) == held
+
+
+def test_held_flag_refuses_no_rows():
+    with pytest.raises(ValueError):
+        held_flag([], lambda row: row.flag)

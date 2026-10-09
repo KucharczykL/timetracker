@@ -1,42 +1,54 @@
 """A flag's box over the rows' held state."""
 
+from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
 from common.components.core import Node
-from common.components.custom_elements import _TriStateCheckbox
-from common.components.primitives import CHECKBOX_LOOK_CLASS, Input, Span
+from common.components.custom_elements import TriState, _TriStateCheckbox
+from common.components.primitives import (
+    CHECKBOX_LOOK_CLASS,
+    DISABLED_CONTROL_CLASS,
+    Input,
+    Span,
+)
 
-type TriState = Literal["checked", "unchecked", "mixed"]
+type DefiniteState = Literal["checked", "unchecked"]
+type PostedWord = str  # what a definite state posts
 
 
-class TriStateWords(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class TriStateWords:
     """What each definite state posts."""
 
-    checked: str
-    unchecked: str
+    checked: PostedWord
+    unchecked: PostedWord
+
+    def __post_init__(self) -> None:
+        if not self.checked or not self.unchecked:
+            raise ValueError("a definite state needs a non-empty posted word")
+        if self.checked == self.unchecked:
+            raise ValueError("the two definite states need two posted words")
 
 
 class TriStateHints(NamedTuple):
-    """The muted hint beside the box."""
+    """The hint per state."""
 
     mixed: str
     kept: str
     changed: str
 
 
-def _hint(stated: TriState, held: TriState, hints: TriStateHints) -> str:
-    if stated == "mixed":
-        return hints.mixed
-    if stated == held:
-        return hints.kept
-    return hints.changed
+def _hint(stated: DefiniteState | None, held: TriState, hints: TriStateHints) -> str:
+    if stated is None:
+        return hints.mixed if held == "mixed" else hints.kept
+    return hints.kept if stated == held else hints.changed
 
 
-def _posted(stated: TriState, held: TriState, words: TriStateWords) -> str:
-    if stated == held:
+def _posted(
+    stated: DefiniteState | None, held: TriState, words: TriStateWords
+) -> PostedWord:
+    if stated is None or stated == held:
         return ""
-    if stated == "mixed":
-        raise ValueError("mixed is only held, never stated over a definite state")
     return words.checked if stated == "checked" else words.unchecked
 
 
@@ -45,12 +57,13 @@ def TriStateCheckbox(
     name: str,
     box_id: str,
     held: TriState,
-    stated: TriState,
+    stated: DefiniteState | None,
     words: TriStateWords,
     hints: TriStateHints,
 ) -> Node:
-    """Shows ``stated``; posts it against ``held``."""
+    """Shows ``stated``, or ``held`` when unstated; posts it against ``held``."""
     hint_id = f"{box_id}-hint"
+    shown = held if stated is None else stated
     return _TriStateCheckbox(
         name=name,
         held=held,
@@ -64,15 +77,16 @@ def TriStateCheckbox(
         Span(id=hint_id, data_tri_state_hint="", class_="text-body-subtle")[
             _hint(stated, held, hints)
         ],
-        # Restored form state would contradict held.
+        # Both inputs: restored state would contradict held.
         Input(
             type="checkbox",
             id=box_id,
             data_tri_state_box="",
             aria_describedby=hint_id,
             autocomplete="off",
-            checked=stated == "checked",
-            class_=CHECKBOX_LOOK_CLASS,
+            disabled=True,
+            checked=shown == "checked",
+            class_=f"{CHECKBOX_LOOK_CLASS} {DISABLED_CONTROL_CLASS}",
         ),
         Input(
             type="hidden",

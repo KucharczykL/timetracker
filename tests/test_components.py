@@ -3068,10 +3068,16 @@ class ComponentPrimitivesTest(SimpleTestCase):
         self.assertIn('name="test-headless"', html)
 
     def test_every_checkbox_meets_the_touch_target(self):
-        """Table and form boxes share one size."""
+        """The builder's box is 24px."""
         html = str(components.Checkbox(name="sized"))
         self.assertIn("w-6", html)
         self.assertIn("h-6", html)
+
+    def test_the_checkbox_look_draws_the_mixed_dash(self):
+        from common.components.primitives import CHECKBOX_LOOK_CLASS
+
+        self.assertIn("indeterminate:bg-[url(", CHECKBOX_LOOK_CLASS)
+        self.assertIn("indeterminate:bg-[length:", CHECKBOX_LOOK_CLASS)
 
     def test_radio_primitive(self):
         html = str(

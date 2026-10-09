@@ -67,15 +67,18 @@ URL = reverse("games:run_bulk_action", args=[EDIT.name])
 STATUS = f"{CHOICE_FIELD}-status"
 
 
-def _held(markup: str, name: str) -> str:
-    found = re.search(rf'<tri-state-checkbox name="{name}" held="(\w+)"', markup)
-    assert found is not None
-    return found.group(1)
-
-
 MASTERED = f"{CHOICE_FIELD}-mastered"
 EXCLUDED = f"{CHOICE_FIELD}-excluded_from_unfinished"
 DROPPED = f"{CHOICE_FIELD}-excluded_from_dropped"
+
+
+def _held(markup: str, name: str) -> str:
+    """The held word of the tri-state tag naming ``name``, in any order."""
+    tag = re.search(rf'<tri-state-checkbox\b[^>]*\bname="{name}"[^>]*>', markup)
+    assert tag is not None
+    held = re.search(r'\bheld="(\w+)"', tag.group(0))
+    assert held is not None
+    return held.group(1)
 
 
 @pytest.fixture
@@ -273,6 +276,16 @@ def test_a_flag_the_rows_differ_on_is_held_mixed(
 def test_settling_refuses_a_form_that_states_nothing(owned_library):
     with pytest.raises(CommandRejected) as refused:
         EDIT.choice.settle(owned_library, _post(**{STATUS: ""}))
+
+    assert refused.value.sentence == NOTHING_STATED
+
+
+def test_settling_refuses_status_and_every_flag_kept(owned_library):
+    with pytest.raises(CommandRejected) as refused:
+        EDIT.choice.settle(
+            owned_library,
+            _post(**{STATUS: "", MASTERED: "", EXCLUDED: "", DROPPED: ""}),
+        )
 
     assert refused.value.sentence == NOTHING_STATED
 

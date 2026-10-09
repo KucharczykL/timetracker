@@ -21,18 +21,39 @@ function mount({
   held,
   box = held === "checked",
   posted = "",
+  checkedWord = "True",
+  uncheckedWord = "False",
 }: {
   held: "checked" | "unchecked" | "mixed";
   box?: boolean;
   posted?: string;
+  checkedWord?: string;
+  uncheckedWord?: string;
 }): void {
+  document.body.innerHTML = markup({ held, box, posted, checkedWord, uncheckedWord });
+}
+
+/** The component's server markup; the box starts disabled. */
+function markup({
+  held,
+  box = held === "checked",
+  posted = "",
+  checkedWord = "True",
+  uncheckedWord = "False",
+}: {
+  held: "checked" | "unchecked" | "mixed";
+  box?: boolean;
+  posted?: string;
+  checkedWord?: string;
+  uncheckedWord?: string;
+}): string {
   const hintText = { checked: "Keep", unchecked: "Keep", mixed: "Keep: mixed" }[held];
-  document.body.innerHTML = `
-    <tri-state-checkbox name="mastered" held="${held}" checked-word="True"
-      unchecked-word="False" hint-mixed="${HINT["hint-mixed"]}"
+  return `
+    <tri-state-checkbox name="mastered" held="${held}" checked-word="${checkedWord}"
+      unchecked-word="${uncheckedWord}" hint-mixed="${HINT["hint-mixed"]}"
       hint-kept="${HINT["hint-kept"]}" hint-changed="${HINT["hint-changed"]}">
       <span data-tri-state-hint id="box-hint">${hintText}</span>
-      <input type="checkbox" id="box" data-tri-state-box aria-describedby="box-hint" ${
+      <input type="checkbox" id="box" data-tri-state-box aria-describedby="box-hint" disabled ${
         box ? "checked" : ""
       }>
       <input type="hidden" name="mastered" value="${posted}" data-tri-state-value>
@@ -120,12 +141,61 @@ it("binds once across a DOM move", () => {
   expect(reportClientError).not.toHaveBeenCalled();
 });
 
-it("reports when a part is missing", () => {
-  document.body.innerHTML = `<tri-state-checkbox name="mastered" held="mixed"
-    checked-word="True" unchecked-word="False" hint-mixed="m" hint-kept="k"
-    hint-changed="c"><input type="checkbox" data-tri-state-box></tri-state-checkbox>`;
+it("the box stays disabled until it binds", () => {
+  const host = document.createElement("div");
+  host.innerHTML = markup({ held: "unchecked" });
+  expect(host.querySelector<HTMLInputElement>("[data-tri-state-box]")!.disabled).toBe(true);
+
+  document.body.append(host);
+  expect(box().disabled).toBe(false);
+});
+
+it("a restored word that is not one of its two is held and reported", () => {
+  mount({ held: "mixed", posted: "garbage" });
+  expect(box().indeterminate).toBe(true);
+  expect(box().checked).toBe(false);
+  expect(hidden().value).toBe("");
+  expect(hint().textContent).toBe("Keep: mixed");
   expect(reportClientError).toHaveBeenCalledWith(
     "tri-state-checkbox",
-    "missing box, value or hint",
+    "mastered: unknown posted value garbage",
   );
+});
+
+it("a restored False over held checked is unchecked", () => {
+  mount({ held: "checked", box: true, posted: "False" });
+  expect(box().checked).toBe(false);
+  expect(box().indeterminate).toBe(false);
+  expect(hidden().value).toBe("False");
+  expect(hint().textContent).toBe("Will change");
+  expect(reportClientError).not.toHaveBeenCalled();
+});
+
+it("reports the missing parts by name and stays disabled", () => {
+  document.body.innerHTML = `<tri-state-checkbox name="mastered" held="mixed"
+    checked-word="True" unchecked-word="False" hint-mixed="m" hint-kept="k"
+    hint-changed="c"><input type="checkbox" data-tri-state-box disabled>
+    </tri-state-checkbox>`;
+  expect(reportClientError).toHaveBeenCalledWith(
+    "tri-state-checkbox",
+    "mastered: missing value, hint",
+  );
+  expect(box().disabled).toBe(true);
+});
+
+it("an empty or equal word reports and stays disabled", () => {
+  mount({ held: "mixed", checkedWord: "", uncheckedWord: "False" });
+  expect(reportClientError).toHaveBeenCalledWith(
+    "tri-state-checkbox",
+    "mastered: words must be non-empty and differ",
+  );
+  expect(box().disabled).toBe(true);
+
+  reportClientError.mockClear();
+  mount({ held: "mixed", checkedWord: "True", uncheckedWord: "True" });
+  expect(reportClientError).toHaveBeenCalledWith(
+    "tri-state-checkbox",
+    "mastered: words must be non-empty and differ",
+  );
+  expect(box().disabled).toBe(true);
 });

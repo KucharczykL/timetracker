@@ -20,7 +20,7 @@ from games.bulk_edit import (
     Keeping,
     flag_field,
     form_refusal,
-    held_flag,
+    hold_flag,
     keeping,
     settled,
     stated_object,
@@ -77,7 +77,6 @@ from games.forms import (
     Keep,
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
-    TriStateCheckboxWidget,
     UnsetFieldsForm,
     UnsetWidget,
     device_options,
@@ -332,9 +331,7 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
             runs.placeholder = _keeping_run(rows)
             picker.placeholder = keeping(rows, _device_name, str)
             releases.placeholder = keeping(rows, _release_name, str)
-            cast(
-                TriStateCheckboxWidget, self.fields["emulated"].widget
-            ).held = held_flag(rows, lambda row: row.emulated)
+            hold_flag(self, "emulated", rows, lambda row: row.emulated)
             note = cast(UnsetWidget, self.fields["note"].widget).widget
             note.attrs["placeholder"] = keeping(rows, lambda row: row.note, _note_shown)
 

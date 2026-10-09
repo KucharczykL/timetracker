@@ -5,7 +5,7 @@ import re
 import pytest
 
 from common.components import collect_media
-from common.components.primitives import CHECKBOX_LOOK_CLASS
+from common.components.primitives import CHECKBOX_LOOK_CLASS, DISABLED_CONTROL_CLASS
 from common.components.tri_state_checkbox import (
     TriStateCheckbox,
     TriStateHints,
@@ -18,6 +18,7 @@ HINTS = TriStateHints(mixed="Keep: mixed", kept="Keep", changed="Will change")
 
 
 def render(held, stated) -> str:
+    """``stated`` None keeps ``held``."""
     return str(
         TriStateCheckbox(
             name="mastered",
@@ -63,7 +64,7 @@ def is_checked(markup: str) -> bool:
     ],
 )
 def test_held_state_renders_the_box_and_its_keep_hint(held, checked, hint):
-    markup = render(held, held)
+    markup = render(held, None)
 
     assert is_checked(markup) is checked
     assert hint_text(markup) == hint
@@ -93,23 +94,37 @@ def test_stated_equal_to_agreeing_held_posts_nothing():
     assert hint_text(markup) == "Keep"
 
 
-def test_stated_mixed_over_mixed_posts_nothing():
-    markup = render("mixed", "mixed")
+def test_unstated_mixed_posts_nothing():
+    markup = render("mixed", None)
 
     assert hidden_value(markup) == ""
     assert hint_text(markup) == "Keep: mixed"
 
 
-def test_mixed_cannot_be_stated_over_a_held_state():
+def test_unstated_checked_held_keeps_the_box_checked():
+    markup = render("checked", None)
+
+    assert is_checked(markup)
+    assert hidden_value(markup) == ""
+    assert hint_text(markup) == "Keep"
+
+
+@pytest.mark.parametrize(
+    ("checked", "unchecked"),
+    [("", "False"), ("True", ""), ("True", "True")],
+)
+def test_words_refuse_an_empty_or_repeated_word(checked, unchecked):
     with pytest.raises(ValueError):
-        render("checked", "mixed")
+        TriStateWords(checked=checked, unchecked=unchecked)
 
 
 def test_the_box_is_a_nameless_check_all_look_checkbox():
-    box = tag(render("mixed", "mixed"), "data-tri-state-box")
+    box = tag(render("mixed", None), "data-tri-state-box")
 
     assert 'type="checkbox"' in box
     assert CHECKBOX_LOOK_CLASS in box
+    assert DISABLED_CONTROL_CLASS in box
+    assert re.search(r"\sdisabled(=|\s|>)", box)
     assert 'autocomplete="off"' in box
     assert 'id="id_choice-mastered"' in box
     assert 'aria-describedby="id_choice-mastered-hint"' in box
@@ -117,7 +132,7 @@ def test_the_box_is_a_nameless_check_all_look_checkbox():
 
 
 def test_the_hidden_input_carries_the_field_name_and_no_autofill():
-    hidden = tag(render("checked", "checked"), "data-tri-state-value")
+    hidden = tag(render("checked", None), "data-tri-state-value")
 
     assert 'type="hidden"' in hidden
     assert 'name="mastered"' in hidden
@@ -125,7 +140,7 @@ def test_the_hidden_input_carries_the_field_name_and_no_autofill():
 
 
 def test_the_host_states_its_props_for_the_element():
-    host = tag(render("mixed", "mixed"), "tri-state-checkbox")
+    host = tag(render("mixed", None), "tri-state-checkbox")
 
     assert 'name="mastered"' in host
     assert 'held="mixed"' in host
@@ -144,7 +159,7 @@ def test_the_element_script_is_collected():
                 name="mastered",
                 box_id="box",
                 held="mixed",
-                stated="mixed",
+                stated=None,
                 words=WORDS,
                 hints=HINTS,
             )
