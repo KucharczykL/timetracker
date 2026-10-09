@@ -269,7 +269,7 @@ def _section_dialog(section: NestedSection) -> FieldGroupContainer:
 
     def contain(fieldsets: Sequence[Node]) -> Node:
         return Fragment(
-            ControlButton([(SECTION_EDIT, section)], variant="outline")[
+            ControlButton([(SECTION_EDIT, section)], variant="outline", class_="mt-2")[
                 Span([(SECTION_IDLE, "")])[idle],
                 Span([(SECTION_HELD, ""), ("hidden", "")])[held],
             ],
