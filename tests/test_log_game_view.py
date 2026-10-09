@@ -3,6 +3,7 @@
 import logging
 import re
 import uuid
+from html.parser import HTMLParser
 
 import pytest
 from django.contrib.messages import get_messages
@@ -84,6 +85,26 @@ def _press(game: Game, **fields: object) -> dict[str, object]:
 
 def _post(client, game: Game, data: dict[str, object]):
     return client.post(f"{reverse('games:log_game')}?game={game.pk}", data)
+
+
+class _HiddenInputs(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.values: dict[str, str] = {}
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "input" and attributes.get("type") == "hidden":
+            name = attributes.get("name")
+            if name:
+                self.values[name] = attributes.get("value") or ""
+
+
+def _hidden_inputs(html: str) -> dict[str, str]:
+    """What a re-rendered page posts back unchanged."""
+    parser = _HiddenInputs()
+    parser.feed(html)
+    return parser.values
 
 
 def test_the_page_renders_under_its_plain_title(logged_in):
@@ -440,3 +461,36 @@ def test_a_malformed_prefill_game_is_logged(logged_in, capture_games_logger):
         and "prefill_game" in record.getMessage()
         for record in captured.records
     )
+
+
+def test_a_refused_status_keeps_mastery_and_the_unticked_resubmit_clears_it(
+    logged_in, owned_library, game, monkeypatch
+):
+    real_record_facts = writes_log_game.record_facts
+    refused: list[bool] = []
+
+    def refuse_the_first_status(actor, game_, **kwargs):
+        if "status" in kwargs and not refused:
+            refused.append(True)
+            raise CommandFailed("That game is removed.", 409)
+        return real_record_facts(actor, game_, **kwargs)
+
+    monkeypatch.setattr(writes_log_game, "record_facts", refuse_the_first_status)
+
+    first = _post(
+        logged_in,
+        game,
+        _press(game, mastered="on", mastered_seen="False", status="completed"),
+    )
+    assert first.status_code == 409
+    assert PlayerGame.objects.get(library=owned_library, game=game).mastered is True
+
+    resubmit = _hidden_inputs(first.content.decode()) | {
+        "game": str(game.pk),
+        "status": "completed",
+        "playtime_kind": "session",
+    }
+    second = _post(logged_in, game, resubmit)
+
+    assert second.status_code == 302
+    assert PlayerGame.objects.get(library=owned_library, game=game).mastered is False

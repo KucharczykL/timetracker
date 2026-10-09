@@ -249,7 +249,7 @@ def _copy_step(
                 format=UNKNOWN_WORD,
             ),
             correlation_id=correlation_id,
-            idempotency_key=f"log-copy-{token}",
+            idempotency_key=f"log-copy-{token}-{statement.attempt}",
         )
     written.add("copy")
     return release
@@ -287,7 +287,7 @@ def _write_run(
                 statement.game,
                 draft,
                 correlation_id=correlation_id,
-                idempotency_key=f"log-run-{token}",
+                idempotency_key=f"log-run-{token}-{statement.attempt}",
             )
             written.add(step)
             return recorded.playthrough_id, recorded.tracked_the_game
@@ -404,7 +404,7 @@ def _playtime_run(
                 implies_completed=False,
             ),
             correlation_id=correlation_id,
-            idempotency_key=f"log-run-{token}",
+            idempotency_key=f"log-run-{token}-{statement.attempt}",
         )
         return recorded.playthrough_id
 
@@ -489,7 +489,7 @@ def log_game(
                     game,
                     mastered=statement.mastered,
                     correlation_id=correlation_id,
-                    idempotency_key=f"log-mastered-{token}",
+                    idempotency_key=f"log-mastered-{token}-{statement.attempt}",
                 )
             written.add("mastered")
 
@@ -505,7 +505,7 @@ def log_game(
                     game,
                     status=status,
                     correlation_id=correlation_id,
-                    idempotency_key=f"log-status-{token}",
+                    idempotency_key=f"log-status-{token}-{statement.attempt}",
                 )
             written.add("status")
     except LogRefused as refused:

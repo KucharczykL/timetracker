@@ -583,3 +583,69 @@ def test_a_row_gone_at_the_lookup_names_the_game_gone(user, game, pc, monkeypatc
         _press(user, _statement(game, platform=pc.pk))
 
     assert refused.value.failure.message == GAME_GONE
+
+
+def _refuse_the_first_status(monkeypatch) -> None:
+    """Refuse the press's first status write; later writes pass."""
+    real_record_facts = log_game_writes.record_facts
+    refused: list[bool] = []
+
+    def refuse(actor, game_, **kwargs):
+        if "status" in kwargs and not refused:
+            refused.append(True)
+            raise CommandFailed("That game is removed.", 409)
+        return real_record_facts(actor, game_, **kwargs)
+
+    monkeypatch.setattr(log_game_writes, "record_facts", refuse)
+
+
+def test_a_retry_after_a_refused_status_states_the_unticked_mastery(
+    user, game, monkeypatch
+):
+    token = new_correlation_id()
+    _refuse_the_first_status(monkeypatch)
+
+    with pytest.raises(LogRefused):
+        _press(
+            user,
+            _statement(game, mastered=True, status=PlayerGameStatus.SHELVED),
+            token=token,
+        )
+    _press(
+        user,
+        _statement(game, mastered=False, status=PlayerGameStatus.SHELVED, attempt=1),
+        token=token,
+    )
+
+    assert _player_game(user, game).mastered is False
+    assert _player_game(user, game).status == PlayerGameStatus.SHELVED
+
+
+def test_a_retry_after_a_copy_on_another_platform_records_the_picked_copy(
+    user, game, pc, console, monkeypatch
+):
+    token = new_correlation_id()
+    _refuse_the_first_status(monkeypatch)
+
+    with pytest.raises(LogRefused) as first:
+        _press(
+            user,
+            _statement(game, platform=pc.pk, status=PlayerGameStatus.SHELVED),
+            token=token,
+        )
+    assert "copy" in first.value.written
+
+    _press(
+        user,
+        _statement(
+            game, platform=console.pk, status=PlayerGameStatus.SHELVED, attempt=1
+        ),
+        token=token,
+    )
+
+    platforms = set(
+        LibraryEntry.objects.filter(library=user.library).values_list(
+            "release__platform", flat=True
+        )
+    )
+    assert platforms == {pc.pk, console.pk}

@@ -236,13 +236,6 @@ def log_game_page(request: HttpRequest) -> HttpResponse:
     return _render(request, form, game=game or prefill, held=held, status=200)
 
 
-def _attempt(raw: str | None) -> int:
-    try:
-        return int(raw or 0)
-    except ValueError:
-        return 0
-
-
 def _endpoint_seen(endpoint: StatedEndpoint | None) -> str:
     return canonical_text(None if endpoint is None else endpoint.when)
 
@@ -295,7 +288,9 @@ def _refused(
     if "playtime" in refused.written:
         data["duration_hours"] = ""
         data["duration_minutes"] = ""
-        data[ATTEMPT_FIELD] = str(_attempt(request.POST.get(ATTEMPT_FIELD)) + 1)
+    if refused.written:
+        # A kept write keys its retry apart from the first press.
+        data[ATTEMPT_FIELD] = str(statement.attempt + 1)
     library = cast(User, request.user).library
     held = held_facts(library, statement.game)
     kept = _saved_line(refused.written, refused.tracked_the_game)
