@@ -1260,7 +1260,7 @@ SHEET_ATTRIBUTES: Mapping[SheetRole, SheetAttribute] = {
     "back_label": "data-sheet-back-label",
     #: A level of the sheet below it.
     "level": "data-sheet-level",
-    #: It may open a level, or it searches.
+    #: Content opens a level or searches.
     "steady": "data-sheet-steady",
 }
 #: The ``host`` value of a panel lent to a sheet.
@@ -1296,7 +1296,7 @@ def _assemble(
 ) -> Node:
     """Stamp both contracts and wire the <drop-down> element. `config` becomes
     extra data-* attributes the chosen behavior reads (e.g. select's PATCH url).
-    ``sheet`` is the narrow-viewport sheet; only the sheet behavior omits it."""
+    ``sheet``: narrow viewport; sheet behavior omits it."""
     # config keys use underscores (e.g. data_patch_url); convert to data-* names
     # and pass as an explicit attribute list so the dict never spreads onto the
     # builder's typed attributes/children params.
@@ -1356,12 +1356,12 @@ def Dropdown(
 
 
 #: Only a close fades; uncovering stays instant.
-#: The backdrop fades with the slide, on the modal layer's fade.
+#: Backdrop fades with the slide.
 _SHEET_DIALOG_CLASS = (
     "group/sheet backdrop:opacity-0 "
     "data-[sheet-state=opening]:backdrop:opacity-100 "
     "data-[sheet-state=open]:backdrop:opacity-100 "
-    # A level's dim belongs to the sheet below it.
+    # A level never dims itself.
     "data-sheet-level:backdrop:opacity-0!"
 )
 
@@ -1369,7 +1369,7 @@ _SHEET_DIALOG_CLASS = (
 #: Section sheet cap; calendars need more.
 _SECTION_SHEET_SIZE_CLASS = "max-h-[min(80dvh,32rem)]"
 #: Content height; steady fills the screen.
-#: Steady never moves: the keyboard slides over it.
+#: Steady never moves; keyboard slides over.
 _DROPDOWN_SHEET_SIZE_CLASS = (
     "mb-[var(--sheet-keyboard-inset,0px)] "
     "max-h-[min(90dvh,calc(var(--sheet-visible-height,100dvh)*0.9))] "
@@ -1399,7 +1399,7 @@ def _sheet_dialog(
                 f"flex w-full {size_class} flex-col "
                 "overflow-hidden rounded-t-base border border-b-0 border-default-medium "
                 f"shadow-lg/50 {OVERLAY_SURFACE_CLASS} "
-                # A level's leading edge over the sheet below.
+                # Shadow on a level's leading edge.
                 "group-data-[sheet-level]/sheet:shadow-[-12px_0_24px_-8px_rgb(0_0_0/0.3)]"
             ),
             motion="sheet",
@@ -1473,7 +1473,7 @@ class SheetSpec:
 
 
 def _sheet_back_control() -> Node:
-    """Backs out of a level; hidden until the sheet is one."""
+    """Back control; shown only on a level."""
     return ControlButton(
         [(SHEET_ATTRIBUTES["back"], ""), ("hidden", "")],
         variant="ghost",
@@ -1571,7 +1571,7 @@ def ButtonDropdown(
     placement: str = "bottom-start",
     aria_label: str = "",
 ) -> Node:
-    """A button-styled menu dropdown; the trigger is a ``ControlButton``.
+    """Menu dropdown with a ``ControlButton`` trigger.
     Its sheet is titled ``aria_label``, else ``label``."""
     # The stamping machinery is typed on Element (it reads tag_name/attributes
     # off the node), so unwrap the component to its rendered <button>.

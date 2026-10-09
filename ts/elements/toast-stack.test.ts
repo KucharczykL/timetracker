@@ -23,7 +23,7 @@ function messageOf(toast: HTMLElement): string {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  // A leave's fade that never ends: each leave waits for its cap.
+  // Never-ending fade waits for the cap.
   document.documentElement.style.setProperty("--duration-medium-exit", "160ms");
   Object.defineProperty(Element.prototype, "getAnimations", {
     configurable: true,
@@ -123,7 +123,7 @@ describe("rendering", () => {
 describe("lifecycle", () => {
   it("replaces a stable string id in place and clears its previous timer", () => {
     window.toast("first", "info", { id: "conversion", duration: 5_000 });
-    // The entry frame is a timer under fake timers.
+    // Entry frame is a fake timer.
     vi.advanceTimersByTime(20);
     expect(vi.getTimerCount()).toBe(1);
 

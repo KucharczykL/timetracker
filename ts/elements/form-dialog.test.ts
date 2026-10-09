@@ -467,7 +467,7 @@ describe("open", () => {
   });
 
   it("opens over the page once a leaving sheet has left", async () => {
-    // A menu sheet closes on the item's click, before the link's handler runs.
+    // Menu sheet closes before the link handler.
     const finishes: (() => void)[] = [];
     const sheet = document.createElement("dialog");
     sheet.setAttribute("data-modal", "");

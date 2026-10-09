@@ -462,7 +462,7 @@ describe("attachMenu close motion", () => {
     document.documentElement.removeAttribute("style");
   });
 
-  // An exit animation that never ends holds the leave until the cap.
+  // Never-ending exit holds until the cap.
   function holdExitAnimation(menu: HTMLElement): void {
     Object.defineProperty(menu, "getAnimations", {
       configurable: true,

@@ -115,7 +115,7 @@ class ModalPanelTest(SimpleTestCase):
     def test_the_step_names_the_stamp_and_the_properties(self):
         """Tailwind needs literals; they must match the layer."""
         self.assertIn(f"{MODAL_ATTRIBUTES['depth']}:", _MODAL_PANEL_CLASS)
-        # The depth reaches CSS as data-modal-depth, not as a property.
+        # Depth reaches CSS as data-modal-depth.
         for name in STACK_PROPERTIES:
             if name != "--modal-depth":
                 self.assertIn(name, _MODAL_PANEL_CLASS)
@@ -126,20 +126,20 @@ class ModalPanelTest(SimpleTestCase):
         self.assertNotIn("scale-", _MODAL_PANEL_CLASS)
 
     def test_the_sheet_slide_is_its_own_transition(self):
-        """The sheet controller waits on the slide's own transition."""
+        """Sheet waits on its own slide transition."""
         transitions = re.search(r"transition-\[([^\]]+)\]", _SHEET_PANEL_MOTION_CLASS)
         assert transitions
         self.assertEqual(transitions.group(1).split(","), ["translate", "opacity"])
 
     def test_the_depth_cue_never_dims_the_panel(self):
-        """The scrim is the panel's ::after; the panel itself stays opaque."""
+        """Scrim is ::after; panel stays opaque."""
         self.assertNotRegex(_MODAL_PANEL_CLASS, r"(?<!after:)opacity-")
         self.assertNotIn("brightness", _MODAL_PANEL_CLASS)
         self.assertNotIn("filter", _MODAL_PANEL_CLASS)
         self.assertIn("after:opacity-[var(--modal-scrim", _MODAL_PANEL_CLASS)
 
     def test_no_motion_class_is_safe_only(self):
-        """Reduced motion crossfades; it does not drop motion."""
+        """Reduced motion crossfades; never drops motion."""
         for name in (
             _MODAL_PANEL_CLASS,
             _CENTRED_PANEL_MOTION_CLASS,

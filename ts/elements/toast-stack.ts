@@ -35,10 +35,10 @@ export interface ToastMessage extends ToastOptions {
 
 type Timer = ReturnType<typeof setTimeout>;
 
-/** Stamps data-entered after one frame: the entry runs once, never again. */
+/** Stamps data-entered after one frame. */
 function markEntered(node: HTMLElement): void {
   const stamp = (): void => {
-    // Read the entry look first, so its transition starts.
+    // Read style so the transition starts.
     void getComputedStyle(node).opacity;
     node.setAttribute("data-entered", "");
   };
@@ -62,7 +62,7 @@ export interface Toast {
   /** Stamped with the origin already. */
   action: ToastAction | null;
   countdown: Countdown;
-  /** True once the toast leaves; its element holds the removal. */
+  /** True once the toast leaves. */
   leaving: boolean;
   hovered: boolean;
   focused: boolean;
@@ -219,8 +219,7 @@ export class ToastStore {
   }
 }
 
-// Whole literals: Tailwind scans ts/ for them. The entry look holds until
-// data-entered; the leave look holds while data-motion is leaving.
+// Whole class literals; Tailwind scans ts/.
 const WRAPPER_CLASS = "pointer-events-auto max-w-sm w-72 cursor-pointer mb-3 last:mb-0";
 const ENTRY_CLASS = [
   "opacity-0 translate-x-8 motion-reduce:translate-x-0!",
@@ -445,7 +444,7 @@ class ToastStackElement extends HTMLElement {
     }
   }
 
-  /** Removes a leaving toast once its fade ends; one hold per toast. */
+  /** Removes a leaving toast after its fade. */
   private startLeave(id: ToastId, node: HTMLElement): void {
     if (this.leaves.has(id)) return;
     let finished = false;
@@ -454,7 +453,7 @@ class ToastStackElement extends HTMLElement {
       this.leaves.delete(id);
       this.store.removeToast(id);
     });
-    // A leave with no animation finishes before holdLeave returns.
+    // No-animation leave finishes at once.
     if (!finished) this.leaves.set(id, cancel);
   }
 

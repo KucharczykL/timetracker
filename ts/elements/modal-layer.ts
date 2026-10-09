@@ -32,13 +32,9 @@ export interface ModalOptions {
   /** The surface host; defaults to the dialog. */
   host?: HTMLElement;
   initialFocus?: () => HTMLElement | null;
-  /** Must call finish, now or later. Default: a centred fade. */
+  /** Must call finish. Default: centred fade. */
   leave?: (finish: FinishLeave) => void;
-  /** Native cancel (Escape, back gesture); default dismiss.
-   *
-   * Best effort: the browser may close anyway.
-   * onClosed is the one hook that always runs.
-   */
+  /** Native cancel, best effort; default dismiss. */
   cancel?: () => void;
   /** Backdrop and dismiss control; default close. */
   dismiss?: () => void;
@@ -193,7 +189,7 @@ function notifyChange(): void {
   window.dispatchEvent(new Event(MODAL_CHANGE));
 }
 
-/** The topmost dialog that is not a level; the only one, when all are levels. */
+/** Topmost dialog that is not a level. */
 function dimOwnerIndex(): number {
   for (let index = shown.length - 1; index >= 0; index -= 1) {
     if (!isSheetLevel(shown[index].dialog)) return index;
@@ -202,11 +198,11 @@ function dimOwnerIndex(): number {
 }
 
 function markBackdrops(): void {
-  // A level belongs to the dialog below it, so it does not cover that dialog.
+  // Levels never cover the dialog below.
   const owner = dimOwnerIndex();
   shown.forEach((entry, index) => {
     entry.dialog.toggleAttribute(MODAL_ATTRIBUTES.covered, index < owner);
-    // A level never dims; its own backdrop stays clear.
+    // Levels never dim their own backdrop.
     entry.dialog.toggleAttribute(
       MODAL_ATTRIBUTES.over,
       index > 0 && !isSheetLevel(entry.dialog),
@@ -374,7 +370,7 @@ function returnFocus(entry: Entry): void {
   target?.focus({ preventScroll: true });
 }
 
-/** Finishes the modals above, without focus: the one below returns it. */
+/** Finishes modals above; no focus return. */
 function closeAbove(entry: Entry): void {
   const index = shown.indexOf(entry);
   if (index === -1) return;
@@ -483,7 +479,7 @@ function closeEntry(entry: Entry): void {
   runLeave(entry, () => finish(entry));
 }
 
-/** Marks modals leaving; inner panels close before their leave. */
+/** Marks modals leaving, innermost first. */
 function markLeaving(group: readonly Entry[]): void {
   for (const entry of group) {
     entry.state = "leaving";
@@ -493,7 +489,7 @@ function markLeaving(group: readonly Entry[]): void {
   notifyChange();
 }
 
-/** Runs the top's leave; `done` runs once it finishes, or at once when none. */
+/** Runs the top leave; then done. */
 function runLeave(entry: Entry, done: () => void): void {
   const leave = entry.options.leave;
   if (!entry.surface.host.isConnected || !leave) {
@@ -517,32 +513,32 @@ function runLeave(entry: Entry, done: () => void): void {
   }
 }
 
-/** Finishes a group topmost first in one task; only the lowest returns focus. */
+/** Finishes a group; lowest returns focus. */
 function finishGroup(group: readonly Entry[]): void {
   settling(() => {
     for (const entry of [...group].reverse()) finishEntry(entry, entry === group[0]);
   });
 }
 
-/** Closes a modal and every modal above it as one act. */
+/** Closes a modal and those above it. */
 function closeGroup(first: Entry): void {
   settling(() => {
     if (first.state !== "open") return;
     const group = shown.slice(shown.indexOf(first));
-    // A leave is already running above; the close waits for it.
+    // A running leave above: close waits.
     if (group.some((entry) => entry.state !== "open")) return;
     markLeaving(group);
     runLeave(group[group.length - 1], () => finishGroup(group));
   });
 }
 
-/** Closes the dialog and every modal stacked above it; one leave runs. */
+/** Closes dialog and modals above; one leave. */
 export function closeTogether(dialog: HTMLDialogElement): void {
   const first = shown.find((entry) => entry.dialog === dialog);
   if (first) closeGroup(first);
 }
 
-/** A centred modal's exit: held until its fade ends. */
+/** Centred modal exit; held until fade ends. */
 function centredLeave(dialog: HTMLDialogElement): (finish: FinishLeave) => void {
   return (finish) => {
     holdLeave(dialog, "medium-exit", finish);

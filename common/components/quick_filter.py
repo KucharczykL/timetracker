@@ -317,8 +317,7 @@ _QUICK_PILL_CLASS = (
 
 
 def _facet_apply(divided: bool) -> Node:
-    """A facet panel's Apply. ``divided`` keeps its line above it in a sheet;
-    a facet with no list drops that line there."""
+    """Apply button; ``divided`` draws a sheet divider."""
     # Submits the bar's form.
     line = "border-t border-default-medium"
     if not divided:

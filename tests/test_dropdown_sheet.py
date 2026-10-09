@@ -78,7 +78,7 @@ def test_a_dropdown_without_a_sheet_is_refused_outside_the_sheet_behavior():
         )
 
 
-#: Each builder's sheet title, from the site that states it.
+#: Sheet title per builder, from its site.
 SHEET_TITLE_SITES = {
     "row action menu": lambda: RowActionMenu([], label="Game actions", id="row"),
     "button dropdown": lambda: ButtonDropdown(

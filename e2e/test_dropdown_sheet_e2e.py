@@ -18,7 +18,7 @@ NARROW = ViewportSize(width=390, height=844)
 DESKTOP = ViewportSize(width=1280, height=800)
 STARTED = 'drop-down:has(input[name="started"][data-date-picker-hidden])'
 SHEET = "dialog[data-dropdown-sheet][open]"
-#: A sheet opened inside another sheet (a level), and the first sheet.
+#: Sheet opened inside another sheet (a level).
 LEVEL = "dialog[data-dropdown-sheet][data-sheet-level][open]"
 PARENT = "dialog[data-dropdown-sheet][open]:not([data-sheet-level])"
 LEAVING = '[data-motion="leaving"]'
@@ -52,7 +52,7 @@ def _open_started(page: Page, live_server) -> None:
 
 def _open_overflow_facet(page: Page, label: str) -> Locator:
     page.locator("[data-quick-overflow-trigger]").click()
-    # CSS, not role: a covered level hides it.
+    # CSS, not role: covered levels hide it.
     facet = page.locator("drop-down[data-quick-facet]").filter(
         has=page.locator("button", has_text=label)
     )
@@ -271,7 +271,7 @@ def test_a_row_menu_opens_as_a_sheet_and_focuses_its_first_item(
     )
     expect(sheet.get_by_role("menuitem").first).to_be_focused()
 
-    # "Edit" navigates; the sheet is gone with the page it opened from.
+    # "Edit" navigates away; sheet closes too.
     with page.expect_navigation():
         sheet.get_by_role("menuitem", name="Edit", exact=True).click()
     expect(page.locator(SHEET)).to_have_count(0)
@@ -298,13 +298,13 @@ def test_a_submenu_opens_as_a_level_and_an_act_inside_it_closes_every_sheet(
     expect(back).to_be_visible()
     expect(back).to_have_accessible_name("Back to Tunic (PS5) actions")
 
-    # Escape goes back one level: the parent sheet stays open.
+    # Escape backs one level; parent stays open.
     page.keyboard.press("Escape")
     expect(page.locator(LEVEL)).to_have_count(0)
     expect(page.locator(PARENT)).to_have_count(1)
     expect(page.locator(LEAVING)).to_have_count(0)
 
-    # Reopen the submenu and press an act inside it: every sheet closes.
+    # Submenu act closes every sheet.
     top_sheet(page).get_by_role("menuitem", name="I no longer have it").click()
     expect(page.locator(LEVEL)).to_have_count(1)
     with page.expect_navigation():
@@ -323,7 +323,7 @@ def test_a_facet_picker_level_closes_the_whole_chain_and_returns_focus(
     trigger = page.locator("#quick-name-dropdownLink")
     overflow = page.locator("[data-quick-overflow-trigger]")
     in_overflow = not trigger.is_visible()
-    #: The first sheet's opener: the overflow when the facet sits in it.
+    #: Overflow when the facet sits in it.
     opener = overflow if in_overflow else trigger
     opener.click()
     expect(page.locator(PARENT)).to_have_count(1)
@@ -345,12 +345,12 @@ def test_a_facet_picker_level_closes_the_whole_chain_and_returns_focus(
     expect(level).to_be_visible()
     expect(modifier.locator("[data-search-select-panel]")).to_be_visible()
 
-    # The level's × closes the whole chain at once.
+    # × closes the whole chain.
     level.locator("[data-modal-dismiss]").first.click()
     expect(page.locator(SHEET)).to_have_count(0)
     expect(page.locator(LEAVING)).to_have_count(0)
     expect(opener).to_be_focused()
-    # No picker below takes focus and opens again.
+    # No picker below reopens on focus.
     expect(page.locator(SHEET)).to_have_count(0)
     expect(modifier.locator("[data-search-select-panel]")).to_be_hidden()
     assert errors == []

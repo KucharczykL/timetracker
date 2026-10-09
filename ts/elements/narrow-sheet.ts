@@ -51,7 +51,7 @@ function titleOf(sheet: HTMLDialogElement): string {
   return sheet.querySelector(`[${SHEET_ATTRIBUTES.title}]`)?.textContent?.trim() ?? "";
 }
 
-/** A menu item that acts, not one that opens a submenu. */
+/** Item that acts, not a submenu opener. */
 const ACTING_ITEM_SELECTOR = `[role="menuitem"]:not([aria-haspopup])`;
 
 /** Clones carry no id; stamp per instance. */
@@ -86,7 +86,7 @@ export function attachNarrowSheet(
   let frame: FrameHandle | null = null;
   let viewportFrame: FrameHandle | null = null;
   let cancelRetry: CancelSettled | null = null;
-  /** The sheet below, while this host opened as its level. */
+  /** Sheet below a level host. */
   let levelBelow: HTMLDialogElement | null = null;
 
   const isNarrow = (): boolean => sentinel.getClientRects().length > 0;
@@ -150,7 +150,7 @@ export function attachNarrowSheet(
 
   const levelOf = (): LevelPlacement | null =>
     levelBelow ? { below: levelBelow, belowTitle: titleOf(levelBelow) } : null;
-  // A level's × and backdrop close the whole chain; Escape only itself.
+  // × closes the chain; Escape closes one.
   const dismissSheet = (): void => {
     if (levelBelow) closeTogether(bottomSheet(dialog));
     else sheet.close();
@@ -187,7 +187,7 @@ export function attachNarrowSheet(
   dialog
     .querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back}]`)
     ?.addEventListener("click", () => sheet.close());
-  // Capture: the close runs before the item's own click handler.
+  // Capture: close before the item's click.
   dialog.addEventListener(
     "click",
     (event) => {
@@ -218,12 +218,12 @@ export function attachNarrowSheet(
       lent.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       menu.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       body.appendChild(lent);
-      // Room for a level or a search: one height.
+      // Levels and search share one height.
       dialog.toggleAttribute(
         SHEET_ATTRIBUTES.steady,
         levelBelow !== null || lent.querySelector(STEADY_CONTENT_SELECTOR) !== null,
       );
-      // A leave the release cancelled never clears the anchored geometry.
+      // Cancelled leave keeps the anchored geometry.
       clearAnchoredPosition(menu);
       releaseFromTopLayer(menu);
       opened = sheet.open(opener);
@@ -251,7 +251,7 @@ export function attachNarrowSheet(
 
   const checkHost = (): void => {
     frame = null;
-    // A level stays put; its first sheet's close closes it.
+    // Level stays; first sheet's close closes it.
     if (levelBelow) return;
     if (state.kind !== "anchored" && state.kind !== "sheet") return;
     const inSheet = state.kind === "sheet";

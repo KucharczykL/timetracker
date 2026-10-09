@@ -61,7 +61,7 @@ export interface SheetCoreOptions {
   cancel?: () => void;
   /** × and the backdrop. Default: close. */
   dismiss?: () => void;
-  /** Set while the sheet is a level of the sheet below. */
+  /** Set while the sheet is a level. */
   levelOf?: () => LevelPlacement | null;
 }
 
@@ -161,7 +161,7 @@ export function attachSheetCore(
       throw error;
     }
     if (level) {
-      // A level's push is its entry; no slide-up follows.
+      // Level push is its entry; no slide-up.
       entered = true;
       pushLevel(dialog, level.below, level.belowTitle);
     } else {

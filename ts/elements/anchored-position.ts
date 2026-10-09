@@ -15,7 +15,7 @@ export const VIEWPORT_MARGIN = 8;
 
 export type Align = "start" | "center" | "end";
 export type Side = "top" | "bottom";
-/** The side a panel was actually placed on, for the motion CSS. */
+/** Side the panel was placed on. */
 export type PlacedSide = Side | "left" | "right";
 
 const SIDE_ATTRIBUTE = "data-side";
@@ -58,7 +58,7 @@ export function clampLeftToViewport(panel: HTMLElement, left: number): number {
   );
 }
 
-/** Stamps the side and alignment the motion CSS keys on. */
+/** Stamps side and alignment for motion CSS. */
 export function stampSide(panel: HTMLElement, side: PlacedSide, align: Align): void {
   panel.setAttribute(SIDE_ATTRIBUTE, side);
   panel.setAttribute(ALIGN_ATTRIBUTE, align);

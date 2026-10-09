@@ -38,7 +38,7 @@
         "Noto Color Emoji";
     --font-alien: "Alien Block", ui-sans-serif, system-ui, sans-serif;
 
-    /* Motion: durations and easings; no site writes its own number. */
+    /* Motion tokens; no site writes a number. */
     --duration-fast: 150ms;
     --duration-fast-exit: 100ms;
     --duration-medium: 240ms;

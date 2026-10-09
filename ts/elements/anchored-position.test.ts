@@ -30,7 +30,7 @@ function anchorBetween(top: number, bottom: number): HTMLElement {
   return anchor;
 }
 
-// jsdom lays nothing out, so the panel's content height is stubbed.
+// jsdom has no layout; stub content height.
 function panelOf(contentHeight: number): HTMLElement {
   const panel = document.createElement("div");
   document.body.append(panel);
@@ -58,7 +58,7 @@ describe("positionAnchored side stamp", () => {
   });
 
   it("stamps top when a flipped panel lands above", () => {
-    // Below has 22px of room, above 342px: the panel flips up.
+    // 22px below, 342px above: flips up.
     const anchor = anchorBetween(350, 370);
     const panel = panelOf(300);
     const result = positionAnchored(anchor, panel, { align: "end", side: "bottom", scrollable: false });

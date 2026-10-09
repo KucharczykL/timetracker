@@ -1,23 +1,23 @@
-/** A dropdown sheet opened over another sheet: its level. */
+/** Dropdown sheet opened over another sheet. */
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
 import { motionDuration, prefersReducedMotion, type CancelLeave, type MotionToken } from "../motion.js";
 
-/** The sheet a level covers, and the title its back control names. */
+/** Covered sheet and its back-control title. */
 export interface LevelPlacement {
   below: HTMLDialogElement;
   belowTitle: string;
 }
 
-/** Each level's sheet below, while it covers one. */
+/** Sheet below a level, while covered. */
 const coveredSheets = new WeakMap<HTMLDialogElement, HTMLDialogElement>();
-/** A level's running animations; a pop replaces a push's. */
+/** Running animations of a level. */
 const runningAnimations = new WeakMap<HTMLDialogElement, Animation[]>();
 
 function panelOf(dialog: HTMLDialogElement): HTMLElement | null {
   return dialog.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.panel}]`);
 }
 
-/** Hides the sheet's panel; its layout stays for the sentinel. */
+/** Hides the panel; keeps its layout. */
 function setPanelShown(sheet: HTMLDialogElement, shown: boolean): void {
   const panel = panelOf(sheet);
   if (panel) panel.style.visibility = shown ? "" : "hidden";
@@ -27,7 +27,7 @@ function backControlOf(level: HTMLDialogElement): HTMLElement | null {
   return level.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back}]`);
 }
 
-/** The open sheet a dropdown host sits in, unless it is leaving. */
+/** Open sheet holding this host, not leaving. */
 export function enclosingSheet(host: HTMLElement): HTMLDialogElement | null {
   const sheet = host.parentElement?.closest<HTMLDialogElement>(
     `dialog[${SHEET_ATTRIBUTES.sheet}]`,
@@ -37,12 +37,12 @@ export function enclosingSheet(host: HTMLElement): HTMLDialogElement | null {
   return sheet;
 }
 
-/** The sheet a sheet's host sits in. */
+/** Sheet holding this sheet's host. */
 function sheetAbove(sheet: HTMLDialogElement): HTMLDialogElement | null {
   return sheet.parentElement ? enclosingSheet(sheet.parentElement) : null;
 }
 
-/** The lowest sheet of the chain a level belongs to. */
+/** Lowest sheet of a level's chain. */
 export function bottomSheet(sheet: HTMLDialogElement): HTMLDialogElement {
   let current = sheet;
   for (let above = sheetAbove(current); above; above = sheetAbove(current)) {
@@ -51,7 +51,7 @@ export function bottomSheet(sheet: HTMLDialogElement): HTMLDialogElement {
   return current;
 }
 
-/** Shows the back control, naming the sheet below. */
+/** Shows back control naming sheet below. */
 function showBackControl(level: HTMLDialogElement, belowTitle: string): void {
   const back = backControlOf(level);
   if (!back) return;
@@ -79,12 +79,12 @@ function easingOf(): string {
 
 type Direction = "push" | "pop";
 
-/** The scrim darkens the sheet below; the page never shows. */
+/** Scrim darkens the sheet below. */
 const BELOW_SCRIM = 0.3;
 
 interface LevelFrames {
   level: Keyframe[];
-  /** Empty: the sheet below stays still. */
+  /** Empty: the sheet below stays put. */
   below: Keyframe[];
   scrim: Keyframe[];
 }
@@ -98,7 +98,7 @@ function reversedFor(direction: Direction, frames: LevelFrames): LevelFrames {
   };
 }
 
-/** The level slides; the sheet below moves aside, darkening. */
+/** Level slides; sheet below darkens. */
 function framesFor(direction: Direction): LevelFrames {
   return reversedFor(direction, {
     level: [{ transform: "translateX(100%)" }, { transform: "translateX(0)" }],
@@ -107,7 +107,7 @@ function framesFor(direction: Direction): LevelFrames {
   });
 }
 
-/** Reduced motion: the level fades over a still sheet. */
+/** Reduced motion: level fades. */
 function crossfadeFor(direction: Direction): LevelFrames {
   return reversedFor(direction, {
     level: [{ opacity: 0 }, { opacity: 1 }],
@@ -116,7 +116,7 @@ function crossfadeFor(direction: Direction): LevelFrames {
   });
 }
 
-/** Plays the slide; no animation where the API or the duration is absent. */
+/** Plays the slide where animations exist. */
 function playLevel(
   level: HTMLDialogElement,
   below: HTMLDialogElement,
@@ -147,7 +147,7 @@ function cancelAll(animations: readonly Animation[]): void {
   for (const animation of animations) animation.cancel();
 }
 
-/** Runs once every animation ends; at once when there are none. */
+/** Runs once all animations end. */
 function whenPlayed(animations: readonly Animation[], run: () => void): void {
   if (animations.length === 0) {
     run();
@@ -156,7 +156,7 @@ function whenPlayed(animations: readonly Animation[], run: () => void): void {
   void Promise.allSettled(animations.map((animation) => animation.finished)).then(run);
 }
 
-/** Presents a level over the sheet below, which then goes hidden. */
+/** Presents a level over the sheet below. */
 export function pushLevel(
   level: HTMLDialogElement,
   below: HTMLDialogElement,
@@ -168,21 +168,21 @@ export function pushLevel(
   const animations = playLevel(level, below, "push");
   runningAnimations.set(level, animations);
   whenPlayed(animations, () => {
-    // A pop that started meanwhile owns the animations now.
+    // Pop started meanwhile owns animations.
     if (runningAnimations.get(level) !== animations) return;
     if (coveredSheets.get(level) === below) setPanelShown(below, false);
     cancelAll(animations);
   });
 }
 
-/** Backs out of a level; `done` runs once it has slid out. */
+/** Slides a level out; then done. */
 export function popLevel(
   level: HTMLDialogElement,
   below: HTMLDialogElement,
   done: () => void,
 ): CancelLeave {
   cancelAll(runningAnimations.get(level) ?? []);
-  // Shown first, so the slide-back has the panel to move.
+  // Shown first, so the slide can run.
   setPanelShown(below, true);
   const animations = playLevel(level, below, "pop");
   runningAnimations.set(level, animations);
@@ -196,7 +196,7 @@ export function popLevel(
   };
 }
 
-/** Removes a level's marks; a sheet that is not a level clears nothing. */
+/** Clears a level's marks. */
 export function clearLevel(level: HTMLDialogElement): void {
   const below = coveredSheets.get(level);
   coveredSheets.delete(level);

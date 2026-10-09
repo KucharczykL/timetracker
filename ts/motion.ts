@@ -1,4 +1,4 @@
-// Motion durations come from the computed root style; no number lives here.
+// Durations come from computed root style.
 
 export type MotionToken = "fast" | "fast-exit" | "medium" | "medium-exit" | "slow" | "slow-exit" | "reduced";
 
@@ -7,7 +7,7 @@ export type CancelLeave = () => void;
 const MOTION_ATTRIBUTE = "data-motion";
 const LEAVING = "leaving";
 const ENTERING = "entering";
-// Past the animation, a missed event still finishes the leave.
+// Cap finishes the leave if no event.
 const CAP_SLACK_MS = 100;
 
 export function prefersReducedMotion(): boolean {
@@ -17,7 +17,7 @@ export function prefersReducedMotion(): boolean {
   );
 }
 
-/** Parses a CSS time such as "150ms" or "0.15s" into milliseconds. */
+/** Parses a CSS time into milliseconds. */
 function parseMilliseconds(value: string): number {
   const trimmed = value.trim();
   const amount = Number.parseFloat(trimmed);
@@ -39,7 +39,7 @@ export function motionDuration(token: MotionToken): number {
   return durationOf(token);
 }
 
-/** Holds an element in its leave until its animations end or the cap passes. */
+/** Holds an element's leave until animations end. */
 export function holdLeave(
   element: Element,
   token: MotionToken,
@@ -63,7 +63,7 @@ export function holdLeave(
     finish();
   };
   const timer = window.setTimeout(settle, duration + CAP_SLACK_MS);
-  // One style read starts any transition the stamp caused.
+  // Style read starts the stamped transition.
   void getComputedStyle(element).opacity;
   const animations = element.getAnimations({ subtree: true });
   void Promise.allSettled(animations.map((animation) => animation.finished)).then(settle);
@@ -82,7 +82,7 @@ export function isLeaving(element: Element): boolean {
   return element.getAttribute(MOTION_ATTRIBUTE) === LEAVING;
 }
 
-/** Drops the entering stamp once the entry has started. */
+/** Drops the entering stamp after entry. */
 export function settleEntry(element: Element): void {
   void getComputedStyle(element).opacity;
   if (element.getAttribute(MOTION_ATTRIBUTE) === ENTERING) {

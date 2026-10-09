@@ -419,7 +419,7 @@ describe("a held leave", () => {
     return element;
   }
 
-  // Animations that never finish keep the leave pending until its cap.
+  // Never-ending animations wait for the cap.
   function holdOpen(element: HTMLElement): void {
     Object.defineProperty(element, "getAnimations", {
       configurable: true,

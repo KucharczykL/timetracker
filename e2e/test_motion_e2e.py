@@ -1,4 +1,4 @@
-"""Each floating surface enters and leaves, then settles with nothing held."""
+"""Floating surfaces enter and leave cleanly."""
 
 from devices import create_device
 from django.urls import reverse
@@ -60,7 +60,7 @@ def test_a_bottom_sheet_at_phone_width_closes_settled(motion_page: Page, live_se
     open_facet(page, "status")
     expect(top_sheet(page)).to_be_visible()
 
-    # A facet opened from ⋯ is a level: Escape backs out of it alone.
+    # Escape backs out of a level alone.
     close_sheets(page)
     expect(page.locator(SHEET)).to_have_count(0)
     _settled(page)
@@ -97,7 +97,7 @@ def test_a_sheet_level_pushes_in_and_backs_out_settled(
 
 
 def _panel_lefts(page: Page) -> list[int]:
-    """The level panel's left edge, once a frame."""
+    """Level panel's left edge after one frame."""
     return page.evaluate(
         """async () => {
             const lefts = [];

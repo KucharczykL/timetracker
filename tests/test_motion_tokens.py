@@ -1,4 +1,4 @@
-"""Motion classes come from the tokens, never from literal Tailwind names."""
+"""Motion classes come from tokens, not literals."""
 
 import re
 from pathlib import Path
@@ -6,11 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCANNED_PYTHON = ("common", "games")
 SCANNED_TYPESCRIPT = ("ts",)
-#: A Tailwind duration with a literal number, such as `duration-150`.
+#: Literal Tailwind duration, e.g. duration-150.
 LITERAL_DURATION = re.compile(r"\bduration-\d+\b")
-#: A bare Tailwind easing, which the motion tokens replace.
+#: Bare Tailwind easing; tokens replace it.
 BARE_EASING = re.compile(r"\bease-(in|out|in-out|linear)\b")
-#: The reduced-motion variant, which the tokens already reduce.
+#: Reduced-motion variant; tokens cover it.
 MOTION_SAFE = re.compile(r"\bmotion-safe:")
 PATTERNS = (LITERAL_DURATION, BARE_EASING, MOTION_SAFE)
 

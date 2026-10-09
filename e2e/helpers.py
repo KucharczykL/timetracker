@@ -100,23 +100,23 @@ def open_facet(page: Page, field: str) -> None:
 
 #: Every open bottom sheet, a level included.
 OPEN_SHEET = "dialog[data-dropdown-sheet][open]"
-#: The sheet no open sheet sits inside: the one a person sees.
+#: Top sheet: open, containing no open sheet.
 TOP_SHEET = f"{OPEN_SHEET}:not(:has({OPEN_SHEET}))"
 
 
 def top_sheet(page: Page) -> Locator:
-    """The topmost open bottom sheet, a level if one is open."""
+    """Topmost open sheet, levels included."""
     return page.locator(TOP_SHEET)
 
 
 def sheet_title(sheet: Locator) -> Locator:
-    """A sheet's own title, not a nested level's."""
+    """Title of this sheet, not a level's."""
     title_id = sheet.get_attribute("aria-labelledby")
     return sheet.page.locator(f'[id="{title_id}"]')
 
 
 def close_sheets(page: Page) -> None:
-    """Escape each open sheet, topmost first, until none is open."""
+    """Escape each open sheet, topmost first."""
     remaining = page.locator(OPEN_SHEET).count()
     for left in range(remaining - 1, -1, -1):
         page.keyboard.press("Escape")
@@ -182,7 +182,7 @@ def offered_choices(scope: Page | Locator, name: str) -> list[str]:
 
 
 def record_copy(user, library, game_name: str):
-    """A held PS5 copy of a tracked game, recorded by command; returns the entry."""
+    """Record a held copy; return its entry."""
     from graphs import default_graph
     from tracked_games import create_tracked_game
 

@@ -15,7 +15,7 @@ FLOATING_PANEL = re.compile(
     re.IGNORECASE,
 )
 NATIVE_SELECT = re.compile(r"<select(?=[\s/>])[^>]*>", re.IGNORECASE)
-#: The sheet a dropdown owns; the bottom sheet's behavior owns its own.
+#: Dropdown sheet attribute; not the behavior's.
 DROPDOWN_SHEET_ATTRIBUTE: Final = "data-dropdown-sheet"
 SHEET_BEHAVIOR: Final = "sheet"
 
@@ -54,7 +54,7 @@ def _markup(response: HttpResponse, *, dialog: bool) -> Markup | None:
 
 
 class _OpenDropdown:
-    """A ``<drop-down>`` still open while its markup is read."""
+    """A ``<drop-down>`` open while parsing."""
 
     def __init__(self, behavior: str, label: str) -> None:
         self.behavior = behavior
@@ -63,7 +63,7 @@ class _OpenDropdown:
 
 
 class _SheetOwners(HTMLParser):
-    """Each ``<drop-down>`` and whether its own children hold its sheet."""
+    """Each ``<drop-down>``; whether it owns a sheet."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -77,10 +77,10 @@ class _SheetOwners(HTMLParser):
                 _OpenDropdown(named.get("behavior", ""), named.get("aria-label", ""))
             )
         elif tag == "dialog" and DROPDOWN_SHEET_ATTRIBUTE in named and self.open:
-            #: The innermost open drop-down owns it; a nested one closed first.
+            #: Innermost open drop-down owns the sheet.
             self.open[-1].owns_sheet = True
         elif tag != "drop-down" and self.open and not self.open[-1].label:
-            #: The trigger names the dropdown in the report.
+            #: Trigger names the dropdown.
             self.open[-1].label = named.get("aria-label", "")
 
     def handle_endtag(self, tag: str) -> None:
@@ -91,7 +91,7 @@ class _SheetOwners(HTMLParser):
 
 
 def sheetless_dropdown_faults(content: Markup) -> list[Fault]:
-    """Each ``<drop-down>`` with no sheet of its own, unless it is ``sheet``."""
+    """Each ``<drop-down>`` lacking its own sheet."""
     owners = _SheetOwners()
     owners.feed(content)
     owners.close()

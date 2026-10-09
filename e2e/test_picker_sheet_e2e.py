@@ -205,7 +205,7 @@ def test_a_facet_picker_opens_a_second_sheet(signed_in: Page, live_server, error
     page = signed_in
     page.set_viewport_size(PHONE)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    # ⋯ holds the name facet, so its sheet is a level above the overflow's.
+    # Name facet in ⋯ is a level.
     open_facet(page, "name")
     expect(top_sheet(page)).to_be_visible()
     open_sheets = page.locator(SHEET).count()

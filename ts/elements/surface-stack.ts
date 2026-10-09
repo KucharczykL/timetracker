@@ -202,7 +202,7 @@ export function showInTopLayer(panel: HTMLElement): boolean {
   return true;
 }
 
-/** The hide waits out the exit animation, then runs onHidden once. */
+/** Hides after the exit, then runs onHidden. */
 export function hideFromTopLayer(panel: HTMLElement, onHidden?: () => void): void {
   cancelPendingLeave(panel);
   const finish = (): void => {
@@ -210,7 +210,7 @@ export function hideFromTopLayer(panel: HTMLElement, onHidden?: () => void): voi
     try {
       panel.hidePopover();
     } catch (error) {
-      // Nothing to hide, or the UA refused.
+      // Nothing to hide, or UA refused.
       if (!isInvalidState(error)) throw error;
     }
     panel.hidden = true;

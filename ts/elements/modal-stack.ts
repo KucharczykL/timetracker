@@ -9,7 +9,7 @@ export interface StackedModal {
   readonly state: ModalState;
 }
 
-/** A sheet level: part of the sheet below it, never a step of the stack. */
+/** Sheet level; part of the sheet below. */
 export const SHEET_LEVEL_ATTRIBUTE = "data-sheet-level";
 
 export function isSheetLevel(dialog: HTMLDialogElement): boolean {
@@ -35,7 +35,7 @@ type ElementId = string;
 type Refresh = () => void;
 
 const SCALE_STEP = 0.05;
-// Covered panels darken to this opacity at most.
+// Covered panels darken to this at most.
 const SCRIM_STEP = 0.15;
 const SCRIM_MAX = 0.5;
 const SEPARATOR = " › ";
@@ -102,7 +102,7 @@ function scale(depth: Depth): ScaleFactor {
   return 1 - SCALE_STEP * depth;
 }
 
-/** The scrim's opacity: the page stays hidden, never translucent. */
+/** Scrim opacity; never translucent. */
 function scrim(depth: Depth): CssValue {
   return String(Math.round(Math.min(SCRIM_MAX, SCRIM_STEP * depth) * 100) / 100);
 }
@@ -224,7 +224,7 @@ function markTrails(stacked: readonly StackedModal[]): void {
   }
 }
 
-/** Steps, measures and names every shown modal; levels count as none. */
+/** Steps and names shown modals; levels excluded. */
 export function markStack(shown: readonly StackedModal[]): void {
   if (shown.length === 0) return;
   watch();

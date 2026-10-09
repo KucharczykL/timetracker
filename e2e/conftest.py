@@ -50,13 +50,13 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 @pytest.fixture
 def browser_context_args(browser_context_args):
-    """Every context reduces motion; a test opts in through ``motion_page``."""
+    """Reduce motion; ``motion_page`` opts out."""
     return {**browser_context_args, "reduced_motion": "reduce"}
 
 
 @pytest.fixture
 def motion_page(live_server, browser, browser_context_args, e2e_user) -> Iterator[Page]:
-    """Signed in, with the person's motion preference left at no-preference."""
+    """Signed in; motion not reduced."""
     context = browser.new_context(
         **{**browser_context_args, "reduced_motion": "no-preference"}
     )

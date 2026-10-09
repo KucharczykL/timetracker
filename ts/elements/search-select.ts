@@ -553,7 +553,7 @@ const initWidget = (containerElement: Element): boolean => {
 
   // Visibility is the panel's `hidden` attribute.
   const panel = options.closest<HTMLElement>("[data-search-select-panel]") ?? options;
-  // A leaving panel reads closed while its exit animation runs.
+  // Leaving panel reads closed during exit.
   const isPanelOpen = () => !panel.hidden && !isLeaving(panel);
 
   const syncExpanded = () => {

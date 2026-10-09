@@ -348,8 +348,8 @@ _TOOLTIP_PANEL_CLASS = (
     "inline-block font-sans text-type-body text-heading bg-brand-soft "
     "border border-brand/30 rounded-base shadow-xs max-w-7xl"
 )
-#: A floating panel's enter and leave, keyed on `data-motion` and `data-side`.
-#: A sheet-hosted panel sheds the motion, so its lent body is never faded.
+#: Enter and leave by data-motion, data-side.
+#: Sheet-hosted panels shed motion; body never fades.
 ANCHORED_MOTION_CLASS = (
     "transition-[opacity,scale,translate] ease-enter duration-(--duration-fast) "
     "data-[motion=leaving]:ease-exit data-[motion=leaving]:duration-(--duration-fast-exit) "

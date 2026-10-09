@@ -133,9 +133,9 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
     if (!isOpen) return;
     isOpen = false;
     removeSurface(surface);
-    // Geometry and listeners stay until the exit animation ends.
+    // Keep geometry until the exit ends.
     hideFromTopLayer(panel, () => {
-      // A reopen during the leave owns the geometry now.
+      // Reopen during leave owns the geometry.
       if (isOpen) return;
       clearAnchoredPosition(panel);
       if (content !== panel) content.style.removeProperty("max-height");

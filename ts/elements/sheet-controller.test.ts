@@ -15,7 +15,7 @@ function expectNoLeaveLimit(logged: ReturnType<typeof vi.spyOn>): void {
   expect(logged).not.toHaveBeenCalledWith(expect.stringContaining("never called finish"));
 }
 
-// An exit animation that never ends: the leave waits for its cap.
+// Never-ending exit waits for the cap.
 function holdExit(dialog: HTMLDialogElement): void {
   Object.defineProperty(dialog, "getAnimations", {
     configurable: true,

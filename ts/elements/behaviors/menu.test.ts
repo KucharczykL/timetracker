@@ -60,7 +60,7 @@ describe("menuSheetFocus", () => {
 });
 
 describe("menu behavior hover in a sheet", () => {
-  // A parent menu whose panel is the sheet's lent node, holding a submenu.
+  // Parent menu holds the submenu.
   const mountSubmenu = (parentInSheet: boolean): DropdownElement => {
     document.body.innerHTML = `
       <drop-down behavior="menu" submenu="false" id="parent">

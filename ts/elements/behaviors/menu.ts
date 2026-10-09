@@ -17,20 +17,20 @@ const TABBABLE = [
 const isSubmenu = (host: HTMLElement): boolean =>
   host.getAttribute("submenu") === "true";
 
-// A control inside a hidden ancestor below the menu is not shown.
+// Hidden ancestor below menu hides control.
 const isShown = (element: HTMLElement, menu: HTMLElement): boolean => {
   const hidden = element.closest("[hidden]");
   return !(hidden && hidden !== menu && menu.contains(hidden));
 };
 
-// Owned by this menu: a nested submenu's own controls do not count.
+// Excludes controls of a nested submenu.
 const isOwnEnabled = (element: HTMLElement, menu: HTMLElement): boolean =>
   element.closest("[data-menu]") === menu &&
   !element.hasAttribute("disabled") &&
   element.getAttribute("aria-disabled") !== "true" &&
   isShown(element, menu);
 
-/** The first enabled item of this menu, else its first tabbable control. */
+/** First enabled item, else first tabbable. */
 export function menuSheetFocus(menu: HTMLElement): HTMLElement | null {
   const items = Array.from(menu.querySelectorAll<HTMLElement>(MENU_ITEM));
   const item = items.find((candidate) => isOwnEnabled(candidate, menu));
@@ -39,7 +39,7 @@ export function menuSheetFocus(menu: HTMLElement): HTMLElement | null {
   return controls.find((candidate) => isOwnEnabled(candidate, menu)) ?? null;
 }
 
-// A submenu whose parent menu is a sheet opens by click only, never by hover.
+// Sheet submenus open by click only.
 const inParentSheet = (host: HTMLElement): boolean =>
   host.closest(`[${SHEET_ATTRIBUTES.host}="${SHEET_HOST_VALUE}"]`) !== null;
 

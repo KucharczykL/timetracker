@@ -525,7 +525,7 @@ export class FormDialogElement extends HTMLElement {
         this.followLink(url, route.page.messages, `the page at ${url.href} could not be fitted`);
         return;
       }
-      // A sheet the link's click closed leaves first; a dialog cannot open over it.
+      // Wait for a sheet leaving on click.
       if (isModalLeaving()) await whenLeaveSettles();
       if (topModal() !== topAtClick) {
         // The server consumed them; show them anyway.

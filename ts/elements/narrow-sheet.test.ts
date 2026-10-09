@@ -66,7 +66,7 @@ beforeEach(() => {
     })),
   );
   vi.stubGlobal("scrollTo", vi.fn());
-  // A slow exit whose fade never ends: each leave waits for its cap (200 + 100 ms).
+  // Never-ending slow exit waits for its cap.
   document.documentElement.style.setProperty("--duration-slow-exit", "200ms");
   Object.defineProperty(Element.prototype, "getAnimations", {
     configurable: true,
@@ -665,7 +665,7 @@ function sheetMarkup(title: string, body: string): string {
       <span data-dropdown-narrow></span>`;
 }
 
-/** A sheet whose body holds a nested dropdown with its own sheet. */
+/** Sheet holding a nested dropdown sheet. */
 function nestedMount(): {
   outerHost: DropdownElement;
   outerToggle: HTMLButtonElement;

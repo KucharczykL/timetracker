@@ -1,10 +1,4 @@
-// Shared positioning/keyboard core for light-DOM dropdowns: viewport-aware
-// positioning, open/close with a motion leave, ARIA wiring and
-// full keyboard navigation. The surface stack owns dismissal. Driven by the generic
-// <drop-down> element; type-specific wiring lives in the registered behaviors
-// (menu, select). The bottom-* panel geometry is the shared positionAnchored
-// (also used by the pop-over tooltip); the right-start submenu keeps its own
-// flip/first-item geometry but shares the pin/clamp/clear scaffold.
+// Positioning and keyboard core for light-DOM dropdowns.
 import {
   type Align,
   clampLeftToViewport,
@@ -87,9 +81,7 @@ export interface MenuController {
 const SUBMENU_GAP = 1;
 const TYPEAHEAD_RESET_MS = 500;
 
-// Wires open/close + positioning + keyboard nav for one toggle/menu pair living
-// inside `host`. Returns a small controller so callers (e.g. submenus) can drive
-// it.
+// Wires a toggle and its menu.
 export function attachMenu(
   host: HTMLElement,
   toggle: HTMLElement,
@@ -240,9 +232,9 @@ export function attachMenu(
     opened = false;
     opener = null;
     if (!inlineTrigger) toggle.setAttribute("aria-expanded", "false");
-    // Geometry and listeners stay until the exit animation ends.
+    // Keep geometry until the exit ends.
     hideFromTopLayer(menu, () => {
-      // A reopen during the leave owns the geometry now.
+      // Reopen during leave owns the geometry.
       if (isOpen()) return;
       clearAnchoredPosition(menu);
       window.removeEventListener("scroll", reposition, true);
@@ -304,7 +296,7 @@ export function attachMenu(
       // without grabbing focus so hover drives the single highlight. A submenu opens
       // idempotently (hover-opened on mouse, so the click must not toggle it closed).
       const fromKeyboard = event.detail === 0;
-      // The presenter decides: a narrow host opens its sheet as a level.
+      // Presenter decides: narrow host opens a level.
       const target = presenter();
       if (isSubmenu || !target.isOpen()) {
         target.open(toggle);
