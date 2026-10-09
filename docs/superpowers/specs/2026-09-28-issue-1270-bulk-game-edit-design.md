@@ -30,9 +30,10 @@ travels as JSON under the runner's choice field, as `EditStatement` does.
 `settle` decodes a carried statement or composes one from the form.
 
 The form has three fields under the runner's prefix, none required. Status
-is a `ChoiceSearchSelectWidget` over the six words; Mastered and Unfinished
-lists are two-answer pickers. Each placeholder states what the rows hold:
-"Keep: Played", or "Keep: mixed". A form that states nothing is refused.
+is a `ChoiceSearchSelectWidget` over the six words. Its placeholder states
+what the rows hold: "Keep: Played", or "Keep: mixed". Each flag is a
+[tri-state checkbox](2026-10-09-issue-1293-tri-state-checkbox-design.md)
+that starts at what the rows hold. A form that states nothing is refused.
 
 ## Forward
 

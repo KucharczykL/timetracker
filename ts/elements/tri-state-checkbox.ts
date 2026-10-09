@@ -31,7 +31,7 @@ export class TriStateCheckboxElement extends HTMLElement {
     this.reflect();
   }
 
-  /** The hidden value states the shown state; "" is the held one. */
+  /** Hidden value; "" means held. */
   private readState(): TriState {
     const props = readTriStateCheckboxProps(this);
     const posted = this.postedInput?.value ?? "";
@@ -46,7 +46,7 @@ export class TriStateCheckboxElement extends HTMLElement {
     this.reflect();
   };
 
-  /** The box, the hidden value and the hint all follow the state. */
+  /** Box, hidden value and hint follow state. */
   private reflect(): void {
     const props = readTriStateCheckboxProps(this);
     if (!this.box || !this.postedInput || !this.hint) return;

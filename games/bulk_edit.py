@@ -44,14 +44,14 @@ def keeping[RowT, ValueT](
     return f"Keep: {shown(held.pop())}"
 
 
-#: The two words a flag posts; its choice keys and its box's props.
+#: A flag's two posted words.
 FLAG_CHECKED = "True"
 FLAG_UNCHECKED = "False"
 _FLAG_WORDS = TriStateWords(checked=FLAG_CHECKED, unchecked=FLAG_UNCHECKED)
 
 
 def flag_field(label: str) -> forms.TypedChoiceField:
-    """A flag: posts a word to state, nothing to keep."""
+    """A flag: a word states, nothing keeps."""
     return forms.TypedChoiceField(
         label=label,
         choices=((FLAG_CHECKED, "Yes"), (FLAG_UNCHECKED, "No")),

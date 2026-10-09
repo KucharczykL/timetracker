@@ -3068,7 +3068,7 @@ class ComponentPrimitivesTest(SimpleTestCase):
         self.assertIn('name="test-headless"', html)
 
     def test_every_checkbox_meets_the_touch_target(self):
-        """One size: the table's boxes and a form's alike."""
+        """Table and form boxes share one size."""
         html = str(components.Checkbox(name="sized"))
         self.assertIn("w-6", html)
         self.assertIn("h-6", html)

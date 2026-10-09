@@ -210,14 +210,14 @@ class PrimitiveCheckboxWidget(forms.CheckboxInput):
         )
 
 
-#: What a tri-state flag's box says beside itself.
+#: The hints beside a tri-state box.
 TRI_STATE_HINTS: Final = TriStateHints(
     mixed="Keep: mixed", kept="Keep", changed="Will change"
 )
 
 
 class TriStateCheckboxWidget(forms.Widget):
-    """A flag's tri-state box; the field's choices decide what posts.
+    """A flag's tri-state box.
 
     Its value is the posted string as it came, so a choice the field does
     not hold is refused by the field, not dropped here.
@@ -231,7 +231,7 @@ class TriStateCheckboxWidget(forms.Widget):
     def __init__(self, *, words: TriStateWords, attrs=None):
         super().__init__(attrs)
         self.words = words
-        #: Written by the form from its rows.
+        #: The form writes it from rows.
         self.held: TriState = "mixed"
 
     def value_from_datadict(self, data, files, name):

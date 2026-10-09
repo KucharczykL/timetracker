@@ -1,4 +1,4 @@
-"""TriStateCheckbox: the box, its hint and the one hidden input."""
+"""The tri-state box, hint and hidden input."""
 
 import re
 

@@ -27,8 +27,9 @@ keep: "Keep: Steam Deck", or "Keep: mixed" when the rows differ.
 
 - Device is a `SearchSelectWidget` in an `UnsetWidget`. It searches and
   creates devices. Its ⊘ states "No device".
-- Emulated is a `ChoiceSearchSelectWidget` with two choices, Emulated and Not
-  emulated. An empty picker keeps. The flag has no "none".
+- Emulated is a tri-state checkbox (see
+  [the tri-state checkbox](2026-10-09-issue-1293-tri-state-checkbox-design.md)).
+  Its held state keeps. The flag has no "none".
 - Note is a text area in an `UnsetWidget`. Its ⊘ states "No note".
 
 A ⊘ has priority over a value in its field.

@@ -680,7 +680,7 @@ _UnsetField = custom_element_builder("unset-field")
 
 
 class TriStateCheckboxProps(TypedDict):
-    #: The hidden input's name; it posts the words or nothing.
+    #: The hidden input's name.
     name: str
     #: What the selected rows hold.
     held: Literal["checked", "unchecked", "mixed"]

@@ -1,4 +1,4 @@
-"""A bulk flag: the field's cleaning, its widget and the held state it reads."""
+"""A bulk flag's field, widget and held state."""
 
 from types import SimpleNamespace
 

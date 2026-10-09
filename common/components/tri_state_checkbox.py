@@ -1,9 +1,4 @@
-"""TriStateCheckbox: a flag's box over the rows' held state.
-
-The box posts nothing; one hidden input carries the field's name and posts
-the word the shown state states over the held one, or nothing where the two
-agree. ``ts/elements/tri-state-checkbox.ts`` drives the cycle.
-"""
+"""A flag's box over the rows' held state."""
 
 from typing import Literal, NamedTuple
 
@@ -15,14 +10,14 @@ type TriState = Literal["checked", "unchecked", "mixed"]
 
 
 class TriStateWords(NamedTuple):
-    """What the hidden input posts for each definite state."""
+    """What each definite state posts."""
 
     checked: str
     unchecked: str
 
 
 class TriStateHints(NamedTuple):
-    """The muted line beside the box."""
+    """The muted hint beside the box."""
 
     mixed: str
     kept: str
@@ -54,7 +49,7 @@ def TriStateCheckbox(
     words: TriStateWords,
     hints: TriStateHints,
 ) -> Node:
-    """The box shows ``stated``; the hidden input posts it against ``held``."""
+    """Shows ``stated``; posts it against ``held``."""
     hint_id = f"{box_id}-hint"
     return _TriStateCheckbox(
         name=name,
@@ -69,7 +64,7 @@ def TriStateCheckbox(
         Span(id=hint_id, data_tri_state_hint="", class_="text-body-subtle")[
             _hint(stated, held, hints)
         ],
-        # A restored form state would stand beside a held that disagrees.
+        # Restored form state would contradict held.
         Input(
             type="checkbox",
             id=box_id,
