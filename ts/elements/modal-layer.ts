@@ -8,7 +8,7 @@ import {
   onStackResize,
   stopWatchingStack,
 } from "./modal-stack.js";
-import { holdLeave } from "../motion.js";
+import { clearLeaving, holdLeave, markLeaving as stampLeaving } from "../motion.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -27,19 +27,27 @@ declare global {
 
 /** Idempotent; the leave must call it. */
 export type FinishLeave = () => void;
+export type ModalHook = () => void;
+
+export interface LeaveContext {
+  /** Part of a chain closing at once. */
+  readonly together: boolean;
+}
 
 export interface ModalOptions {
   /** The surface host; defaults to the dialog. */
   host?: HTMLElement;
   initialFocus?: () => HTMLElement | null;
   /** Must call finish. Default: centred fade. */
-  leave?: (finish: FinishLeave) => void;
-  /** Native cancel, best effort; default dismiss. */
-  cancel?: () => void;
+  leave?: (finish: FinishLeave, context: LeaveContext) => void;
+  /** Escape, back gesture, back control; default dismiss. */
+  cancel?: ModalHook;
   /** Backdrop and dismiss control; default close. */
-  dismiss?: () => void;
+  dismiss?: ModalHook;
+  /** Runs before focus returns. */
+  beforeFocusReturn?: ModalHook;
   /** Runs last, after focus return. */
-  onClosed?: () => void;
+  onClosed?: ModalHook;
 }
 
 export type ModalState = "closed" | "open" | "leaving";
@@ -68,8 +76,14 @@ interface Entry {
   generation: Generation;
   /** The layer's cap on a leave. */
   leaveLimit: TimerHandle | null;
+  /** The chain this modal leaves with. */
+  group: readonly Entry[] | null;
   focusInitial(): void;
+  requestCancel(): void;
+  requestDismiss(): void;
 }
+
+type Step = "cancel" | "dismiss";
 
 // A leave past this is a defect.
 const LEAVE_LIMIT_MS = 1_000;
@@ -359,15 +373,22 @@ function returnFocus(entry: Entry): void {
   const target = focusReturnTarget(entry.opener);
   entry.opener = null;
   const remaining = openEntries().at(-1);
-  if (remaining && !(target && remaining.dialog.contains(target))) {
-    // The page under a modal is inert.
-    remaining.focusInitial();
-    if (!remaining.dialog.contains(document.activeElement)) {
-      tabbableElements(remaining.dialog)[0]?.focus({ preventScroll: true });
-    }
+  if (remaining && target && remaining.dialog.contains(target)) {
+    target.focus({ preventScroll: true });
+    // A hidden target takes no focus.
+    if (document.activeElement !== target) focusInto(remaining);
     return;
   }
-  target?.focus({ preventScroll: true });
+  // The page under a modal is inert.
+  if (remaining) focusInto(remaining);
+  else target?.focus({ preventScroll: true });
+}
+
+function focusInto(entry: Entry): void {
+  entry.focusInitial();
+  if (!entry.dialog.contains(document.activeElement)) {
+    tabbableElements(entry.dialog)[0]?.focus({ preventScroll: true });
+  }
 }
 
 /** Finishes modals above; no focus return. */
@@ -389,6 +410,8 @@ function finish(entry: Entry, returnsFocus = true): void {
 
 function finishEntry(entry: Entry, returnsFocus: boolean): void {
   if (entry.state === "closed") return;
+  const group = entry.group;
+  entry.group = null;
   closeAbove(entry);
   entry.state = "closed";
   entry.generation += 1;
@@ -399,6 +422,7 @@ function finishEntry(entry: Entry, returnsFocus: boolean): void {
   removeSurface(entry.surface);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
   entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
+  clearLeaving(entry.dialog);
   unmarkDepth(entry.dialog);
   markShown();
   if (shown.length === 0) {
@@ -406,15 +430,40 @@ function finishEntry(entry: Entry, returnsFocus: boolean): void {
     stopWatchingStack();
     unlockDocumentScroll();
   }
-  if (returnsFocus) returnFocus(entry);
+  const lowest = group?.[0] ?? entry;
+  runHook(entry.options.beforeFocusReturn, "beforeFocusReturn");
+  // In a chain, the lowest returns focus.
+  if (returnsFocus && lowest === entry) returnFocus(entry);
   else entry.opener = null;
   notifyChange();
   // Layer already settled; a throw is reported.
-  try {
-    entry.options.onClosed?.();
-  } catch (error) {
-    report(`onClosed threw: ${String(error)}`);
+  runHook(entry.options.onClosed, "onClosed");
+  // A chain whose top ended elsewhere still ends.
+  for (const member of [...(group ?? [])].reverse()) {
+    if (member.state === "leaving") finishEntry(member, returnsFocus);
   }
+}
+
+function runHook(hook: ModalHook | undefined, name: string): void {
+  try {
+    hook?.();
+  } catch (error) {
+    report(`${name} threw: ${String(error)}`);
+  }
+}
+
+/** A step pressed during a leave runs after it. */
+function queueStep(step: Step): void {
+  const run = (): void => {
+    if (isModalLeaving()) {
+      whenSettled(run);
+      return;
+    }
+    const top = openEntries().at(-1);
+    if (step === "cancel") top?.requestCancel();
+    else top?.requestDismiss();
+  };
+  whenSettled(run);
 }
 
 /** Undoes an open that never showed. */
@@ -479,10 +528,11 @@ function closeEntry(entry: Entry): void {
   runLeave(entry, () => finish(entry));
 }
 
-/** Marks modals leaving, innermost first. */
+/** Marks each modal leaving, as one chain. */
 function markLeaving(group: readonly Entry[]): void {
   for (const entry of group) {
     entry.state = "leaving";
+    entry.group = group.length > 1 ? group : null;
     removeSurface(entry.surface);
   }
   markShown();
@@ -490,7 +540,7 @@ function markLeaving(group: readonly Entry[]): void {
 }
 
 /** Runs the top leave; then done. */
-function runLeave(entry: Entry, done: () => void): void {
+function runLeave(entry: Entry, done: () => void, together = false): void {
   const leave = entry.options.leave;
   if (!entry.surface.host.isConnected || !leave) {
     done();
@@ -506,7 +556,7 @@ function runLeave(entry: Entry, done: () => void): void {
     done();
   }, LEAVE_LIMIT_MS);
   try {
-    leave(finishThisClose);
+    leave(finishThisClose, { together });
   } catch (error) {
     report(`leave threw: ${String(error)}`);
     finishThisClose();
@@ -516,7 +566,8 @@ function runLeave(entry: Entry, done: () => void): void {
 /** Finishes a group; lowest returns focus. */
 function finishGroup(group: readonly Entry[]): void {
   settling(() => {
-    for (const entry of [...group].reverse()) finishEntry(entry, entry === group[0]);
+    // Each member knows its chain; the lowest focuses.
+    for (const entry of [...group].reverse()) finishEntry(entry, true);
   });
 }
 
@@ -525,10 +576,17 @@ function closeGroup(first: Entry): void {
   settling(() => {
     if (first.state !== "open") return;
     const group = shown.slice(shown.indexOf(first));
-    // A running leave above: close waits.
-    if (group.some((entry) => entry.state !== "open")) return;
+    // A leave above runs: close after it.
+    if (group.some((entry) => entry.state !== "open")) {
+      whenSettled(() => {
+        if (first.state === "open") closeGroup(first);
+      });
+      return;
+    }
     markLeaving(group);
-    runLeave(group[group.length - 1], () => finishGroup(group));
+    // Lower members fade their backdrops along.
+    for (const member of group.slice(0, -1)) stampLeaving(member.dialog);
+    runLeave(group[group.length - 1], () => finishGroup(group), group.length > 1);
   });
 }
 
@@ -575,6 +633,9 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     opener: null,
     generation: 0,
     leaveLimit: null,
+    group: null,
+    requestCancel: () => cancelNative(),
+    requestDismiss: () => dismiss(),
     focusInitial: () => {
       const target =
         chosenInitialFocus() ??
@@ -617,8 +678,27 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     if (event.target !== dialog) return;
     event.preventDefault();
     // Not cancelable: the browser closes it.
-    if (event.cancelable) cancelNative();
+    if (!event.cancelable) return;
+    if (entry.state === "leaving") queueStep("cancel");
+    else cancelNative();
   });
+  // A leaving modal acts on nothing; steps queue.
+  const holdWhileLeaving = (event: Event): void => {
+    if (entry.state !== "leaving" || !ownsEvent(event)) return;
+    if (event.type === "click") {
+      const target = event.target as Element;
+      if (target === dialog || target.closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) {
+        queueStep("dismiss");
+      } else if (target.closest(`[${MODAL_ATTRIBUTES.cancel}]`)) {
+        queueStep("cancel");
+      }
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  for (const type of ["pointerdown", "pointerup", "click", "submit"] as const) {
+    dialog.addEventListener(type, holdWhileLeaving, { capture: true });
+  }
   dialog.addEventListener("close", (event) => {
     // A queued close may follow a reopen.
     if (event.target === dialog && !dialog.open) finish(entry);
@@ -651,7 +731,9 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
   });
   dialog.addEventListener("click", (event) => {
     if (!ownsEvent(event)) return;
-    if ((event.target as Element).closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) dismiss();
+    const target = event.target as Element;
+    if (target.closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) dismiss();
+    else if (target.closest(`[${MODAL_ATTRIBUTES.cancel}]`)) cancelNative();
   });
 
   return {
@@ -667,6 +749,7 @@ export function resetModalLayerForTests(): void {
   for (const entry of shown) {
     entry.state = "closed";
     entry.generation += 1;
+    entry.group = null;
     clearLeaveLimit(entry);
     removeSurface(entry.surface);
     if (entry.dialog.open) entry.dialog.close();

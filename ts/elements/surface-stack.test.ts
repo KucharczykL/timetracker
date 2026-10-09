@@ -452,7 +452,7 @@ describe("a held leave", () => {
     expect(element.getAttribute("data-motion")).toBe("entering");
   });
 
-  it("is cancelled by release", async () => {
+  it("is cancelled by release, which still cleans up once", async () => {
     const element = panel();
     holdOpen(element);
     showInTopLayer(element);
@@ -460,7 +460,8 @@ describe("a held leave", () => {
     hideFromTopLayer(element, onHidden);
     releaseFromTopLayer(element);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(onHidden).not.toHaveBeenCalled();
+    expect(onHidden).toHaveBeenCalledTimes(1);
+    expect(element.hidden).toBe(false);
     expect(element.hasAttribute("data-motion")).toBe(false);
     expect(element.hasAttribute("popover")).toBe(false);
   });

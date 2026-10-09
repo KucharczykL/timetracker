@@ -39,6 +39,7 @@ from common.components.core import (
     as_children,
 )
 from common.components.modal import (
+    MODAL_ATTRIBUTES,
     ElementId,
     ModalDialog,
     ModalPanel,
@@ -1475,7 +1476,7 @@ class SheetSpec:
 def _sheet_back_control() -> Node:
     """Back control; shown only on a level."""
     return ControlButton(
-        [(SHEET_ATTRIBUTES["back"], ""), ("hidden", "")],
+        [(SHEET_ATTRIBUTES["back"], ""), (MODAL_ATTRIBUTES["cancel"], ""), ("hidden", "")],
         variant="ghost",
         class_="max-w-full gap-1 px-2",
     )[

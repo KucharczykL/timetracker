@@ -96,7 +96,7 @@ describe("holdLeave", () => {
     stubAnimations(element, new Promise(() => {}));
     const finish = vi.fn();
     const cancel = holdLeave(element, "fast-exit", finish);
-    cancel();
+    cancel?.();
     expect(element.hasAttribute("data-motion")).toBe(false);
     await vi.advanceTimersByTimeAsync(1000);
     expect(finish).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe("holdLeave", () => {
     stubAnimations(element, new Promise(() => {}));
     const cancel = holdLeave(element, "fast-exit", () => {});
     element.setAttribute("data-motion", "entering");
-    cancel();
+    cancel?.();
     expect(element.getAttribute("data-motion")).toBe("entering");
   });
 });

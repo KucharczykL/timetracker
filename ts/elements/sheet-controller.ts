@@ -2,9 +2,9 @@
 import { dispatchHide, type DropdownHideDetail, type MenuController } from "./menu-behavior.js";
 import { MODAL_ATTRIBUTES } from "../generated/modal-attributes.js";
 import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
-import { attachModal, isReachable, type FinishLeave } from "./modal-layer.js";
+import { attachModal, isReachable, type FinishLeave, type ModalOptions } from "./modal-layer.js";
 import { holdLeave, type CancelLeave } from "../motion.js";
-import { clearLevel, popLevel, pushLevel, type LevelPlacement } from "./sheet-levels.js";
+import { clearLevel, dropLevel, popLevel, pushLevel, type LevelPlacement } from "./sheet-levels.js";
 
 type SheetState = "closed" | "opening" | "open" | "closing";
 
@@ -57,10 +57,8 @@ export interface SheetCoreOptions {
   afterHide?: () => void;
   /** The `dropdown:hide` event's detail. */
   hideDetail?: () => DropdownHideDetail;
-  /** Native cancel: Escape, back gesture. Default: dismiss. */
-  cancel?: () => void;
-  /** × and the backdrop. Default: close. */
-  dismiss?: () => void;
+  cancel?: ModalOptions["cancel"];
+  dismiss?: ModalOptions["dismiss"];
   /** Set while the sheet is a level. */
   levelOf?: () => LevelPlacement | null;
 }
@@ -119,16 +117,18 @@ export function attachSheetCore(
     initialFocus: () =>
       options.initialFocus?.() ??
       dialog.querySelector<HTMLElement>(`[${MODAL_ATTRIBUTES.dismiss}]`),
-    leave: (finish) => {
+    leave: (finish, { together }) => {
       cancelOpenFrame();
       render();
       const level = options.levelOf?.() ?? null;
-      cancelPendingLeave = level
-        ? popLevel(dialog, level.below, finish)
-        : holdLeave(dialog, "slow-exit", finish);
+      if (level && together) cancelPendingLeave = dropLevel(dialog, finish);
+      else if (level) cancelPendingLeave = popLevel(dialog, level.below, finish);
+      else cancelPendingLeave = holdLeave(dialog, "slow-exit", finish);
     },
     cancel: options.cancel,
     dismiss: options.dismiss,
+    // Focus returns into a shown panel.
+    beforeFocusReturn: () => clearLevel(dialog),
     onClosed: () => {
       clearMotion();
       clearLevel(dialog);
@@ -163,7 +163,12 @@ export function attachSheetCore(
     if (level) {
       // Level push is its entry; no slide-up.
       entered = true;
-      pushLevel(dialog, level.below, level.belowTitle);
+      try {
+        pushLevel(dialog, level);
+      } catch (error) {
+        modal.close();
+        throw error;
+      }
     } else {
       openFrame = window.requestAnimationFrame(() => {
         openFrame = null;

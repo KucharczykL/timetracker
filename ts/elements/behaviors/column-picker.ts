@@ -15,5 +15,5 @@ registerBehavior("column-picker", {
     itemSelector: "[data-column-picker-no-items]",
     keepOpenOnTab: true,
   }),
-  sheetFocus: (menu) => menu.querySelector<HTMLElement>('input[type="checkbox"]'),
+  sheetFocus: (menu) => menu.querySelector<HTMLElement>('input[type="checkbox"]:not(:disabled)'),
 });

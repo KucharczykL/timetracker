@@ -1,5 +1,8 @@
 import { MenuController, MenuOptions } from "./menu-behavior.js";
 
+/** A sheet's first focus inside its panel. */
+export type SheetFocus = (menu: HTMLElement) => HTMLElement | null;
+
 export interface BehaviorCtx {
   host: HTMLElement;
   toggle: HTMLElement;
@@ -19,7 +22,7 @@ export interface DropdownBehavior {
   ) => MenuController;
   wire?: (ctx: BehaviorCtx) => (() => void) | void;
   /** First focus when the panel is a sheet. */
-  sheetFocus?: (menu: HTMLElement) => HTMLElement | null;
+  sheetFocus?: SheetFocus;
   /** Holds the menu; default: the menu. */
   sheetLent?: (host: HTMLElement, toggle: HTMLElement, menu: HTMLElement) => HTMLElement;
   /** Focus return for an open stating none; wrapped into `defaultOpener`. */

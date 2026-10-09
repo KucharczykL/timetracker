@@ -134,10 +134,20 @@ function report(detail: string): string {
   return reportClientError("form-dialog", detail, { toast: false });
 }
 
-/** Resolves once no modal leaves. */
+// Past the layer's own leave cap.
+const LEAVE_SETTLE_TIMEOUT_MS = 2_000;
+
+/** Resolves once no modal leaves; else rejects. */
 function whenLeaveSettles(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    whenSettled(() => resolve());
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cancel();
+      reject(new Error("a modal leave never settled"));
+    }, LEAVE_SETTLE_TIMEOUT_MS);
+    const cancel = whenSettled(() => {
+      window.clearTimeout(timer);
+      resolve();
+    });
   });
 }
 

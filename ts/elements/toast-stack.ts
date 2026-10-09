@@ -447,14 +447,11 @@ class ToastStackElement extends HTMLElement {
   /** Removes a leaving toast after its fade. */
   private startLeave(id: ToastId, node: HTMLElement): void {
     if (this.leaves.has(id)) return;
-    let finished = false;
     const cancel = holdLeave(node, "medium-exit", () => {
-      finished = true;
       this.leaves.delete(id);
       this.store.removeToast(id);
     });
-    // No-animation leave finishes at once.
-    if (!finished) this.leaves.set(id, cancel);
+    if (cancel) this.leaves.set(id, cancel);
   }
 
   private buildToast(toast: Toast): HTMLElement {

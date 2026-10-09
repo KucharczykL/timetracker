@@ -19,6 +19,7 @@ type ModalMotion = Literal["centred", "sheet"]
 type ModalAttributeRole = Literal[
     "modal",
     "dismiss",
+    "cancel",
     "initial_focus",
     "covered",
     "over",
@@ -34,6 +35,7 @@ type ElementId = str  # e.g. "form-dialog-title"
 MODAL_ATTRIBUTES: Mapping[ModalAttributeRole, ModalAttribute] = {
     "modal": "data-modal",
     "dismiss": "data-modal-dismiss",
+    "cancel": "data-modal-cancel",
     "initial_focus": "data-modal-initial-focus",
     "covered": "data-modal-covered",
     "over": "data-modal-over",

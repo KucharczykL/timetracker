@@ -1,6 +1,7 @@
 // Covered modals step back; the top names them.
 import { reportClientError } from "../client-errors.js";
 import { MODAL_ATTRIBUTES, type ModalAttributeRole } from "../generated/modal-attributes.js";
+import { SHEET_ATTRIBUTES } from "../generated/sheet-attributes.js";
 import type { ModalState } from "./modal-layer.js";
 
 /** Shown modals, bottom first; open or leaving. */
@@ -9,11 +10,9 @@ export interface StackedModal {
   readonly state: ModalState;
 }
 
-/** Sheet level; part of the sheet below. */
-export const SHEET_LEVEL_ATTRIBUTE = "data-sheet-level";
-
+/** A sheet level is part of the sheet below. */
 export function isSheetLevel(dialog: HTMLDialogElement): boolean {
-  return dialog.hasAttribute(SHEET_LEVEL_ATTRIBUTE);
+  return dialog.hasAttribute(SHEET_ATTRIBUTES.level);
 }
 
 export const STACK_PROPERTIES = [

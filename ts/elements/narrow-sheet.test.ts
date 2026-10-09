@@ -655,7 +655,7 @@ function sheetMarkup(title: string, body: string): string {
   return `<dialog data-modal data-dropdown-sheet>
         <div data-sheet-panel>
           <div>
-            <button data-sheet-back hidden type="button"><span data-sheet-back-label></span></button>
+            <button data-sheet-back data-modal-cancel hidden type="button"><span data-sheet-back-label></span></button>
             <h2 data-dropdown-sheet-title>${title}</h2>
             <button data-modal-dismiss type="button">×</button>
           </div>
@@ -777,6 +777,49 @@ describe("a dropdown sheet inside an open sheet", () => {
     expect(outerDialog.open).toBe(false);
   });
 
+  it("focuses the level's first item, and the opener on back", () => {
+    const { outerToggle, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    expect(document.activeElement).toBe(innerDialog.querySelector("[data-acting]"));
+    cancelNative(innerDialog);
+    expect(document.activeElement).toBe(innerToggle);
+  });
+
+  it("closes the whole chain on a level's backdrop", () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    for (const type of ["pointerdown", "pointerup"]) {
+      innerDialog.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1 }));
+    }
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(false);
+  });
+
+  it("goes back two steps on two quick cancels", async () => {
+    const { outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
+    reducedMotion = false;
+    // A slide that ends on a timer.
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: () => ({
+        cancel: () => {},
+        finished: new Promise((resolve) => window.setTimeout(resolve, 240)),
+      }),
+    });
+    mouseClick(outerToggle);
+    mouseClick(innerToggle);
+    await vi.runAllTimersAsync();
+    cancelNative(innerDialog);
+    expect(innerDialog.open).toBe(true);
+    cancelNative(innerDialog);
+    await vi.runAllTimersAsync();
+    delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+    expect(innerDialog.open).toBe(false);
+    expect(outerDialog.open).toBe(false);
+  });
+
   it("moves only the first host on a widen, and the level closes with it", () => {
     const { outerHost, outerToggle, outerDialog, innerToggle, innerDialog } = nestedMount();
     mouseClick(outerToggle);
@@ -787,5 +830,24 @@ describe("a dropdown sheet inside an open sheet", () => {
     expect(outerDialog.open).toBe(false);
     expect(outerHost.isOpen()).toBe(true);
     expect(outerHost.querySelector(":scope > [data-menu]")).not.toBeNull();
+  });
+});
+
+describe("a dropdown inside a form dialog", () => {
+  it("opens a plain sheet, not a level", async () => {
+    const { attachModal } = await import("./modal-layer.js");
+    const form = document.createElement("dialog");
+    form.setAttribute("data-modal", "");
+    form.innerHTML = fixture();
+    document.body.replaceChildren(form);
+    const host = form.querySelector<DropdownElement>("drop-down")!;
+    host.querySelector<HTMLElement>("[data-dropdown-narrow]")!.getClientRects = () =>
+      [new DOMRect(0, 0, 0, 0)] as unknown as DOMRectList;
+    attachModal(form).open();
+    mouseClick(host.querySelector<HTMLButtonElement>("[data-toggle]")!);
+    const sheet = host.querySelector<HTMLDialogElement>("dialog[data-dropdown-sheet]")!;
+    expect(sheet.open).toBe(true);
+    expect(sheet.hasAttribute("data-sheet-level")).toBe(false);
+    expect(form.querySelector<HTMLElement>("[data-sheet-panel]")?.style.visibility ?? "").toBe("");
   });
 });

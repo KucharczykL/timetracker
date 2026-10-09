@@ -7,7 +7,7 @@
 // single open: the modal layer closes it. Panels render in the top layer
 // as manual popovers, so no ancestor clips them and no z-index orders them.
 import { reportClientError } from "../client-errors.js";
-import { holdLeave, type CancelLeave } from "../motion.js";
+import { holdLeave, markEntering, type CancelLeave } from "../motion.js";
 
 interface SurfaceBase {
   /** Contains the panel and its toggle. */
@@ -162,11 +162,20 @@ function isShowing(panel: HTMLElement): boolean {
   return panel.matches(":popover-open");
 }
 
-const pendingLeaves = new WeakMap<Element, CancelLeave>();
+interface PendingLeave {
+  readonly cancel: CancelLeave;
+  readonly onHidden: (() => void) | undefined;
+}
 
-function cancelPendingLeave(panel: Element): void {
-  pendingLeaves.get(panel)?.();
+const pendingLeaves = new WeakMap<Element, PendingLeave>();
+
+/** A release still runs the leave's cleanup. */
+function cancelPendingLeave(panel: Element, cleanUp = false): void {
+  const pending = pendingLeaves.get(panel);
   pendingLeaves.delete(panel);
+  if (!pending) return;
+  pending.cancel();
+  if (cleanUp) pending.onHidden?.();
 }
 
 export function isInvalidState(error: unknown): boolean {
@@ -198,7 +207,7 @@ export function showInTopLayer(panel: HTMLElement): boolean {
   }
   cancelPendingLeave(panel);
   panel.hidden = false;
-  panel.setAttribute("data-motion", "entering");
+  markEntering(panel);
   return true;
 }
 
@@ -212,26 +221,24 @@ export function hideFromTopLayer(panel: HTMLElement, onHidden?: () => void): voi
     } catch (error) {
       // Nothing to hide, or UA refused.
       if (!isInvalidState(error)) throw error;
+    } finally {
+      // A throw still hides and cleans up.
+      panel.hidden = true;
+      onHidden?.();
     }
-    panel.hidden = true;
-    onHidden?.();
   };
   // Already hidden: nothing to animate out.
   if (panel.hidden && !isShowing(panel)) {
     finish();
     return;
   }
-  let finished = false;
-  const cancel = holdLeave(panel, "fast-exit", () => {
-    finished = true;
-    finish();
-  });
-  if (!finished) pendingLeaves.set(panel, cancel);
+  const cancel = holdLeave(panel, "fast-exit", finish);
+  if (cancel) pendingLeaves.set(panel, { cancel, onHidden });
 }
 
 /** Out of the top layer, shown in flow. */
 export function releaseFromTopLayer(panel: HTMLElement): void {
-  cancelPendingLeave(panel);
+  cancelPendingLeave(panel, true);
   if (panel.hasAttribute("popover") && isShowing(panel)) {
     try {
       panel.hidePopover();

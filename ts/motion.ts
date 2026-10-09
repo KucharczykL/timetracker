@@ -1,13 +1,15 @@
 // Durations come from computed root style.
+import { reportClientError } from "./client-errors.js";
 
 export type MotionToken = "fast" | "fast-exit" | "medium" | "medium-exit" | "slow" | "slow-exit" | "reduced";
 
+/** Idempotent; never calls finish. */
 export type CancelLeave = () => void;
 
 const MOTION_ATTRIBUTE = "data-motion";
 const LEAVING = "leaving";
 const ENTERING = "entering";
-// Cap finishes the leave if no event.
+// Cap finishes a leave no animation ends.
 const CAP_SLACK_MS = 100;
 
 export function prefersReducedMotion(): boolean {
@@ -39,41 +41,63 @@ export function motionDuration(token: MotionToken): number {
   return durationOf(token);
 }
 
-/** Holds an element's leave until animations end. */
+/** Stamps an anchored entry's start values. */
+export function markEntering(element: Element): void {
+  element.setAttribute(MOTION_ATTRIBUTE, ENTERING);
+}
+
+export function markLeaving(element: Element): void {
+  element.setAttribute(MOTION_ATTRIBUTE, LEAVING);
+}
+
+export function clearLeaving(element: Element): void {
+  if (isLeaving(element)) element.removeAttribute(MOTION_ATTRIBUTE);
+}
+
+/** An infinite animation never ends a leave. */
+function endsOnItsOwn(animation: Animation): boolean {
+  return animation.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY;
+}
+
+function runFinish(finish: () => void): void {
+  try {
+    finish();
+  } catch (error) {
+    reportClientError("motion", `a leave's finish threw: ${String(error)}`, { toast: false });
+  }
+}
+
+/** Holds a leave; null when finished at once. */
 export function holdLeave(
   element: Element,
   token: MotionToken,
   finish: () => void,
-): CancelLeave {
-  element.setAttribute(MOTION_ATTRIBUTE, LEAVING);
+): CancelLeave | null {
+  markLeaving(element);
   const duration = motionDuration(token);
   if (typeof element.getAnimations !== "function" || duration === 0) {
-    element.removeAttribute(MOTION_ATTRIBUTE);
-    finish();
-    return () => {};
+    clearLeaving(element);
+    runFinish(finish);
+    return null;
   }
   let settled = false;
-  const settle = (): void => {
-    if (settled) return;
+  const stop = (): boolean => {
+    if (settled) return false;
     settled = true;
     window.clearTimeout(timer);
-    if (element.getAttribute(MOTION_ATTRIBUTE) === LEAVING) {
-      element.removeAttribute(MOTION_ATTRIBUTE);
-    }
-    finish();
+    clearLeaving(element);
+    return true;
+  };
+  const settle = (): void => {
+    if (stop()) runFinish(finish);
   };
   const timer = window.setTimeout(settle, duration + CAP_SLACK_MS);
   // Style read starts the stamped transition.
   void getComputedStyle(element).opacity;
-  const animations = element.getAnimations({ subtree: true });
+  const animations = element.getAnimations({ subtree: true }).filter(endsOnItsOwn);
   void Promise.allSettled(animations.map((animation) => animation.finished)).then(settle);
   return () => {
-    if (settled) return;
-    settled = true;
-    window.clearTimeout(timer);
-    if (element.getAttribute(MOTION_ATTRIBUTE) === LEAVING) {
-      element.removeAttribute(MOTION_ATTRIBUTE);
-    }
+    stop();
   };
 }
 
@@ -82,7 +106,7 @@ export function isLeaving(element: Element): boolean {
   return element.getAttribute(MOTION_ATTRIBUTE) === LEAVING;
 }
 
-/** Drops the entering stamp after entry. */
+/** Drops the entering stamp; entry runs. */
 export function settleEntry(element: Element): void {
   void getComputedStyle(element).opacity;
   if (element.getAttribute(MOTION_ATTRIBUTE) === ENTERING) {

@@ -5,6 +5,7 @@
  */
 import { reportClientError } from "../client-errors.js";
 import { SHEET_ATTRIBUTES, SHEET_HOST_VALUE } from "../generated/sheet-attributes.js";
+import type { SheetFocus } from "./dropdown-behaviors.js";
 import type { MenuController } from "./menu-behavior.js";
 import { closeTogether, type CancelSettled, isModalLeaving, whenSettled } from "./modal-layer.js";
 import { attachSheetCore, type FrameHandle } from "./sheet-controller.js";
@@ -20,7 +21,7 @@ export interface NarrowSheetOptions {
   sentinel: HTMLElement;
   /** Its `aria-expanded` follows the sheet. */
   expandedToggle?: HTMLElement;
-  sheetFocus?: (menu: HTMLElement) => HTMLElement | null;
+  sheetFocus?: SheetFocus;
   /** Holds the menu; default: the menu. */
   lent?: HTMLElement;
   /** Focus return when no opener is stated. */
@@ -52,7 +53,7 @@ function titleOf(sheet: HTMLDialogElement): string {
 }
 
 /** Item that acts, not a submenu opener. */
-const ACTING_ITEM_SELECTOR = `[role="menuitem"]:not([aria-haspopup])`;
+const ACTING_ITEM_SELECTOR = `[role="menuitem"]:not([aria-haspopup]):not([aria-disabled="true"])`;
 
 /** Clones carry no id; stamp per instance. */
 function nameSheet(dialog: HTMLDialogElement): void {
@@ -184,9 +185,6 @@ export function attachNarrowSheet(
     hideDetail: () => ({ moving: state.kind === "moving" }),
   });
 
-  dialog
-    .querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back}]`)
-    ?.addEventListener("click", () => sheet.close());
   // Capture: close before the item's click.
   dialog.addEventListener(
     "click",
@@ -218,7 +216,7 @@ export function attachNarrowSheet(
       lent.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       menu.setAttribute(SHEET_ATTRIBUTES.host, SHEET_HOST_VALUE);
       body.appendChild(lent);
-      // Levels and search share one height.
+      // Levels, nesting and search: one height.
       dialog.toggleAttribute(
         SHEET_ATTRIBUTES.steady,
         levelBelow !== null || lent.querySelector(STEADY_CONTENT_SELECTOR) !== null,

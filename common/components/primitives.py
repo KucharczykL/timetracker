@@ -355,7 +355,7 @@ ANCHORED_MOTION_CLASS = (
     "data-[motion=leaving]:ease-exit data-[motion=leaving]:duration-(--duration-fast-exit) "
     "data-[motion=entering]:transition-none data-[motion=entering]:opacity-0 "
     "data-[motion=entering]:scale-95 data-[motion=leaving]:opacity-0 "
-    "data-[motion=leaving]:scale-95 "
+    "data-[motion=leaving]:scale-95 data-[motion=leaving]:pointer-events-none "
     "data-[side=bottom]:origin-top data-[side=top]:origin-bottom "
     "data-[side=left]:origin-right data-[side=right]:origin-left "
     "data-[side=bottom]:data-[motion=entering]:-translate-y-1 "
