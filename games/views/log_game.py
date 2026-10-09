@@ -146,6 +146,10 @@ _SECTION_PANEL_CLASS: Final = f"flex w-[calc(100%-2rem)] max-w-xl {MODAL_SURFACE
 ATTEMPT_FIELD: Final = "attempt"
 
 
+def _actor(request: HttpRequest) -> User:
+    return cast(User, request.user)
+
+
 def _build(
     request: HttpRequest,
     *,
@@ -153,7 +157,7 @@ def _build(
     held: HeldFacts | None,
     prefill: Game | None = None,
 ) -> LogGameForm:
-    library = cast(User, request.user).library
+    library = _actor(request).library
     return LogGameForm(
         data,
         library=library,
@@ -202,7 +206,7 @@ def _named_game(request: HttpRequest, library: UserLibrary) -> Game | None:
 
 @login_required
 def log_game_page(request: HttpRequest) -> HttpResponse:
-    user = cast(User, request.user)
+    user = _actor(request)
     library = user.library
     data = request.POST if request.method == "POST" else None
     game = _named_game(request, library)
@@ -253,18 +257,16 @@ def _reseen(data: QueryDict, held: HeldFacts, written: frozenset[WrittenStep]) -
         data[name] = fresh[name]
 
 
-def _join(words: Sequence[str]) -> str:
-    if len(words) == 1:
-        return words[0]
-    return f"{', '.join(words[:-1])} and {words[-1]}"
-
-
 def _saved_line(written: frozenset[WrittenStep]) -> str | None:
     """What a refused press kept, if anything."""
     words = [word for step, word in SAVED_WORDS.items() if step in written]
     if not words:
         return None
-    return f"Saved: {_join(words)}. Fix the field below and save again."
+    if len(words) == 1:
+        joined = words[0]
+    else:
+        joined = f"{', '.join(words[:-1])} and {words[-1]}"
+    return f"Saved: {joined}. Fix the field below and save again."
 
 
 def _refused(
@@ -278,7 +280,7 @@ def _refused(
     if refused.written:
         # A kept write keys its retry apart from the first press.
         data[ATTEMPT_FIELD] = str(statement.attempt + 1)
-    library = cast(User, request.user).library
+    library = _actor(request).library
     held = held_facts(library, statement.game)
     kept = _saved_line(refused.written)
     if kept is not None:

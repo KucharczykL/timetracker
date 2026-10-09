@@ -65,43 +65,46 @@ def held_facts(library: UserLibrary, game: Game) -> HeldFacts:
             mastered=False,
         )
     run = live_ordinary_runs(library, tracked).last()
+    held_run = None
+    if run is not None:
+        held_run = HeldRun(
+            run=run,
+            started=stated_start(run),
+            completed=stated_completion(run),
+            note=run.note,
+        )
     return HeldFacts(
         game_id=game.pk,
         removed=False,
         status=PlayerGameStatus(tracked.status),
-        run=None if run is None else _held_run(run),
+        run=held_run,
         platform=_held_platform(library, game),
         mastered=tracked.mastered,
     )
 
 
-def _held_run(run: Playthrough) -> HeldRun:
-    return HeldRun(
-        run=run,
-        started=stated_start(run),
-        completed=stated_completion(run),
-        note=run.note,
-    )
-
-
-def _live_releases(library: UserLibrary, game: Game) -> QuerySet[Release, Release]:
-    """Releases this library sees for a game."""
-    return Release.objects.visible_to(library).filter(
-        edition__game=game,
-        platform__in=Platform.objects.visible_to(library),
+def _newest_session_release(
+    library: UserLibrary,
+    game: Game,
+    release_ids: QuerySet[Release, Release] | list[ReleaseId],
+) -> ReleaseId | None:
+    """Release the game's newest session names, if any of `release_ids`."""
+    return (
+        library_sessions(library)
+        .filter(playthrough__player_game__game=game, release__in=release_ids)
+        .order_by("-sort_instant", "-id")
+        .values_list("release_id", flat=True)
+        .first()
     )
 
 
 def _held_platform(library: UserLibrary, game: Game) -> Platform | None:
     """Newest session, else record, else copy."""
-    releases = _live_releases(library, game)
-    named = (
-        library_sessions(library)
-        .filter(playthrough__player_game__game=game, release__in=releases)
-        .order_by("-sort_instant", "-id")
-        .values_list("release_id", flat=True)
-        .first()
+    releases = Release.objects.visible_to(library).filter(
+        edition__game=game,
+        platform__in=Platform.objects.visible_to(library),
     )
+    named = _newest_session_release(library, game, releases)
     if named is None:
         named = (
             library_records(library)
@@ -140,13 +143,7 @@ def copy_release_for(
         return None
     if len(releases) == 1:
         return next(iter(releases.values()))
-    named = (
-        library_sessions(library)
-        .filter(playthrough__player_game__game=game, release_id__in=list(releases))
-        .order_by("-sort_instant", "-id")
-        .values_list("release_id", flat=True)
-        .first()
-    )
+    named = _newest_session_release(library, game, list(releases))
     if named in releases:
         return releases[named]
     return next(iter(releases.values()))

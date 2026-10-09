@@ -3,7 +3,7 @@
 import datetime
 from collections.abc import Mapping
 from functools import partial
-from typing import Any, ClassVar, Final, Literal, cast
+from typing import Any, ClassVar, Final, Literal
 
 from django import forms
 from django.db.models import Q
@@ -71,8 +71,6 @@ STALE_GAME = (
 )
 #: A hidden field cannot show its error, so the form states it.
 STALE_FORM = "The form was out of date. Reload and try again."
-#: Sentence for a hidden field the page knows one for.
-HIDDEN_FIELD_SENTENCES: Final[Mapping[str, str]] = {"run": PICKED_RUN_GONE}
 
 type PlaytimeKind = Literal["session", "historical"]
 type ActName = Literal["started", "completed"]
@@ -97,23 +95,22 @@ def canonical_text(value: TemporalValue | None) -> str:
     return "" if value is None or value.canonical is None else value.canonical
 
 
-def mastered_text(mastered: bool) -> str:
-    """The posted spelling of a mastery seen value."""
-    return str(mastered)
+def _shown_status(held: HeldFacts) -> PlayerGameStatus:
+    """The status the page shows; untracked reads as Unplayed."""
+    return UNTRACKED_STATUS if held.status is None else held.status
 
 
 def seen_values(held: HeldFacts) -> dict[str, str]:
     """What the page showed for each `*_seen` field."""
-    status = UNTRACKED_STATUS if held.status is None else held.status
     run = held.run
     return {
         "seen_game": str(held.game_id),
-        "status_seen": status.value,
+        "status_seen": _shown_status(held).value,
         "platform_seen": "" if held.platform is None else str(held.platform.pk),
         "started_seen": "" if run is None else _seen_endpoint(run.started),
         "completed_seen": "" if run is None else _seen_endpoint(run.completed),
         "note_seen": "" if run is None else run.note,
-        "mastered_seen": mastered_text(held.mastered),
+        "mastered_seen": str(held.mastered),
         "run": "" if run is None else str(run.run.pk),
     }
 
@@ -145,9 +142,6 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
     platform_seen = forms.CharField(required=False, widget=forms.HiddenInput)
     started_seen = forms.CharField(required=False, widget=forms.HiddenInput)
     completed_seen = forms.CharField(required=False, widget=forms.HiddenInput)
-    run = forms.ModelChoiceField(
-        queryset=Playthrough.objects.none(), required=False, widget=forms.HiddenInput
-    )
     #: Raised per written-then-refused playtime.
     attempt = forms.IntegerField(
         required=False, min_value=0, initial=0, widget=forms.HiddenInput
@@ -235,8 +229,11 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
             label="Kind",
         )
         self.fields["duration"] = HoursMinutesField(label="Duration")
-        runs = cast(forms.ModelChoiceField, self.fields["run"])
-        runs.queryset = library_runs(library)
+        self.fields["run"] = forms.ModelChoiceField(
+            queryset=library_runs(library),
+            required=False,
+            widget=forms.HiddenInput,
+        )
         device_field(self, library=library, held=None)
         if held is not None:
             self._seed(held)
@@ -265,8 +262,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
     def _seed(self, held: HeldFacts) -> None:
         """Held state, and the seen values it shows."""
         self.initial.update(seen_values(held))
-        shown = UNTRACKED_STATUS if held.status is None else held.status
-        self.initial["status"] = shown.value
+        self.initial["status"] = _shown_status(held).value
         platform = held.platform
         self.initial["platform"] = None if platform is None else platform.pk
         if held.run is not None:
@@ -312,7 +308,8 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission):
         ]
         for name in hidden:
             del self.errors[name]
-            self.add_error(None, HIDDEN_FIELD_SENTENCES.get(name, STALE_FORM))
+            sentence = PICKED_RUN_GONE if name == "run" else STALE_FORM
+            self.add_error(None, sentence)
 
     def _refuse_a_removed_game(self, game: Game) -> None:
         if held_facts(self.library, game).removed:
