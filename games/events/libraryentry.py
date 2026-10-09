@@ -23,7 +23,14 @@ from timetracker.temporal import TemporalValue
 
 #: Recorded spelling: the words `LibraryEntry.access` stores.
 type EntryAccessValue = Literal[
-    "owned", "borrowed", "rented", "subscription", "trial", "demo", "pirated"
+    "owned",
+    "borrowed",
+    "rented",
+    "subscription",
+    "trial",
+    "demo",
+    "pirated",
+    "unknown",
 ]
 #: Recorded spelling: the words `LibraryEntry.format` stores.
 type EntryFormatValue = Literal["physical", "digital", "unknown"]

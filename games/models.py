@@ -2129,6 +2129,7 @@ class EntryAccess(models.TextChoices):
     TRIAL = "trial", "Trial"
     DEMO = "demo", "Demo"
     PIRATED = "pirated", "Pirated"
+    UNKNOWN = "unknown", "Unknown"
 
 
 class EntryFormat(models.TextChoices):
