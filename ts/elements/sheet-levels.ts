@@ -54,14 +54,18 @@ export function bottomSheet(sheet: HTMLDialogElement): HTMLDialogElement {
   return current;
 }
 
+function setBackLabel(back: HTMLElement, text: string): void {
+  const label = back.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back_label}]`);
+  if (label) label.textContent = text;
+}
+
 /** Shows back control naming sheet below. */
 function showBackControl(level: HTMLDialogElement, belowTitle: string): void {
   const back = backControlOf(level);
   if (!back) return;
   back.hidden = false;
   back.setAttribute("aria-label", belowTitle ? `Back to ${belowTitle}` : "Back");
-  const label = back.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back_label}]`);
-  if (label) label.textContent = belowTitle || "Back";
+  setBackLabel(back, belowTitle || "Back");
 }
 
 function hideBackControl(level: HTMLDialogElement): void {
@@ -69,8 +73,7 @@ function hideBackControl(level: HTMLDialogElement): void {
   if (!back) return;
   back.hidden = true;
   back.removeAttribute("aria-label");
-  const label = back.querySelector<HTMLElement>(`[${SHEET_ATTRIBUTES.back_label}]`);
-  if (label) label.textContent = "";
+  setBackLabel(back, "");
 }
 
 function easingOf(): string {

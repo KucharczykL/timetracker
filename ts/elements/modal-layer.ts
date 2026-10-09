@@ -8,7 +8,7 @@ import {
   onStackResize,
   stopWatchingStack,
 } from "./modal-stack.js";
-import { clearLeaving, holdLeave, markLeaving as stampLeaving } from "../motion.js";
+import { clearLeaving, holdLeave, markLeaving } from "../motion.js";
 import { ownChild } from "./own-child.js";
 import {
   isInvalidState,
@@ -149,7 +149,7 @@ let settleDepth = 0;
 /** Runs once no modal leaves; cancellable. */
 export function whenSettled(callback: SettledCallback): CancelSettled {
   if (!isModalLeaving() && settleDepth === 0) {
-    runSettled(callback);
+    reported("a settle callback", callback);
     return () => undefined;
   }
   const queued = { callback };
@@ -172,16 +172,7 @@ function flushSettled(): void {
   if (isModalLeaving()) return;
   const queued = [...settledCallbacks];
   settledCallbacks.clear();
-  for (const { callback } of queued) runSettled(callback);
-}
-
-//: Both paths report a throw alike.
-function runSettled(callback: SettledCallback): void {
-  try {
-    callback();
-  } catch (error) {
-    report(`a settle callback threw: ${String(error)}`);
-  }
+  for (const { callback } of queued) reported("a settle callback", callback);
 }
 
 export function isModalOpen(): boolean {
@@ -226,8 +217,8 @@ function markBackdrops(): void {
 
 type StepName = string; // e.g. "markStack"
 
-/** Cosmetic; a throw must not unsettle the layer. */
-function cosmetic(name: StepName, step: () => void): void {
+/** A throw is reported; the layer stays settled. */
+function reported(name: StepName, step: () => void): void {
   try {
     step();
   } catch (error) {
@@ -236,11 +227,16 @@ function cosmetic(name: StepName, step: () => void): void {
 }
 
 function markDepth(): void {
-  cosmetic("markStack", () => markStack(shown));
+  reported("markStack", () => markStack(shown));
 }
 
 function unmarkDepth(dialog: HTMLDialogElement): void {
-  cosmetic("clearStack", () => clearStack(dialog));
+  reported("clearStack", () => clearStack(dialog));
+}
+
+function unmarkBackdrop(dialog: HTMLDialogElement): void {
+  dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
+  dialog.removeAttribute(MODAL_ATTRIBUTES.over);
 }
 
 function markShown(): void {
@@ -420,8 +416,7 @@ function finishEntry(entry: Entry, returnsFocus: boolean): void {
   const index = shown.indexOf(entry);
   if (index !== -1) shown.splice(index, 1);
   removeSurface(entry.surface);
-  entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
-  entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
+  unmarkBackdrop(entry.dialog);
   clearLeaving(entry.dialog);
   unmarkDepth(entry.dialog);
   markShown();
@@ -431,25 +426,29 @@ function finishEntry(entry: Entry, returnsFocus: boolean): void {
     unlockDocumentScroll();
   }
   const lowest = group?.[0] ?? entry;
-  runHook(entry.options.beforeFocusReturn, "beforeFocusReturn");
+  reported("beforeFocusReturn", () => entry.options.beforeFocusReturn?.());
   // In a chain, the lowest returns focus.
   if (returnsFocus && lowest === entry) returnFocus(entry);
   else entry.opener = null;
   notifyChange();
   // Layer already settled; a throw is reported.
-  runHook(entry.options.onClosed, "onClosed");
+  reported("onClosed", () => entry.options.onClosed?.());
   // A chain whose top ended elsewhere still ends.
   for (const member of [...(group ?? [])].reverse()) {
     if (member.state === "leaving") finishEntry(member, returnsFocus);
   }
 }
 
-function runHook(hook: ModalHook | undefined, name: string): void {
-  try {
-    hook?.();
-  } catch (error) {
-    report(`${name} threw: ${String(error)}`);
-  }
+function requestStep(entry: Entry, step: Step): void {
+  if (step === "cancel") entry.requestCancel();
+  else entry.requestDismiss();
+}
+
+/** The step a pressed control asks. */
+function pressedStep(target: Element): Step | null {
+  if (target.closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) return "dismiss";
+  if (target.closest(`[${MODAL_ATTRIBUTES.cancel}]`)) return "cancel";
+  return null;
 }
 
 /** A step pressed during a leave runs after it. */
@@ -460,8 +459,7 @@ function queueStep(step: Step): void {
       return;
     }
     const top = openEntries().at(-1);
-    if (step === "cancel") top?.requestCancel();
-    else top?.requestDismiss();
+    if (top) requestStep(top, step);
   };
   whenSettled(run);
 }
@@ -481,9 +479,7 @@ function refuseOpen(entry: Entry, detail: string): false {
 function open(entry: Entry, opener: HTMLElement | undefined): boolean {
   if (entry.state === "open") return true;
   // A leave is timing, not a defect.
-  if (entry.state === "leaving" || shown.some((other) => other.state === "leaving")) {
-    return false;
-  }
+  if (isModalLeaving()) return false;
   if (!entry.surface.host.isConnected || !entry.dialog.isConnected) {
     return refuseOpen(entry, "dialog or host is detached");
   }
@@ -524,12 +520,12 @@ function closeEntry(entry: Entry): void {
     return;
   }
   closeAbove(entry);
-  markLeaving([entry]);
+  markChainLeaving([entry]);
   runLeave(entry, () => finish(entry));
 }
 
 /** Marks each modal leaving, as one chain. */
-function markLeaving(group: readonly Entry[]): void {
+function markChainLeaving(group: readonly Entry[]): void {
   for (const entry of group) {
     entry.state = "leaving";
     entry.group = group.length > 1 ? group : null;
@@ -583,9 +579,9 @@ function closeGroup(first: Entry): void {
       });
       return;
     }
-    markLeaving(group);
+    markChainLeaving(group);
     // Lower members fade their backdrops along.
-    for (const member of group.slice(0, -1)) stampLeaving(member.dialog);
+    for (const member of group.slice(0, -1)) markLeaving(member.dialog);
     runLeave(group[group.length - 1], () => finishGroup(group), group.length > 1);
   });
 }
@@ -687,11 +683,8 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
     if (entry.state !== "leaving" || !ownsEvent(event)) return;
     if (event.type === "click") {
       const target = event.target as Element;
-      if (target === dialog || target.closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) {
-        queueStep("dismiss");
-      } else if (target.closest(`[${MODAL_ATTRIBUTES.cancel}]`)) {
-        queueStep("cancel");
-      }
+      const step = target === dialog ? "dismiss" : pressedStep(target);
+      if (step) queueStep(step);
     }
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -731,9 +724,8 @@ export function attachModal(dialog: HTMLDialogElement, options: ModalOptions = {
   });
   dialog.addEventListener("click", (event) => {
     if (!ownsEvent(event)) return;
-    const target = event.target as Element;
-    if (target.closest(`[${MODAL_ATTRIBUTES.dismiss}]`)) dismiss();
-    else if (target.closest(`[${MODAL_ATTRIBUTES.cancel}]`)) cancelNative();
+    const step = pressedStep(event.target as Element);
+    if (step) requestStep(entry, step);
   });
 
   return {
@@ -753,8 +745,7 @@ export function resetModalLayerForTests(): void {
     clearLeaveLimit(entry);
     removeSurface(entry.surface);
     if (entry.dialog.open) entry.dialog.close();
-    entry.dialog.removeAttribute(MODAL_ATTRIBUTES.covered);
-    entry.dialog.removeAttribute(MODAL_ATTRIBUTES.over);
+    unmarkBackdrop(entry.dialog);
     unmarkDepth(entry.dialog);
   }
   shown.length = 0;

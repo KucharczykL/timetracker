@@ -54,7 +54,7 @@ type Countdown =
   | { kind: "sticky" }
   | { kind: "paused"; remaining: number }
   | { kind: "running"; deadline: number; timer: Timer }
-  /** Leaving: the fallback timer that removes the toast. */
+  /** Leaving: a fallback timer removes it. */
   | { kind: "leaving"; timer: Timer };
 
 export interface Toast {
@@ -70,7 +70,7 @@ export interface Toast {
 
 const MAX_TOASTS = 3;
 const ACTION_MS = 10_000;
-/** Past the fade, the store removes a leaving toast no element finishes. */
+/** Past the fade: ends an unfinished leave. */
 const LEAVE_CAP_MS = 500;
 
 function isToastType(value: string): value is ToastType {
@@ -118,7 +118,7 @@ export class ToastStore {
       existing.message = message;
       existing.type = toastType;
       existing.action = action;
-      // A leaving toast keeps its exit; the element finishes it.
+      // A leaving toast keeps its exit.
       if (existing.countdown.kind !== "leaving") {
         this.stop(existing);
         existing.countdown = this.countdownFor(existing, duration);
@@ -164,7 +164,7 @@ export class ToastStore {
     this.onChange();
   }
 
-  /** The element calls this when a leave ends; a toast not leaving stays. */
+  /** Ends a leave; others stay. */
   finishLeave(id: ToastId): void {
     if (this.find(id)?.countdown.kind !== "leaving") return;
     this.removeToast(id);

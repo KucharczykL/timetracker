@@ -1344,29 +1344,6 @@ def _assemble(
     )
 
 
-def _assemble_sheet(
-    trigger: Element,
-    target: Element,
-    *,
-    id: str,
-    placement: str,
-    submenu: bool,
-    wrapper_class: str,
-) -> Node:
-    """Wire the sheet behavior, which brings its own sheet. Only BottomSheet."""
-    return _wire(
-        trigger,
-        target,
-        id=id,
-        placement=placement,
-        submenu=submenu,
-        wrapper_class=wrapper_class,
-        behavior="sheet",
-        config=None,
-        sheet_part=None,
-    )
-
-
 def Dropdown(
     *,
     trigger_element: Element,
@@ -1484,13 +1461,17 @@ def BottomSheet(
         size_class=_SECTION_SHEET_SIZE_CLASS,
         children=children,
     )
-    return _assemble_sheet(
+    # The sheet behavior brings its own sheet.
+    return _wire(
         _as_dialog_trigger(trigger_element),
         target,
         id=id,
         placement="bottom-start",
         submenu=False,
         wrapper_class="relative flex w-full",
+        behavior="sheet",
+        config=None,
+        sheet_part=None,
     )
 
 

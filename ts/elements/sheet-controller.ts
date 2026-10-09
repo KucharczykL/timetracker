@@ -155,21 +155,17 @@ export function attachSheetCore(
     }
     try {
       options.beforeShow?.();
+      if (level) {
+        // Level push is its entry; no slide-up.
+        entered = true;
+        pushLevel(dialog, level);
+      }
     } catch (error) {
       // No open sheet without its show.
       modal.close();
       throw error;
     }
-    if (level) {
-      // Level push is its entry; no slide-up.
-      entered = true;
-      try {
-        pushLevel(dialog, level);
-      } catch (error) {
-        modal.close();
-        throw error;
-      }
-    } else {
+    if (!level) {
       openFrame = window.requestAnimationFrame(() => {
         openFrame = null;
         entered = true;

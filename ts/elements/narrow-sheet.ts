@@ -151,9 +151,10 @@ export function attachNarrowSheet(
 
   const levelOf = (): LevelPlacement | null =>
     levelBelow ? { below: levelBelow, belowTitle: titleOf(levelBelow) } : null;
+  const closeChain = (): void => closeTogether(bottomSheet(dialog));
   // × closes the chain; Escape closes one.
   const dismissSheet = (): void => {
-    if (levelBelow) closeTogether(bottomSheet(dialog));
+    if (levelBelow) closeChain();
     else sheet.close();
   };
 
@@ -192,7 +193,7 @@ export function attachNarrowSheet(
       if (!levelBelow) return;
       const item = (event.target as Element).closest(ACTING_ITEM_SELECTOR);
       if (!item || item.closest("dialog") !== dialog) return;
-      closeTogether(bottomSheet(dialog));
+      closeChain();
     },
     { capture: true },
   );
