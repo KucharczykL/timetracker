@@ -71,6 +71,17 @@ _MODAL_ALIGN_CLASS: Mapping[ModalAlign, str] = {
 
 _HEADER_CLASS = "flex shrink-0 items-center justify-between gap-4 py-1.5 pl-4 pr-1.5"
 _DIVIDED_HEADER_CLASS = "border-b border-default-medium bg-surface-overlay"
+#: On a level: back left, title centred, × right.
+_LEVEL_HEADER_CLASS = (
+    "group-data-[sheet-level]/modal:grid "
+    "group-data-[sheet-level]/modal:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] "
+    "group-data-[sheet-level]/modal:gap-2 group-data-[sheet-level]/modal:pl-1.5"
+)
+_LEADING_CLASS = "hidden min-w-0 group-data-[sheet-level]/modal:flex"
+_TITLE_BLOCK_CLASS = (
+    "flex min-w-0 flex-col group-data-[sheet-level]/modal:max-w-[50vw] "
+    "group-data-[sheet-level]/modal:text-center"
+)
 
 #: The layer writes them; lengths in px.
 #: Arbitrary transform: the depth cue owns transform.
@@ -167,32 +178,39 @@ def ModalPanelHeader(
             [
                 (MODAL_ATTRIBUTES["dismiss"], ""),
                 ("aria-label", close_label),
-                ("class", "shrink-0 focus:ring-inset"),
+                ("class", "shrink-0 justify-self-end focus:ring-inset"),
             ],
             variant="ghost",
             size="compact",
         )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
     )
+    title_block = Div(class_=_TITLE_BLOCK_CLASS)[
+        P(
+            [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
+            class_="text-type-micro text-body",
+        ),
+        PlainH2(
+            [
+                *([] if title_id is None else [("id", title_id)]),
+                *title_attributes,
+                ("class", "truncate text-type-section text-heading"),
+            ],
+        )[title],
+    ]
     return Div(
         [(MODAL_ATTRIBUTES["header"], ""), *attributes],
-        class_=f"{_HEADER_CLASS} {_DIVIDED_HEADER_CLASS if divided else ''}".strip(),
+        class_=" ".join(
+            part
+            for part in (
+                _HEADER_CLASS,
+                _LEVEL_HEADER_CLASS if leading is not None else "",
+                _DIVIDED_HEADER_CLASS if divided else "",
+            )
+            if part
+        ),
     )[
-        Div(class_="flex min-w-0 items-center gap-1")[
-            leading,
-            Div(class_="flex min-w-0 flex-col")[
-                P(
-                    [(MODAL_ATTRIBUTES["trail"], ""), ("hidden", "")],
-                    class_="text-type-micro text-body",
-                ),
-                PlainH2(
-                    [
-                        *([] if title_id is None else [("id", title_id)]),
-                        *title_attributes,
-                        ("class", "text-type-section text-heading"),
-                    ],
-                )[title],
-            ],
-        ],
+        None if leading is None else Div(class_=_LEADING_CLASS)[leading],
+        title_block,
         close_button,
     ]
 
