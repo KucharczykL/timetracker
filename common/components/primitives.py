@@ -1916,7 +1916,7 @@ def FieldErrors(errors, *, form_wide: bool = False) -> Node | None:
 
 #: How a group shows its legend.
 #:
-#: "hidden": screen readers name it; space parts it.
+#: "hidden": legend for screen readers only.
 #: "panel": a section panel, legend inside.
 type FieldGroupLook = Literal["shown", "hidden", "panel"]
 #: Space-separated utility tokens.
@@ -1932,7 +1932,7 @@ _GROUP_LOOK_CLASSES: dict[FieldGroupLook, str] = {
     "hidden": "",
     "panel": SECTION_SURFACE_CLASS,
 }
-#: Every look owns its top space.
+#: Parts each group from the one before.
 _GROUP_CLASS = "flex flex-col gap-3 mt-3 first-of-type:mt-0"
 
 
