@@ -263,7 +263,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, CopyField
             ]
         )
 
-    def _saved_sections(self) -> frozenset[LogSection]:
+    def saved_sections(self) -> frozenset[LogSection]:
         if not self.is_bound:
             return frozenset()
         posted = self.fields["saved"].widget.value_from_datadict(
@@ -278,7 +278,7 @@ class LogGameForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, CopyField
         labels = dict(SECTION_LABELS)
         if held is not None and held.copies:
             labels["copy"] = ANOTHER_COPY_LABEL
-        saved = self._saved_sections()
+        saved = self.saved_sections()
         cast(forms.MultipleChoiceField, self.fields["sections"]).choices = [
             (section, labels[section]) for section in SECTIONS if section not in saved
         ]

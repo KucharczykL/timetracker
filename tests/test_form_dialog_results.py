@@ -141,6 +141,7 @@ _FORM_ROUTES = (
     "games:add_game",
     "games:add_session",
     "games:add_playthrough",
+    "games:log_game",
 )
 
 

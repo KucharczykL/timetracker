@@ -12,6 +12,7 @@ from games.views import (
     library_entry,
     library_list,
     list_columns,
+    log_game,
     platform,
     playthrough,
     preset,
@@ -165,6 +166,7 @@ urlpatterns = [
         name="run_bulk_action",
     ),
     path("session/add", session.add_session, name="add_session"),
+    path("log/", log_game.log_game_page, name="log_game"),
     path(
         "session/add/resume/<uuidv7:game_id>",
         session.resume_session,

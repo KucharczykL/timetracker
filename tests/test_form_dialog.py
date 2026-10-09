@@ -318,6 +318,7 @@ class PageWidthTest(TestCase):
             ("games:add_platform", [], "form"),
             ("games:add_playthrough", [], "form"),
             ("games:add_session", [], "form"),
+            ("games:log_game", [], "form"),
             ("games:remove_game", [game.pk], "form"),
             ("games:add_game", [], "form"),
             ("games:edit_game", [game.pk], "form"),
@@ -398,6 +399,7 @@ _FORM_ROUTES = (
     "games:add_game",
     "games:add_session",
     "games:add_playthrough",
+    "games:log_game",
 )
 
 

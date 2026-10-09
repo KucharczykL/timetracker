@@ -43,6 +43,7 @@ def _offers_new_game(html: str, name: str) -> bool:
     [
         ("add_session", "game"),
         ("add_to_library", "game"),
+        ("log_game", "game"),
         ("add_game", "parent"),
         ("edit_game", "parent"),
         ("add_playthrough", "game"),
