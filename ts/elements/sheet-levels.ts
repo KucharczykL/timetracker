@@ -116,9 +116,14 @@ function playLevel(
   const timing: KeyframeAnimationOptions = {
     duration,
     easing: easingOf(),
-    fill: "none",
+    // No snap back before the settle.
+    fill: "forwards",
   };
   return [levelPanel.animate(frames.level, timing), belowPanel.animate(frames.below, timing)];
+}
+
+function cancelAll(animations: readonly Animation[]): void {
+  for (const animation of animations) animation.cancel();
 }
 
 /** Runs once every animation ends; at once when there are none. */
@@ -145,6 +150,7 @@ export function pushLevel(
     // A pop that started meanwhile owns the animations now.
     if (runningAnimations.get(level) !== animations) return;
     if (coveredSheets.get(level) === below) setPanelShown(below, false);
+    cancelAll(animations);
   });
 }
 
@@ -154,7 +160,7 @@ export function popLevel(
   below: HTMLDialogElement,
   done: () => void,
 ): CancelLeave {
-  for (const animation of runningAnimations.get(level) ?? []) animation.cancel();
+  cancelAll(runningAnimations.get(level) ?? []);
   // Shown first, so the slide-back has the panel to move.
   setPanelShown(below, true);
   const animations = playLevel(level, below, "pop");
@@ -165,7 +171,7 @@ export function popLevel(
   });
   return () => {
     cancelled = true;
-    for (const animation of animations) animation.cancel();
+    cancelAll(animations);
   };
 }
 
@@ -173,6 +179,7 @@ export function popLevel(
 export function clearLevel(level: HTMLDialogElement): void {
   const below = coveredSheets.get(level);
   coveredSheets.delete(level);
+  cancelAll(runningAnimations.get(level) ?? []);
   runningAnimations.delete(level);
   if (below) setPanelShown(below, true);
   level.removeAttribute(SHEET_ATTRIBUTES.level);
