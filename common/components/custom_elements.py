@@ -1467,13 +1467,10 @@ def _sheet_back_control() -> Node:
     return ControlButton(
         [(SHEET_ATTRIBUTES["back"], ""), ("hidden", "")],
         variant="ghost",
-        size="compact",
+        class_="-ml-2 max-w-[45%] gap-1 px-2",
     )[
         Icon("arrowleft"),
-        Span(
-            [(SHEET_ATTRIBUTES["back_label"], "")],
-            class_="min-w-0 truncate text-type-micro",
-        ),
+        Span([(SHEET_ATTRIBUTES["back_label"], "")], class_="min-w-0 truncate"),
     ]
 
 
