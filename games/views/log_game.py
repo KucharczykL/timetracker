@@ -33,7 +33,7 @@ from games.log_forms import (
     LogGameForm,
 )
 from games.models import Game, Playthrough
-from games.price_fields import price_presentations
+from games.price_fields import PRICE_GROUP, price_presentations
 from games.reads.endpoints import StatedEndpoint
 from games.reads.log_game import HeldFacts, held_facts
 from games.reads.playthrough_endpoints import stated_completion, stated_start
@@ -199,15 +199,16 @@ def _groups() -> list[FormFieldGroup]:
     """The top fields, the panels, then the Add ticks."""
     groups = [FormFieldGroup("Game", ("game", "status", "playthrough"), look="hidden")]
     for legend, names, section in PANEL_GROUPS:
+        shown = PANEL_SHOWN[section]
         groups.append(
             FormFieldGroup(
                 legend,
                 names,
                 look="panel",
-                class_=PANEL_SHOWN[section],
+                class_=f"{shown} {PRICE_GROUP}" if "price" in names else shown,
             )
         )
-    groups.append(FormFieldGroup("Add", ("sections",)))
+    groups.append(FormFieldGroup("Add", ("sections",), look="hidden"))
     return groups
 
 

@@ -163,3 +163,19 @@ def test_a_refused_game_step_names_the_game_field(
 
     assert response.status_code == 409
     assert "Restore it instead." in response.content.decode()
+
+
+def test_the_price_panel_is_the_price_group(logged_in):
+    # The amount row shows only inside its price group.
+    html = _page(logged_in)
+
+    assert re.search(r"<fieldset[^>]*group/price[^>]*value=copy", html) or re.search(
+        r"<fieldset[^>]*value=copy[^>]*group/price", html
+    )
+
+
+def test_the_add_ticks_name_themselves_once(logged_in):
+    html = _page(logged_in)
+
+    shown = re.sub(r'<legend class="sr-only">[^<]*</legend>', "", html)
+    assert len(re.findall(r">\s*Add\s*<", shown)) == 1
