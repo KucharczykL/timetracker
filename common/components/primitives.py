@@ -1467,7 +1467,7 @@ def Input(
     return Element("input", merged)
 
 
-#: The mixed dash, on the check mark's grid.
+#: The mixed dash, in the check mark's viewBox.
 #:
 #: One literal: Tailwind scans the source text.
 _INDETERMINATE_DASH_CLASS = (

@@ -14,9 +14,9 @@ unfinished lists. An empty field keeps. The act runs through the runner of
 
 `games/bulk_game_edit.py` declares `playergame.edit`. Its scope is
 `game_scope` in `games/bulk_games.py`, the list's own read through
-`tracked_by`, which carries the three facts. The resolve reads the same rows
+`tracked_by`, which carries the four facts. The resolve reads the same rows
 by key, and gives a key it does not find as lost, with `GAME_GONE`. The preview shows
-Game, Platform, Status, Mastered and Unfinished lists. The Undo takes
+Game, Platform, Status, Mastered, Unfinished lists and Dropped figures. The Undo takes
 `PlayerGame` keys, because the events go on the PlayerGame's stream.
 
 The tray shows Edit…, then Remove. The destructive act is last. The tray's
@@ -24,14 +24,15 @@ Edit… states the library's facts; the row menu's Edit opens Edit Game.
 
 ## The statement
 
-`GameEditStatement` holds `status`, `mastered` and
-`excluded_from_unfinished`; `None` keeps, and one fact at least is stated. It
+`GameEditStatement` holds `status`, `mastered`,
+`excluded_from_unfinished` and `excluded_from_dropped`; `None` keeps, and one fact at least is stated. It
 travels as JSON under the runner's choice field, as `EditStatement` does.
 `settle` decodes a carried statement or composes one from the form.
 
-The form has three fields under the runner's prefix, none required. Status
+The form has four fields under the runner's prefix, none required. Status
 is a `ChoiceSearchSelectWidget` over the six words. Its placeholder states
-what the rows hold: "Keep: Played", or "Keep: mixed". Each flag is a
+what the rows hold: "Keep: Played", or "Keep: mixed". Each of the three
+flags is a
 [tri-state checkbox](2026-10-09-issue-1293-tri-state-checkbox-design.md)
 that starts at what the rows hold. A form that states nothing is refused.
 

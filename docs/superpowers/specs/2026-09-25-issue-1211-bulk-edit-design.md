@@ -21,9 +21,9 @@ bad key and an empty object.
 ## The question
 
 `BulkEditForm` is an `UnsetFieldsForm`, and `FormFields` renders it. Its
-prefix is the runner's `CHOICE_FIELD`. Each field has three states: keep, a
-value, and none. An empty field keeps. Its placeholder shows what the rows
-keep: "Keep: Steam Deck", or "Keep: mixed" when the rows differ.
+prefix is the runner's `CHOICE_FIELD`. Device and Note have three states:
+keep, a value, and none. An empty field keeps. Its placeholder shows what
+the rows keep: "Keep: Steam Deck", or "Keep: mixed" when the rows differ.
 
 - Device is a `SearchSelectWidget` in an `UnsetWidget`. It searches and
   creates devices. Its ⊘ states "No device".

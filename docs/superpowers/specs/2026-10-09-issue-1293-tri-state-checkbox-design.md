@@ -22,7 +22,7 @@ The box has no name. One hidden input carries the field's name. It posts
 checked word or the unchecked word. `""` keeps the rows.
 
 Limit: if the rows change after the offer, the box cannot state the
-value it shows. A form that states nothing else is refused.
+value it shows. A form whose every field keeps is refused.
 
 ## The element
 
@@ -30,12 +30,14 @@ value it shows. A form that states nothing else is refused.
 the host, a hint, the box and the hidden input. The server sets
 `checked` on the box where the shown state is checked.
 
-`ts/elements/tri-state-checkbox.ts` reads its state from the hidden
-input on connect: `""` is the held state. On each `change` it sets
+The server renders the box disabled. `ts/elements/tri-state-checkbox.ts`
+enables it after it binds, so a box without its script cannot post a
+change it does not carry. It reads its state from the hidden input on
+connect: `""` is the held state. On each `change` it sets
 `checked` and `indeterminate` from its own state. The browser toggle
 does not decide. Both inputs carry `autocomplete="off"`.
 
-The hint beside the box says:
+The first row that matches gives the hint beside the box:
 
 | State | Hint |
 |---|---|
@@ -49,21 +51,22 @@ spelling of them.
 ## The look
 
 Every checkbox uses `CHECKBOX_LOOK_CLASS`: a 24 px rounded square. The
-class also draws the mixed dash on the check mark's grid, so the dash
-replaces the Flowbite dash. The tri-state box, the table's selection
+class also draws the mixed dash in the check mark's 24-unit viewBox, so
+the dash replaces the Flowbite dash. The tri-state box, the table's selection
 boxes and a form's boxes look the same.
 
 ## Accessibility
 
 The native checkbox gives the role, focus, Space and the label click.
-The browser exposes `indeterminate` as `aria-checked="mixed"`. A screen
+The browser exposes `indeterminate` as the mixed state in the
+accessibility tree; no `aria-checked` attribute is written. A screen
 reader can skip a changed description, so "Will change" can go unheard.
 
 ## The form side
 
 `flag_field(label)` returns a `TypedChoiceField` over `FLAG_CHECKED` and
 `FLAG_UNCHECKED`, with `empty_value=None`. The field refuses an unknown
-value. The form sets `widget.held` from its rows.
+value. `hold_flag` sets the widget's held state from the form's rows.
 
 `TriStateCheckboxWidget` (`games/forms.py`) is a plain `forms.Widget`.
 It takes the words as an argument, because `games/forms.py` does not
