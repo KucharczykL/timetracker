@@ -160,7 +160,12 @@ class _SeenEnd(forms.Form):
 
 #: One press kind per key prefix.
 type SubmissionKind = Literal[
-    "copy-add", "copy-end", "copy-resume", "purchase-add", "purchase-refund"
+    "copy-add",
+    "copy-end",
+    "copy-resume",
+    "purchase-add",
+    "purchase-refund",
+    "log",
 ]
 
 
@@ -189,11 +194,13 @@ class Submission(forms.Form):
         )
 
 
-class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFields):
-    """One copy, and how it was bought."""
+class CopyFields(PriceFields):
+    """One copy and its price: the fields a copy states.
 
-    opener_fields = ("game",)
-    kind: ClassVar[SubmissionKind] = "copy-add"
+    Shared by Add to library and the Log a game form. The release
+    picker names the host form's game field through `params`.
+    """
+
     price_choices = (PriceChoice.PAID, PriceChoice.FREE, PriceChoice.NONE)
 
     access = forms.ChoiceField(
@@ -204,6 +211,70 @@ class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFie
         initial=EntryFormat.DIGITAL,
         widget=RadioListWidget,
     )
+
+    def install_copy_fields(
+        self,
+        *,
+        library: UserLibrary,
+        presentation: DateTimePresentation,
+        today: datetime.date,
+        game_field: str,
+        game: Game | None,
+    ) -> None:
+        """Build the release and acquired fields the copy needs."""
+        params: ParamSources = {"game_id": {"field": self.add_prefix(game_field)}}
+        create = game is None or game.library_id == library.pk
+        if game is not None:
+            #: The default Release reads first.
+            default = game_releases(library, game).first()
+            if default is not None and "release" not in self.initial:
+                self.initial["release"] = default.pk
+        self.fields["release"] = _release_field(library, params, create=create)
+        self.fields["acquired"] = TemporalFormField(
+            presentation=presentation, label="Got it on", initial=_day(today)
+        )
+
+    def copy_statement(self, note: str) -> EntryStatement:
+        """What the creation states."""
+        cleaned = self.cleaned_data
+        return EntryStatement(
+            release_id=cleaned["release"].pk,
+            access=cleaned["access"],
+            format=cleaned["format"],
+            note=note,
+            acquired=ActStatement(cleaned["acquired"], ""),
+        )
+
+    def copy_purchase_draft(self, note: str) -> PurchaseDraft | None:
+        """The game's purchase, on the acquired day."""
+        if (price := self.price_statement()) is None:
+            return None
+        return PurchaseDraft(
+            copy=self.copy_statement(note),
+            kind="game",
+            name="",
+            price=price,
+            note="",
+            purchased=ActStatement(self.cleaned_data["acquired"], ""),
+        )
+
+    def refuse_release_of_other_game(self, game: Game | None) -> None:
+        """A copy's Release names the game it holds."""
+        release = cast(Release | None, self.cleaned_data.get("release"))
+        if (
+            release is not None
+            and game is not None
+            and release.edition.game_id != game.pk
+        ):
+            self.add_error("release", RELEASE_OF_ANOTHER_GAME)
+
+
+class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, CopyFields):
+    """One copy, and how it was bought."""
+
+    opener_fields = ("game",)
+    kind: ClassVar[SubmissionKind] = "copy-add"
+
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
     )
@@ -230,17 +301,12 @@ class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFie
             ),
         )
         self.state_opener_facts(facts)
-        params: ParamSources = {"game_id": {"field": self.add_prefix("game")}}
-        game = self.stated("game", Game)
-        create = game is None or game.library_id == library.pk
-        if game is not None:
-            #: The default Release reads first.
-            default = game_releases(library, game).first()
-            if default is not None and "release" not in self.initial:
-                self.initial["release"] = default.pk
-        self.fields["release"] = _release_field(library, params, create=create)
-        self.fields["acquired"] = TemporalFormField(
-            presentation=presentation, label="Got it on", initial=_day(today)
+        self.install_copy_fields(
+            library=library,
+            presentation=presentation,
+            today=today,
+            game_field="game",
+            game=self.stated("game", Game),
         )
         self.order_fields(
             [
@@ -263,39 +329,16 @@ class EntryAddForm(OpenerFactsMixin, PrimitiveWidgetsMixin, Submission, PriceFie
         cleaned = super().clean()
         if cleaned is None:
             return cleaned
-        release = cast(Release | None, cleaned.get("release"))
-        game = cleaned.get("game")
-        if (
-            release is not None
-            and game is not None
-            and release.edition.game_id != game.pk
-        ):
-            self.add_error("release", RELEASE_OF_ANOTHER_GAME)
+        self.refuse_release_of_other_game(cleaned.get("game"))
         return cleaned
 
     def draft(self) -> EntryStatement:
         """What the creation states."""
-        cleaned = self.cleaned_data
-        return EntryStatement(
-            release_id=cleaned["release"].pk,
-            access=cleaned["access"],
-            format=cleaned["format"],
-            note=cleaned["note"],
-            acquired=ActStatement(cleaned["acquired"], ""),
-        )
+        return self.copy_statement(self.cleaned_data["note"])
 
     def purchase_draft(self) -> PurchaseDraft | None:
         """The game's purchase, on the acquired day."""
-        if (price := self.price_statement()) is None:
-            return None
-        return PurchaseDraft(
-            copy=self.draft(),
-            kind="game",
-            name="",
-            price=price,
-            note="",
-            purchased=ActStatement(self.cleaned_data["acquired"], ""),
-        )
+        return self.copy_purchase_draft(self.cleaned_data["note"])
 
 
 class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
