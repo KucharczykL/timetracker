@@ -19,9 +19,9 @@ function linksWithHref(href: LinkHref | null): HTMLElement[] {
   );
 }
 
-/** First link with href whose target is reachable. */
-function focusTargetWithHref(href: LinkHref | null): HTMLElement | null {
-  for (const link of linksWithHref(href)) {
+/** First link whose target is reachable. */
+function firstReachableTarget(links: HTMLElement[]): HTMLElement | null {
+  for (const link of links) {
     const target = focusReturnTarget(link);
     if (target) return target;
   }
@@ -31,11 +31,11 @@ function focusTargetWithHref(href: LinkHref | null): HTMLElement | null {
 /** By id, else href link, else page. */
 export function focusOpener(opener: OpenerKey): void {
   const byId = opener.id ? document.getElementById(opener.id) : null;
-  const reachable =
-    (byId ? focusReturnTarget(byId) : null) ?? focusTargetWithHref(opener.href);
+  const linksByHref = linksWithHref(opener.href);
+  const reachable = focusReturnTarget(byId) ?? firstReachableTarget(linksByHref);
   const target = reachable ?? document.getElementById("main-container");
   // A removed row names nothing in the page: the page is the right answer.
-  const stillInPage = byId !== null || linksWithHref(opener.href).length > 0;
+  const stillInPage = byId !== null || linksByHref.length > 0;
   if (reachable === null && stillInPage) {
     const described = `id=${opener.id ?? "-"} href=${opener.href ?? "-"}`;
     reportClientError(REPORT_CONTEXT, `no reachable opener, ${described}`, { toast: false });

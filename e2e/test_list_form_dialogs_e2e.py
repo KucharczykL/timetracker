@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import pytest
 from django.urls import reverse
 from entries import record_entry
-from graphs import default_graph
+from graphs import DefaultGraph, default_graph
 from historical_playtime_rows import record_row
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 from purchases import record_purchase
@@ -62,13 +62,12 @@ def _dialog(page: Page) -> Locator:
 
 def _open_item(
     page: Page,
-    toggle: Locator | str | re.Pattern[str],
+    toggle: str | re.Pattern[str],
     item: str,
     submenu: str | None = None,
 ) -> None:
     """Open row menu, flyout, then press ``item``."""
-    menu = toggle if isinstance(toggle, Locator) else _row_toggle(page, toggle)
-    menu.click()
+    _row_toggle(page, toggle).click()
     if submenu is not None:
         page.get_by_role("menuitem", name=submenu).hover()
     page.get_by_role("menuitem", name=item).click()
@@ -97,19 +96,26 @@ def _invalid_stays(dialog: Locator) -> None:
     expect(dialog).to_be_visible()
 
 
+def _open_end_with_details(page: Page) -> None:
+    _open_item(page, COPY_TOGGLE, "With details…", submenu="I no longer have it")
+
+
 def _row_toggle(page: Page, name: str | re.Pattern[str]) -> Locator:
     return page.get_by_role("button", name=name)
 
 
-def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
+def _graph_on(library: UserLibrary, name: str, platform: Platform) -> DefaultGraph:
     game = create_tracked_game(library, name)
-    return default_graph(game, library, platform=platform).game
+    return default_graph(game, library, platform=platform)
+
+
+def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
+    return _graph_on(library, name, platform).game
 
 
 #: Matches game and day, not their format.
-SESSION_TOGGLE = re.compile(r"^Tunic, .* actions$")
+GAME_AND_DAY_TOGGLE = re.compile(r"^Tunic, .* actions$")
 PLAYTHROUGH_TOGGLE = re.compile(r", Tunic actions$")
-HISTORICAL_TOGGLE = re.compile(r"^Tunic, .* actions$")
 PURCHASE_TOGGLE = re.compile(r"\(Tunic\) actions$")
 GAME_TOGGLE = re.compile(r"^Tunic( \(PS5\))? actions$")
 RENAMED_GAME_TOGGLE = re.compile(r"^Tunic Deluxe( \(PS5\))? actions$")
@@ -126,7 +132,7 @@ def test_a_session_edit_saves_and_returns_focus(
     run = tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
     session = duration_only_row(run, date(2024, 6, 1), timedelta(hours=1))
     _open(page, f"{live_server.url}{reverse('games:list_sessions')}")
-    _open_item(page, SESSION_TOGGLE, "Edit")
+    _open_item(page, GAME_AND_DAY_TOGGLE, "Edit")
 
     dialog = _dialog(page)
     expect(dialog.locator("[data-form-dialog-title]")).to_contain_text("Edit")
@@ -135,7 +141,7 @@ def test_a_session_edit_saves_and_returns_focus(
     duration.press_sequentially("020000")
     _submit(dialog).click()
 
-    _saved(page, _row_toggle(page, SESSION_TOGGLE))
+    _saved(page, _row_toggle(page, GAME_AND_DAY_TOGGLE))
     session.refresh_from_db()
     assert session.effective_duration == timedelta(hours=2)
     assert errors == []
@@ -148,7 +154,7 @@ def test_an_invalid_session_edit_stays_in_the_dialog(
     run = tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
     duration_only_row(run, date(2024, 6, 1), timedelta(hours=1))
     _open(page, f"{live_server.url}{reverse('games:list_sessions')}")
-    _open_item(page, SESSION_TOGGLE, "Edit")
+    _open_item(page, GAME_AND_DAY_TOGGLE, "Edit")
 
     dialog = _dialog(page)
     _clear_required(dialog.locator('input[name="duration"]'))
@@ -165,7 +171,7 @@ def test_recording_a_session_as_historical_playtime_returns_to_the_main(
     run = tracked_run(e2e_library, _game_on(e2e_library, "Tunic", _ps5()))
     duration_only_row(run, date(2024, 6, 1), timedelta(hours=9))
     _open(page, f"{live_server.url}{reverse('games:list_sessions')}")
-    _open_item(page, SESSION_TOGGLE, "Record as historical playtime")
+    _open_item(page, GAME_AND_DAY_TOGGLE, "Record as historical playtime")
 
     dialog = _dialog(page)
     expect(dialog.locator("[data-form-dialog-title]")).to_contain_text(
@@ -210,7 +216,7 @@ def test_a_historical_playtime_edit_saves_and_returns_focus(
         when="2020",
     )
     _open(page, f"{live_server.url}{reverse('games:list_historical_playtime')}")
-    _open_item(page, HISTORICAL_TOGGLE, "Edit")
+    _open_item(page, GAME_AND_DAY_TOGGLE, "Edit")
 
     dialog = _dialog(page)
     dialog.locator('input[name="duration_hours"]').fill("0")
@@ -222,7 +228,7 @@ def test_a_historical_playtime_edit_saves_and_returns_focus(
 
     dialog.locator('input[name="duration_hours"]').fill("3")
     _submit(dialog).click()
-    _saved(page, _row_toggle(page, HISTORICAL_TOGGLE))
+    _saved(page, _row_toggle(page, GAME_AND_DAY_TOGGLE))
     #: The browser logs the refused 409 too.
     assert errors and all("409 (Conflict)" in error for error in errors)
 
@@ -299,12 +305,7 @@ def test_a_copy_edit_on_an_ended_copy_saves_how_it_left(
     page = authenticated_page
     record_copy(e2e_user, e2e_library, "Tunic")
     _open(page, f"{live_server.url}{reverse('games:list_library')}")
-    _open_item(
-        page,
-        COPY_TOGGLE,
-        "With details…",
-        submenu="I no longer have it",
-    )
+    _open_end_with_details(page)
     pick_choice(_dialog(page), "way", "sold")
     _submit(_dialog(page)).click()
     expect(page.locator(DIALOG)).to_have_count(0)
@@ -359,21 +360,14 @@ def test_an_end_with_details_refused_for_the_date_stays_in_the_dialog(
     authenticated_page: Page, live_server, e2e_user, e2e_library, errors
 ):
     page = authenticated_page
-    platform = _ps5()
-    game = _game_on(e2e_library, "Tunic", platform)
-    release = default_graph(game, e2e_library, platform=platform).release
+    release = _graph_on(e2e_library, "Tunic", _ps5()).release
     record_entry(
         e2e_library,
         release,
         acquired=TemporalValue.parse("2099-01-01"),
     )
     _open(page, f"{live_server.url}{reverse('games:list_library')}")
-    _open_item(
-        page,
-        COPY_TOGGLE,
-        "With details…",
-        submenu="I no longer have it",
-    )
+    _open_end_with_details(page)
 
     dialog = _dialog(page)
     _submit(dialog).click()
@@ -390,12 +384,7 @@ def test_an_end_with_details_saves_and_returns_focus_to_the_main(
     page = authenticated_page
     record_copy(e2e_user, e2e_library, "Tunic")
     _open(page, f"{live_server.url}{reverse('games:list_library')}")
-    _open_item(
-        page,
-        COPY_TOGGLE,
-        "With details…",
-        submenu="I no longer have it",
-    )
+    _open_end_with_details(page)
 
     dialog = _dialog(page)
     pick_choice(dialog, "way", "sold")
@@ -412,7 +401,9 @@ def test_a_purchase_edit_refuses_a_missing_currency_on_the_field(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
     page = authenticated_page
-    record_purchase(record_entry(e2e_library, _release(e2e_library, "Tunic")))
+    record_purchase(
+        record_entry(e2e_library, _graph_on(e2e_library, "Tunic", _ps5()).release)
+    )
     _open(page, f"{live_server.url}{reverse('games:list_purchases')}")
     _open_item(page, PURCHASE_TOGGLE, "Edit purchase…")
 
@@ -428,7 +419,9 @@ def test_a_purchase_edit_saves_and_returns_focus(
     authenticated_page: Page, live_server, e2e_library, errors
 ):
     page = authenticated_page
-    record_purchase(record_entry(e2e_library, _release(e2e_library, "Tunic")))
+    record_purchase(
+        record_entry(e2e_library, _graph_on(e2e_library, "Tunic", _ps5()).release)
+    )
     _open(page, f"{live_server.url}{reverse('games:list_purchases')}")
     _open_item(page, PURCHASE_TOGGLE, "Edit purchase…")
 
@@ -541,9 +534,3 @@ def test_a_copy_form_opens_after_the_sheet_chain_closes_at_phone_width(
 
 def _ps5() -> Platform:
     return Platform.objects.get_or_create(name="PS5", group="Sony")[0]
-
-
-def _release(library: UserLibrary, name: str):
-    platform = _ps5()
-    game = create_tracked_game(library, name)
-    return default_graph(game, library, platform=platform).release
