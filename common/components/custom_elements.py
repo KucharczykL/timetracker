@@ -679,6 +679,22 @@ register_element("unset-field", "UnsetField", UnsetFieldProps)
 _UnsetField = custom_element_builder("unset-field")
 
 
+class TriStateCheckboxProps(TypedDict):
+    #: The hidden input's name; it posts the words or nothing.
+    name: str
+    #: What the selected rows hold.
+    held: Literal["checked", "unchecked", "mixed"]
+    checked_word: str
+    unchecked_word: str
+    hint_mixed: str
+    hint_kept: str
+    hint_changed: str
+
+
+register_element("tri-state-checkbox", "TriStateCheckbox", TriStateCheckboxProps)
+_TriStateCheckbox = custom_element_builder("tri-state-checkbox")
+
+
 class QuickFilterBarProps(TypedDict):
     apply_url: str  # list URL a facet change navigates to (#197)
     per_page: str  # explicit override; "" means inherit

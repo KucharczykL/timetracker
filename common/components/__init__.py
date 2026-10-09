@@ -291,6 +291,7 @@ from common.components.temporal_field import TemporalCopySource, TemporalField
 from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.time_zone_row import TimeZoneRow
 from common.components.toast import ToastStack
+from common.components.tri_state_checkbox import TriStateCheckbox
 from common.components.unset_field import (
     PostedName,
     UnsetField,
@@ -535,6 +536,7 @@ __all__ = [
     "TooltipDefinition",
     "TooltipDefinitionList",
     "Tr",
+    "TriStateCheckbox",
     "TruncatedText",
     "Truncation",
     "Ul",
