@@ -64,7 +64,10 @@ def write_targets(statement: str) -> tuple[TableName, ...]:
     keyword = _KEYWORD.match(statement, start)
     word = keyword.group(0).upper() if keyword is not None else ""
     if word == _CTE_KEYWORD:
-        #: A CTE writes any number of tables, or none.
+        #: The scan is slow; most CTEs only read.
+        upper = statement.upper()
+        if not any(keyword in upper for keyword in _WRITE_KEYWORDS):
+            return ()
         return tuple(
             _bare_name(match["table"])
             for match in _WRITE_TARGET.finditer(statement, start)
