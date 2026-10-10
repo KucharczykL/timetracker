@@ -32,11 +32,11 @@ from games.projections import (
     cross_library_violations,
     projection_models,
 )
+from games.sql_writes import TableName, write_targets
 
 logger = logging.getLogger("games")
 
 type ColumnName = str  # e.g. "library_id"
-type TableName = str  # e.g. "games_playergamestate"
 
 
 # --- Phase 1: which tables, and their shadows -------------------------------
@@ -84,33 +84,6 @@ class LiveWriteRefused(RuntimeError):
     """A statement wrote outside the shadow tables."""
 
 
-#: A statement opening with these writes.
-_WRITE_KEYWORDS = frozenset({"INSERT", "UPDATE", "DELETE", "COPY", "TRUNCATE", "MERGE"})
-
-#: A CTE hides its writes behind the first keyword.
-_CTE_KEYWORD = "WITH"
-
-#: Leading comments hide the first keyword too.
-_LEADING_COMMENTS = re.compile(r"^\s*(?:/\*.*?\*/|--[^\n]*(?:\n|$))+", re.DOTALL)
-
-#: The first identifier: the table written.
-_WRITE_TARGET = re.compile(
-    r"""
-    \b
-    (?: INSERT \s+ INTO
-      | UPDATE
-      | DELETE \s+ FROM
-      | TRUNCATE (?: \s+ TABLE )?
-      | COPY
-      | MERGE \s+ INTO
-    )
-    \s+ (?: ONLY \s+ )?
-    (?P<table> [^\s(]+ )
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-
 def only_shadow_writes() -> AbstractContextManager[None]:
     """Refuse every write outside a shadow table."""
     return connection.execute_wrapper(_refuse_a_live_write)
@@ -128,32 +101,6 @@ def _refuse_a_live_write(
                 f"than after it commits: {sql[:200]}"
             )
     return execute(sql, params, many, context)
-
-
-def write_targets(statement: str) -> tuple[TableName, ...]:
-    """Every table written; unreadable means refused.
-
-    Public because the benchmark counts the same statements this guard
-    refuses, and two regexes for one job would drift.
-    """
-    stripped = _LEADING_COMMENTS.sub("", statement).lstrip()
-    keyword = stripped.split(maxsplit=1)[0].upper() if stripped else ""
-    if keyword == _CTE_KEYWORD:
-        #: A CTE writes any number of tables, or none.
-        return tuple(
-            _bare_name(match["table"]) for match in _WRITE_TARGET.finditer(stripped)
-        )
-    if keyword not in _WRITE_KEYWORDS:
-        return ()
-    match = _WRITE_TARGET.match(stripped)
-    if match is None:
-        return ("",)
-    return (_bare_name(match["table"]),)
-
-
-def _bare_name(identifier: str) -> TableName:
-    """`pg_temp."games_x__shadow";` -> `games_x__shadow`."""
-    return identifier.rsplit(".", maxsplit=1)[-1].rstrip(";").strip('"')
 
 
 # --- Phase 2: the replay ----------------------------------------------------

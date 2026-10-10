@@ -12,12 +12,7 @@ from typing import Any, NamedTuple
 from django.conf import settings
 from django.db import connection
 
-from games.events.rebuild import (
-    RebuildReport,
-    TableName,
-    projection_models,
-    write_targets,
-)
+from games.events.rebuild import RebuildReport, projection_models
 from games.events.targets import SHADOW_SUFFIX
 from games.models import (
     LibraryEvent,
@@ -25,6 +20,7 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
 )
+from games.sql_writes import TableName, write_targets
 
 #: A wall-clock interval, from time.monotonic().
 type Seconds = float
