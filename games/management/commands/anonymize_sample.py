@@ -57,6 +57,7 @@ from games.models import (
     Release,
     UserLibraryPreferences,
 )
+from games.projection_writers import ProjectionWriter, projection_writes
 from games.projections import FieldName, projection_models
 from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
@@ -436,20 +437,23 @@ class Command(BaseCommand):
         Projections first, raw: RESTRICT and pre_delete are Python's.
         Events before catalog rows: pre_delete guards those too.
         """
-        with connection.cursor() as cursor:
-            for model in projection_models():
-                cursor.execute(
-                    f"DELETE FROM {connection.ops.quote_name(model._meta.db_table)}"
-                    ' WHERE "library_id" <> %s',
-                    [library.pk],
-                )
-        PurchaseValuation.objects.exclude(library=library).delete()
-        FilterPreset.objects.exclude(library=library).delete()
-        LibraryEventReference.objects.exclude(library=library).delete()
-        LibraryEvent.objects.exclude(library=library).delete()
-        LibraryEventStreamHead.objects.exclude(library=library).delete()
-        Game.objects.exclude(library=library).delete()
-        Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
+        with projection_writes(ProjectionWriter.SAMPLE_ANONYMIZER):
+            with connection.cursor() as cursor:
+                for model in projection_models():
+                    cursor.execute(
+                        f"DELETE FROM {connection.ops.quote_name(model._meta.db_table)}"
+                        ' WHERE "library_id" <> %s',
+                        [library.pk],
+                    )
+            PurchaseValuation.objects.exclude(library=library).delete()
+            FilterPreset.objects.exclude(library=library).delete()
+            LibraryEventReference.objects.exclude(library=library).delete()
+            LibraryEvent.objects.exclude(library=library).delete()
+            LibraryEventStreamHead.objects.exclude(library=library).delete()
+            Game.objects.exclude(library=library).delete()
+            Platform.objects.filter(library__isnull=False).exclude(
+                library=library
+            ).delete()
 
     def _anonymize(
         self,
@@ -459,80 +463,87 @@ class Command(BaseCommand):
         *,
         library_id,
     ):
-        game_offsets = {
-            game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
-            for game_id in all_game_ids
-        }
-
-        if name_overrides:
-            retitled = list(Game.objects.filter(name__in=name_overrides).order_by("pk"))
-            for game in retitled:
-                game.name = name_overrides[game.name]
-            Game.objects.bulk_update(retitled, ["name"])
-            editions = list(Edition.objects.exclude(name="").order_by("pk"))
-            for edition in editions:
-                edition.name = renamed(edition.name, name_overrides)
-            Edition.objects.bulk_update(editions, ["name"])
-
-        Game.objects.update(created_at=FIXED_EPOCH, updated_at=FIXED_EPOCH)
-        Platform.objects.update(created_at=FIXED_EPOCH)
-        Device.objects.update(created_at=FIXED_EPOCH)
-        if scrub_devices:
-            devices = list(Device.objects.order_by("pk"))
-            for ordinal, device in enumerate(devices, start=1):
-                device.name = f"Device {ordinal}"
-            Device.objects.bulk_update(devices, ["name"])
-
-        #: Captured before _reassign_uuids remaps PlayerGame.game_id /
-        #: Playthrough.player_game__game_id to their new uuids -- game_offsets
-        #: is keyed by the original game ids, and this mapping must agree.
-        game_id_by_aggregate = {
-            **dict(PlayerGame.objects.values_list("pk", "game_id")),
-            **dict(Playthrough.objects.values_list("pk", "player_game__game_id")),
-            **dict(
-                PlayerSession.objects.values_list(
-                    "pk", "playthrough__player_game__game_id"
-                )
-            ),
-            **dict(
-                HistoricalPlaytime.objects.values_list("pk", "player_game__game_id")
-            ),
-            **dict(LibraryEntry.objects.values_list("pk", "player_game__game_id")),
-            **dict(Purchase.objects.values_list("pk", "entry__player_game__game_id")),
-        }
-
-        #: Drawn only for dated devices.
-        #: Another draw shifts every later seeded value.
-        event_types = DEFAULT_WIRING.event_types
-        dated_devices = sorted(
-            {
-                event.aggregate_id
-                for event in LibraryEvent.objects.filter(effective_time__isnull=False)
-                if event_types.spec_for(event.event_type).aggregate_type == "device"
+        with projection_writes(ProjectionWriter.SAMPLE_ANONYMIZER):
+            game_offsets = {
+                game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
+                for game_id in all_game_ids
             }
-        )
-        device_offsets = {
-            device_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
-            for device_id in dated_devices
-        }
 
-        replacements_by_model = self._reassign_uuids()
-        event_count, session_count = self._reassign_event_identities(
-            game_offsets,
-            game_id_by_aggregate,
-            replacements_by_model,
-            device_offsets=device_offsets,
-            library_id=library_id,
-        )
-        self._reassign_stream_head(library_id)
+            if name_overrides:
+                retitled = list(
+                    Game.objects.filter(name__in=name_overrides).order_by("pk")
+                )
+                for game in retitled:
+                    game.name = name_overrides[game.name]
+                Game.objects.bulk_update(retitled, ["name"])
+                editions = list(Edition.objects.exclude(name="").order_by("pk"))
+                for edition in editions:
+                    edition.name = renamed(edition.name, name_overrides)
+                Edition.objects.bulk_update(editions, ["name"])
 
-        return {
-            "games": len(all_game_ids),
-            "entries": LibraryEntry.objects.count(),
-            "purchases": Purchase.objects.count(),
-            "sessions": session_count,
-            "events": event_count,
-        }
+            Game.objects.update(created_at=FIXED_EPOCH, updated_at=FIXED_EPOCH)
+            Platform.objects.update(created_at=FIXED_EPOCH)
+            Device.objects.update(created_at=FIXED_EPOCH)
+            if scrub_devices:
+                devices = list(Device.objects.order_by("pk"))
+                for ordinal, device in enumerate(devices, start=1):
+                    device.name = f"Device {ordinal}"
+                Device.objects.bulk_update(devices, ["name"])
+
+            #: Captured before _reassign_uuids remaps PlayerGame.game_id /
+            #: Playthrough.player_game__game_id to their new uuids -- game_offsets
+            #: is keyed by the original game ids, and this mapping must agree.
+            game_id_by_aggregate = {
+                **dict(PlayerGame.objects.values_list("pk", "game_id")),
+                **dict(Playthrough.objects.values_list("pk", "player_game__game_id")),
+                **dict(
+                    PlayerSession.objects.values_list(
+                        "pk", "playthrough__player_game__game_id"
+                    )
+                ),
+                **dict(
+                    HistoricalPlaytime.objects.values_list("pk", "player_game__game_id")
+                ),
+                **dict(LibraryEntry.objects.values_list("pk", "player_game__game_id")),
+                **dict(
+                    Purchase.objects.values_list("pk", "entry__player_game__game_id")
+                ),
+            }
+
+            #: Drawn only for dated devices.
+            #: Another draw shifts every later seeded value.
+            event_types = DEFAULT_WIRING.event_types
+            dated_devices = sorted(
+                {
+                    event.aggregate_id
+                    for event in LibraryEvent.objects.filter(
+                        effective_time__isnull=False
+                    )
+                    if event_types.spec_for(event.event_type).aggregate_type == "device"
+                }
+            )
+            device_offsets = {
+                device_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
+                for device_id in dated_devices
+            }
+
+            replacements_by_model = self._reassign_uuids()
+            event_count, session_count = self._reassign_event_identities(
+                game_offsets,
+                game_id_by_aggregate,
+                replacements_by_model,
+                device_offsets=device_offsets,
+                library_id=library_id,
+            )
+            self._reassign_stream_head(library_id)
+
+            return {
+                "games": len(all_game_ids),
+                "entries": LibraryEntry.objects.count(),
+                "purchases": Purchase.objects.count(),
+                "sessions": session_count,
+                "events": event_count,
+            }
 
     def _reassign_uuids(self):
         """Re-derive every dumped uuid from the dates this command just wrote.
@@ -550,17 +561,18 @@ class Command(BaseCommand):
         Returns the per-model replacement maps, so _reassign_event_identities
         can re-capture a Game reference inside a payload at its final uuid.
         """
-        replacements_by_model = {}
-        for model in IDENTITY_MODELS:
-            replacements = self._resequence_identity(model)
-            self._remap_referrers(model, replacements)
-            replacements_by_model[model] = replacements
-        #: A key, not a relation.
-        for old_id, new_id in replacements_by_model[Device].items():
-            UserLibraryPreferences.objects.filter(default_device_id=old_id).update(
-                default_device_id=new_id
-            )
-        return replacements_by_model
+        with projection_writes(ProjectionWriter.SAMPLE_ANONYMIZER):
+            replacements_by_model = {}
+            for model in IDENTITY_MODELS:
+                replacements = self._resequence_identity(model)
+                self._remap_referrers(model, replacements)
+                replacements_by_model[model] = replacements
+            #: A key, not a relation.
+            for old_id, new_id in replacements_by_model[Device].items():
+                UserLibraryPreferences.objects.filter(default_device_id=old_id).update(
+                    default_device_id=new_id
+                )
+            return replacements_by_model
 
     @staticmethod
     def _reassign_event_identities(

@@ -19,6 +19,7 @@ from games.events.references import (
     UnmappedReferenceModel,
 )
 from games.models import LibraryEvent, LibraryEventReference, ProjectionModel
+from games.projection_writers import ProjectionWriter, projection_writes
 
 
 class ReferencedRowDeletion(Exception):
@@ -101,11 +102,12 @@ def purging_library() -> Iterator[None]:
 
     A purge takes the events too. Nothing is left to resolve.
     """
-    token = _purging.set(True)
-    try:
-        yield
-    finally:
-        _purging.reset(token)
+    with projection_writes(ProjectionWriter.LIBRARY_PURGE):
+        token = _purging.set(True)
+        try:
+            yield
+        finally:
+            _purging.reset(token)
 
 
 def refuse_to_delete_a_referenced_row(instance: Model) -> None:

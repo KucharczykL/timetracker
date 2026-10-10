@@ -10,6 +10,7 @@ from django.db import transaction
 
 from games.models import PurchaseValuation, UserLibrary
 from games.planner_statistics import analyze_tables
+from games.projection_writers import ProjectionWriter, projection_writes
 
 type CurrencyCode = str  # "EUR"
 type RateYear = int  # 2024
@@ -137,6 +138,7 @@ def publish_valuations(
     foreign = [row.purchase_id for row in rows if row.library_id != library.pk]
     if foreign:
         raise ValueError(f"Valuations of another library than {library.pk}: {foreign}")
-    PurchaseValuation.objects.filter(library=library).delete()
-    PurchaseValuation.objects.bulk_create(rows)
-    analyze_tables((PurchaseValuation,))
+    with projection_writes(ProjectionWriter.VALUATION_PUBLISHER):
+        PurchaseValuation.objects.filter(library=library).delete()
+        PurchaseValuation.objects.bulk_create(rows)
+        analyze_tables((PurchaseValuation,))

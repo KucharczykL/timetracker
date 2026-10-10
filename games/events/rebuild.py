@@ -27,6 +27,7 @@ from games.events.retry import (
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.events.wiring import DEFAULT_WIRING, EventWiring
 from games.models import LibraryEventStreamHead, ProjectionModel, UserLibrary
+from games.projection_writers import ProjectionWriter, projection_writes
 from games.projections import (
     ViolationSentence,
     cross_library_violations,
@@ -428,7 +429,10 @@ def swap_in(
             stream.require_sequence(replayed_through)
             #: The prologue writes a stream head.
             swapping = True
-            with connection.cursor() as cursor:
+            with (
+                projection_writes(ProjectionWriter.REBUILD_SWAP),
+                connection.cursor() as cursor,
+            ):
                 for model in models:
                     table = connection.ops.quote_name(model._meta.db_table)
                     columns = ", ".join(

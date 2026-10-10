@@ -11,10 +11,13 @@ from column_choice import show_every_column
 from icon_names import unknown_icon_names_fail  # noqa: F401
 from password_hashing import _fast_password_hashing  # noqa: F401
 from playwright.sync_api import Page
+from projection_doors import install, projection_guard_strict  # noqa: F401
 from settings_caches import _reset_settings_caches  # noqa: F401
 from tracked_games import _track_created_games  # noqa: F401
 
 from e2e.helpers import E2E_LOGIN, log_in
+
+install()
 
 # Playwright runs an async event loop in the background, which triggers
 # Django's async safety checks when running synchronous tests. This allows

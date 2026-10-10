@@ -32,6 +32,7 @@ from games.endpoint_fields import (
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import DefinitionSite, EventSpec, EventType
+from games.projection_writers import ProjectionWriter, projection_writes
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -217,16 +218,17 @@ class ProjectorRegistry:
         the family alone: a family holds many projectors, so the family name
         would name several.
         """
-        for family_name, handler in self._handlers.get(event.event_type, ()):
-            try:
-                handler(event)
-            except Exception as error:
-                handler_name = getattr(handler, "__qualname__", repr(handler))
-                error.add_note(
-                    f"raised by {handler_name} in the {family_name.value} family "
-                    f"applying {event.event_type} #{event.sequence}"
-                )
-                raise
+        with projection_writes(ProjectionWriter.PROJECTOR):
+            for family_name, handler in self._handlers.get(event.event_type, ()):
+                try:
+                    handler(event)
+                except Exception as error:
+                    handler_name = getattr(handler, "__qualname__", repr(handler))
+                    error.add_note(
+                        f"raised by {handler_name} in the {family_name.value} family "
+                        f"applying {event.event_type} #{event.sequence}"
+                    )
+                    raise
 
 
 DEFAULT_REGISTRY = ProjectorRegistry()
