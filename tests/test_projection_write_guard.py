@@ -3,18 +3,47 @@
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
+from devices import create_device
 from django.db import connection, connections, transaction
-from django.db.models import F, Model
+from django.db.models import Model
+from entries import record_entry
+from graphs import default_graph
 from projection_doors import (
     _frame_permits_seeding,
     _seed_from_tests,
     classify,
+    strict_projection_guard,
 )
+from purchases import record_purchase, request_run
 
-from games.models import PurchaseValuation
+from games import tasks
+from games.commands.calendar import SetCalendarDayZone
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    RecordHistoricalPlaytime,
+)
+from games.commands.playersession import CreateSession, DurationOnlyTiming
+from games.events.dispatch import Command, append_command
+from games.models import (
+    Device,
+    Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
+    HistoricalPlaytimeRun,
+    LibraryCalendar,
+    LibraryEntry,
+    PlayerGame,
+    PlayerSession,
+    Playthrough,
+    Purchase,
+    PurchaseValuation,
+    UserLibrary,
+)
 from games.projection_writers import (
     ProjectionWriter,
     ProjectionWriteRefused,
@@ -23,8 +52,109 @@ from games.projection_writers import (
     refuse_unpermitted_writes,
 )
 from games.projections import projection_models
+from timetracker.temporal import TemporalValue
 
 GUARDED_MODELS: tuple[type[Model], ...] = (*projection_models(), PurchaseValuation)
+
+
+def _state(library: UserLibrary, command: Command) -> None:
+    """Append one command, the way the test helpers do: no dispatch nesting."""
+    with transaction.atomic():
+        append_command(
+            command,
+            actor=library.user,
+            library=library,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+
+
+@pytest.fixture
+def seeded_library(owned_library):
+    """One populated library: a real row in every guarded table.
+
+    Written through commands and the helpers the suite already uses,
+    so the rows are the ones the write path produces.
+    """
+    library = owned_library
+    tunic = Game.objects.create(library=library, name="Tunic")
+    hades = Game.objects.create(library=library, name="Hades")
+    #: Tracking a game writes its PlayerGame and first Playthrough.
+    first_run = Playthrough.objects.get(player_game__game=tunic)
+    _state(library, SetCalendarDayZone(day_zone="Europe/Prague"))
+    _state(
+        library,
+        CreateSession(
+            playthrough_id=first_run.pk,
+            timing=DurationOnlyTiming(
+                day=date(2024, 3, 1), duration=timedelta(hours=1)
+            ),
+            implies_played=False,
+        ),
+    )
+    _state(
+        library,
+        RecordHistoricalPlaytime(
+            statement=HistoricalPlaytimeStatement(
+                duration=timedelta(hours=10),
+                when="2019",
+                provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                playthrough_ids=(first_run.pk,),
+                device_id=None,
+                release_id=None,
+                emulated=False,
+                note="Seeded record",
+            )
+        ),
+    )
+    create_device(library, "Steam Deck")
+    release = default_graph(Game(name="Celeste", library=library), library).release
+    entry = record_entry(library, release)
+    record_purchase(
+        entry,
+        amount=Decimal("10.00"),
+        currency="CZK",
+        purchased=TemporalValue.parse("2021-03-01"),
+    )
+    #: Same-currency: no rate needed, so the run publishes a valuation.
+    tasks.convert_library_prices(str(library.pk), request_run(library, "CZK"))
+    assert Playthrough.objects.filter(player_game__game=hades).exists()
+    for model in GUARDED_MODELS:
+        assert model._base_manager.exists(), f"No seeded row in {model._meta.db_table}"
+    return library
+
+
+#: A column the refused UPDATE changes, and its new value.
+CHANGED_COLUMN: dict[type[Model], tuple[str, Callable[[Any], Any]]] = {
+    Device: ("name", lambda row: "Renamed device"),
+    PlayerGame: ("mastered", lambda row: not row.mastered),
+    Playthrough: ("name", lambda row: "Renamed run"),
+    PlayerSession: ("note", lambda row: "Changed note"),
+    LibraryCalendar: ("day_zone", lambda row: "Pacific/Niue"),
+    HistoricalPlaytime: ("note", lambda row: "Changed note"),
+    HistoricalPlaytimeRun: ("playthrough_id", lambda row: _other_run(row).pk),
+    LibraryEntry: ("note", lambda row: "Changed note"),
+    Purchase: ("note", lambda row: "Changed note"),
+    PurchaseValuation: ("amount", lambda row: row.amount + Decimal("1.00")),
+}
+
+
+def _other_run(row: HistoricalPlaytimeRun) -> Playthrough:
+    """A run the seeded record does not name."""
+    other = Playthrough._base_manager.exclude(pk=row.playthrough_id).first()
+    assert other is not None, "The seed holds one run only."
+    return other
+
+
+def _seeded_row(model: type[Model]) -> Model:
+    row = model._base_manager.order_by("pk").first()
+    assert row is not None, f"No seeded row in {model._meta.db_table}"
+    return row
+
+
+def _snapshot(model: type[Model], pk: Any) -> list[dict[str, Any]]:
+    """The row as `.values()` answers it; empty when absent."""
+    return list(model._base_manager.filter(pk=pk).values())
 
 
 def noop(execute: Callable[..., Any], sql, params, many, context):
@@ -60,41 +190,53 @@ def _in_fresh_connection(action: Callable[[Any], Any]) -> Any:
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("model", GUARDED_MODELS, ids=lambda m: m.__name__)
-def test_a_guarded_update_is_refused_strictly(
-    model, owned_library, projection_guard_strict
-):
-    before = _table_count(model)
-    if any(field.attname == "library_id" for field in model._meta.concrete_fields):
-        changes = {"library_id": F("library_id")}
-    else:
-        changes = {_pk_name(model): F(_pk_name(model))}
-    with pytest.raises(ProjectionWriteRefused), transaction.atomic():
+def test_a_guarded_update_is_refused_strictly(model, seeded_library):
+    row = _seeded_row(model)
+    column, changed = CHANGED_COLUMN[model]
+    before_count = _table_count(model)
+    before_row = _snapshot(model, row.pk)
+    with (
+        strict_projection_guard(),
+        pytest.raises(ProjectionWriteRefused),
         #: The savepoint keeps the test transaction usable after a refusal.
-        model._base_manager.filter(pk=uuid.uuid7()).update(**changes)
-    assert _table_count(model) == before
+        transaction.atomic(),
+    ):
+        model._base_manager.filter(pk=row.pk).update(**{column: changed(row)})
+    assert _table_count(model) == before_count
+    assert _snapshot(model, row.pk) == before_row
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("model", GUARDED_MODELS, ids=lambda m: m.__name__)
-def test_a_guarded_bulk_create_is_refused_strictly(
-    model, owned_library, projection_guard_strict
-):
-    before = _table_count(model)
-    row = model(**{_pk_name(model): uuid.uuid7(), "library_id": owned_library.pk})
-    with pytest.raises(ProjectionWriteRefused):
-        model._base_manager.bulk_create([row])
-    assert _table_count(model) == before
+def test_a_guarded_bulk_create_is_refused_strictly(model, seeded_library):
+    row = _seeded_row(model)
+    before_count = _table_count(model)
+    before_row = _snapshot(model, row.pk)
+    fresh = model(**{_pk_name(model): uuid.uuid7(), "library_id": seeded_library.pk})
+    with (
+        strict_projection_guard(),
+        pytest.raises(ProjectionWriteRefused),
+        transaction.atomic(),
+    ):
+        model._base_manager.bulk_create([fresh])
+    assert _table_count(model) == before_count
+    assert _snapshot(model, row.pk) == before_row
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("model", GUARDED_MODELS, ids=lambda m: m.__name__)
-def test_a_guarded_raw_delete_is_refused_strictly(
-    model, owned_library, projection_guard_strict
-):
-    before = _table_count(model)
-    with pytest.raises(ProjectionWriteRefused):
+def test_a_guarded_raw_delete_is_refused_strictly(model, seeded_library):
+    row = _seeded_row(model)
+    before_count = _table_count(model)
+    before_row = _snapshot(model, row.pk)
+    with (
+        strict_projection_guard(),
+        pytest.raises(ProjectionWriteRefused),
+        transaction.atomic(),
+    ):
         _raw(f'DELETE FROM "{model._meta.db_table}"')
-    assert _table_count(model) == before
+    assert _table_count(model) == before_count
+    assert _snapshot(model, row.pk) == before_row
 
 
 @pytest.mark.django_db

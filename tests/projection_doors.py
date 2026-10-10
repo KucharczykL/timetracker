@@ -1,8 +1,9 @@
 """The door a test's own seeding opens."""
 
+import contextlib
 import contextvars
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import FrameType
 from typing import Any, Literal
@@ -110,11 +111,18 @@ def install() -> None:
         _install_on_connection(connection)
 
 
-@pytest.fixture
-def projection_guard_strict():
-    """Shut the seeding door for one test."""
+@contextlib.contextmanager
+def strict_projection_guard() -> Iterator[None]:
+    """Shut the seeding door for the block."""
     token = _strict.set(True)
     try:
         yield
     finally:
         _strict.reset(token)
+
+
+@pytest.fixture
+def projection_guard_strict():
+    """Shut the seeding door for one test."""
+    with strict_projection_guard():
+        yield
