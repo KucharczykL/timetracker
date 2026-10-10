@@ -1986,6 +1986,17 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `library_identity_constraint()` in its own `Meta` — the upsert's conflict
   target — and `games.E012` refuses one without it.
 
+- **Only named writers write a projection** — an execute wrapper
+  refuses a statement writing a projection or `PurchaseValuation` table
+  outside `projection_writes(ProjectionWriter.X)`
+  (`games/projection_writers.py`), with `ProjectionWriteRefused`. A new
+  writer is a member in `PERMITTED_WRITERS`, opened only in its module;
+  `tests/test_projection_writers_registry.py` checks both. A test seeds
+  freely through `tests/projection_doors.py`; application code it runs
+  stays guarded, and `projection_guard_strict` shuts the seeding door.
+  Contract is
+  [Only named writers](docs/superpowers/specs/2026-10-10-issue-110-projection-write-guard-design.md)
+
 - **A reference out of a projection is registered** — foreign key from projection
   table into library-scoped model goes in `AUDITED_PROJECTION_REFERENCES` in
   `games/projections.py`, through `ProjectionReference.on`, or `games.E009` refuses

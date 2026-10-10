@@ -16,7 +16,7 @@ from timetracker.database import (
 
 # from django.utils.timezone import now
 
-#: The migrate door, open from pre_migrate until post_migrate.
+#: Open from pre_migrate to post_migrate.
 _migrate_door = contextlib.ExitStack()
 
 

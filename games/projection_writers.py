@@ -1,4 +1,4 @@
-"""Which code may write a projection table, and the door it opens."""
+"""Who may write a projection table."""
 
 import contextlib
 import functools
@@ -36,7 +36,7 @@ class ProjectionWriter(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class PermittedWriter:
-    """The module that opens a door, and the kinds the door may write."""
+    """Where the door opens, what it writes."""
 
     module: ModulePath
     kinds: frozenset[GuardedKind]
@@ -73,8 +73,8 @@ PERMITTED_WRITERS: Mapping[ProjectionWriter, PermittedWriter] = {
 
 @functools.cache
 def guarded_tables() -> Mapping[TableName, GuardedKind]:
-    """Every projection table and the valuation table, lower-cased."""
-    #: Lazy: a module-level import risks a cycle through the models.
+    """Projection and valuation tables, lower case."""
+    #: Lazy: avoids an import cycle.
     from games.models import PurchaseValuation
     from games.projections import projection_models
 
@@ -93,7 +93,7 @@ _open: ContextVar[ProjectionWriter | None] = ContextVar(
 
 @contextlib.contextmanager
 def projection_writes(writer: ProjectionWriter) -> Iterator[None]:
-    """Open the door of `writer` for the block; the innermost door decides."""
+    """Open `writer`; the innermost door decides."""
     token = _open.set(writer)
     try:
         yield
@@ -107,14 +107,11 @@ def open_writer() -> ProjectionWriter | None:
 
 
 class ProjectionWriteRefused(RuntimeError):
-    """A statement wrote a guarded table outside a door that permits it."""
+    """A guarded write without a permitting door."""
 
 
 def _guarded_writes(sql: str) -> tuple[tuple[TableName, GuardedKind], ...]:
-    """Each guarded table a statement writes, with its kind.
-
-    An unreadable write names no table, so it writes every kind.
-    """
+    """Guarded tables written; unreadable writes everything."""
     tables = guarded_tables()
     writes: list[tuple[TableName, GuardedKind]] = []
     for target in write_targets(sql):
@@ -128,14 +125,14 @@ def _guarded_writes(sql: str) -> tuple[tuple[TableName, GuardedKind], ...]:
 
 
 def guarded_kinds_written(sql: str) -> frozenset[GuardedKind]:
-    """The kinds of guarded table a statement writes."""
+    """Guarded kinds a statement writes."""
     return frozenset(kind for _table, kind in _guarded_writes(sql))
 
 
 def refuse_unpermitted_writes(
     execute: Callable[..., Any], sql: str, params: Any, many: bool, context: Any
 ) -> Any:
-    """Django execute wrapper: a guarded write needs a door that permits it."""
+    """Execute wrapper refusing writes without a door."""
     writer = open_writer()
     permitted = PERMITTED_WRITERS[writer].kinds if writer is not None else frozenset()
     for table, kind in _guarded_writes(sql):

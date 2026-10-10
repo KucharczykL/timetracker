@@ -1,11 +1,4 @@
-"""The test door: test seeding may write a projection table.
-
-A test seeds projection rows directly. A statement that writes a guarded
-table, with no door open, opens `TEST_SEEDING` when the nearest source frame
-is under `tests/` or `e2e/`, or when no source frame is on the stack at all
-(Django's flush between transactional tests). Application code a test runs
-stays guarded.
-"""
+"""The door a test's own seeding opens."""
 
 import contextvars
 import sys
@@ -49,14 +42,14 @@ _strict: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 
 def classify(relative_parts: tuple[str, ...]) -> SourceClass | None:
-    """Whether a path under the root is test or app source; None if neither."""
+    """Test source, app source, or neither."""
     if not relative_parts:
         return None
     return SOURCE_TREES.get(relative_parts[0])
 
 
 def _relative_parts(filename: str) -> tuple[str, ...] | None:
-    """The path's parts under the repository root, or None outside it."""
+    """Parts under the repository root, or none."""
     try:
         return Path(filename).relative_to(settings.BASE_DIR).parts
     except ValueError:
@@ -64,7 +57,10 @@ def _relative_parts(filename: str) -> tuple[str, ...] | None:
 
 
 def _frame_permits_seeding() -> bool:
-    """The nearest source frame decides; no source frame permits."""
+    """The nearest source frame decides.
+
+    No source frame is Django's flush, which seeds.
+    """
     frame: FrameType | None = sys._getframe(1)
     while frame is not None:
         if frame.f_code.co_filename != _THIS_FILE:
@@ -79,7 +75,7 @@ def _frame_permits_seeding() -> bool:
 def _seed_from_tests(
     execute: Callable[..., Any], sql: str, params: Any, many: bool, context: Any
 ) -> Any:
-    """Execute wrapper: open the test door for one seeding statement."""
+    """Open the test door for one statement."""
     if (
         open_writer() is None
         and not _strict.get()
@@ -106,7 +102,7 @@ def _install_on_connection(connection, **kwargs: Any) -> None:
 
 
 def install() -> None:
-    """Connect the seeding wrapper to every connection, present and future."""
+    """Seed wrapper on every connection."""
     connection_created.connect(
         _install_on_connection, dispatch_uid="tests.projection_doors"
     )
@@ -116,7 +112,7 @@ def install() -> None:
 
 @pytest.fixture
 def projection_guard_strict():
-    """Shut the seeding door for the test: a seed must go through a command."""
+    """Shut the seeding door for one test."""
     token = _strict.set(True)
     try:
         yield

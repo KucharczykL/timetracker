@@ -33,11 +33,11 @@ _WRITE_TARGET = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-#: One identifier, quoted or bare, optionally schema-qualified.
+#: A quoted or bare, maybe qualified, identifier.
 _IDENTIFIER = r'(?:"(?:[^"]|"")+"|\w+)'
 _QUALIFIED_NAME = re.compile(rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})?")
 
-#: A whole `TRUNCATE` list; anything the list does not cover is unreadable.
+#: A whole `TRUNCATE` list.
 _TRUNCATE = re.compile(
     rf"""
     TRUNCATE
@@ -83,7 +83,7 @@ def write_targets(statement: str) -> tuple[TableName, ...]:
 
 
 def _truncate_targets(statement: str, start: int) -> tuple[TableName, ...]:
-    """Every name in a `TRUNCATE` list; `CASCADE` empties tables unnamed."""
+    """Every listed name; `CASCADE` reads as unreadable."""
     match = _TRUNCATE.fullmatch(statement, start)
     if match is None:
         return ("",)
